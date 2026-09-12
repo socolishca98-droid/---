@@ -1,0 +1,4500 @@
+﻿ 
+
+=== app\m\chat\page.tsx ===
+"use client"
+
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
+import {
+  ChevronLeft,
+  Phone,
+  Send,
+  Loader2,
+  AlertTriangle,
+  Headphones,
+} from "lucide-react"
+import { toast } from "sonner"
+
+interface ChatMessage {
+  id: string
+  senderId: string
+  senderRole: string
+  senderName: string
+  content: string
+  type: string
+  isImportant?: boolean
+  createdAt: string
+}
+
+interface Driver {
+  id: string
+  name: string
+}
+
+export default function DriverChatPage() {
+  const router = useRouter()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const [driver, setDriver] = useState<Driver | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [newMessage, setNewMessage] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSending, setIsSending] = useState(false)
+
+  // РђРІС‚РѕСЂРёР·Р°С†РёСЏ
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (saved) {
+      try {
+        setDriver(JSON.parse(saved))
+      } catch {
+        router.push("/m/login")
+      }
+    } else {
+      router.push("/m/login")
+    }
+  }, [router])
+
+  // Р—Р°РіСЂСѓР·РєР° СЃРѕРѕР±С‰РµРЅРёР№
+  const fetchMessages = useCallback(async () => {
+    if (!driver?.id) return
+
+    try {
+      const res = await fetch(`/api/chat?driverId=${driver.id}`)
+      const data = await res.json()
+
+      if (data.success) {
+        setMessages(data.messages)
+      }
+    } catch (error) {
+      console.error("Failed to fetch messages:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [driver?.id])
+
+  useEffect(() => {
+    if (driver?.id) {
+      fetchMessages()
+    }
+  }, [driver?.id, fetchMessages])
+
+  // РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ
+  useEffect(() => {
+    if (!driver?.id) return
+    const interval = setInterval(fetchMessages, 5000)
+    return () => clearInterval(interval)
+  }, [driver?.id, fetchMessages])
+
+  // РЎРєСЂРѕР»Р» РІРЅРёР·
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages])
+
+  // РћС‚РїСЂР°РІРєР° СЃРѕРѕР±С‰РµРЅРёСЏ
+  const handleSend = async () => {
+    if (!newMessage.trim() || !driver?.id || isSending) return
+
+    setIsSending(true)
+    const content = newMessage.trim()
+    setNewMessage("")
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderId: driver.id,
+          senderRole: "driver",
+          senderName: driver.name,
+          content,
+          type: "text",
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setMessages((prev) => [...prev, data.message])
+      } else {
+        setNewMessage(content)
+        toast.error("РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ")
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      setNewMessage(content)
+      toast.error("РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё")
+    } finally {
+      setIsSending(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  // РЎСЂРѕС‡РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ
+  const handleSendAlert = () => {
+    const alertText = prompt("РЎСЂРѕС‡РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ РґРёСЃРїРµС‚С‡РµСЂСѓ:")
+    if (alertText?.trim()) {
+      sendMessage(alertText.trim(), "alert")
+    }
+  }
+
+  const sendMessage = async (content: string, type: string = "text") => {
+    if (!driver?.id) return
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderId: driver.id,
+          senderRole: "driver",
+          senderName: driver.name,
+          content,
+          type,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setMessages((prev) => [...prev, data.message])
+        if (type === "alert") {
+          toast.success("РЎСЂРѕС‡РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ РѕС‚РїСЂР°РІР»РµРЅРѕ")
+        }
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      toast.error("РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё")
+    }
+  }
+
+  const formatTime = (date: string) => {
+    return new Date(date).toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const formatDate = (date: string) => {
+    const d = new Date(date)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    if (d.toDateString() === today.toDateString()) {
+      return "РЎРµРіРѕРґРЅСЏ"
+    } else if (d.toDateString() === yesterday.toDateString()) {
+      return "Р’С‡РµСЂР°"
+    } else {
+      return d.toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "long",
+      })
+    }
+  }
+
+  // Р“СЂСѓРїРїРёСЂРѕРІРєР° СЃРѕРѕР±С‰РµРЅРёР№ РїРѕ РґР°С‚Рµ
+  const groupedMessages = messages.reduce((acc, msg) => {
+    const dateKey = new Date(msg.createdAt).toDateString()
+    if (!acc[dateKey]) {
+      acc[dateKey] = []
+    }
+    acc[dateKey].push(msg)
+    return acc
+  }, {} as Record<string, ChatMessage[]>)
+
+  if (!driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white flex flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                <Headphones className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="font-semibold">Р”РёСЃРїРµС‚С‡РµСЂСЃРєР°СЏ</p>
+                <p className="text-xs text-emerald-400">РћРЅР»Р°Р№РЅ</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleSendAlert}
+              className="p-2.5 hover:bg-red-500/20 rounded-xl transition-colors"
+              title="РЎСЂРѕС‡РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ"
+            >
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+            </button>
+            <a
+              href="tel:+79001234567"
+              className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
+            >
+              <Phone className="h-5 w-5 text-emerald-400" />
+            </a>
+          </div>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-16 h-16 rounded-2xl bg-gray-800/50 flex items-center justify-center mb-4">
+              <Headphones className="h-8 w-8 text-gray-600" />
+            </div>
+            <p className="text-gray-400 font-medium mb-1">РќРµС‚ СЃРѕРѕР±С‰РµРЅРёР№</p>
+            <p className="text-gray-600 text-sm text-center">
+              РќР°РїРёС€РёС‚Рµ РґРёСЃРїРµС‚С‡РµСЂСѓ, РµСЃР»Рё РЅСѓР¶РЅР° РїРѕРјРѕС‰СЊ
+            </p>
+          </div>
+        ) : (
+          Object.entries(groupedMessages).map(([dateKey, msgs]) => (
+            <div key={dateKey}>
+              {/* Р Р°Р·РґРµР»РёС‚РµР»СЊ РґР°С‚С‹ */}
+              <div className="flex items-center justify-center my-4">
+                <span className="px-3 py-1 rounded-full bg-gray-800/50 text-xs text-gray-500">
+                  {formatDate(msgs[0].createdAt)}
+                </span>
+              </div>
+
+              {/* РЎРѕРѕР±С‰РµРЅРёСЏ */}
+              <div className="space-y-3">
+                {msgs.map((msg) => {
+                  const isOwn = msg.senderId === driver.id
+                  const isImportant = msg.isImportant || msg.type === "alert"
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                          isOwn
+                            ? "bg-orange-500 text-white rounded-br-md"
+                            : isImportant
+                            ? "bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30 rounded-bl-md"
+                            : "bg-[#1a1a1f] border border-gray-800 rounded-bl-md"
+                        }`}
+                      >
+                        {/* Р’Р°Р¶РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ */}
+                        {isImportant && !isOwn && (
+                          <div className="flex items-center gap-1.5 text-red-400 text-xs mb-2 font-medium">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            Р’РђР–РќРћ
+                          </div>
+                        )}
+
+                        {/* РРјСЏ РѕС‚РїСЂР°РІРёС‚РµР»СЏ */}
+                        {!isOwn && (
+                          <p className="text-xs text-gray-400 mb-1">
+                            {msg.senderName}
+                          </p>
+                        )}
+
+                        {/* РўРµРєСЃС‚ */}
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+
+                        {/* Р’СЂРµРјСЏ */}
+                        <p
+                          className={`text-[10px] mt-1.5 text-right ${
+                            isOwn ? "text-orange-100/70" : "text-gray-500"
+                          }`}
+                        >
+                          {formatTime(msg.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="sticky bottom-0 bg-[#09090b] border-t border-gray-800 p-3">
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <textarea
+              ref={inputRef}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+              placeholder="РЎРѕРѕР±С‰РµРЅРёРµ..."
+              rows={1}
+              className="w-full px-4 py-3 bg-[#151518] border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500/50 resize-none max-h-32 transition-colors"
+            />
+          </div>
+          <button
+            onClick={handleSend}
+            disabled={!newMessage.trim() || isSending}
+            className="p-3 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 rounded-xl transition-colors flex-shrink-0"
+          >
+            {isSending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+=== app\m\history\page.tsx ===
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { MobileHeader } from "@/components/driver-mobile/mobile-header"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import { ChatButton } from "@/components/driver-mobile/chat-button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { mockOrders, mockChatMessages } from "@/lib/mock-data"
+import { Loader2, MapPin, Calendar, CheckCircle } from "lucide-react"
+
+export default function DriverHistoryPage() {
+  const { user, isLoading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push("/")
+    }
+  }, [user, isLoading, router])
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // Mock completed orders for history
+  const completedOrders = [
+    { ...mockOrders[0], status: "delivered" as const, completedAt: new Date(Date.now() - 86400000 * 1) },
+    { ...mockOrders[2], status: "delivered" as const, completedAt: new Date(Date.now() - 86400000 * 3) },
+    { ...mockOrders[4], status: "delivered" as const, completedAt: new Date(Date.now() - 86400000 * 5) },
+  ]
+
+  const unreadMessages = mockChatMessages.filter((m) => !m.isRead).length
+
+  return (
+    <div className="min-h-screen bg-background pb-20">
+      <MobileHeader />
+
+      <main className="p-4 space-y-4">
+        <h1 className="text-xl font-bold">РСЃС‚РѕСЂРёСЏ СЂРµР№СЃРѕРІ</h1>
+
+        {completedOrders.map((order, index) => (
+          <Card key={index}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="font-medium">{order.cargoType}</p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                    <Calendar className="h-3 w-3" />
+                    {order.completedAt?.toLocaleDateString("ru-RU")}
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-green-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Р’С‹РїРѕР»РЅРµРЅ
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <span>{order.routeFrom}</span>
+                <span className="text-muted-foreground">в†’</span>
+                <span>{order.routeTo}</span>
+              </div>
+
+              <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                <span className="text-sm text-muted-foreground">{order.distance} РєРј</span>
+                <span className="font-bold text-primary">{order.price?.toLocaleString("ru-RU")} в‚Ѕ</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </main>
+
+      <ChatButton unreadCount={unreadMessages} />
+      <BottomNav />
+    </div>
+  )
+}
+
+=== app\m\login\page.tsx ===
+// app/m/login/page.tsx
+
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import {
+  Truck,
+  Phone,
+  Loader2,
+  ArrowRight,
+  Building2,
+} from "lucide-react"
+
+export default function DriverLoginPage() {
+  const router = useRouter()
+  const [organization, setOrganization] = useState<string>("")
+  const [phone, setPhone] = useState<string>("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+
+    if (!organization.trim() || !phone.trim()) {
+      setError("РЈРєР°Р¶РёС‚Рµ РѕСЂРіР°РЅРёР·Р°С†РёСЋ Рё РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°")
+      return
+    }
+
+    setIsLoading(true)
+    setError("")
+
+    try {
+      const res = await fetch("/api/m/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phone.trim(),
+          organization: organization.trim(),
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success && data.driver) {
+        localStorage.setItem("driver_session", JSON.stringify(data.driver))
+        router.push("/m")
+      } else {
+        setError(data.error || "Р’РѕРґРёС‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ")
+      }
+    } catch {
+      setError("РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const canSubmit = organization.trim() && phone.trim()
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white flex flex-col">
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        {/* Logo */}
+        <div className="w-20 h-20 rounded-2xl bg-orange-500/20 flex items-center justify-center mb-6">
+          <Truck className="h-10 w-10 text-orange-500" />
+        </div>
+
+        <h1 className="text-2xl font-bold mb-2">РђР Р›РѕРіРёСЃС‚РёРєР°</h1>
+        <p className="text-gray-400 mb-8">РџСЂРёР»РѕР¶РµРЅРёРµ РІРѕРґРёС‚РµР»СЏ</p>
+
+        {/* Form */}
+        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">
+              РћСЂРіР°РЅРёР·Р°С†РёСЏ
+            </label>
+            <div className="relative">
+              <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+              <input
+                type="text"
+                value={organization}
+                onChange={(e) => setOrganization(e.target.value)}
+                placeholder="РђР Р›РѕРіРёСЃС‚РёРєР°"
+                className="w-full pl-12 pr-4 py-4 bg-[#1a1a1f] border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">
+              РќРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+7 (999) 123-45-67"
+                className="w-full pl-12 pr-4 py-4 bg-[#1a1a1f] border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isLoading || !canSubmit}
+            className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+          >
+            {isLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <>
+                Р’РѕР№С‚Рё
+                <ArrowRight className="h-5 w-5" />
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+
+      <div className="p-6 text-center text-xs text-gray-600">
+        Р’РІРµРґРёС‚Рµ РѕСЂРіР°РЅРёР·Р°С†РёСЋ Рё РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°, СѓРєР°Р·Р°РЅРЅС‹Рµ Р»РѕРіРёСЃС‚РѕРј РІ
+        СЃРёСЃС‚РµРјРµ
+      </div>
+    </div>
+  )
+}
+
+=== app\m\maintenance\page.tsx ===
+// app/m/maintenance/page.tsx
+
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import {
+  ChevronLeft,
+  Wrench,
+  Loader2,
+  Car,
+  Fuel,
+  Settings,
+  CircleDot,
+  FileText,
+} from "lucide-react"
+import { toast } from "sonner"
+
+interface Driver {
+  id: string
+  name: string
+  vehicleId?: string | null
+  vehiclePlate?: string | null
+}
+
+const MAINTENANCE_TYPES = [
+  {
+    id: "oil_change",
+    label: "Р—Р°РјРµРЅР° РјР°СЃР»Р°",
+    icon: Fuel,
+  },
+  {
+    id: "tire_change",
+    label: "Р—Р°РјРµРЅР° С€РёРЅ",
+    icon: CircleDot,
+  },
+  {
+    id: "scheduled",
+    label: "РџР»Р°РЅРѕРІРѕРµ РўРћ",
+    icon: Settings,
+  },
+  {
+    id: "repair",
+    label: "Р РµРјРѕРЅС‚",
+    icon: Wrench,
+  },
+  {
+    id: "inspection",
+    label: "РћСЃРјРѕС‚СЂ / Р”РёР°РіРЅРѕСЃС‚РёРєР°",
+    icon: Car,
+  },
+  {
+    id: "other",
+    label: "Р”СЂСѓРіРѕРµ",
+    icon: FileText,
+  },
+] as const
+
+export default function MaintenancePage() {
+  const router = useRouter()
+
+  const [driver, setDriver] = useState<Driver | null>(null)
+  const [selectedType, setSelectedType] = useState<string | null>(null)
+  const [description, setDescription] = useState("")
+  const [mileage, setMileage] = useState("")
+  const [cost, setCost] = useState("")
+  const [performer, setPerformer] = useState<"driver" | "service">("driver")
+  const [serviceName, setServiceName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as Driver
+      if (!parsed?.id) throw new Error("Invalid session")
+
+      fetch(`/api/drivers/${parsed.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.driver) {
+            setDriver({
+              id: data.driver.id,
+              name: data.driver.name,
+              vehicleId: data.driver.vehicleId,
+              vehiclePlate: data.driver.vehiclePlate,
+            })
+          } else {
+            setDriver(parsed)
+          }
+        })
+        .catch(() => setDriver(parsed))
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  const handleSubmit = async () => {
+    if (!driver?.id || !selectedType) {
+      toast.error("Р’С‹Р±РµСЂРёС‚Рµ С‚РёРї РўРћ")
+      return
+    }
+
+    if (!description.trim()) {
+      toast.error("РћРїРёС€РёС‚Рµ, С‡С‚Рѕ РґРµР»Р°РµС‚СЃСЏ")
+      return
+    }
+
+    if (!driver.vehicleId) {
+      toast.error("РќРµС‚ РїСЂРёРІСЏР·Р°РЅРЅРѕРіРѕ Р°РІС‚РѕРјРѕР±РёР»СЏ", {
+        description: "Р’С‹Р±РµСЂРёС‚Рµ Р°РІС‚РѕРјРѕР±РёР»СЊ РІ РїСЂРѕС„РёР»Рµ",
+      })
+      return
+    }
+
+    if (performer === "service" && !serviceName.trim()) {
+      toast.error("РЈРєР°Р¶РёС‚Рµ РЅР°Р·РІР°РЅРёРµ РЎРўРћ")
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const res = await fetch("/api/m/maintenance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          vehicleId: driver.vehicleId,
+          type: selectedType,
+          description: description.trim(),
+          mileage: mileage ? parseInt(mileage, 10) : null,
+          cost: cost ? parseInt(cost, 10) : null,
+          performer,
+          serviceName: performer === "service" ? serviceName.trim() : null,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast.success("РўРћ РЅР°С‡Р°С‚Рѕ", {
+          description:
+            performer === "driver"
+              ? "Р’С‹ РѕС‚РјРµС‡РµРЅС‹ РєР°Рє РІС‹РїРѕР»РЅСЏСЋС‰РёР№ РўРћ"
+              : `РЎРўРћ: ${serviceName.trim()}`,
+        })
+
+        const updated = { ...driver, status: "maintenance" }
+        localStorage.setItem("driver_session", JSON.stringify(updated))
+
+        router.push("/m")
+      } else {
+        toast.error("РћС€РёР±РєР°", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ РўРћ",
+        })
+      }
+    } catch (error) {
+      console.error("Maintenance error:", error)
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (!driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  const selectedTypeInfo = MAINTENANCE_TYPES.find((t) => t.id === selectedType)
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-8">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5 text-gray-400" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold">РўРћ / Р РµРјРѕРЅС‚</h1>
+            <p className="text-xs text-gray-500">
+              {driver.vehiclePlate || "РќРµС‚ РїСЂРёРІСЏР·Р°РЅРЅРѕРіРѕ РўРЎ"}
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-4 space-y-6">
+        {/* РўРёРї СЂР°Р±РѕС‚ */}
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
+            РўРёРї СЂР°Р±РѕС‚
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {MAINTENANCE_TYPES.map((type) => {
+              const isSelected = selectedType === type.id
+              return (
+                <button
+                  key={type.id}
+                  onClick={() => setSelectedType(type.id)}
+                  className={`p-4 rounded-xl border transition-all flex items-center gap-3 ${
+                    isSelected
+                      ? "border-amber-500 bg-amber-500/10"
+                      : "border-gray-800 bg-[#151518] hover:border-gray-700"
+                  }`}
+                >
+                  <type.icon
+                    className={`h-5 w-5 ${
+                      isSelected ? "text-amber-400" : "text-gray-500"
+                    }`}
+                  />
+                  <span
+                    className={`text-sm font-medium ${
+                      isSelected ? "text-amber-400" : "text-gray-300"
+                    }`}
+                  >
+                    {type.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* РљС‚Рѕ РІС‹РїРѕР»РЅСЏРµС‚ */}
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">
+            РљС‚Рѕ РІС‹РїРѕР»РЅСЏРµС‚ СЂР°Р±РѕС‚С‹
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPerformer("driver")}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                performer === "driver"
+                  ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
+                  : "bg-[#151518] border-gray-800 text-gray-400 hover:border-gray-700"
+              }`}
+            >
+              Р’РѕРґРёС‚РµР»СЊ
+            </button>
+            <button
+              onClick={() => setPerformer("service")}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                performer === "service"
+                  ? "bg-blue-500/20 border-blue-500 text-blue-400"
+                  : "bg-[#151518] border-gray-800 text-gray-400 hover:border-gray-700"
+              }`}
+            >
+              РЎРўРћ
+            </button>
+          </div>
+
+          {performer === "service" && (
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1">
+                РќР°Р·РІР°РЅРёРµ РЎРўРћ
+              </label>
+              <input
+                type="text"
+                value={serviceName}
+                onChange={(e) => setServiceName(e.target.value)}
+                placeholder="РќР°РїСЂРёРјРµСЂ: РћРћРћ В«РђРІС‚РѕРЎРµСЂРІРёСЃВ»"
+                className="w-full px-4 py-3 bg-[#151518] border border-gray-800 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* РћРїРёСЃР°РЅРёРµ */}
+        <div>
+          <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">
+            Р§С‚Рѕ РґРµР»Р°РµС‚СЃСЏ? *
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="РќР°РїСЂРёРјРµСЂ: Р·Р°РјРµРЅР° РјР°СЃР»Р° Рё С„РёР»СЊС‚СЂРѕРІ, РїСЂРѕРІРµСЂРєР° С‚РѕСЂРјРѕР·РѕРІ..."
+            rows={4}
+            className="w-full px-4 py-3 bg-[#151518] border border-gray-800 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 resize-none transition-colors"
+          />
+        </div>
+
+        {/* РџСЂРѕР±РµРі + СЃС‚РѕРёРјРѕСЃС‚СЊ */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">
+              РџСЂРѕР±РµРі (РєРј)
+            </label>
+            <input
+              type="number"
+              value={mileage}
+              onChange={(e) => setMileage(e.target.value)}
+              placeholder="150000"
+              className="w-full px-4 py-3 bg-[#151518] border border-gray-800 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">
+              РЎС‚РѕРёРјРѕСЃС‚СЊ (в‚Ѕ)
+            </label>
+            <input
+              type="number"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder="12000"
+              className="w-full px-4 py-3 bg-[#151518] border border-gray-800 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* РџСЂРµРІСЊСЋ */}
+        {selectedType && description.trim() && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center">
+                {selectedTypeInfo && (
+                  <selectedTypeInfo.icon className="h-5 w-5 text-white" />
+                )}
+              </div>
+              <div>
+                <p className="font-medium text-amber-400">
+                  {selectedTypeInfo?.label}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {driver.vehiclePlate || "РќРµС‚ РўРЎ"}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-300">{description}</p>
+            {mileage && (
+              <p className="text-xs text-gray-500 mt-2">
+                РџСЂРѕР±РµРі:{" "}
+                {parseInt(mileage, 10).toLocaleString("ru-RU")} РєРј
+              </p>
+            )}
+            {(cost || performer === "service") && (
+              <p className="text-xs text-gray-500 mt-1">
+                {cost &&
+                  `РћСЂРёРµРЅС‚РёСЂРѕРІРѕС‡РЅР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ: ${parseInt(
+                    cost,
+                    10
+                  ).toLocaleString("ru-RU")} в‚Ѕ. `}
+                {performer === "service" &&
+                  serviceName &&
+                  `РЎРўРћ: ${serviceName.trim()}.`}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* РљРЅРѕРїРєР° */}
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !selectedType || !description.trim()}
+          className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 rounded-xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-lg shadow-amber-500/25 disabled:shadow-none"
+        >
+          {isSubmitting ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <>
+              <Wrench className="h-5 w-5" />
+              РќР°С‡Р°С‚СЊ РўРћ
+            </>
+          )}
+        </button>
+
+        <p className="text-xs text-gray-600 text-center">
+          РџРѕСЃР»Рµ РЅР°С‡Р°Р»Р° РўРћ СЃС‚Р°С‚СѓСЃ РјР°С€РёРЅС‹ РёР·РјРµРЅРёС‚СЃСЏ РЅР° В«РќР° РўРћВ».<br />
+          Р—Р°РІРµСЂС€РёС‚СЊ РўРћ РјРѕР¶РЅРѕ СЃ РіР»Р°РІРЅРѕРіРѕ СЌРєСЂР°РЅР°.
+        </p>
+      </main>
+    </div>
+  )
+}
+
+=== app\m\notifications\page.tsx ===
+"use client"
+
+import { useEffect, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
+import {
+  ChevronLeft,
+  Camera,
+  MessageCircle,
+  Navigation,
+  Info,
+  Trash2,
+  CheckCheck,
+  Bell,
+  BellOff,
+} from "lucide-react"
+import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { toast } from "sonner"
+
+interface DriverSession {
+  id: string
+  name: string
+}
+
+export default function DriverNotificationsPage() {
+  const router = useRouter()
+  const [driver, setDriver] = useState<DriverSession | null>(null)
+
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as DriverSession
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    removeNotification,
+    clearAll,
+  } = useDriverNotifications(driver?.id)
+
+  const hasNotifications = notifications.length > 0
+
+  const sortedNotifications = useMemo(
+    () =>
+      [...notifications].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ),
+    [notifications]
+  )
+
+  const handleNotificationPress = (id: string) => {
+    const n = notifications.find((x) => x.id === id)
+    if (!n) return
+
+    markAsRead(id)
+
+    const action = n.action
+    if (!action) return
+
+    if (action.kind === "openPhoto") {
+      router.push(`/m/photo${action.status ? `?context=${action.status}` : ""}`)
+    } else if (action.kind === "openChat") {
+      router.push("/m/chat")
+    } else if (action.kind === "openOrder" && action.orderId) {
+      router.push(`/m/orders/${action.orderId}`)
+    }
+  }
+
+  const handleClearAll = () => {
+    if (confirm("РЈРґР°Р»РёС‚СЊ РІСЃРµ СѓРІРµРґРѕРјР»РµРЅРёСЏ?")) {
+      clearAll()
+      toast.success("РЈРІРµРґРѕРјР»РµРЅРёСЏ РѕС‡РёС‰РµРЅС‹")
+    }
+  }
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ""
+
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "РўРѕР»СЊРєРѕ С‡С‚Рѕ"
+    if (diffMins < 60) return `${diffMins} РјРёРЅ РЅР°Р·Р°Рґ`
+    if (diffHours < 24) return `${diffHours} С‡ РЅР°Р·Р°Рґ`
+    if (diffDays < 7) return `${diffDays} РґРЅ РЅР°Р·Р°Рґ`
+
+    return d.toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "short",
+    })
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "photo":
+        return <Camera className="h-5 w-5 text-orange-400" />
+      case "chat":
+        return <MessageCircle className="h-5 w-5 text-blue-400" />
+      case "route":
+        return <Navigation className="h-5 w-5 text-emerald-400" />
+      default:
+        return <Info className="h-5 w-5 text-gray-400" />
+    }
+  }
+
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case "photo":
+        return "bg-orange-500/10 border-orange-500/20"
+      case "chat":
+        return "bg-blue-500/10 border-blue-500/20"
+      case "route":
+        return "bg-emerald-500/10 border-emerald-500/20"
+      default:
+        return "bg-gray-500/10 border-gray-500/20"
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-8">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5 text-gray-400" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold">РЈРІРµРґРѕРјР»РµРЅРёСЏ</h1>
+            <p className="text-xs text-gray-500">
+              {unreadCount > 0
+                ? `${unreadCount} РЅРµРїСЂРѕС‡РёС‚Р°РЅРЅС‹С…`
+                : "Р’СЃРµ РїСЂРѕС‡РёС‚Р°РЅС‹"}
+            </p>
+          </div>
+        </div>
+
+        {/* Р”РµР№СЃС‚РІРёСЏ */}
+        {hasNotifications && (
+          <div className="px-4 pb-3 flex items-center gap-2">
+            <button
+              onClick={markAllAsRead}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-[#151518] border border-gray-800 hover:border-gray-700 text-gray-300 transition-colors"
+            >
+              <CheckCheck className="h-4 w-4" />
+              РџСЂРѕС‡РёС‚Р°С‚СЊ РІСЃРµ
+            </button>
+            <button
+              onClick={handleClearAll}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 text-red-400 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+              РћС‡РёСЃС‚РёС‚СЊ
+            </button>
+          </div>
+        )}
+      </header>
+
+      <main className="p-4">
+        {!hasNotifications ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-20 h-20 rounded-2xl bg-gray-800/50 flex items-center justify-center mb-4">
+              <BellOff className="h-10 w-10 text-gray-600" />
+            </div>
+            <p className="text-gray-400 font-medium mb-1">РќРµС‚ СѓРІРµРґРѕРјР»РµРЅРёР№</p>
+            <p className="text-gray-600 text-sm text-center max-w-xs">
+              Р—РґРµСЃСЊ Р±СѓРґСѓС‚ РїРѕСЏРІР»СЏС‚СЊСЃСЏ РЅР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ С„РѕС‚Рѕ, СЃРѕРѕР±С‰РµРЅРёСЏ Рё РѕР±РЅРѕРІР»РµРЅРёСЏ
+              РїРѕ СЂРµР№СЃР°Рј
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sortedNotifications.map((n) => {
+              const isUnread = !n.isRead
+
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => handleNotificationPress(n.id)}
+                  className={`w-full text-left rounded-2xl p-4 border transition-all active:scale-[0.99] ${
+                    isUnread
+                      ? getNotificationColor(n.type)
+                      : "bg-[#151518] border-gray-800 hover:border-gray-700"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* РРєРѕРЅРєР° */}
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isUnread ? "bg-white/5" : "bg-gray-800"
+                      }`}
+                    >
+                      {getNotificationIcon(n.type)}
+                    </div>
+
+                    {/* РљРѕРЅС‚РµРЅС‚ */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p
+                          className={`font-semibold truncate ${
+                            isUnread ? "text-white" : "text-gray-300"
+                          }`}
+                        >
+                          {n.title}
+                        </p>
+                        <span className="text-[11px] text-gray-500 flex-shrink-0">
+                          {formatTime(n.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-400 line-clamp-2">
+                        {n.message}
+                      </p>
+                    </div>
+
+                    {/* РРЅРґРёРєР°С‚РѕСЂ РЅРµРїСЂРѕС‡РёС‚Р°РЅРЅРѕРіРѕ */}
+                    {isUnread && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0 mt-2" />
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+=== app\m\orders\[id]\page.tsx ===
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter, useParams } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import {
+  Navigation,
+  Phone,
+  Camera,
+  MapPin,
+  Package,
+  FileText,
+  ChevronLeft,
+  Loader2,
+  Truck,
+  Clock,
+  Banknote,
+  Weight,
+  Box,
+  User,
+} from "lucide-react"
+
+interface Order {
+  id: string
+  routeFrom: string
+  routeTo: string
+  distance: number | null
+  cargoType: string
+  weight: number | null
+  volume: number | null
+  clientName: string | null
+  clientContact: string
+  status: string
+  price: number | null
+  loadingType: string | null
+  requirements: string | null
+  deadline: string | null
+}
+
+export default function OrderDetailsPage() {
+  const router = useRouter()
+  const params = useParams()
+  const orderId = params?.id as string
+
+  const [order, setOrder] = useState<Order | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      if (!orderId) return
+
+      try {
+        const res = await fetch(`/api/orders/${orderId}`)
+        const data = await res.json()
+        if (data.success && data.order) {
+          setOrder(data.order as Order)
+        } else {
+          setOrder(null)
+        }
+      } catch (e) {
+        console.error("Failed to load order:", e)
+        setOrder(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    load()
+  }, [orderId])
+
+  const openNavigator = (address: string) => {
+    window.open(
+      `https://yandex.ru/maps/?rtext=~${encodeURIComponent(address)}&rtt=auto`,
+      "_blank"
+    )
+  }
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "loading":
+        return "РџРѕРіСЂСѓР·РєР°"
+      case "unloading":
+        return "Р’С‹РіСЂСѓР·РєР°"
+      case "in_transit":
+        return "Р’ РїСѓС‚Рё"
+      case "delivered":
+        return "Р”РѕСЃС‚Р°РІР»РµРЅ"
+      case "cancelled":
+        return "РћС‚РјРµРЅС‘РЅ"
+      default:
+        return "Р’ СЂР°Р±РѕС‚Рµ"
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen bg-[#09090b] text-white flex flex-col items-center justify-center gap-4 p-4">
+        <Package className="h-16 w-16 text-gray-700" />
+        <p className="text-gray-400 text-center">Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ</p>
+        <button
+          onClick={() => router.push("/m/orders")}
+          className="px-6 py-3 rounded-xl bg-orange-500 text-white font-medium"
+        >
+          Рљ СЃРїРёСЃРєСѓ СЂРµР№СЃРѕРІ
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-bold truncate">Р РµР№СЃ</h1>
+            <p className="text-xs text-gray-500">
+              {getStatusLabel(order.status)}
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-4 space-y-4">
+        {/* РњР°СЂС€СЂСѓС‚ */}
+        <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+            РњР°СЂС€СЂСѓС‚
+          </h3>
+
+          {/* РўРѕС‡РєР° Рђ вЂ” РџРѕРіСЂСѓР·РєР° */}
+          <div className="relative pl-8 pb-6">
+            <div className="absolute left-0 top-0 w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
+              <div className="w-3 h-3 rounded-full bg-green-500" />
+            </div>
+            <div className="absolute left-[11px] top-6 w-0.5 h-full bg-gray-700" />
+
+            <div className="text-xs text-green-400 font-medium mb-1">
+              РџРѕРіСЂСѓР·РєР°
+            </div>
+            <p className="font-medium text-white mb-3">{order.routeFrom}</p>
+
+            <button
+              onClick={() => openNavigator(order.routeFrom)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Navigation className="h-4 w-4" />
+              РњР°СЂС€СЂСѓС‚
+            </button>
+          </div>
+
+          {/* РўРѕС‡РєР° Р‘ вЂ” Р’С‹РіСЂСѓР·РєР° */}
+          <div className="relative pl-8">
+            <div className="absolute left-0 top-0 w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center">
+              <div className="w-3 h-3 rounded-full bg-red-500" />
+            </div>
+
+            <div className="text-xs text-red-400 font-medium mb-1">
+              Р’С‹РіСЂСѓР·РєР°
+            </div>
+            <p className="font-medium text-white mb-3">{order.routeTo}</p>
+
+            <button
+              onClick={() => openNavigator(order.routeTo)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Navigation className="h-4 w-4" />
+              РњР°СЂС€СЂСѓС‚
+            </button>
+          </div>
+        </div>
+
+        {/* Р‘С‹СЃС‚СЂС‹Рµ РґРµР№СЃС‚РІРёСЏ */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => router.push("/m/photo")}
+            className="bg-[#1a1a1f] border border-gray-800 hover:border-gray-700 p-4 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
+          >
+            <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center">
+              <Camera className="h-6 w-6 text-orange-400" />
+            </div>
+            <span className="text-sm font-medium">Р¤РѕС‚Рѕ</span>
+          </button>
+
+          {order.clientContact && (
+            <a
+              href={`tel:${order.clientContact}`}
+              className="bg-[#1a1a1f] border border-gray-800 hover:border-gray-700 p-4 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all"
+            >
+              <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                <Phone className="h-6 w-6 text-green-400" />
+              </div>
+              <span className="text-sm font-medium">РџРѕР·РІРѕРЅРёС‚СЊ</span>
+            </a>
+          )}
+        </div>
+
+        {/* РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РіСЂСѓР·Рµ */}
+        <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-5">
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+            РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РіСЂСѓР·Рµ
+          </h3>
+
+          <div className="space-y-4">
+            {/* РўРёРї РіСЂСѓР·Р° */}
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                <Package className="h-5 w-5 text-gray-400" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Р“СЂСѓР·</p>
+                <p className="font-medium">{order.cargoType}</p>
+              </div>
+            </div>
+
+            {/* Р’РµСЃ Рё РѕР±СЉС‘Рј */}
+            <div className="flex gap-4">
+              {order.weight && (
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                    <Weight className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Р’РµСЃ</p>
+                    <p className="font-medium">
+                      {(order.weight / 1000).toFixed(1)} С‚
+                    </p>
+                  </div>
+                </div>
+              )}
+              {order.volume && (
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                    <Box className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">РћР±СЉС‘Рј</p>
+                    <p className="font-medium">{order.volume} РјВі</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Р Р°СЃСЃС‚РѕСЏРЅРёРµ */}
+            {order.distance && (
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                  <MapPin className="h-5 w-5 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Р Р°СЃСЃС‚РѕСЏРЅРёРµ</p>
+                  <p className="font-medium">{order.distance} РєРј</p>
+                </div>
+              </div>
+            )}
+
+            {/* РЎС‚РѕРёРјРѕСЃС‚СЊ */}
+            {order.price && (
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                  <Banknote className="h-5 w-5 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">РЎС‚РѕРёРјРѕСЃС‚СЊ</p>
+                  <p className="font-medium text-orange-400">
+                    {order.price.toLocaleString("ru-RU")} в‚Ѕ
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* РљР»РёРµРЅС‚ */}
+            {order.clientName && (
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                  <User className="h-5 w-5 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">РљР»РёРµРЅС‚</p>
+                  <p className="font-medium">{order.clientName}</p>
+                </div>
+              </div>
+            )}
+
+            {/* РўРёРї Р·Р°РіСЂСѓР·РєРё */}
+            {order.loadingType && (
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                  <Truck className="h-5 w-5 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">РўРёРї Р·Р°РіСЂСѓР·РєРё</p>
+                  <p className="font-medium">{order.loadingType}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Р”РµРґР»Р°Р№РЅ */}
+            {order.deadline && (
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">РЎСЂРѕРє РґРѕСЃС‚Р°РІРєРё</p>
+                  <p className="font-medium">
+                    {new Date(order.deadline).toLocaleDateString("ru-RU", {
+                      day: "numeric",
+                      month: "long",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* РћСЃРѕР±С‹Рµ С‚СЂРµР±РѕРІР°РЅРёСЏ */}
+        {order.requirements && (
+          <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-5">
+            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+              РћСЃРѕР±С‹Рµ С‚СЂРµР±РѕРІР°РЅРёСЏ
+            </h3>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              {order.requirements}
+            </p>
+          </div>
+        )}
+      </main>
+
+      <BottomNav />
+    </div>
+  )
+}
+
+=== app\m\orders\page.tsx ===
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import {
+  Loader2,
+  MapPin,
+  ChevronRight,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Package,
+  RefreshCw,
+} from "lucide-react"
+
+interface DriverSession {
+  id: string
+  name: string
+}
+
+interface Order {
+  id: string
+  routeFrom: string
+  routeTo: string
+  distance: number | null
+  price: number | null
+  cargoType: string
+  status: string
+  createdAt: string
+}
+
+type Tab = "active" | "history"
+
+export default function DriverOrdersPage() {
+  const router = useRouter()
+
+  const [driver, setDriver] = useState<DriverSession | null>(null)
+  const [activeOrders, setActiveOrders] = useState<Order[]>([])
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([])
+  const [tab, setTab] = useState<Tab>("active")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+    try {
+      const parsed = JSON.parse(saved) as DriverSession
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  const fetchOrders = useCallback(async (showRefresh = false) => {
+    if (!driver?.id) return
+
+    if (showRefresh) setIsRefreshing(true)
+    else setIsLoading(true)
+
+    try {
+      const [activeRes, historyRes] = await Promise.all([
+        fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
+        fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
+      ])
+
+      const activeData = await activeRes.json()
+      const historyData = await historyRes.json()
+
+      if (activeData.success) {
+        setActiveOrders(activeData.orders as Order[])
+      }
+      if (historyData.success) {
+        setHistoryOrders(historyData.orders as Order[])
+      }
+    } catch (e) {
+      console.error("Failed to fetch orders:", e)
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [driver?.id])
+
+  useEffect(() => {
+    if (driver?.id) {
+      fetchOrders()
+    }
+  }, [driver?.id, fetchOrders])
+
+  const orders = tab === "active" ? activeOrders : historyOrders
+
+  const getStatusInfo = (status: string) => {
+    switch (status) {
+      case "delivered":
+        return {
+          label: "Р—Р°РІРµСЂС€С‘РЅ",
+          icon: CheckCircle2,
+          className: "bg-emerald-500/15 text-emerald-400",
+        }
+      case "cancelled":
+        return {
+          label: "РћС‚РјРµРЅС‘РЅ",
+          icon: XCircle,
+          className: "bg-red-500/15 text-red-400",
+        }
+      case "loading":
+        return {
+          label: "РџРѕРіСЂСѓР·РєР°",
+          icon: Package,
+          className: "bg-blue-500/15 text-blue-400",
+        }
+      case "unloading":
+        return {
+          label: "Р’С‹РіСЂСѓР·РєР°",
+          icon: Package,
+          className: "bg-emerald-500/15 text-emerald-400",
+        }
+      case "in_transit":
+        return {
+          label: "Р’ РїСѓС‚Рё",
+          icon: Clock,
+          className: "bg-orange-500/15 text-orange-400",
+        }
+      default:
+        return {
+          label: "Р’ СЂР°Р±РѕС‚Рµ",
+          icon: Clock,
+          className: "bg-orange-500/15 text-orange-400",
+        }
+    }
+  }
+
+  if (!driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      {/* HEADER */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h1 className="text-lg font-bold">РњРѕРё СЂРµР№СЃС‹</h1>
+          <button
+            onClick={() => fetchOrders(true)}
+            disabled={isRefreshing}
+            className="p-2 hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-5 w-5 text-gray-400 ${
+                isRefreshing ? "animate-spin" : ""
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* РўР°Р±С‹ */}
+        <div className="px-4 pb-3">
+          <div className="flex bg-[#111116] rounded-xl p-1 border border-gray-800">
+            <button
+              onClick={() => setTab("active")}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                tab === "active"
+                  ? "bg-orange-500 text-white shadow-lg"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              РђРєС‚РёРІРЅС‹Рµ
+              {activeOrders.length > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-white/20">
+                  {activeOrders.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setTab("history")}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                tab === "history"
+                  ? "bg-orange-500 text-white shadow-lg"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              РСЃС‚РѕСЂРёСЏ
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* CONTENT */}
+      <main className="p-4 space-y-3">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-500 mb-3" />
+            <p className="text-gray-500 text-sm">Р—Р°РіСЂСѓР·РєР° СЂРµР№СЃРѕРІ...</p>
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Package className="h-16 w-16 text-gray-700 mb-4" />
+            <p className="text-gray-400 font-medium mb-1">
+              {tab === "active" ? "РќРµС‚ Р°РєС‚РёРІРЅС‹С… СЂРµР№СЃРѕРІ" : "РСЃС‚РѕСЂРёСЏ РїСѓСЃС‚Р°"}
+            </p>
+            <p className="text-gray-600 text-sm text-center max-w-xs">
+              {tab === "active"
+                ? "РќРѕРІС‹Рµ СЂРµР№СЃС‹ РїРѕСЏРІСЏС‚СЃСЏ Р·РґРµСЃСЊ, РєРѕРіРґР° Р»РѕРіРёСЃС‚ РЅР°Р·РЅР°С‡РёС‚ РёС… РІР°Рј"
+                : "Р—Р°РІРµСЂС€С‘РЅРЅС‹Рµ СЂРµР№СЃС‹ Р±СѓРґСѓС‚ РѕС‚РѕР±СЂР°Р¶Р°С‚СЊСЃСЏ Р·РґРµСЃСЊ"}
+            </p>
+          </div>
+        ) : (
+          orders.map((order) => {
+            const statusInfo = getStatusInfo(order.status)
+            const StatusIcon = statusInfo.icon
+
+            return (
+              <button
+                key={order.id}
+                onClick={() => router.push(`/m/orders/${order.id}`)}
+                className="w-full bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4 text-left active:scale-[0.99] transition-transform hover:border-gray-700"
+              >
+                {/* Р’РµСЂС…РЅСЏСЏ С‡Р°СЃС‚СЊ: РіСЂСѓР· + СЃС‚Р°С‚СѓСЃ */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white mb-1 truncate">
+                      {order.cargoType}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(order.createdAt).toLocaleDateString("ru-RU", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${statusInfo.className}`}
+                  >
+                    <StatusIcon className="h-3 w-3" />
+                    {statusInfo.label}
+                  </span>
+                </div>
+
+                {/* РњР°СЂС€СЂСѓС‚ */}
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="flex flex-col items-center pt-1">
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    <div className="w-0.5 h-6 bg-gray-700 my-1" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <p className="text-sm text-gray-200 truncate">
+                      {order.routeFrom}
+                    </p>
+                    <p className="text-sm text-gray-200 truncate">
+                      {order.routeTo}
+                    </p>
+                  </div>
+                </div>
+
+                {/* РќРёР¶РЅСЏСЏ С‡Р°СЃС‚СЊ: СЂР°СЃСЃС‚РѕСЏРЅРёРµ + С†РµРЅР° */}
+                <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                  <div className="flex items-center gap-1.5 text-gray-500">
+                    <MapPin className="h-3.5 w-3.5" />
+                    <span className="text-sm">
+                      {order.distance ? `${order.distance} РєРј` : "вЂ”"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {order.price && order.price > 0 && (
+                      <span className="text-sm font-bold text-orange-400">
+                        {order.price.toLocaleString("ru-RU")} в‚Ѕ
+                      </span>
+                    )}
+                    <ChevronRight className="h-4 w-4 text-gray-600" />
+                  </div>
+                </div>
+              </button>
+            )
+          })
+        )}
+      </main>
+
+      <BottomNav />
+    </div>
+  )
+}
+
+=== app\m\photo\page.tsx ===
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import {
+  Camera,
+  ImageIcon,
+  Truck,
+  Receipt,
+  FileText,
+  AlertCircle,
+  Loader2,
+  X,
+  ChevronDown,
+  Package,
+  ChevronLeft,
+  Trash2,
+  Check,
+} from "lucide-react"
+import { toast } from "sonner"
+
+type PhotoCategory =
+  | "cargo_before"
+  | "cargo_after"
+  | "receipt"
+  | "waybill"
+  | "damage"
+  | "document"
+
+type PhotoContext =
+  | "loading"
+  | "unloading"
+  | "fueling"
+  | "damage"
+  | "document"
+  | "generic"
+
+interface DriverSession {
+  id: string
+  name: string
+}
+
+interface Order {
+  id: string
+  routeFrom: string
+  routeTo: string
+  cargoType: string
+  status: string
+  createdAt?: string
+}
+
+interface Photo {
+  id: string
+  url: string
+  type: PhotoCategory
+  orderId?: string | null
+  description?: string | null
+  createdAt: string
+}
+
+const CATEGORIES: {
+  id: PhotoCategory
+  label: string
+  shortLabel: string
+  icon: typeof Truck
+}[] = [
+  {
+    id: "cargo_before",
+    label: "Р”Рѕ РїРѕРіСЂСѓР·РєРё",
+    shortLabel: "Р”Рѕ",
+    icon: Truck,
+  },
+  {
+    id: "cargo_after",
+    label: "РџРѕСЃР»Рµ РїРѕРіСЂСѓР·РєРё/РІС‹РіСЂСѓР·РєРё",
+    shortLabel: "РџРѕСЃР»Рµ",
+    icon: Truck,
+  },
+  {
+    id: "receipt",
+    label: "Р§РµРє",
+    shortLabel: "Р§РµРє",
+    icon: Receipt,
+  },
+  {
+    id: "waybill",
+    label: "РќР°РєР»Р°РґРЅР°СЏ",
+    shortLabel: "РўРўРќ",
+    icon: FileText,
+  },
+  {
+    id: "document",
+    label: "Р”РѕРєСѓРјРµРЅС‚",
+    shortLabel: "Р”РѕРє",
+    icon: FileText,
+  },
+  {
+    id: "damage",
+    label: "РџРѕРІСЂРµР¶РґРµРЅРёРµ",
+    shortLabel: "Р”РµС„РµРєС‚",
+    icon: AlertCircle,
+  },
+]
+
+function mapContextToCategory(context: PhotoContext): PhotoCategory {
+  switch (context) {
+    case "loading":
+      return "cargo_before"
+    case "unloading":
+      return "cargo_after"
+    case "fueling":
+      return "receipt"
+    case "damage":
+      return "damage"
+    case "document":
+      return "document"
+    default:
+      return "cargo_before"
+  }
+}
+
+export default function PhotoPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const [driver, setDriver] = useState<DriverSession | null>(null)
+  const [activeOrders, setActiveOrders] = useState<Order[]>([])
+  const [recentOrders, setRecentOrders] = useState<Order[]>([])
+  const [photos, setPhotos] = useState<Photo[]>([])
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedCategory, setSelectedCategory] =
+    useState<PhotoCategory>("cargo_before")
+  const [isUploading, setIsUploading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [showOrderPicker, setShowOrderPicker] = useState(false)
+  const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
+
+  // РђРІС‚РѕСЂРёР·Р°С†РёСЏ
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as DriverSession
+        if (!parsed?.id) throw new Error("Invalid session")
+        setDriver(parsed)
+      } catch {
+        router.push("/m/login")
+      }
+    } else {
+      router.push("/m/login")
+    }
+  }, [router])
+
+  // РљРѕРЅС‚РµРєСЃС‚ РёР· URL
+  useEffect(() => {
+    const ctxRaw = searchParams?.get("context") ?? "generic"
+    const ctx = ctxRaw as PhotoContext
+    setSelectedCategory(mapContextToCategory(ctx))
+  }, [searchParams])
+
+  // Р—Р°РіСЂСѓР·РєР° Р·Р°РєР°Р·РѕРІ
+  const fetchOrders = useCallback(async () => {
+    if (!driver?.id) return
+
+    try {
+      const [activeRes, historyRes] = await Promise.all([
+        fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
+        fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
+      ])
+
+      const activeData = await activeRes.json()
+      const historyData = await historyRes.json()
+
+      let active: Order[] = []
+      let recent: Order[] = []
+
+      if (activeData.success) {
+        active = activeData.orders as Order[]
+        setActiveOrders(active)
+      }
+
+      if (historyData.success) {
+        const allHistory = historyData.orders as Order[]
+        const now = new Date()
+        const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
+        recent = allHistory.filter((o) => {
+          if (!o.createdAt) return false
+          return new Date(o.createdAt) >= twoWeeksAgo
+        })
+        setRecentOrders(recent)
+      }
+
+      if (!selectedOrder && active.length > 0) {
+        setSelectedOrder(active[0])
+      }
+    } catch (error) {
+      console.error("Failed to fetch orders:", error)
+    }
+  }, [driver?.id, selectedOrder])
+
+  // Р—Р°РіСЂСѓР·РєР° С„РѕС‚Рѕ
+  const fetchPhotos = useCallback(async () => {
+    if (!driver?.id) return
+
+    try {
+      const url = selectedOrder
+        ? `/api/m/photos?driverId=${driver.id}&orderId=${selectedOrder.id}`
+        : `/api/m/photos?driverId=${driver.id}`
+
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.success) {
+        setPhotos(data.photos as Photo[])
+      }
+    } catch (error) {
+      console.error("Failed to fetch photos:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [driver?.id, selectedOrder])
+
+  useEffect(() => {
+    if (driver?.id) {
+      fetchOrders()
+      fetchPhotos()
+    }
+  }, [driver?.id, fetchOrders, fetchPhotos])
+
+  // РљРѕРЅРІРµСЂС‚Р°С†РёСЏ С„Р°Р№Р»Р°
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = (e) => reject(e)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Р—Р°РіСЂСѓР·РєР° С„РѕС‚Рѕ
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length || !driver?.id) return
+
+    setIsUploading(true)
+
+    let successCount = 0
+
+    for (const file of Array.from(files)) {
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+
+        const res = await fetch("/api/m/photos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            driverId: driver.id,
+            orderId: selectedOrder?.id ?? null,
+            type: selectedCategory,
+            url: dataUrl,
+            description: null,
+          }),
+        })
+
+        const data = await res.json()
+        if (data.success && data.photo) {
+          setPhotos((prev) => [data.photo as Photo, ...prev])
+          successCount++
+        } else {
+          console.error("Upload failed:", data.error)
+        }
+      } catch (error) {
+        console.error("Upload failed:", error)
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`Р—Р°РіСЂСѓР¶РµРЅРѕ ${successCount} С„РѕС‚Рѕ`, {
+        icon: <Check className="h-4 w-4" />,
+      })
+    }
+
+    setIsUploading(false)
+    e.target.value = ""
+  }
+
+  // РЈРґР°Р»РµРЅРёРµ С„РѕС‚Рѕ
+  const handleDelete = async (photoId: string) => {
+    if (!confirm("РЈРґР°Р»РёС‚СЊ С„РѕС‚Рѕ?")) return
+
+    try {
+      const res = await fetch(`/api/m/photos?id=${photoId}`, {
+        method: "DELETE",
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+        setPreviewPhoto(null)
+        toast.success("Р¤РѕС‚Рѕ СѓРґР°Р»РµРЅРѕ")
+      } else {
+        toast.error(data.error || "РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ")
+      }
+    } catch (error) {
+      console.error("Delete failed:", error)
+      toast.error("РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ")
+    }
+  }
+
+  const getCategoryInfo = (type: string) => {
+    return CATEGORIES.find((c) => c.id === type) || CATEGORIES[0]
+  }
+
+  if (!driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  const hasOrders = activeOrders.length > 0 || recentOrders.length > 0
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5 text-gray-400" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold">Р¤РѕС‚Рѕ РѕС‚С‡С‘С‚С‹</h1>
+            <p className="text-xs text-gray-500">
+              {photos.length > 0 ? `${photos.length} С„РѕС‚Рѕ` : "РќРµС‚ С„РѕС‚Рѕ"}
+            </p>
+          </div>
+        </div>
+
+        {/* Р’С‹Р±РѕСЂ Р·Р°РєР°Р·Р° */}
+        <div className="px-4 pb-3">
+          <button
+            onClick={() => setShowOrderPicker(true)}
+            className="w-full p-3 bg-[#151518] border border-gray-800 rounded-xl flex items-center justify-between hover:border-gray-700 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Package className="h-5 w-5 text-gray-500" />
+              <div className="text-left">
+                {selectedOrder ? (
+                  <>
+                    <p className="text-sm font-medium truncate max-w-[200px]">
+                      {selectedOrder.routeFrom} в†’ {selectedOrder.routeTo}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {selectedOrder.cargoType}
+                    </p>
+                  </>
+                ) : hasOrders ? (
+                  <p className="text-sm text-gray-400">Р’С‹Р±РµСЂРёС‚Рµ СЂРµР№СЃ</p>
+                ) : (
+                  <p className="text-sm text-gray-500">Р‘РµР· РїСЂРёРІСЏР·РєРё Рє СЂРµР№СЃСѓ</p>
+                )}
+              </div>
+            </div>
+            <ChevronDown className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+      </header>
+
+      <main className="p-4 space-y-5">
+        {/* РљР°С‚РµРіРѕСЂРёРё вЂ” СЃС‚СЂРѕРіРёР№ РјРѕРЅРѕС…СЂРѕРјРЅС‹Р№ СЃС‚РёР»СЊ */}
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
+            РўРёРї С„РѕС‚Рѕ
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {CATEGORIES.map((cat) => {
+              const isSelected = selectedCategory === cat.id
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`p-3 rounded-xl border transition-all flex flex-col items-center gap-2 ${
+                    isSelected
+                      ? "border-orange-500 bg-orange-500/10"
+                      : "border-gray-800 bg-[#151518] hover:border-gray-700"
+                  }`}
+                >
+                  <cat.icon
+                    className={`h-5 w-5 ${
+                      isSelected ? "text-orange-400" : "text-gray-500"
+                    }`}
+                  />
+                  <span
+                    className={`text-[11px] font-medium ${
+                      isSelected ? "text-orange-400" : "text-gray-400"
+                    }`}
+                  >
+                    {cat.shortLabel}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* РљРЅРѕРїРєРё Р·Р°РіСЂСѓР·РєРё */}
+        <div className="grid grid-cols-2 gap-3">
+          <label
+            className={`h-14 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 ${
+              isUploading
+                ? "bg-gray-800 text-gray-500"
+                : "bg-orange-500 hover:bg-orange-600 text-white"
+            }`}
+          >
+            {isUploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Camera className="h-5 w-5" />
+            )}
+            <span className="font-medium">РљР°РјРµСЂР°</span>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileSelect}
+              className="hidden"
+              disabled={isUploading}
+            />
+          </label>
+
+          <label
+            className={`h-14 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 border ${
+              isUploading
+                ? "bg-gray-900 border-gray-800 text-gray-500"
+                : "bg-[#151518] border-gray-800 hover:border-gray-700 text-gray-300"
+            }`}
+          >
+            {isUploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <ImageIcon className="h-5 w-5" />
+            )}
+            <span className="font-medium">Р“Р°Р»РµСЂРµСЏ</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+              disabled={isUploading}
+            />
+          </label>
+        </div>
+
+        {/* Р“Р°Р»РµСЂРµСЏ С„РѕС‚Рѕ */}
+        {photos.length > 0 ? (
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">
+              Р—Р°РіСЂСѓР¶РµРЅРЅС‹Рµ С„РѕС‚Рѕ
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {photos.map((photo) => {
+                const catInfo = getCategoryInfo(photo.type)
+                return (
+                  <button
+                    key={photo.id}
+                    onClick={() => setPreviewPhoto(photo)}
+                    className="relative aspect-square rounded-xl overflow-hidden bg-gray-900 group"
+                  >
+                    <img
+                      src={photo.url}
+                      alt=""
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                    <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm">
+                      <catInfo.icon className="h-3 w-3 text-gray-300" />
+                    </div>
+                    <p className="absolute bottom-2 left-2 right-2 text-[10px] text-white/80 truncate">
+                      {catInfo.label}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          !isLoading && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Camera className="h-16 w-16 text-gray-800 mb-4" />
+              <p className="text-gray-400 font-medium mb-1">РќРµС‚ С„РѕС‚Рѕ</p>
+              <p className="text-gray-600 text-sm text-center max-w-xs">
+                РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР·, РґРѕРєСѓРјРµРЅС‚С‹ РёР»Рё РїРѕРІСЂРµР¶РґРµРЅРёСЏ
+              </p>
+            </div>
+          )
+        )}
+
+        {isLoading && (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+          </div>
+        )}
+      </main>
+
+      {/* РњРѕРґР°Р» РІС‹Р±РѕСЂР° Р·Р°РєР°Р·Р° */}
+      {showOrderPicker && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-end">
+          <div className="w-full max-w-md mx-auto bg-[#151518] rounded-t-3xl max-h-[75vh] overflow-hidden">
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+              <h3 className="font-bold">Р’С‹Р±РµСЂРёС‚Рµ СЂРµР№СЃ</h3>
+              <button
+                onClick={() => setShowOrderPicker(false)}
+                className="p-2 hover:bg-gray-800 rounded-lg"
+              >
+                <X className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[65vh]">
+              <button
+                onClick={() => {
+                  setSelectedOrder(null)
+                  setShowOrderPicker(false)
+                }}
+                className={`w-full p-4 text-left border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
+                  !selectedOrder ? "bg-orange-500/10" : ""
+                }`}
+              >
+                <p className="font-medium">Р‘РµР· РїСЂРёРІСЏР·РєРё Рє СЂРµР№СЃСѓ</p>
+                <p className="text-sm text-gray-500">
+                  РћР±С‰РёРµ С„РѕС‚Рѕ (РўРЎ, РґРѕРєСѓРјРµРЅС‚С‹)
+                </p>
+              </button>
+
+              {activeOrders.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
+                    РђРєС‚РёРІРЅС‹Рµ СЂРµР№СЃС‹
+                  </div>
+                  {activeOrders.map((order) => (
+                    <button
+                      key={order.id}
+                      onClick={() => {
+                        setSelectedOrder(order)
+                        setShowOrderPicker(false)
+                      }}
+                      className={`w-full p-4 text-left border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
+                        selectedOrder?.id === order.id ? "bg-orange-500/10" : ""
+                      }`}
+                    >
+                      <p className="font-medium truncate">
+                        {order.routeFrom} в†’ {order.routeTo}
+                      </p>
+                      <p className="text-sm text-gray-500">{order.cargoType}</p>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {recentOrders.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
+                    РќРµРґР°РІРЅРёРµ (14 РґРЅРµР№)
+                  </div>
+                  {recentOrders.map((order) => (
+                    <button
+                      key={order.id}
+                      onClick={() => {
+                        setSelectedOrder(order)
+                        setShowOrderPicker(false)
+                      }}
+                      className={`w-full p-4 text-left border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
+                        selectedOrder?.id === order.id ? "bg-orange-500/10" : ""
+                      }`}
+                    >
+                      <p className="font-medium truncate">
+                        {order.routeFrom} в†’ {order.routeTo}
+                      </p>
+                      <p className="text-sm text-gray-500">{order.cargoType}</p>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {!hasOrders && (
+                <div className="p-8 text-center text-gray-500">
+                  РќРµС‚ СЂРµР№СЃРѕРІ Р·Р° РїРѕСЃР»РµРґРЅРёРµ 2 РЅРµРґРµР»Рё
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* РџСЂРѕСЃРјРѕС‚СЂ С„РѕС‚Рѕ */}
+      {previewPhoto && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between p-4">
+            <button
+              onClick={() => setPreviewPhoto(null)}
+              className="p-2 hover:bg-gray-800 rounded-lg"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <p className="text-sm text-gray-400">
+              {getCategoryInfo(previewPhoto.type).label}
+            </p>
+            <button
+              onClick={() => handleDelete(previewPhoto.id)}
+              className="p-2 hover:bg-red-500/20 rounded-lg"
+            >
+              <Trash2 className="h-5 w-5 text-red-400" />
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4">
+            <img
+              src={previewPhoto.url}
+              alt=""
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
+          </div>
+          <div className="p-4 text-center">
+            <p className="text-xs text-gray-500">
+              {new Date(previewPhoto.createdAt).toLocaleString("ru-RU")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <BottomNav />
+    </div>
+  )
+}
+
+=== app\m\profile\page.tsx ===
+// app/m/profile/page.tsx
+
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import {
+  Loader2,
+  Phone,
+  Truck,
+  Star,
+  Calendar,
+  FileText,
+  LogOut,
+  MapPin,
+  TrendingUp,
+  AlertTriangle,
+  Shield,
+  Award,
+  Wrench,
+} from "lucide-react"
+
+interface DriverProfile {
+  id: string
+  name: string
+  phone: string
+  vehicleType?: string
+  vehiclePlate?: string
+  status: string
+  rating: number
+  ordersCompleted: number
+  licenseNumber?: string
+  licenseExpiry?: string
+  medicalExpiry?: string
+  hiredAt?: string
+}
+
+interface DriverStats {
+  totalOrders: number
+  totalEarnings: number
+  totalDistance: number
+}
+
+export default function MobileProfilePage() {
+  const router = useRouter()
+  const [driver, setDriver] = useState<DriverProfile | null>(null)
+  const [stats, setStats] = useState<DriverStats | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Р—Р°РіСЂСѓР·РєР° РїСЂРѕС„РёР»СЏ
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const session = JSON.parse(saved) as { id: string }
+      if (!session?.id) throw new Error("Invalid session")
+      fetchProfile(session.id)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  const fetchProfile = async (driverId: string) => {
+    try {
+      const driverRes = await fetch(`/api/drivers/${driverId}`)
+      const driverData = await driverRes.json()
+
+      if (driverData.success && driverData.driver) {
+        setDriver(driverData.driver)
+        localStorage.setItem("driver_session", JSON.stringify(driverData.driver))
+      }
+
+      const ordersRes = await fetch(
+        `/api/m/orders?driverId=${driverId}&status=history`
+      )
+      const ordersData = await ordersRes.json()
+
+      if (ordersData.success) {
+        setStats({
+          totalOrders: ordersData.stats?.completedOrders || 0,
+          totalEarnings: ordersData.stats?.totalEarnings || 0,
+          totalDistance: ordersData.stats?.totalDistance || 0,
+        })
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleLogout = () => {
+    if (confirm("Р’С‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°?")) {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "вЂ”"
+    return new Date(dateString).toLocaleDateString("ru-RU")
+  }
+
+  const isExpiringSoon = (dateString?: string) => {
+    if (!dateString) return false
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffDays = (date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    return diffDays < 30 && diffDays > 0
+  }
+
+  const isExpired = (dateString?: string) => {
+    if (!dateString) return false
+    return new Date(dateString) < new Date()
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  if (!driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center text-white">
+        <p className="text-gray-400">РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ</p>
+      </div>
+    )
+  }
+
+  const initials = driver.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      {/* Header СЃ Р°РІР°С‚Р°СЂРѕРј */}
+      <div className="bg-gradient-to-b from-orange-500/10 to-transparent pt-8 pb-6 px-4">
+        <div className="flex items-center gap-4">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-2xl font-bold shadow-lg shadow-orange-500/25">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold truncate">{driver.name}</h1>
+            <a
+              href={`tel:${driver.phone}`}
+              className="text-gray-400 text-sm flex items-center gap-1.5 mt-1 hover:text-gray-300"
+            >
+              <Phone className="h-4 w-4" />
+              {driver.phone}
+            </a>
+          </div>
+        </div>
+
+        {/* Р‘РµР№РґР¶Рё */}
+        <div className="flex flex-wrap gap-2 mt-4">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/15 border border-yellow-500/30 rounded-full">
+            <Star className="h-4 w-4 text-yellow-500" />
+            <span className="text-sm font-medium text-yellow-500">
+              {driver.rating?.toFixed(1) || "5.0"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-500/30 rounded-full">
+            <Award className="h-4 w-4 text-emerald-500" />
+            <span className="text-sm font-medium text-emerald-500">
+              {driver.ordersCompleted || 0} СЂРµР№СЃРѕРІ
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <main className="p-4 space-y-4">
+        {/* РђРІС‚РѕРјРѕР±РёР»СЊ (С‡С‚РµРЅРёРµ) */}
+        <div className="bg-[#151518] border border-gray-800 rounded-2xl p-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/15 flex items-center justify-center">
+              <Truck className="h-6 w-6 text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500">РђРІС‚РѕРјРѕР±РёР»СЊ</p>
+              <p className="font-bold text-lg">
+                {driver.vehiclePlate || "РќРµ РЅР°Р·РЅР°С‡РµРЅ"}
+              </p>
+              {driver.vehicleType && (
+                <p className="text-sm text-gray-400">{driver.vehicleType}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Р‘Р°Р·Р° */}
+        <div className="bg-[#151518] border border-gray-800 rounded-2xl p-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+              <MapPin className="h-6 w-6 text-emerald-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-gray-500">Р‘Р°Р·Р°</p>
+              <p className="font-bold text-lg">РЇСЂРѕСЃР»Р°РІР»СЊ</p>
+              <p className="text-sm text-gray-500">РўРѕС‡РєР° РІРѕР·РІСЂР°С‚Р°</p>
+            </div>
+          </div>
+        </div>
+
+        {/* РЎС‚Р°С‚РёСЃС‚РёРєР° */}
+        {stats && stats.totalOrders > 0 && (
+          <div className="bg-[#151518] border border-gray-800 rounded-2xl p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-4">
+              РЎС‚Р°С‚РёСЃС‚РёРєР°
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold">{stats.totalOrders}</p>
+                <p className="text-[11px] text-gray-500 uppercase">
+                  Р РµР№СЃРѕРІ
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-orange-400">
+                  {stats.totalDistance > 1000
+                    ? `${(stats.totalDistance / 1000).toFixed(0)}Рє`
+                    : stats.totalDistance}
+                </p>
+                <p className="text-[11px] text-gray-500 uppercase">
+                  РљРј
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-emerald-400">
+                  {stats.totalEarnings > 1000
+                    ? `${(stats.totalEarnings / 1000).toFixed(0)}Рє`
+                    : stats.totalEarnings}
+                </p>
+                <p className="text-[11px] text-gray-500 uppercase">
+                  в‚Ѕ
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Р”РѕРєСѓРјРµРЅС‚С‹ */}
+        <div className="bg-[#151518] border border-gray-800 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-800">
+            <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Р”РѕРєСѓРјРµРЅС‚С‹
+            </p>
+          </div>
+
+          <div className="divide-y divide-gray-800">
+            {/* Р’РЈ */}
+            <div className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">
+                  Р’РѕРґРёС‚РµР»СЊСЃРєРѕРµ СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ
+                </p>
+                <p className="font-medium">
+                  {driver.licenseNumber || "РќРµ СѓРєР°Р·Р°РЅРѕ"}
+                </p>
+              </div>
+              {driver.licenseExpiry && (
+                <div
+                  className={`text-right ${
+                    isExpired(driver.licenseExpiry)
+                      ? "text-red-400"
+                      : isExpiringSoon(driver.licenseExpiry)
+                      ? "text-yellow-400"
+                      : "text-gray-500"
+                  }`}
+                >
+                  <p className="text-xs">РґРѕ</p>
+                  <p className="text-sm font-medium">
+                    {formatDate(driver.licenseExpiry)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* РњРµРґ СЃРїСЂР°РІРєР° */}
+            <div className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">
+                  РњРµРґРёС†РёРЅСЃРєР°СЏ СЃРїСЂР°РІРєР°
+                </p>
+                <p className="font-medium">
+                  {driver.medicalExpiry ? "Р”РµР№СЃС‚РІСѓРµС‚" : "РќРµ СѓРєР°Р·Р°РЅР°"}
+                </p>
+              </div>
+              {driver.medicalExpiry && (
+                <div
+                  className={`text-right ${
+                    isExpired(driver.medicalExpiry)
+                      ? "text-red-400"
+                      : isExpiringSoon(driver.medicalExpiry)
+                      ? "text-yellow-400"
+                      : "text-gray-500"
+                  }`}
+                >
+                  <p className="text-xs">РґРѕ</p>
+                  <p className="text-sm font-medium">
+                    {formatDate(driver.medicalExpiry)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Р”Р°С‚Р° РїСЂРёС‘РјР° */}
+            {driver.hiredAt && (
+              <div className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400">Р’ РєРѕРјРїР°РЅРёРё СЃ</p>
+                  <p className="font-medium">
+                    {formatDate(driver.hiredAt)}
+                  </p>
+                </div>
+                <Calendar className="h-5 w-5 text-gray-600" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ */}
+        {(isExpiringSoon(driver.licenseExpiry) ||
+          isExpiringSoon(driver.medicalExpiry) ||
+          isExpired(driver.licenseExpiry) ||
+          isExpired(driver.medicalExpiry)) && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-yellow-400">Р’РЅРёРјР°РЅРёРµ</p>
+              <p className="text-sm text-yellow-500/80 mt-1">
+                {isExpired(driver.licenseExpiry) && "Р’РЈ РїСЂРѕСЃСЂРѕС‡РµРЅРѕ. "}
+                {isExpired(driver.medicalExpiry) && "РњРµРґ. СЃРїСЂР°РІРєР° РїСЂРѕСЃСЂРѕС‡РµРЅР°. "}
+                {!isExpired(driver.licenseExpiry) &&
+                  isExpiringSoon(driver.licenseExpiry) &&
+                  "РЎСЂРѕРє Р’РЈ СЃРєРѕСЂРѕ РёСЃС‚РµРєР°РµС‚. "}
+                {!isExpired(driver.medicalExpiry) &&
+                  isExpiringSoon(driver.medicalExpiry) &&
+                  "РЎСЂРѕРє РјРµРґ. СЃРїСЂР°РІРєРё СЃРєРѕСЂРѕ РёСЃС‚РµРєР°РµС‚."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* РљРЅРѕРїРєР°: РўРћ / СЂРµРјРѕРЅС‚ */}
+        <button
+          onClick={() => router.push("/m/maintenance")}
+          className="w-full py-4 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-2xl font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+        >
+          <Wrench className="h-5 w-5 text-amber-400" />
+          РўРћ / СЂРµРјРѕРЅС‚
+        </button>
+
+        {/* Р’С‹С…РѕРґ */}
+        <button
+          onClick={handleLogout}
+          className="w-full py-4 bg-red-500/10 hover:bg-red-500/15 text-red-400 border border-red-500/30 rounded-2xl font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+        >
+          <LogOut className="h-5 w-5" />
+          Р’С‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°
+        </button>
+      </main>
+
+      <BottomNav />
+    </div>
+  )
+}
+
+=== app\m\vehicle\page.tsx ===
+// app/m/vehicle/page.tsx
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import {
+  Truck,
+  Check,
+  Loader2,
+  AlertTriangle,
+  Wrench,
+  ChevronRight,
+  ChevronLeft,
+} from "lucide-react"
+
+interface Vehicle {
+  id: string
+  plate: string
+  type: string
+  brand: string | null
+  model: string | null
+  capacity: number
+  status: string
+  assignedDriver: { id: string; name: string } | null
+}
+
+export default function VehicleSelectPage() {
+  const router = useRouter()
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [driverId, setDriverId] = useState<string | null>(null)
+  const [currentVehicleId, setCurrentVehicleId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // РџРѕР»СѓС‡Р°РµРј driverId РёР· localStorage
+    const stored = localStorage.getItem("driverSession")
+    if (stored) {
+      try {
+        const session = JSON.parse(stored)
+        setDriverId(session.driverId || session.id)
+      } catch {
+        router.push("/m/login")
+        return
+      }
+    } else {
+      router.push("/m/login")
+      return
+    }
+
+    loadVehicles()
+    loadCurrentVehicle()
+  }, [router])
+
+  const loadVehicles = async () => {
+    try {
+      const res = await fetch("/api/m/vehicle")
+      const data = await res.json()
+      if (data.success) {
+        setVehicles(data.vehicles || [])
+      }
+    } catch (e) {
+      console.error("Failed to load vehicles:", e)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadCurrentVehicle = async () => {
+    const stored = localStorage.getItem("driverSession")
+    if (!stored) return
+
+    try {
+      const session = JSON.parse(stored)
+      const did = session.driverId || session.id
+      const res = await fetch(`/api/drivers/${did}`)
+      const data = await res.json()
+      if (data.success && data.driver?.vehicleId) {
+        setCurrentVehicleId(data.driver.vehicleId)
+        setSelectedId(data.driver.vehicleId)
+      }
+    } catch (e) {
+      console.error("Failed to load current vehicle:", e)
+    }
+  }
+
+  const handleSelect = async (vehicleId: string) => {
+    if (!driverId) return
+    
+    setSelectedId(vehicleId)
+    setIsSaving(true)
+
+    try {
+      const res = await fetch("/api/m/vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId, vehicleId }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        // РћР±РЅРѕРІР»СЏРµРј СЃРµСЃСЃРёСЋ
+        const stored = localStorage.getItem("driverSession")
+        if (stored) {
+          const session = JSON.parse(stored)
+          session.vehicleId = vehicleId
+          session.vehiclePlate = data.vehicle?.plate
+          session.vehicleType = data.vehicle?.type
+          localStorage.setItem("driverSession", JSON.stringify(session))
+        }
+
+        setCurrentVehicleId(vehicleId)
+        
+        // РќРµР±РѕР»СЊС€Р°СЏ Р·Р°РґРµСЂР¶РєР° РґР»СЏ UX
+        setTimeout(() => {
+          router.push("/m")
+        }, 500)
+      } else {
+        alert(data.error || "РћС€РёР±РєР° РІС‹Р±РѕСЂР° РјР°С€РёРЅС‹")
+        setSelectedId(currentVehicleId)
+      }
+    } catch (e) {
+      console.error("Failed to select vehicle:", e)
+      alert("РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ")
+      setSelectedId(currentVehicleId)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "maintenance":
+        return <Wrench className="h-4 w-4 text-yellow-500" />
+      case "in_use":
+        return <AlertTriangle className="h-4 w-4 text-orange-500" />
+      default:
+        return null
+    }
+  }
+
+  const getStatusText = (vehicle: Vehicle) => {
+    if (vehicle.status === "maintenance") return "РќР° РўРћ"
+    if (vehicle.assignedDriver && vehicle.assignedDriver.id !== driverId) {
+      return `Р—Р°РЅСЏС‚Р°: ${vehicle.assignedDriver.name}`
+    }
+    return "Р”РѕСЃС‚СѓРїРЅР°"
+  }
+
+  const isDisabled = (vehicle: Vehicle) => {
+    if (vehicle.status === "maintenance") return true
+    if (vehicle.assignedDriver && vehicle.assignedDriver.id !== driverId) return true
+    return false
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      {/* РљР°СЃС‚РѕРјРЅС‹Р№ С…РµРґРµСЂ СЃ РєРЅРѕРїРєРѕР№ РЅР°Р·Р°Рґ */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-bold">Р’С‹Р±РѕСЂ РјР°С€РёРЅС‹</h1>
+            <p className="text-xs text-gray-500">Р’С‹Р±РµСЂРёС‚Рµ С‚СЂР°РЅСЃРїРѕСЂС‚РЅРѕРµ СЃСЂРµРґСЃС‚РІРѕ</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-4 space-y-3">
+        {vehicles.length === 0 ? (
+          <div className="text-center py-12">
+            <Truck className="h-16 w-16 text-gray-700 mx-auto mb-4" />
+            <p className="text-gray-400">РќРµС‚ РґРѕСЃС‚СѓРїРЅС‹С… РјР°С€РёРЅ</p>
+          </div>
+        ) : (
+          vehicles.map((vehicle) => {
+            const disabled = isDisabled(vehicle)
+            const isSelected = selectedId === vehicle.id
+            const isCurrent = currentVehicleId === vehicle.id
+
+            return (
+              <button
+                key={vehicle.id}
+                onClick={() => !disabled && handleSelect(vehicle.id)}
+                disabled={disabled || isSaving}
+                className={`
+                  w-full p-4 rounded-2xl border transition-all text-left
+                  ${disabled 
+                    ? "bg-gray-900/50 border-gray-800 opacity-50 cursor-not-allowed" 
+                    : isSelected
+                      ? "bg-orange-500/10 border-orange-500"
+                      : "bg-[#1a1a1f] border-gray-800 hover:border-gray-700 active:scale-[0.98]"
+                  }
+                `}
+              >
+                <div className="flex items-center gap-4">
+                  {/* РРєРѕРЅРєР° */}
+                  <div className={`
+                    w-12 h-12 rounded-xl flex items-center justify-center
+                    ${isSelected ? "bg-orange-500/20" : "bg-gray-800"}
+                  `}>
+                    <Truck className={`h-6 w-6 ${isSelected ? "text-orange-400" : "text-gray-400"}`} />
+                  </div>
+
+                  {/* РРЅС„Рѕ */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-lg">{vehicle.plate}</span>
+                      {isCurrent && (
+                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
+                          РўРµРєСѓС‰Р°СЏ
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-400">
+                      {vehicle.brand} {vehicle.model} вЂў {vehicle.type}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(vehicle.capacity / 1000).toFixed(0)}С‚ вЂў {getStatusText(vehicle)}
+                    </p>
+                  </div>
+
+                  {/* РЎС‚Р°С‚СѓСЃ / Р’С‹Р±РѕСЂ */}
+                  <div className="flex items-center gap-2">
+                    {getStatusIcon(vehicle.status)}
+                    {isSelected && isSaving ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                    ) : isSelected ? (
+                      <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center">
+                        <Check className="h-4 w-4 text-white" />
+                      </div>
+                    ) : !disabled ? (
+                      <ChevronRight className="h-5 w-5 text-gray-600" />
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            )
+          })
+        )}
+      </main>
+
+      <BottomNav />
+    </div>
+  )
+}
+
+=== app\m\layout.tsx ===
+import type { Metadata, Viewport } from "next"
+
+export const metadata: Metadata = {
+  title: "Р’РѕРґРёС‚РµР»СЊ | РђР Р›РѕРіРёСЃС‚РёРєР°",
+  description: "РњРѕР±РёР»СЊРЅРѕРµ РїСЂРёР»РѕР¶РµРЅРёРµ РІРѕРґРёС‚РµР»СЏ",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "РђР Р›РѕРіРёСЃС‚РёРєР°",
+  },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#09090b",
+}
+
+export default function MobileLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white flex justify-center">
+      <div className="w-full max-w-md mx-auto relative">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+=== app\m\page.tsx ===
+// app/m/page.tsx
+
+"use client"
+
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import { SosButton } from "@/components/driver-mobile/sos-button"
+import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
+import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
+import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import {
+  Loader2,
+  Truck,
+  Package,
+  Coffee,
+  Moon,
+  Clock,
+  Fuel,
+  CheckCircle,
+  Play,
+  MessageCircle,
+  ChevronRight,
+  Locate,
+  WifiOff,
+  Wifi,
+  AlertCircle,
+  Home,
+  Power,
+  Wrench,
+  ParkingCircle,
+  PlayCircle,
+  MapPin,
+  Flag,
+} from "lucide-react"
+import { toast } from "sonner"
+
+const IDLE_STATUSES = [
+  {
+    id: "waiting",
+    label: "РћР¶РёРґР°СЋ СЂРµР№СЃ",
+    icon: ParkingCircle,
+    color: "bg-gray-500",
+    description: "РЎРјРµРЅР° Р°РєС‚РёРІРЅР°, Р¶РґСѓ РЅР°Р·РЅР°С‡РµРЅРёСЏ СЂРµР№СЃР°",
+  },
+  {
+    id: "maintenance",
+    label: "РўРћ / Р РµРјРѕРЅС‚",
+    icon: Wrench,
+    color: "bg-amber-500",
+    description: "РўРµС…РѕР±СЃР»СѓР¶РёРІР°РЅРёРµ",
+    requiresForm: true,
+  },
+] as const
+
+const TRIP_STATUSES = [
+  {
+    id: "driving",
+    label: "Р’ РїСѓС‚Рё",
+    icon: Truck,
+    color: "bg-orange-500",
+    description: "Р•РґСѓ РїРѕ РјР°СЂС€СЂСѓС‚Сѓ",
+  },
+  {
+    id: "loading",
+    label: "РџРѕРіСЂСѓР·РєР°",
+    icon: Package,
+    color: "bg-blue-500",
+    description: "РќР° РїРѕРіСЂСѓР·РєРµ",
+  },
+  {
+    id: "unloading",
+    label: "Р’С‹РіСЂСѓР·РєР°",
+    icon: CheckCircle,
+    color: "bg-emerald-500",
+    description: "РќР° РІС‹РіСЂСѓР·РєРµ",
+  },
+  {
+    id: "fueling",
+    label: "Р—Р°РїСЂР°РІРєР°",
+    icon: Fuel,
+    color: "bg-purple-500",
+    description: "Р—Р°РїСЂР°РІР»СЏСЋСЃСЊ",
+  },
+  {
+    id: "resting",
+    label: "РћС‚РґС‹С…",
+    icon: Coffee,
+    color: "bg-amber-500",
+    description: "РџРµСЂРµСЂС‹РІ 15вЂ“45 РјРёРЅ",
+  },
+  {
+    id: "sleeping",
+    label: "РЎРѕРЅ",
+    icon: Moon,
+    color: "bg-indigo-500",
+    description: "РќРѕС‡РЅРѕР№ РѕС‚РґС‹С…",
+  },
+  {
+    id: "waiting_point",
+    label: "РћР¶РёРґР°РЅРёРµ",
+    icon: Clock,
+    color: "bg-gray-500",
+    description: "Р–РґСѓ РЅР° С‚РѕС‡РєРµ",
+  },
+] as const
+
+interface Driver {
+  id: string
+  name: string
+  phone: string
+  vehiclePlate?: string
+  vehicleType?: string
+  vehicleId?: string
+  status?: string
+}
+
+interface Shift {
+  id: string
+  status: string
+  statusDuration: number
+  currentDrivingSeconds: number
+  totalShiftSeconds: number
+  drivingProgress: number
+  drivingRemaining: number
+  needsRest: boolean
+  restWarning: boolean
+}
+
+interface ActiveOrder {
+  id: string
+  routeFrom: string
+  routeTo: string
+  distance: number
+  cargoType: string
+  price?: number
+  clientName?: string
+  status: string
+  deadline?: string
+  routeId?: string
+  isAdditionalLoad?: boolean
+}
+
+interface ActiveMaintenance {
+  id: string
+  type: string
+  description: string
+  startedAt: string
+}
+
+interface ProposedLoad {
+  id: string
+  routeFrom: string
+  routeTo: string
+  distance: number
+  weight: number
+  price: number
+  cargoType: string
+  proposedAt?: string
+}
+
+type GpsStatus = "inactive" | "searching" | "active" | "error"
+
+let geoPermissionToastShown = false
+
+export default function MobileHomePage() {
+  const router = useRouter()
+
+  const [driver, setDriver] = useState<Driver | null>(null)
+  const [shift, setShift] = useState<Shift | null>(null)
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null)
+  const [allRouteOrders, setAllRouteOrders] = useState<ActiveOrder[]>([])
+  const [activeMaintenance, setActiveMaintenance] = useState<ActiveMaintenance | null>(null)
+  const [proposedLoads, setProposedLoads] = useState<ProposedLoad[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isChangingStatus, setIsChangingStatus] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>("inactive")
+  const [isGoingToBase, setIsGoingToBase] = useState(false)
+  const [tripStarted, setTripStarted] = useState(false)
+  const [completingRoute, setCompletingRoute] = useState(false)
+
+  const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const dataIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const watchIdRef = useRef<number | null>(null)
+
+  const { addNotification } = useDriverNotifications(driver?.id)
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("driver_session") : null
+
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved)
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  const fetchData = useCallback(async () => {
+    if (!driver?.id) return
+
+    try {
+      const [shiftRes, orderRes, maintenanceRes, proposedRes] = await Promise.all([
+        fetch(`/api/m/shift?driverId=${driver.id}`),
+        fetch(`/api/drivers/${driver.id}/active-order`),
+        fetch(`/api/m/maintenance?driverId=${driver.id}`),
+        fetch(`/api/orders?driverId=${driver.id}&status=proposed`),
+      ])
+
+      const shiftData = await shiftRes.json()
+      if (shiftData.success) {
+        setShift(shiftData.shift || null)
+      }
+
+      const orderData = await orderRes.json()
+      if (orderData.success) {
+        const order = orderData.order || null
+        setActiveOrder(order)
+        setAllRouteOrders(orderData.allRouteOrders || [])
+        if (order && ["in_transit", "loading", "unloading"].includes(order.status)) {
+          setTripStarted(true)
+        } else {
+          setTripStarted(false)
+        }
+      }
+
+      const maintenanceData = await maintenanceRes.json()
+      if (maintenanceData.success) {
+        setActiveMaintenance(maintenanceData.maintenance || null)
+      }
+
+      const proposedData = await proposedRes.json()
+      if (proposedData.success) {
+        setProposedLoads(proposedData.orders || [])
+      }
+    } catch (error) {
+      console.error("[Mobile] Failed to fetch data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [driver?.id])
+
+  useEffect(() => {
+    if (driver?.id) {
+      fetchData()
+      dataIntervalRef.current = setInterval(fetchData, 30000)
+    }
+
+    return () => {
+      if (dataIntervalRef.current) clearInterval(dataIntervalRef.current)
+    }
+  }, [driver?.id, fetchData])
+
+  const sendLocation = useCallback(
+    async (position: GeolocationPosition) => {
+      if (!driver?.id) return
+
+      try {
+        const res = await fetch("/api/m/location", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            driverId: driver.id,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            speed: position.coords.speed,
+            heading: position.coords.heading,
+          }),
+        })
+
+        setGpsStatus(res.ok ? "active" : "error")
+      } catch (error) {
+        console.error("[GPS] Send error:", error)
+        setGpsStatus("error")
+      }
+    },
+    [driver?.id]
+  )
+
+  const handleGpsError = useCallback((error: GeolocationPositionError) => {
+    console.error("[GPS] Error:", error.message)
+
+    if (error.code === error.PERMISSION_DENIED) {
+      setGpsStatus("error")
+      if (!geoPermissionToastShown) {
+        geoPermissionToastShown = true
+        toast.error("РќРµС‚ РґРѕСЃС‚СѓРїР° Рє РіРµРѕР»РѕРєР°С†РёРё", {
+          description: "Р Р°Р·СЂРµС€РёС‚Рµ РґРѕСЃС‚СѓРї РІ РЅР°СЃС‚СЂРѕР№РєР°С… Р±СЂР°СѓР·РµСЂР°",
+        })
+      }
+      return
+    }
+
+    if (error.code === error.POSITION_UNAVAILABLE) {
+      setGpsStatus("error")
+      return
+    }
+
+    setGpsStatus("error")
+  }, [])
+
+  useEffect(() => {
+    if (!shift || !driver?.id || !tripStarted) {
+      setGpsStatus("inactive")
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      if (gpsIntervalRef.current) {
+        clearInterval(gpsIntervalRef.current)
+        gpsIntervalRef.current = null
+      }
+      return
+    }
+
+    if (!("geolocation" in navigator)) {
+      setGpsStatus("error")
+      toast.error("GPS РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ")
+      return
+    }
+
+    setGpsStatus("searching")
+
+    navigator.geolocation.getCurrentPosition(sendLocation, handleGpsError, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    })
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      sendLocation,
+      handleGpsError,
+      { enableHighAccuracy: true, maximumAge: 30000 }
+    )
+
+    gpsIntervalRef.current = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(sendLocation, () => {}, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      })
+    }, 30000)
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      if (gpsIntervalRef.current) {
+        clearInterval(gpsIntervalRef.current)
+        gpsIntervalRef.current = null
+      }
+    }
+  }, [shift, driver?.id, tripStarted, sendLocation, handleGpsError])
+
+  const startShift = async () => {
+    if (!driver?.id) return
+    setIsChangingStatus(true)
+
+    try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+          })
+        })
+        latitude = pos.coords.latitude
+        longitude = pos.coords.longitude
+      } catch {}
+
+      const res = await fetch("/api/m/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          action: "start",
+          latitude,
+          longitude,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        await fetchData()
+        toast.success("РЎРјРµРЅР° РЅР°С‡Р°С‚Р°", {
+          description: "РҐРѕСЂРѕС€РµРіРѕ СЂР°Р±РѕС‡РµРіРѕ РґРЅСЏ!",
+        })
+        if (navigator.vibrate) navigator.vibrate(100)
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РїСѓСЃРєР° СЃРјРµРЅС‹", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ СЃРјРµРЅСѓ",
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё", {
+        description: "РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕРґРєР»СЋС‡РµРЅРёРµ Рє РёРЅС‚РµСЂРЅРµС‚Сѓ",
+      })
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  const endShift = async () => {
+    if (!driver?.id || !shift) return
+
+    if (!confirm("Р—Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ?")) return
+
+    setIsChangingStatus(true)
+
+    try {
+      const res = await fetch("/api/m/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          action: "end",
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setShift(null)
+        setActiveOrder(null)
+        setTripStarted(false)
+        toast.success("РЎРјРµРЅР° Р·Р°РІРµСЂС€РµРЅР°", {
+          description: "РћС‚РґС‹С…Р°Р№С‚Рµ!",
+        })
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100])
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РІРµСЂС€РµРЅРёСЏ СЃРјРµРЅС‹", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ",
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  const changeIdleStatus = async (statusId: string) => {
+    if (!driver?.id) return
+
+    if (statusId === "maintenance") {
+      router.push("/m/maintenance")
+      return
+    }
+  }
+
+  const acceptTrip = async () => {
+    if (!driver?.id || !activeOrder) return
+
+    setIsChangingStatus(true)
+
+    try {
+      const res = await fetch(`/api/orders/${activeOrder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_transit" }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setTripStarted(true)
+        setActiveOrder((prev) => (prev ? { ...prev, status: "in_transit" } : prev))
+
+        toast.success("Р РµР№СЃ РЅР°С‡Р°С‚", {
+          description: `${activeOrder.routeFrom} в†’ ${activeOrder.routeTo}`,
+        })
+
+        addNotification?.({
+          type: "route",
+          title: "Р РµР№СЃ РЅР°С‡Р°С‚",
+          message: `РњР°СЂС€СЂСѓС‚: ${activeOrder.routeFrom} в†’ ${activeOrder.routeTo}`,
+          action: { kind: "openOrder", orderId: activeOrder.id },
+        })
+
+        if (navigator.vibrate) navigator.vibrate(100)
+      } else {
+        toast.error("РћС€РёР±РєР° РїСЂРёРЅСЏС‚РёСЏ СЂРµР№СЃР°", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ СЂРµР№СЃ",
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  const mapTripStatusToOrderStatus = (statusId: string): string | undefined => {
+    if (statusId === "loading") return "loading"
+    if (statusId === "unloading") return "unloading"
+    if (statusId === "driving") return "in_transit"
+    return undefined
+  }
+
+  const changeTripStatus = async (statusId: string) => {
+    if (!driver?.id || !shift || shift.status === statusId) return
+    setIsChangingStatus(true)
+
+    try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 3000,
+          })
+        })
+        latitude = pos.coords.latitude
+        longitude = pos.coords.longitude
+      } catch {}
+
+      const res = await fetch("/api/m/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          action: "status",
+          status: statusId,
+          latitude,
+          longitude,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        const newOrderStatus = mapTripStatusToOrderStatus(statusId)
+        if (activeOrder?.id && newOrderStatus) {
+          try {
+            await fetch(`/api/orders/${activeOrder.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: newOrderStatus }),
+            })
+          } catch (e) {
+            console.error("[Mobile] Failed to update order status", e)
+          }
+        }
+
+        await fetchData()
+
+        if (statusId === "loading") {
+          toast("рџ“¦ РџРѕРіСЂСѓР·РєР°", {
+            description: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР·",
+            action: {
+              label: "РљР°РјРµСЂР°",
+              onClick: () => router.push("/m/photo?context=loading"),
+            },
+          })
+        } else if (statusId === "unloading") {
+          toast("вњ… Р’С‹РіСЂСѓР·РєР°", {
+            description: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР· РїРѕСЃР»Рµ РІС‹РіСЂСѓР·РєРё",
+            action: {
+              label: "РљР°РјРµСЂР°",
+              onClick: () => router.push("/m/photo?context=unloading"),
+            },
+          })
+        } else if (statusId === "fueling") {
+          toast("в›Ѕ Р—Р°РїСЂР°РІРєР°", {
+            description: "РЎРѕС…СЂР°РЅРёС‚Рµ С‡РµРє",
+            action: {
+              label: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂРѕРІР°С‚СЊ С‡РµРє",
+              onClick: () => router.push("/m/photo?context=fueling"),
+            },
+          })
+        } else {
+          const statusMeta = TRIP_STATUSES.find((s) => s.id === statusId)
+          toast.success(`РЎС‚Р°С‚СѓСЃ: ${statusMeta?.label || statusId}`)
+        }
+
+        if (navigator.vibrate) navigator.vibrate(50)
+      } else {
+        toast.error("РћС€РёР±РєР° СЃРјРµРЅС‹ СЃС‚Р°С‚СѓСЃР°", {
+          description: data.error,
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  const goToBase = async () => {
+    if (!driver?.id) return
+    setIsGoingToBase(true)
+
+    try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 7000,
+          })
+        })
+        latitude = pos.coords.latitude
+        longitude = pos.coords.longitude
+      } catch {
+        toast.error("Р“РµРѕР»РѕРєР°С†РёСЏ РЅРµРґРѕСЃС‚СѓРїРЅР°")
+        setIsGoingToBase(false)
+        return
+      }
+
+      const res = await fetch("/api/m/base-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId: driver.id, latitude, longitude }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        const distanceKm = data.distanceKm as number
+        const etaMinutes = data.etaMinutes as number
+
+        const formatEta = (min: number) => {
+          if (min < 60) return `${min} РјРёРЅ`
+          const h = Math.floor(min / 60)
+          const m = min % 60
+          return m > 0 ? `${h} С‡ ${m} РјРёРЅ` : `${h} С‡`
+        }
+
+        toast.success("Р’РѕР·РІСЂР°С‚ РЅР° Р±Р°Р·Сѓ", {
+          description: `${distanceKm} РєРј вЂў ~${formatEta(etaMinutes)}`,
+        })
+      } else {
+        toast.error("РћС€РёР±РєР° РјР°СЂС€СЂСѓС‚Р°")
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР°")
+    } finally {
+      setIsGoingToBase(false)
+    }
+  }
+
+  const completeRoute = async () => {
+    if (!activeOrder?.routeId || !driver?.id) return
+
+    const pendingCount = allRouteOrders.filter(
+      (o) => !["delivered", "cancelled", "rejected"].includes(o.status)
+    ).length
+
+    const confirmMessage =
+      pendingCount > 1
+        ? `Р—Р°РІРµСЂС€РёС‚СЊ СЂРµР№СЃ? Р’СЃРµ ${pendingCount} С‚РѕС‡РµРє Р±СѓРґСѓС‚ РѕС‚РјРµС‡РµРЅС‹ РєР°Рє РґРѕСЃС‚Р°РІР»РµРЅРЅС‹Рµ.`
+        : "Р—Р°РІРµСЂС€РёС‚СЊ СЂРµР№СЃ?"
+
+    if (!confirm(confirmMessage)) return
+
+    setCompletingRoute(true)
+
+    try {
+      const res = await fetch(`/api/routes/${activeOrder.routeId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          force: true,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setActiveOrder(null)
+        setAllRouteOrders([])
+        setTripStarted(false)
+        setShift(null)
+
+        toast.success("Р РµР№СЃ Р·Р°РІРµСЂС€С‘РЅ!", {
+          description: `${data.stats.ordersCount} С‚РѕС‡РµРє, ${data.stats.totalRevenue.toLocaleString()}в‚Ѕ`,
+        })
+
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100])
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РІРµСЂС€РµРЅРёСЏ СЂРµР№СЃР°", {
+          description: data.error,
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setCompletingRoute(false)
+    }
+  }
+
+  const handleLoadProposal = async (orderId: string, accept: boolean, reason?: string) => {
+    try {
+      const res = await fetch("/api/m/route/accept-load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          driverId: driver?.id,
+          accept,
+          rejectionReason: reason,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setProposedLoads((prev) => prev.filter((l) => l.id !== orderId))
+        toast.success(accept ? "Р”РѕРіСЂСѓР· РїСЂРёРЅСЏС‚" : "Р”РѕРіСЂСѓР· РѕС‚РєР»РѕРЅС‘РЅ")
+        await fetchData()
+      } else {
+        toast.error(data.error)
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    }
+  }
+
+  const completeMaintenance = async () => {
+    if (!activeMaintenance || !driver?.id) return
+
+    setIsChangingStatus(true)
+
+    try {
+      const res = await fetch("/api/m/maintenance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          maintenanceId: activeMaintenance.id,
+          driverId: driver.id,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setActiveMaintenance(null)
+        setDriver((prev) => (prev ? { ...prev, status: "available" } : prev))
+        toast.success("РўРћ Р·Р°РІРµСЂС€РµРЅРѕ")
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РІРµСЂС€РµРЅРёСЏ РўРћ")
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  const formatDuration = (seconds: number): string => {
+    if (!seconds || seconds < 0) return "0 Рј"
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return `${h} С‡ ${m} Рј`
+    return `${m} Рј`
+  }
+
+  const currentTripStatus = TRIP_STATUSES.find((s) => s.id === shift?.status) || TRIP_STATUSES[0]
+
+  if (isLoading || !driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  const hasActiveTrip = activeOrder !== null && tripStarted
+  const hasPendingTrip = activeOrder !== null && !tripStarted
+  const isOnMaintenance = activeMaintenance !== null
+  const routeProgress = allRouteOrders.length > 0
+    ? Math.round(
+        (allRouteOrders.filter((o) => o.status === "delivered").length / allRouteOrders.length) * 100
+      )
+    : 0
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-bold truncate">{driver.name}</h1>
+              <p className="text-xs text-gray-500 truncate">
+                {driver.vehiclePlate || "РќРµС‚ РўРЎ"}
+                {driver.vehicleType && ` вЂў ${driver.vehicleType}`}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 ml-3">
+              {hasActiveTrip && shift && (
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    gpsStatus === "active"
+                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      : gpsStatus === "error"
+                        ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                        : gpsStatus === "searching"
+                          ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                          : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                  }`}
+                >
+                  {gpsStatus === "active" && <Wifi className="h-3 w-3" />}
+                  {gpsStatus === "error" && <WifiOff className="h-3 w-3" />}
+                  {gpsStatus === "searching" && <Locate className="h-3 w-3 animate-pulse" />}
+                  {gpsStatus === "inactive" && <WifiOff className="h-3 w-3" />}
+                  <span>GPS</span>
+                </div>
+              )}
+
+              <DriverNotificationsBell driverId={driver.id} />
+
+              <button
+                onClick={() => router.push("/m/chat")}
+                className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
+              >
+                <MessageCircle className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-4 space-y-4">
+        {!shift ? (
+          <div className="bg-gradient-to-br from-[#1a1a1f] to-[#141418] border border-gray-800 rounded-2xl p-6 text-center">
+            <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-orange-500/20 flex items-center justify-center">
+              <Play className="h-10 w-10 text-orange-500" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">РќР°С‡Р°С‚СЊ СЂР°Р±РѕС‡РёР№ РґРµРЅСЊ</h2>
+            <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto">
+              РќР°Р¶РјРёС‚Рµ РєРЅРѕРїРєСѓ, С‡С‚РѕР±С‹ РЅР°С‡Р°С‚СЊ СЃРјРµРЅСѓ
+            </p>
+            <button
+              onClick={startShift}
+              disabled={isChangingStatus}
+              className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-orange-500/25"
+            >
+              {isChangingStatus ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  <Play className="h-5 w-5" />
+                  РќР°С‡Р°С‚СЊ СЃРјРµРЅСѓ
+                </>
+              )}
+            </button>
+          </div>
+        ) : (
+          <>
+            {isOnMaintenance && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
+                    <Wrench className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-amber-400 mb-1">РўРћ / Р РµРјРѕРЅС‚</p>
+                    <p className="text-sm text-gray-300 mb-1">{activeMaintenance!.description}</p>
+                    <p className="text-xs text-gray-500">
+                      РќР°С‡Р°С‚Рѕ: {new Date(activeMaintenance!.startedAt).toLocaleString("ru-RU")}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={completeMaintenance}
+                  disabled={isChangingStatus}
+                  className="w-full mt-4 py-3 bg-emerald-500 hover:bg-emerald-600 rounded-xl font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {isChangingStatus ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      Р—Р°РІРµСЂС€РёС‚СЊ РўРћ
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {proposedLoads.length > 0 && !isOnMaintenance && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-amber-400">
+                  <AlertCircle className="h-5 w-5" />
+                  <span className="font-medium">РџСЂРµРґР»РѕР¶РµРЅРЅС‹Рµ РґРѕРіСЂСѓР·С‹ ({proposedLoads.length})</span>
+                </div>
+
+                {proposedLoads.map((load) => (
+                  <PendingLoadCard
+                    key={load.id}
+                    load={load}
+                    onAccept={() => handleLoadProposal(load.id, true)}
+                    onReject={(reason) => handleLoadProposal(load.id, false, reason)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {hasPendingTrip && !isOnMaintenance && (
+              <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/40 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Package className="h-5 w-5 text-orange-500" />
+                  <span className="font-bold text-orange-400">
+                    РќРѕРІС‹Р№ СЂРµР№СЃ {allRouteOrders.length > 1 && `(${allRouteOrders.length} С‚РѕС‡РµРє)`}
+                  </span>
+                </div>
+
+                <div className="space-y-3 mb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-3 h-3 rounded-full bg-green-500 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">РџРѕРіСЂСѓР·РєР°</p>
+                      <p className="font-medium">{activeOrder!.routeFrom}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-3 h-3 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">Р’С‹РіСЂСѓР·РєР°</p>
+                      <p className="font-medium">{activeOrder!.routeTo}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-sm text-gray-400 mb-4 pb-4 border-b border-gray-700/50">
+                  <span>{activeOrder!.cargoType}</span>
+                  <span>{activeOrder!.distance} РєРј</span>
+                  {activeOrder!.price && (
+                    <span className="font-bold text-orange-400">
+                      {activeOrder!.price.toLocaleString()} в‚Ѕ
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  onClick={acceptTrip}
+                  disabled={isChangingStatus}
+                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/25"
+                >
+                  {isChangingStatus ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <>
+                      <PlayCircle className="h-5 w-5" />
+                      РќР°С‡Р°С‚СЊ СЂРµР№СЃ
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => router.push(`/m/orders/${activeOrder!.id}`)}
+                  className="w-full mt-2 py-3 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+                >
+                  РџРѕРґСЂРѕР±РЅРµРµ Рѕ СЂРµР№СЃРµ в†’
+                </button>
+              </div>
+            )}
+
+            {hasActiveTrip && !isOnMaintenance && (
+              <>
+                {shift?.restWarning && (
+                  <div
+                    className={`p-4 rounded-xl flex items-center gap-3 ${
+                      shift.needsRest
+                        ? "bg-red-500/20 border border-red-500/30"
+                        : "bg-yellow-500/20 border border-yellow-500/30"
+                    }`}
+                  >
+                    <AlertCircle
+                      className={`h-5 w-5 flex-shrink-0 ${
+                        shift.needsRest ? "text-red-400" : "text-yellow-400"
+                      }`}
+                    />
+                    <p
+                      className={`text-sm font-medium ${
+                        shift.needsRest ? "text-red-400" : "text-yellow-400"
+                      }`}
+                    >
+                      {shift.needsRest
+                        ? "РўСЂРµР±СѓРµС‚СЃСЏ РѕС‚РґС‹С…! Р‘РѕР»РµРµ 4.5 С‡Р°СЃРѕРІ Р·Р° СЂСѓР»С‘Рј"
+                        : "РЎРєРѕСЂРѕ РїРѕС‚СЂРµР±СѓРµС‚СЃСЏ РѕС‚РґС‹С…"}
+                    </p>
+                  </div>
+                )}
+
+                {allRouteOrders.length > 1 && (
+                  <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Flag className="h-4 w-4 text-orange-500" />
+                        <span className="font-medium">РџСЂРѕРіСЂРµСЃСЃ РјР°СЂС€СЂСѓС‚Р°</span>
+                      </div>
+                      <span className="text-sm text-gray-400">
+                        {allRouteOrders.filter((o) => o.status === "delivered").length} / {allRouteOrders.length} С‚РѕС‡РµРє
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-orange-500 to-emerald-500 rounded-full transition-all duration-500"
+                        style={{ width: `${routeProgress}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {allRouteOrders.map((order, idx) => (
+                        <div
+                          key={order.id}
+                          className={`flex items-center gap-3 p-2 rounded-lg ${
+                            order.status === "delivered"
+                              ? "bg-emerald-500/10"
+                              : order.id === activeOrder?.id
+                                ? "bg-orange-500/10 border border-orange-500/30"
+                                : "bg-gray-800/50"
+                          }`}
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                              order.status === "delivered"
+                                ? "bg-emerald-500 text-white"
+                                : order.id === activeOrder?.id
+                                  ? "bg-orange-500 text-white"
+                                  : "bg-gray-700 text-gray-400"
+                            }`}
+                          >
+                            {order.status === "delivered" ? "вњ“" : idx + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {order.routeFrom.split(",")[0]} в†’ {order.routeTo.split(",")[0]}
+                            </p>
+                            <p className="text-xs text-gray-500">{order.cargoType}</p>
+                          </div>
+                          {order.isAdditionalLoad && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                              Р”РѕРіСЂСѓР·
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-14 h-14 rounded-xl ${currentTripStatus.color} flex items-center justify-center shadow-lg`}
+                      >
+                        <currentTripStatus.icon className="h-7 w-7 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-lg">{currentTripStatus.label}</div>
+                        <div className="text-xs text-gray-500">{currentTripStatus.description}</div>
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          Р’ СЃС‚Р°С‚СѓСЃРµ: {formatDuration(shift!.statusDuration)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500 mb-0.5">Р’ СЃРјРµРЅРµ</div>
+                      <div className="font-mono text-xl font-bold text-orange-500">
+                        {formatDuration(shift!.totalShiftSeconds)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                      <span>Р’СЂРµРјСЏ Р·Р° СЂСѓР»С‘Рј</span>
+                      <span>{Math.round(shift!.drivingProgress)}% / 4.5 С‡</span>
+                    </div>
+                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          shift!.drivingProgress >= 100
+                            ? "bg-red-500"
+                            : shift!.drivingProgress >= 85
+                              ? "bg-yellow-500"
+                              : "bg-orange-500"
+                        }`}
+                        style={{
+                          width: `${Math.min(100, shift!.drivingProgress)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 mb-2">
+                    {TRIP_STATUSES.slice(0, 4).map((status) => {
+                      const isActive = shift!.status === status.id
+                      return (
+                        <button
+                          key={status.id}
+                          onClick={() => changeTripStatus(status.id)}
+                          disabled={isChangingStatus || isActive}
+                          className={`p-3 rounded-xl flex flex-col items-center gap-1.5 transition-all active:scale-95 disabled:opacity-70 ${
+                            isActive
+                              ? `${status.color} text-white shadow-lg`
+                              : "bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700"
+                          }`}
+                        >
+                          <status.icon className="h-5 w-5" />
+                          <span className="text-[10px] font-medium leading-tight text-center">
+                            {status.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {TRIP_STATUSES.slice(4).map((status) => {
+                      const isActive = shift!.status === status.id
+                      return (
+                        <button
+                          key={status.id}
+                          onClick={() => changeTripStatus(status.id)}
+                          disabled={isChangingStatus || isActive}
+                          className={`p-3 rounded-xl flex flex-col items-center gap-1.5 transition-all active:scale-95 disabled:opacity-70 ${
+                            isActive
+                              ? `${status.color} text-white shadow-lg`
+                              : "bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700"
+                          }`}
+                        >
+                          <status.icon className="h-5 w-5" />
+                          <span className="text-[10px] font-medium leading-tight text-center">
+                            {status.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => router.push(`/m/orders/${activeOrder!.id}`)}
+                  className="w-full bg-[#1a1a1f] border border-gray-800 hover:border-gray-700 rounded-2xl p-4 text-left active:scale-[0.99] transition-all"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-orange-500" />
+                      <span className="text-sm font-medium text-orange-400">РўРµРєСѓС‰Р°СЏ С‚РѕС‡РєР°</span>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-gray-500" />
+                  </div>
+
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <span className="font-medium truncate">{activeOrder!.routeFrom}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                      <span className="font-medium truncate">{activeOrder!.routeTo}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                    <span className="text-sm text-gray-500">
+                      {activeOrder!.cargoType} вЂў {activeOrder!.distance} РєРј
+                    </span>
+                    {activeOrder!.price && activeOrder!.price > 0 && (
+                      <span className="font-bold text-orange-400">
+                        {activeOrder!.price.toLocaleString()} в‚Ѕ
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={goToBase}
+                    disabled={isGoingToBase}
+                    className="py-3.5 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-300 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {isGoingToBase ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-orange-400" />
+                        <span>Р Р°СЃС‡С‘С‚...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Home className="h-4 w-4 text-orange-400" />
+                        <span>РќР° Р±Р°Р·Сѓ</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={completeRoute}
+                    disabled={completingRoute}
+                    className="py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-xl font-medium text-white flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20"
+                  >
+                    {completingRoute ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Flag className="h-4 w-4" />
+                        <span>Р—Р°РІРµСЂС€РёС‚СЊ</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {!activeOrder && !isOnMaintenance && (
+              <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-gray-500 flex items-center justify-center">
+                      <ParkingCircle className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-bold">РћР¶РёРґР°СЋ СЂРµР№СЃ</div>
+                      <div className="text-xs text-gray-500">
+                        РЎРјРµРЅР° Р°РєС‚РёРІРЅР°, Р»РѕРіРёСЃС‚ РЅР°Р·РЅР°С‡РёС‚ РІР°Рј СЃР»РµРґСѓСЋС‰РёР№ СЂРµР№СЃ
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500 mb-0.5">Р’ СЃРјРµРЅРµ</div>
+                    <div className="font-mono text-lg font-bold text-orange-500">
+                      {formatDuration(shift!.totalShiftSeconds)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {driver.vehicleId ? (
+                    <button
+                      onClick={() => changeIdleStatus("maintenance")}
+                      className="w-full py-3 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-200 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                    >
+                      <Wrench className="h-4 w-4 text-amber-400" />
+                      <span>РџРѕСЃС‚Р°РІРёС‚СЊ РјР°С€РёРЅСѓ РЅР° РўРћ</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => router.push("/m/profile")}
+                      className="w-full py-3 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-200 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                    >
+                      <Truck className="h-4 w-4 text-blue-400" />
+                      <span>Р’С‹Р±СЂР°С‚СЊ Р°РІС‚РѕРјРѕР±РёР»СЊ</span>
+                    </button>
+                  )}
+
+                  <div className="p-4 bg-gray-800/30 rounded-xl text-center">
+                    <Package className="h-8 w-8 mx-auto mb-2 text-gray-600" />
+                    <p className="text-gray-500 text-sm">РћР¶РёРґР°Р№С‚Рµ РЅР°Р·РЅР°С‡РµРЅРёСЏ СЂРµР№СЃР° РѕС‚ Р»РѕРіРёСЃС‚Р°</p>
+                    <button
+                      onClick={() => router.push("/m/orders")}
+                      className="text-orange-500 text-sm font-medium mt-2 hover:underline"
+                    >
+                      РџРѕСЃРјРѕС‚СЂРµС‚СЊ РёСЃС‚РѕСЂРёСЋ СЂРµР№СЃРѕРІ в†’
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isOnMaintenance && (
+              <button
+                onClick={endShift}
+                disabled={isChangingStatus}
+                className="w-full py-3.5 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-400 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {isChangingStatus ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Power className="h-4 w-4" />
+                    Р—Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ
+                  </>
+                )}
+              </button>
+            )}
+          </>
+        )}
+      </main>
+
+      {shift && !isOnMaintenance && <SosButton driverId={driver.id} orderId={activeOrder?.id} />}
+
+      <BottomNav />
+    </div>
+  )
+}

@@ -1,0 +1,400 @@
+﻿===== FILE: app/m/notifications/page.tsx =====
+"use client"
+
+import { useEffect, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
+import {
+  ChevronLeft,
+  Camera,
+  MessageCircle,
+  Navigation,
+  Info,
+  Trash2,
+  CheckCheck,
+  Bell,
+  BellOff,
+} from "lucide-react"
+import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { toast } from "sonner"
+
+interface DriverSession {
+  id: string
+  name: string
+}
+
+export default function DriverNotificationsPage() {
+  const router = useRouter()
+  const [driver, setDriver] = useState<DriverSession | null>(null)
+
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as DriverSession
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    removeNotification,
+    clearAll,
+  } = useDriverNotifications(driver?.id)
+
+  const hasNotifications = notifications.length > 0
+
+  const sortedNotifications = useMemo(
+    () =>
+      [...notifications].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ),
+    [notifications]
+  )
+
+  const handleNotificationPress = (id: string) => {
+    const n = notifications.find((x) => x.id === id)
+    if (!n) return
+
+    markAsRead(id)
+
+    const action = n.action
+    if (!action) return
+
+    if (action.kind === "openPhoto") {
+      router.push(`/m/photo${action.status ? `?context=${action.status}` : ""}`)
+    } else if (action.kind === "openChat") {
+      router.push("/m/chat")
+    } else if (action.kind === "openOrder" && action.orderId) {
+      router.push(`/m/orders/${action.orderId}`)
+    }
+  }
+
+  const handleClearAll = () => {
+    if (confirm("РЈРґР°Р»РёС‚СЊ РІСЃРµ СѓРІРµРґРѕРјР»РµРЅРёСЏ?")) {
+      clearAll()
+      toast.success("РЈРІРµРґРѕРјР»РµРЅРёСЏ РѕС‡РёС‰РµРЅС‹")
+    }
+  }
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ""
+
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "РўРѕР»СЊРєРѕ С‡С‚Рѕ"
+    if (diffMins < 60) return `${diffMins} РјРёРЅ РЅР°Р·Р°Рґ`
+    if (diffHours < 24) return `${diffHours} С‡ РЅР°Р·Р°Рґ`
+    if (diffDays < 7) return `${diffDays} РґРЅ РЅР°Р·Р°Рґ`
+
+    return d.toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "short",
+    })
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "photo":
+        return <Camera className="h-5 w-5 text-orange-400" />
+      case "chat":
+        return <MessageCircle className="h-5 w-5 text-blue-400" />
+      case "route":
+        return <Navigation className="h-5 w-5 text-emerald-400" />
+      default:
+        return <Info className="h-5 w-5 text-gray-400" />
+    }
+  }
+
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case "photo":
+        return "bg-orange-500/10 border-orange-500/20"
+      case "chat":
+        return "bg-blue-500/10 border-blue-500/20"
+      case "route":
+        return "bg-emerald-500/10 border-emerald-500/20"
+      default:
+        return "bg-gray-500/10 border-gray-500/20"
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-8">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft className="h-5 w-5 text-gray-400" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold">РЈРІРµРґРѕРјР»РµРЅРёСЏ</h1>
+            <p className="text-xs text-gray-500">
+              {unreadCount > 0
+                ? `${unreadCount} РЅРµРїСЂРѕС‡РёС‚Р°РЅРЅС‹С…`
+                : "Р’СЃРµ РїСЂРѕС‡РёС‚Р°РЅС‹"}
+            </p>
+          </div>
+        </div>
+
+        {/* Р”РµР№СЃС‚РІРёСЏ */}
+        {hasNotifications && (
+          <div className="px-4 pb-3 flex items-center gap-2">
+            <button
+              onClick={markAllAsRead}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-[#151518] border border-gray-800 hover:border-gray-700 text-gray-300 transition-colors"
+            >
+              <CheckCheck className="h-4 w-4" />
+              РџСЂРѕС‡РёС‚Р°С‚СЊ РІСЃРµ
+            </button>
+            <button
+              onClick={handleClearAll}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-red-500/10 border border-red-500/20 hover:bg-red-500/15 text-red-400 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+              РћС‡РёСЃС‚РёС‚СЊ
+            </button>
+          </div>
+        )}
+      </header>
+
+      <main className="p-4">
+        {!hasNotifications ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-20 h-20 rounded-2xl bg-gray-800/50 flex items-center justify-center mb-4">
+              <BellOff className="h-10 w-10 text-gray-600" />
+            </div>
+            <p className="text-gray-400 font-medium mb-1">РќРµС‚ СѓРІРµРґРѕРјР»РµРЅРёР№</p>
+            <p className="text-gray-600 text-sm text-center max-w-xs">
+              Р—РґРµСЃСЊ Р±СѓРґСѓС‚ РїРѕСЏРІР»СЏС‚СЊСЃСЏ РЅР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ С„РѕС‚Рѕ, СЃРѕРѕР±С‰РµРЅРёСЏ Рё РѕР±РЅРѕРІР»РµРЅРёСЏ
+              РїРѕ СЂРµР№СЃР°Рј
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sortedNotifications.map((n) => {
+              const isUnread = !n.isRead
+
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => handleNotificationPress(n.id)}
+                  className={`w-full text-left rounded-2xl p-4 border transition-all active:scale-[0.99] ${
+                    isUnread
+                      ? getNotificationColor(n.type)
+                      : "bg-[#151518] border-gray-800 hover:border-gray-700"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* РРєРѕРЅРєР° */}
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isUnread ? "bg-white/5" : "bg-gray-800"
+                      }`}
+                    >
+                      {getNotificationIcon(n.type)}
+                    </div>
+
+                    {/* РљРѕРЅС‚РµРЅС‚ */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p
+                          className={`font-semibold truncate ${
+                            isUnread ? "text-white" : "text-gray-300"
+                          }`}
+                        >
+                          {n.title}
+                        </p>
+                        <span className="text-[11px] text-gray-500 flex-shrink-0">
+                          {formatTime(n.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-400 line-clamp-2">
+                        {n.message}
+                      </p>
+                    </div>
+
+                    {/* РРЅРґРёРєР°С‚РѕСЂ РЅРµРїСЂРѕС‡РёС‚Р°РЅРЅРѕРіРѕ */}
+                    {isUnread && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0 mt-2" />
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+===== FILE: hooks/use-driver-notifications.ts =====
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+
+export type NotificationAction =
+  | { kind: "openPhoto"; status?: "loading" | "unloading" | "fueling" }
+  | { kind: "openChat" }
+  | { kind: "openOrder"; orderId: string }
+  | { kind: "info" }
+
+export interface DriverNotification {
+  id: string
+  type: string
+  title: string
+  message: string
+  createdAt: string
+  isRead: boolean
+  action?: NotificationAction
+}
+
+function getKey(driverId: string) {
+  return `driver_notifications_${driverId}`
+}
+
+export function useDriverNotifications(driverId?: string | null) {
+  const [notifications, setNotifications] = useState<DriverNotification[]>([])
+
+  // Р—Р°РіСЂСѓР·РєР°
+  useEffect(() => {
+    if (!driverId || typeof window === "undefined") return
+
+    const load = () => {
+      try {
+        const raw = window.localStorage.getItem(getKey(driverId))
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          setNotifications(parsed.sort((a: any, b: any) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          ))
+        } else {
+          setNotifications([])
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+
+    load()
+
+    // РЎР»СѓС€Р°РµРј РёР·РјРµРЅРµРЅРёСЏ (РµСЃР»Рё РІ РґСЂСѓРіРѕР№ РІРєР»Р°РґРєРµ С‡С‚Рѕ-С‚Рѕ РїСЂРёС€Р»Рѕ)
+    window.addEventListener("storage", load)
+    return () => window.removeEventListener("storage", load)
+  }, [driverId])
+
+  const save = (items: DriverNotification[]) => {
+    if (!driverId) return
+    setNotifications(items)
+    window.localStorage.setItem(getKey(driverId), JSON.stringify(items))
+  }
+
+  const addNotification = useCallback((data: Omit<DriverNotification, "id" | "createdAt" | "isRead">) => {
+    if (!driverId) return
+    
+    const newItem: DriverNotification = {
+      ...data,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    }
+
+    setNotifications(prev => {
+      const next = [newItem, ...prev]
+      window.localStorage.setItem(getKey(driverId), JSON.stringify(next))
+      return next
+    })
+  }, [driverId])
+
+  const markAsRead = useCallback((id: string) => {
+    setNotifications(prev => {
+      const next = prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+      if (driverId) window.localStorage.setItem(getKey(driverId), JSON.stringify(next))
+      return next
+    })
+  }, [driverId])
+
+  const markAllAsRead = useCallback(() => {
+    setNotifications(prev => {
+      const next = prev.map(n => ({ ...n, isRead: true }))
+      if (driverId) window.localStorage.setItem(getKey(driverId), JSON.stringify(next))
+      return next
+    })
+  }, [driverId])
+
+  const clearAll = useCallback(() => {
+    setNotifications([])
+    if (driverId) window.localStorage.removeItem(getKey(driverId))
+  }, [driverId])
+
+  const unreadCount = notifications.filter(n => !n.isRead).length
+
+  return {
+    notifications,
+    unreadCount,
+    addNotification,
+    markAsRead,
+    markAllAsRead,
+    clearAll
+  }
+}
+
+===== FILE: components/driver-mobile/notifications-bell.tsx =====
+"use client"
+
+import { useRouter } from "next/navigation"
+import { Bell, BellDot } from "lucide-react"
+import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+
+interface Props {
+  driverId: string
+}
+
+export function DriverNotificationsBell({ driverId }: Props) {
+  const router = useRouter()
+  const { unreadCount } = useDriverNotifications(driverId)
+
+  const hasUnread = unreadCount > 0
+
+  return (
+    <button
+      type="button"
+      onClick={() => router.push("/m/notifications")}
+      className="relative p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
+      aria-label="РЈРІРµРґРѕРјР»РµРЅРёСЏ"
+    >
+      {hasUnread ? (
+        <BellDot className="h-5 w-5 text-orange-400" />
+      ) : (
+        <Bell className="h-5 w-5 text-gray-400" />
+      )}
+      {hasUnread && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] px-1 h-[18px] rounded-full bg-orange-500 text-[10px] font-bold text-white flex items-center justify-center shadow-lg">
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      )}
+    </button>
+  )
+}
+
+

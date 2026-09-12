@@ -1,0 +1,74 @@
+{
+  "totalItems": 0,
+  "hiddenItems": 0,
+  "itemsPerPage": 10,
+  "lastSearchTime": "2025-12-23T06:12:17.812026Z",
+  "loads": [],
+  "userFilter": {
+    "id": "80231280-16f2-4cf3-b212-9457f0dfb948",
+    "filter": {
+      "exactFromGeos": false,
+      "exactToGeos": false,
+      "ellipse": {
+        "enabled": false,
+        "maxEnlargment": 0,
+        "maxEnlargmentUnit": 1,
+        "minLength": 0,
+        "minLengthUnit": 1,
+        "units": [
+          {
+            "key": 1,
+            "value": "%"
+          },
+          {
+            "key": 2,
+            "value": "км"
+          }
+        ]
+      },
+      "routeParams": {
+        "enabled": false
+      },
+      "weight": {},
+      "volume": {},
+      "length": {},
+      "height": {},
+      "width": {},
+      "dateOption": "today-plus",
+      "rateType": 0,
+      "currencyTypeId": 0,
+      "currencyId": 0,
+      "truckType": "0",
+      "loadingType": 0,
+      "extraParams": 0,
+      "dogruz": 0,
+      "firmRating": 0,
+      "firmId": "",
+      "firmName": "",
+      "firmListsExclusiveMode": false,
+      "firmListsInclusive": [],
+      "firmListsExclusive": [],
+      "isWithoutClaims": false,
+      "hideHiddenLoads": true,
+      "sortingType": 2,
+      "excludeTenders": false,
+      "changeDate": 0,
+      "withDimensions": false,
+      "withAuction": false,
+      "cargoTypes": []
+    },
+    "searchDate": "0001-01-01T00:00:00",
+    "name": "Все грузы",
+    "details": "<div style='display:inline;'>Все грузы</div>",
+    "isCollective": false,
+    "isManuallySaved": false,
+    "boardsAvailabilityFlag": 0
+  },
+  "isUserAuthorized": true,
+  "isUserNotFullyRegistered": false,
+  "paidServices": [],
+  "loadBoardsNotAvailable": false,
+  "auctionsNotAvailable": false,
+  "statusCode": 0,
+  "captchaStatus": 0
+}

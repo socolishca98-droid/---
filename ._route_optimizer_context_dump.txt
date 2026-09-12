@@ -1,0 +1,683 @@
+﻿===== FILE: components/routes/route-list.tsx =====
+"use client"
+
+import { useState } from "react"
+import { RouteCard, type SuggestedRoute } from "./route-card"
+import { RouteOptimizer } from "./route-optimizer"
+import { mockRoutes, mockOrders } from "@/lib/mock-data"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { RefreshCw, TrendingUp } from "lucide-react"
+
+export function RouteList() {
+  // mockRoutes РІ С‚РµРєСѓС‰РµРј mock-data С‚РёРїРёР·РёСЂРѕРІР°РЅ РєР°Рє Route[] (РёР· lib/types),
+  // Р° UI RouteCard РѕР¶РёРґР°РµС‚ SuggestedRoute. Р”Р»СЏ MVP РґРµР»Р°РµРј СЏРІРЅС‹Р№ РјРѕСЃС‚ С‡РµСЂРµР· unknown.
+  const [routes, setRoutes] = useState<SuggestedRoute[]>(
+    mockRoutes as unknown as SuggestedRoute[],
+  )
+
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastOptimized, setLastOptimized] = useState<string[] | null>(null)
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    setIsRefreshing(false)
+
+    // MVP: РїРѕРєР° РїСЂРѕСЃС‚Рѕ С‚СЂРёРіРіРµСЂРёРј РїРµСЂРµСЂРµРЅРґРµСЂ (РІ Р±СѓРґСѓС‰РµРј: РїРµСЂРµСЃС‡РёС‚Р°С‚СЊ С‡РµСЂРµР· API)
+    setRoutes((prev) => [...prev])
+  }
+
+  const handleOptimize = (orderedOrderIds: string[]) => {
+    // MVP: РІ СЂРµР°Р»СЊРЅРѕРј РїСЂРёР»РѕР¶РµРЅРёРё Р·РґРµСЃСЊ РїСЂРёРјРµРЅСЏРµРј РїРѕСЂСЏРґРѕРє Рє РјР°СЂС€СЂСѓС‚Сѓ/СЂРµР№СЃСѓ/РїРµСЃРѕС‡РЅРёС†Рµ.
+    console.log("Optimized order sequence:", orderedOrderIds)
+    setLastOptimized(orderedOrderIds)
+  }
+
+  const totalProfit = routes.reduce((sum, r) => sum + (r.estimatedProfit || 0), 0)
+  const totalDistance = routes.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
+
+  return (
+    <div className="space-y-6">
+      {/* Header Stats */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4 flex-wrap">
+          <Badge variant="secondary" className="px-3 py-1.5">
+            <TrendingUp className="h-4 w-4 mr-2 text-success" />
+            РџРѕС‚РµРЅС†РёР°Р»СЊРЅР°СЏ РїСЂРёР±С‹Р»СЊ: {totalProfit.toLocaleString()} в‚Ѕ
+          </Badge>
+
+          <Badge variant="outline" className="px-3 py-1.5">
+            РћР±С‰Р°СЏ РґРёСЃС‚Р°РЅС†РёСЏ: {totalDistance.toLocaleString()} РєРј
+          </Badge>
+
+          {lastOptimized && (
+            <Badge variant="outline" className="px-3 py-1.5">
+              РџРѕСЃР»РµРґРЅРёР№ РїРѕСЂСЏРґРѕРє: {lastOptimized.join(" в†’ ")}
+            </Badge>
+          )}
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+          РџРµСЂРµСЃС‡РёС‚Р°С‚СЊ
+        </Button>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Route Optimizer */}
+        <div className="lg:col-span-1">
+          <RouteOptimizer orders={mockOrders as any} onOptimize={handleOptimize} />
+        </div>
+
+        {/* Routes Grid */}
+        <div className="lg:col-span-2 space-y-4">
+          <h3 className="text-lg font-semibold">РџСЂРµРґР»РѕР¶РµРЅРЅС‹Рµ РјР°СЂС€СЂСѓС‚С‹</h3>
+          <div className="grid gap-4">
+            {routes.map((route) => (
+              <RouteCard key={route.id} route={route} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+===== FILE: app/api/routes/route.ts =====
+// app/api/routes/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+
+// GET вЂ” РїРѕР»СѓС‡РёС‚СЊ Р·Р°РєР°Р·С‹, СЃРіСЂСѓРїРїРёСЂРѕРІР°РЅРЅС‹Рµ РїРѕ routeId
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get("status")
+    const driverId = searchParams.get("driverId")
+
+    const where: any = {
+      routeId: { not: null },
+    }
+
+    if (status && status !== "all") {
+      where.status = status
+    }
+    if (driverId) {
+      where.assignedDriverId = driverId
+    }
+
+    const routes = await prisma.order.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+
+    return NextResponse.json({ success: true, routes })
+  } catch (error: any) {
+    console.error("[Routes API] GET Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "Routes GET error" },
+      { status: 500 },
+    )
+  }
+}
+
+// POST вЂ” СЃРѕР·РґР°С‚СЊ РјР°СЂС€СЂСѓС‚ РёР· РїРµСЃРѕС‡РЅРёС†С‹ (СЃ С‚СЂР°РЅР·Р°РєС†РёРµР№)
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      vehicleId,
+      driverId,
+      orders,
+      totalPrice,
+      totalDistance,
+      totalWeight,
+    } = body as {
+      vehicleId?: string
+      driverId?: string
+      orders?: any[]
+      totalPrice?: number
+      totalDistance?: number
+      totalWeight?: number
+    }
+
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "РќРµС‚ Р·Р°РєР°Р·РѕРІ РґР»СЏ РјР°СЂС€СЂСѓС‚Р°" },
+        { status: 400 },
+      )
+    }
+
+    // РџСЂРѕРІРµСЂРєР° РІРѕРґРёС‚РµР»СЏ
+    if (driverId) {
+      const driver = await prisma.driver.findUnique({
+        where: { id: driverId },
+        select: { id: true, status: true, name: true },
+      })
+
+      if (!driver) {
+        return NextResponse.json(
+          { success: false, error: "Р’РѕРґРёС‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ" },
+          { status: 404 },
+        )
+      }
+
+      if (driver.status === "busy") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Р’РѕРґРёС‚РµР»СЊ ${driver.name} СѓР¶Рµ Р·Р°РЅСЏС‚ РґСЂСѓРіРёРј СЂРµР№СЃРѕРј`,
+          },
+          { status: 400 },
+        )
+      }
+
+      if (driver.status === "maintenance") {
+        return NextResponse.json(
+          { success: false, error: `Р’РѕРґРёС‚РµР»СЊ ${driver.name} РЅР° РўРћ` },
+          { status: 400 },
+        )
+      }
+    }
+
+    // РџСЂРѕРІРµСЂРєР° РјР°С€РёРЅС‹
+    if (vehicleId) {
+      const vehicle = await prisma.vehicle.findUnique({
+        where: { id: vehicleId },
+        select: { id: true, status: true, plate: true },
+      })
+
+      if (!vehicle) {
+        return NextResponse.json(
+          { success: false, error: "РњР°С€РёРЅР° РЅРµ РЅР°Р№РґРµРЅР°" },
+          { status: 404 },
+        )
+      }
+
+      if (vehicle.status === "in_use") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `РњР°С€РёРЅР° ${vehicle.plate} СѓР¶Рµ РІ СЂРµР№СЃРµ`,
+          },
+          { status: 400 },
+        )
+      }
+
+      if (vehicle.status === "maintenance") {
+        return NextResponse.json(
+          { success: false, error: `РњР°С€РёРЅР° ${vehicle.plate} РЅР° РўРћ` },
+          { status: 400 },
+        )
+      }
+    }
+
+    const routeId = `route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    const createdOrders = await prisma.$transaction(async (tx) => {
+      const created: any[] = []
+
+      for (const orderData of orders) {
+        const order = await tx.order.create({
+          data: {
+            source: orderData.source || "ATI",
+            sourceId: orderData.atiLoadId || orderData.atiCacheId || orderData.id || null,
+
+            routeFrom: orderData.routeFrom || orderData.from,
+            routeTo: orderData.routeTo || orderData.to,
+            distance: orderData.distance || 0,
+            weight: orderData.weight || 0,
+            volume: orderData.volume || null,
+
+            cargoType: orderData.cargoType || orderData.cargo || "Р“СЂСѓР·",
+            price: orderData.price || null,
+
+            clientName:
+              orderData.clientName || orderData.clientCompany || orderData.company || null,
+            clientContact: orderData.clientContact || orderData.clientPhone || orderData.phone || "",
+
+            status: "confirmed",
+            assignedDriverId: driverId || null,
+            assignedVehicleId: vehicleId || null,
+            routeId,
+            deadline:
+              orderData.deadline != null
+                ? new Date(orderData.deadline)
+                : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          },
+        })
+
+        created.push(order)
+
+        const cacheId = orderData.atiCacheId || orderData.id
+        if (cacheId) {
+          await tx.atiCache
+            .update({
+              where: { id: cacheId },
+              data: { status: "imported" },
+            })
+            .catch(() => {})
+        }
+      }
+
+      if (driverId) {
+        await tx.driver.update({
+          where: { id: driverId },
+          data: { status: "busy" },
+        })
+      }
+
+      if (vehicleId) {
+        await tx.vehicle.update({
+          where: { id: vehicleId },
+          data: { status: "in_use" },
+        })
+      }
+
+      return created
+    })
+
+    return NextResponse.json({
+      success: true,
+      routeId,
+      ordersCount: createdOrders.length,
+      orderIds: createdOrders.map((o) => o.id),
+      totalPrice,
+      totalDistance,
+      totalWeight,
+    })
+  } catch (error: any) {
+    console.error("[Routes API] POST Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РјР°СЂС€СЂСѓС‚Р°" },
+      { status: 500 },
+    )
+  }
+}
+
+===== FILE: prisma/schema.prisma =====
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ATI.SU РРќРўР•Р“Р РђР¦РРЇ
+// ============================================
+
+model AtiScanConfig {
+  id               String    @id @default(cuid())
+  name             String    @default("default")
+  cities           String    @default("[]")
+  radius           Int       @default(200)
+  truckTypes       String    @default("any")
+  minWeight        Int?
+  autoScanInterval Int       @default(0)
+  isActive         Boolean   @default(true)
+  lastScanAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model AtiCache {
+  id            String    @id @default(cuid())
+  atiLoadId     String    @unique
+  routeFrom     String
+  routeFromId   String?
+  routeTo       String
+  routeToId     String?
+  distance      Int?
+  weight        Int?
+  volume        Float?
+  cargoType     String?
+  truckType     String?
+  loadingType   String?
+  price         Int?
+  priceType     String?
+  paymentType   String?
+  vatIncluded   Boolean   @default(false)
+  loadingDate   DateTime?
+  unloadingDate DateTime?
+  firmId        String?
+  firmName      String?
+  contactName   String?
+  contactPhone  String?
+  note          String?
+  rawJson       String?
+  status        String    @default("new")
+  aiScore       Int?
+  aiReason      String?
+  scannedAt     DateTime  @default(now())
+  expiresAt     DateTime
+
+  @@index([status])
+  @@index([scannedAt])
+  @@index([routeFrom, routeTo])
+}
+
+model AtiSession {
+  id        String   @id @default(cuid())
+  token     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ============================================
+// РљР­РЁРР РћР’РђРќРР• Р“Р•РћРљРћР”РРќР“Рђ
+// ============================================
+
+model GeoCache {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+
+  @@index([address])
+}
+
+// ============================================
+// РћРЎРќРћР’РќР«Р• РЎРЈР©РќРћРЎРўР
+// ============================================
+
+model Order {
+  id                String    @id @default(cuid())
+  source            String
+  sourceId          String?
+  routeFrom         String
+  routeTo           String
+  distance          Int
+  weight            Int
+  volume            Float?
+  cargoType         String
+  loadingType       String    @default("other")
+  requirements      String?
+  price             Int?
+  priceNegotiable   Boolean   @default(false)
+  paymentType       String?
+  vatType           String?
+  deferredDays      Int?
+  isPaid            Boolean   @default(false)
+  paidAt            DateTime?
+  dueDate           DateTime?
+  clientName        String?
+  clientContact     String
+  clientFirmId      String?
+  deadline          DateTime
+  status            String    @default("new")
+  priority          String    @default("needs_clarification")
+  aiScore           Int       @default(50)
+  aiReason          String?
+  assignedDriverId  String?
+  assignedVehicleId String?
+  routeId           String?
+
+  // Р”РѕРіСЂСѓР·
+  isAdditionalLoad Boolean   @default(false)
+  addedToRouteAt   DateTime?
+  proposedToDriver Boolean   @default(false)
+  proposedAt       DateTime?
+  acceptedAt       DateTime?
+  rejectedAt       DateTime?
+  rejectionReason  String?
+  routeSequence    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([source])
+  @@index([routeId])
+  @@index([routeId, routeSequence])
+  @@index([assignedDriverId, status])
+  @@index([assignedVehicleId, status])
+  @@index([proposedToDriver])
+}
+
+/// Р’РѕРґРёС‚РµР»СЊ
+/// Р”РѕРїСѓСЃС‚РёРјС‹Рµ Р·РЅР°С‡РµРЅРёСЏ status: available, busy, maintenance, offline
+model Driver {
+  id              String    @id @default(cuid())
+  name            String
+  phone           String
+  vehicleId       String?
+  vehicleType     String
+  vehiclePlate    String
+  currentLocation String?
+  latitude        Float?
+  longitude       Float?
+  lastGpsUpdate   DateTime?
+  /// РЎС‚Р°С‚СѓСЃ РІРѕРґРёС‚РµР»СЏ: available | busy | maintenance | offline
+  status          String    @default("available")
+  ordersCompleted Int       @default(0)
+  rating          Float     @default(5.0)
+  licenseNumber   String?
+  licenseExpiry   DateTime?
+  medicalExpiry   DateTime?
+  hiredAt         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+  @@index([vehicleId])
+}
+
+/// РўСЂР°РЅСЃРїРѕСЂС‚РЅРѕРµ СЃСЂРµРґСЃС‚РІРѕ
+/// Р”РѕРїСѓСЃС‚РёРјС‹Рµ Р·РЅР°С‡РµРЅРёСЏ status: available, in_use, maintenance
+model Vehicle {
+  id                  String    @id @default(cuid())
+  plate               String    @unique
+  type                String
+  brand               String?
+  model               String?
+  year                Int?
+  capacity            Int
+  volume              Float?
+  length              Float?
+  width               Float?
+  height              Float?
+  features            String    @default("[]")
+  driverId            String?
+  /// РЎС‚Р°С‚СѓСЃ РўРЎ: available | in_use | maintenance
+  status              String    @default("available")
+  lastMaintenanceDate DateTime?
+  nextMaintenanceDate DateTime?
+  mileage             Int?
+  insuranceExpiry     DateTime?
+  inspectionExpiry    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status])
+  @@index([driverId])
+}
+
+// ============================================
+// РЎРњР•РќРђ Р’РћР”РРўР•Р›РЇ
+// ============================================
+
+model DriverShift {
+  id                      String       @id @default(cuid())
+  driverId                String
+  startedAt               DateTime     @default(now())
+  endedAt                 DateTime?
+  status                  String       @default("driving")
+  totalDrivingSeconds     Int          @default(0)
+  totalRestingSeconds     Int          @default(0)
+  totalLoadingSeconds     Int          @default(0)
+  totalWaitingSeconds     Int          @default(0)
+  drivingSinceRestSeconds Int          @default(0)
+  lastStatusChangeAt      DateTime     @default(now())
+  events                  ShiftEvent[]
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  @@index([driverId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model ShiftEvent {
+  id        String      @id @default(cuid())
+  shiftId   String
+  shift     DriverShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  type      String
+  latitude  Float?
+  longitude Float?
+  address   String?
+  metadata  String?
+  createdAt DateTime    @default(now())
+
+  @@index([shiftId])
+  @@index([type])
+}
+
+// ============================================
+// SOS РЎРР“РќРђР›Р«
+// ============================================
+
+model SosAlert {
+  id          String    @id @default(cuid())
+  driverId    String
+  orderId     String?
+  type        String
+  message     String?
+  latitude    Float
+  longitude   Float
+  address     String?
+  status      String    @default("active")
+  respondedBy String?
+  respondedAt DateTime?
+  resolvedBy  String?
+  resolvedAt  DateTime?
+  resolution  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([driverId])
+  @@index([status])
+}
+
+// ============================================
+// РЈР’Р•Р”РћРњР›Р•РќРРЇ
+// ============================================
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  userRole  String
+  type      String
+  title     String
+  message   String
+  driverId  String?
+  orderId   String?
+  photoId   String?
+  sosId     String?
+  routeId   String?
+  priority  String    @default("normal")
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([priority])
+  @@index([routeId])
+}
+
+// ============================================
+// Р§РђРў / РЎРћРћР‘Р©Р•РќРРЇ
+// ============================================
+
+model ChatMessage {
+  id              String    @id @default(cuid())
+  senderId        String
+  senderRole      String
+  senderName      String
+  recipientId     String?
+  content         String
+  type            String    @default("text")
+  isImportant     Boolean   @default(false)
+  importantReason String?
+  attachmentUrl   String?
+  isRead          Boolean   @default(false)
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([isImportant])
+  @@index([createdAt])
+}
+
+// ============================================
+// Р¤РћРўРћ
+// ============================================
+
+model Photo {
+  id          String   @id @default(cuid())
+  url         String
+  type        String
+  driverId    String
+  orderId     String?
+  description String?
+  ocrText     String?
+  ocrData     String?
+  createdAt   DateTime @default(now())
+
+  @@index([driverId])
+  @@index([orderId])
+  @@index([type])
+}
+
+// ============================================
+// Р–РЈР РќРђР› РўРћ / Р Р•РњРћРќРўРћР’
+// ============================================
+
+model MaintenanceLog {
+  id          String    @id @default(cuid())
+  vehicleId   String
+  driverId    String?
+  type        String
+  description String
+  mileage     Int?
+  cost        Int?
+  performer   String    @default("driver")
+  serviceName String?
+  status      String    @default("in_progress")
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([status])
+}
+
+model FleetSettings {
+  id          String   @id @default("default")
+  parkName    String   @default("РќР°С€ РђРІС‚РѕРїР°СЂРє")
+  baseAddress String?
+  baseLat     Float?
+  baseLng     Float?
+  updatedAt   DateTime @updatedAt
+}
+
+

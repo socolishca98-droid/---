@@ -1,0 +1,2351 @@
+﻿=== DEBUG AUDIT 01/08/2026 22:57:48 ===
+
+
+==================== app\api\drivers\route.ts ====================
+// app/api/drivers/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { getDrivers, createDriver } from '@/lib/api/fleet'
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const filters = {
+      search: searchParams.get('search') || undefined,
+      status: searchParams.get('status') || undefined,
+    }
+    
+    const drivers = await getDrivers(filters)
+    return NextResponse.json({ success: true, drivers })
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    
+    if (!body.name || !body.phone) {
+      return NextResponse.json(
+        { success: false, error: 'РРјСЏ Рё С‚РµР»РµС„РѕРЅ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹' },
+        { status: 400 }
+      )
+    }
+    
+    const driver = await createDriver(body)
+    return NextResponse.json({ success: true, driver })
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+  }
+}
+
+==================== app\api\drivers\[id]\route.ts ====================
+[FILE NOT FOUND]
+
+==================== app\api\fleet\drivers\route.ts ====================
+import { NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+export async function GET() {
+  try {
+    const drivers = await prisma.driver.findMany({
+      orderBy: { name: "asc" },
+    })
+    return NextResponse.json({ success: true, drivers })
+  } catch (error) {
+    return NextResponse.json({ success: false, error: "Error" }, { status: 500 })
+  }
+}
+
+==================== app\api\fleet\vehicles\route.ts ====================
+// app/api/fleet/vehicles/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const minCapacity = parseInt(searchParams.get('minCapacity') || '0')
+  const status = searchParams.get('status')
+
+  try {
+    const where: any = {}
+    
+    if (status) {
+      where.status = status
+    }
+    
+    if (minCapacity > 0) {
+      where.capacity = { gte: minCapacity }
+    }
+
+    const vehicles = await prisma.vehicle.findMany({  
+      where,
+      orderBy: [
+        { status: 'asc' },
+        { capacity: 'asc' },
+      ],
+      take: 50,
+    })
+
+    const vehiclesWithDrivers = await Promise.all(    
+      vehicles.map(async (v) => {
+        let driver = null
+        if (v.driverId) {
+          driver = await prisma.driver.findUnique({   
+            where: { id: v.driverId },
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              status: true,
+              currentLocation: true,
+            }
+          })
+        }
+        return { ...v, driver }
+      })
+    )
+
+    // РРЎРџР РђР’Р›Р•РќРР•: Р’РѕР·РІСЂР°С‰Р°РµРј РѕР±СЉРµРєС‚ success: true
+    return NextResponse.json({
+      success: true,
+      vehicles: vehiclesWithDrivers
+    })     
+  } catch (error: any) {
+    console.error('[Fleet Vehicles] Error:', error)   
+    return NextResponse.json({ 
+      success: false, 
+      error: error.message,
+      vehicles: [] 
+    }, { status: 500 })
+  }
+}
+
+==================== app\api\orders\route.ts ====================
+// app/api/orders/[id]/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+type Props = {
+  params: Promise<{ id: string }>
+}
+
+// РЎС‚Р°С‚СѓСЃС‹, РїРѕСЃР»Рµ РєРѕС‚РѕСЂС‹С… СЃС‡РёС‚Р°РµРј СЂРµР№СЃ Р·Р°РІРµСЂС€С‘РЅРЅС‹Рј
+const FINAL_STATUSES = ['delivered', 'cancelled']
+
+export async function GET(request: NextRequest, props: Props) {
+  try {
+    const params = await props.params
+    const { id } = params
+
+    const order = await prisma.order.findUnique({ where: { id } })
+
+    if (!order) {
+      return NextResponse.json(
+        { success: false, error: 'Not found' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({ success: true, order })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(request: NextRequest, props: Props) {
+  try {
+    const params = await props.params
+    const { id } = params
+
+    const body = await request.json()
+
+    // Р‘РµСЂС‘Рј С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ Р·Р°РєР°Р·Р°
+    const existing = await prisma.order.findUnique({ where: { id } })
+
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: 'Not found' },
+        { status: 404 }
+      )
+    }
+
+    const prevDriverId = existing.assignedDriverId
+    const prevVehicleId = existing.assignedVehicleId
+    const prevStatus = existing.status
+
+    const order = await prisma.$transaction(async (tx) => {
+      // РћР±РЅРѕРІР»СЏРµРј СЃР°Рј Р·Р°РєР°Р·
+      const updated = await tx.order.update({
+        where: { id },
+        data: body,
+      })
+
+      // РҐРµР»РїРµСЂС‹: Р°РєРєСѓСЂР°С‚РЅРѕ РѕСЃРІРѕР±РѕРґРёС‚СЊ РІРѕРґРёС‚РµР»СЏ/РјР°С€РёРЅСѓ,
+      // С‚РѕР»СЊРєРѕ РµСЃР»Рё РЅР° РЅРёС… РќР• РѕСЃС‚Р°Р»РѕСЃСЊ РґСЂСѓРіРёС… РЅРµ-С„РёРЅР°Р»СЊРЅС‹С… Р·Р°РєР°Р·РѕРІ
+      const maybeFreeDriver = async (driverId: string | null | undefined) => {
+        if (!driverId) return
+
+        const activeOrders = await tx.order.count({
+          where: {
+            assignedDriverId: driverId,
+            status: { notIn: FINAL_STATUSES },
+          },
+        })
+
+        if (activeOrders === 0) {
+          await tx.driver.updateMany({
+            where: { id: driverId },
+            data: { status: 'available' }, // РїРѕРґСЃС‚СЂРѕР№ РїРѕРґ СЃРІРѕРё СЃС‚Р°С‚СѓСЃС‹ РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё
+          })
+        }
+      }
+
+      const maybeFreeVehicle = async (
+        vehicleId: string | null | undefined
+      ) => {
+        if (!vehicleId) return
+
+        const activeOrders = await tx.order.count({
+          where: {
+            assignedVehicleId: vehicleId,
+            status: { notIn: FINAL_STATUSES },
+          },
+        })
+
+        if (activeOrders === 0) {
+          await tx.vehicle.updateMany({
+            where: { id: vehicleId },
+            data: { status: 'available' }, // РїРѕРґСЃС‚СЂРѕР№ РїРѕРґ СЃРІРѕРё СЃС‚Р°С‚СѓСЃС‹
+          })
+        }
+      }
+
+      // === Р›РћР“РРљРђ РџРћ Р’РћР”РРўР•Р›Р® ===
+      if (
+        prevDriverId !== updated.assignedDriverId ||
+        prevStatus !== updated.status
+      ) {
+        // Р•СЃР»Рё РІРѕРґРёС‚РµР»СЊ СЃРјРµРЅРёР»СЃСЏ вЂ” РїРѕС‚РµРЅС†РёР°Р»СЊРЅРѕ РѕСЃРІРѕР±РѕРґРёС‚СЊ СЃС‚Р°СЂРѕРіРѕ
+        if (prevDriverId && prevDriverId !== updated.assignedDriverId) {
+          await maybeFreeDriver(prevDriverId)
+        }
+
+        // Р•СЃР»Рё РµСЃС‚СЊ РІРѕРґРёС‚РµР»СЊ Рё СЃС‚Р°С‚СѓСЃ РќР• С„РёРЅР°Р»СЊРЅС‹Р№ в†’ РІРѕРґРёС‚РµР»СЊ Р·Р°РЅСЏС‚
+        if (
+          updated.assignedDriverId &&
+          !FINAL_STATUSES.includes(updated.status)
+        ) {
+          await tx.driver.updateMany({
+            where: { id: updated.assignedDriverId },
+            data: { status: 'busy' }, // РµСЃР»Рё Сѓ С‚РµР±СЏ РґСЂСѓРіРѕР№ "Р·Р°РЅСЏС‚" вЂ” Р·Р°РјРµРЅРё Р·РґРµСЃСЊ
+          })
+        }
+
+        // Р•СЃР»Рё Р·Р°РєР°Р· СЃС‚Р°Р» С„РёРЅР°Р»СЊРЅС‹Рј в†’ РІРѕР·РјРѕР¶РЅРѕ РѕСЃРІРѕР±РѕРґРёС‚СЊ С‚РµРєСѓС‰РµРіРѕ РІРѕРґРёС‚РµР»СЏ
+        if (
+          updated.assignedDriverId &&
+          FINAL_STATUSES.includes(updated.status)
+        ) {
+          await maybeFreeDriver(updated.assignedDriverId)
+        }
+      }
+
+      // === Р›РћР“РРљРђ РџРћ РњРђРЁРРќР• ===
+      if (
+        prevVehicleId !== updated.assignedVehicleId ||
+        prevStatus !== updated.status
+      ) {
+        // Р•СЃР»Рё РјР°С€РёРЅР° СЃРјРµРЅРёР»Р°СЃСЊ вЂ” РїРѕС‚РµРЅС†РёР°Р»СЊРЅРѕ РѕСЃРІРѕР±РѕРґРёС‚СЊ СЃС‚Р°СЂСѓСЋ
+        if (prevVehicleId && prevVehicleId !== updated.assignedVehicleId) {
+          await maybeFreeVehicle(prevVehicleId)
+        }
+
+        // Р•СЃР»Рё РµСЃС‚СЊ РјР°С€РёРЅР° Рё СЃС‚Р°С‚СѓСЃ РќР• С„РёРЅР°Р»СЊРЅС‹Р№ в†’ РјР°С€РёРЅР° Р·Р°РЅСЏС‚Р°
+        if (
+          updated.assignedVehicleId &&
+          !FINAL_STATUSES.includes(updated.status)
+        ) {
+          await tx.vehicle.updateMany({
+            where: { id: updated.assignedVehicleId },
+            data: { status: 'busy' }, // РїРѕРґСЃС‚СЂРѕР№ РїРѕРґ СЃРІРѕРё СЃС‚Р°С‚СѓСЃС‹
+          })
+        }
+
+        // Р•СЃР»Рё Р·Р°РєР°Р· СЃС‚Р°Р» С„РёРЅР°Р»СЊРЅС‹Рј в†’ РІРѕР·РјРѕР¶РЅРѕ РѕСЃРІРѕР±РѕРґРёС‚СЊ С‚РµРєСѓС‰СѓСЋ РјР°С€РёРЅСѓ
+        if (
+          updated.assignedVehicleId &&
+          FINAL_STATUSES.includes(updated.status)
+        ) {
+          await maybeFreeVehicle(updated.assignedVehicleId)
+        }
+      }
+
+      return updated
+    })
+
+    return NextResponse.json({ success: true, order })
+  } catch (error: unknown) {
+    console.error('PATCH /api/orders/[id] error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest, props: Props) {
+  try {
+    const params = await props.params
+    const { id } = params
+
+    await prisma.order.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== app\api\orders\[id]\route.ts ====================
+[FILE NOT FOUND]
+
+==================== app\api\m\orders\route.ts ====================
+// app/api/m/orders/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get('driverId')
+    const status = searchParams.get('status') // 'active' | 'history'
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: 'driverId РѕР±СЏР·Р°С‚РµР»РµРЅ' },
+        { status: 400 }
+      )
+    }
+
+    const activeStatuses = [
+      'new',
+      'confirmed',
+      'in_transit',
+      'processing',
+      'loading',
+      'unloading',
+    ]
+
+    const historyStatuses = ['delivered', 'cancelled']
+
+    const orders = await prisma.order.findMany({
+      where: {
+        assignedDriverId: driverId,
+        status: {
+          in: status === 'history' ? historyStatuses : activeStatuses,
+        },
+      },
+      orderBy: {
+        createdAt: status === 'history' ? 'desc' : 'asc',
+      },
+      take: 50,
+    })
+
+    // РЎС‚Р°С‚РёСЃС‚РёРєР° РґР»СЏ РІРѕРґРёС‚РµР»СЏ
+    const stats = await prisma.order.aggregate({
+      where: {
+        assignedDriverId: driverId,
+        status: 'delivered',
+      },
+      _count: true,
+      _sum: {
+        price: true,
+        distance: true,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      orders,
+      stats: {
+        completedOrders: stats._count || 0,
+        totalEarnings: stats._sum.price || 0,
+        totalDistance: stats._sum.distance || 0,
+      },
+    })
+  } catch (error: unknown) {
+    console.error('GET /api/m/orders error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== app\api\m\shift\route.ts ====================
+// app/api/m/shift/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+const DRIVING_LIMIT_SECONDS = 4.5 * 3600
+
+export async function GET(req: NextRequest) {
+  try {
+    const driverId = req.nextUrl.searchParams.get("driverId")
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: "driverId required" },
+        { status: 400 }
+      )
+    }
+
+    const shift = await prisma.driverShift.findFirst({
+      where: { driverId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    })
+
+    if (!shift) {
+      return NextResponse.json({ success: true, shift: null })
+    }
+
+    const now = new Date()
+    const statusDuration = Math.floor(
+      (now.getTime() - shift.lastStatusChangeAt.getTime()) / 1000
+    )
+
+    let currentDrivingSeconds = shift.drivingSinceRestSeconds
+    let currentRestingSeconds = shift.totalRestingSeconds
+    let currentLoadingSeconds = shift.totalLoadingSeconds
+    let currentWaitingSeconds = shift.totalWaitingSeconds
+
+    switch (shift.status) {
+      case "driving":
+        currentDrivingSeconds += statusDuration
+        break
+      case "resting":
+      case "sleeping":
+        currentRestingSeconds += statusDuration
+        break
+      case "loading":
+      case "unloading":
+        currentLoadingSeconds += statusDuration
+        break
+      case "waiting":
+      case "fueling":
+        currentWaitingSeconds += statusDuration
+        break
+    }
+
+    const totalDrivingSeconds = shift.totalDrivingSeconds
+    const totalShiftSeconds =
+      totalDrivingSeconds +
+      currentRestingSeconds +
+      currentLoadingSeconds +
+      currentWaitingSeconds
+
+    const drivingProgress = Math.min(
+      100,
+      (currentDrivingSeconds / DRIVING_LIMIT_SECONDS) * 100
+    )
+
+    return NextResponse.json({
+      success: true,
+      shift: {
+        id: shift.id,
+        status: shift.status,
+        startedAt: shift.startedAt,
+        statusDuration,
+        currentDrivingSeconds,
+        currentRestingSeconds,
+        currentLoadingSeconds,
+        currentWaitingSeconds,
+        totalShiftSeconds,
+        drivingProgress,
+        drivingRemaining: Math.max(
+          0,
+          DRIVING_LIMIT_SECONDS - currentDrivingSeconds
+        ),
+        needsRest: currentDrivingSeconds >= DRIVING_LIMIT_SECONDS,
+        restWarning: currentDrivingSeconds >= DRIVING_LIMIT_SECONDS * 0.85,
+      },
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    console.error("[Shift API] GET Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const {
+      action,
+      driverId,
+      status,
+      latitude,
+      longitude,
+      fuelLiters,
+      fuelAmount,
+    } = body as {
+      action?: string
+      driverId?: string
+      status?: string
+      latitude?: number
+      longitude?: number
+      fuelLiters?: number
+      fuelAmount?: number
+    }
+
+    if (!driverId || !action) {
+      return NextResponse.json(
+        { success: false, error: "driverId and action required" },
+        { status: 400 }
+      )
+    }
+
+    // START
+    if (action === "start") {
+      const existing = await prisma.driverShift.findFirst({
+        where: { driverId, endedAt: null },
+      })
+
+      if (existing) {
+        return NextResponse.json({
+          success: true,
+          message: "Shift already active",
+          shift: existing,
+        })
+      }
+
+      const shift = await prisma.driverShift.create({
+        data: {
+          driverId,
+          status: "driving",
+          lastStatusChangeAt: new Date(),
+        },
+      })
+
+      await prisma.shiftEvent.create({
+        data: {
+          shiftId: shift.id,
+          type: "start",
+          latitude: latitude || null,
+          longitude: longitude || null,
+        },
+      })
+
+      await prisma.driver.update({
+        where: { id: driverId },
+        data: { status: "busy" },
+      })
+
+      return NextResponse.json({
+        success: true,
+        shift: {
+          id: shift.id,
+          status: shift.status,
+          startedAt: shift.startedAt,
+        },
+      })
+    }
+
+    // STATUS
+    if (action === "status" && status) {
+      const shift = await prisma.driverShift.findFirst({
+        where: { driverId, endedAt: null },
+      })
+
+      if (!shift) {
+        return NextResponse.json(
+          { success: false, error: "No active shift" },
+          { status: 400 }
+        )
+      }
+
+      const now = new Date()
+      const diffSeconds = Math.floor(
+        (now.getTime() - shift.lastStatusChangeAt.getTime()) / 1000
+      )
+
+      const prevStatus = shift.status
+
+      const updateData: any = {
+        status,
+        lastStatusChangeAt: now,
+      }
+
+      // РќР°РєРѕРїР»РµРЅРёРµ РїРѕ РїСЂРµРґС‹РґСѓС‰РµРјСѓ СЃС‚Р°С‚СѓСЃСѓ
+      switch (prevStatus) {
+        case "driving":
+          updateData.totalDrivingSeconds = {
+            increment: diffSeconds,
+          }
+          // drivingSinceRest: Р»РёР±Рѕ РЅР°РєР°РїР»РёРІР°РµРј, Р»РёР±Рѕ РѕР±РЅСѓР»СЏРµРј, РµСЃР»Рё РїРµСЂРµС…РѕРґРёРј Рє РѕС‚РґС‹С…Сѓ
+          if (status === "resting" || status === "sleeping") {
+            updateData.drivingSinceRestSeconds = 0
+          } else {
+            updateData.drivingSinceRestSeconds = {
+              increment: diffSeconds,
+            }
+          }
+          break
+        case "resting":
+        case "sleeping":
+          updateData.totalRestingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+        case "loading":
+        case "unloading":
+          updateData.totalLoadingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+        case "waiting":
+        case "fueling":
+          updateData.totalWaitingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+      }
+
+      // Р•СЃР»Рё РїРµСЂРµС…РѕРґРёРј РЅР° РѕС‚РґС‹С… / СЃРѕРЅ РЅРµ РёР· 'driving', РІСЃС‘ СЂР°РІРЅРѕ СЃС‡РёС‚Р°РµРј, С‡С‚Рѕ С‚Р°Р№РјРµСЂ Р·Р° СЂСѓР»С‘Рј РѕР±РЅСѓР»РёР»СЃСЏ
+      if (
+        (status === "resting" || status === "sleeping") &&
+        prevStatus !== "driving"
+      ) {
+        updateData.drivingSinceRestSeconds = 0
+      }
+
+      const updatedShift = await prisma.driverShift.update({
+        where: { id: shift.id },
+        data: updateData,
+      })
+
+      // РЎРѕС…СЂР°РЅСЏРµРј СЃРѕР±С‹С‚РёРµ СЃРјРµРЅС‹ СЃС‚Р°С‚СѓСЃР°, РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РґРѕР±Р°РІРёРј С‚РѕРїР»РёРІРѕ
+      const metadata: Record<string, unknown> = {
+        previousStatus: prevStatus,
+        duration: diffSeconds,
+      }
+
+      if (status === "fueling") {
+        if (fuelLiters !== undefined) metadata.fuelLiters = fuelLiters
+        if (fuelAmount !== undefined) metadata.fuelAmount = fuelAmount
+      }
+
+      await prisma.shiftEvent.create({
+        data: {
+          shiftId: shift.id,
+          type: status,
+          latitude: latitude || null,
+          longitude: longitude || null,
+          metadata: JSON.stringify(metadata),
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        shift: {
+          id: updatedShift.id,
+          status: updatedShift.status,
+        },
+      })
+    }
+
+    // END
+    if (action === "end") {
+      const shift = await prisma.driverShift.findFirst({
+        where: { driverId, endedAt: null },
+      })
+
+      if (!shift) {
+        return NextResponse.json({
+          success: true,
+          message: "No active shift to end",
+        })
+      }
+
+      const now = new Date()
+      const diffSeconds = Math.floor(
+        (now.getTime() - shift.lastStatusChangeAt.getTime()) / 1000
+      )
+
+      const prevStatus = shift.status
+
+      const updateData: any = {
+        endedAt: now,
+      }
+
+      switch (prevStatus) {
+        case "driving":
+          updateData.totalDrivingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+        case "resting":
+        case "sleeping":
+          updateData.totalRestingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+        case "loading":
+        case "unloading":
+          updateData.totalLoadingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+        case "waiting":
+        case "fueling":
+          updateData.totalWaitingSeconds = {
+            increment: diffSeconds,
+          }
+          break
+      }
+
+      const endedShift = await prisma.driverShift.update({
+        where: { id: shift.id },
+        data: updateData,
+      })
+
+      await prisma.shiftEvent.create({
+        data: {
+          shiftId: shift.id,
+          type: "end",
+          latitude: latitude || null,
+          longitude: longitude || null,
+          metadata: JSON.stringify({
+            totalDriving: endedShift.totalDrivingSeconds,
+            totalResting: endedShift.totalRestingSeconds,
+            totalLoading: endedShift.totalLoadingSeconds,
+            totalWaiting: endedShift.totalWaitingSeconds,
+          }),
+        },
+      })
+
+      await prisma.driver.update({
+        where: { id: driverId },
+        data: { status: "available" },
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "Shift ended",
+        summary: {
+          totalDriving: endedShift.totalDrivingSeconds,
+          totalResting: endedShift.totalRestingSeconds,
+          totalLoading: endedShift.totalLoadingSeconds,
+          totalWaiting: endedShift.totalWaitingSeconds,
+        },
+      })
+    }
+
+    return NextResponse.json(
+      { success: false, error: "Unknown action" },
+      { status: 400 }
+    )
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    console.error("[Shift API] POST Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== app\api\m\me\route.ts ====================
+// app/api/m/me/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get('driverId')
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: 'driverId РѕР±СЏР·Р°С‚РµР»РµРЅ' },
+        { status: 400 }
+      )
+    }
+
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        vehicleType: true,
+        vehiclePlate: true,
+        status: true,
+        latitude: true,
+        longitude: true,
+        lastGpsUpdate: true,
+        ordersCompleted: true,
+        rating: true,
+        licenseNumber: true,
+        licenseExpiry: true,
+        medicalExpiry: true,
+        hiredAt: true,
+        createdAt: true,
+      }
+    })
+
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: 'Р’РѕРґРёС‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ' },
+        { status: 404 }
+      )
+    }
+
+    // РџРѕР»СѓС‡Р°РµРј Р°РєС‚РёРІРЅСѓСЋ СЃРјРµРЅСѓ
+    const activeShift = await prisma.driverShift.findFirst({
+      where: {
+        driverId: driverId,
+        endedAt: null
+      },
+      orderBy: {
+        startedAt: 'desc'
+      }
+    })
+
+    // РЎС‚Р°С‚РёСЃС‚РёРєР° Р·Р° СЃРµРіРѕРґРЅСЏ
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const todayStats = await prisma.order.aggregate({
+      where: {
+        assignedDriverId: driverId,
+        status: 'delivered',
+        updatedAt: { gte: today }
+      },
+      _count: true,
+      _sum: {
+        distance: true,
+        price: true
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      driver,
+      activeShift: activeShift || null,
+      todayStats: {
+        ordersDelivered: todayStats._count || 0,
+        distanceKm: todayStats._sum.distance || 0,
+        earnings: todayStats._sum.price || 0
+      }
+    })
+
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[Me API] Error:', message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== app\m\page.tsx ====================
+// app/m/page.tsx
+
+"use client"
+
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
+import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import { SosButton } from "@/components/driver-mobile/sos-button"
+import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
+import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import {
+  Loader2,
+  Truck,
+  Package,
+  Coffee,
+  Moon,
+  Clock,
+  Fuel,
+  CheckCircle,
+  Play,
+  MessageCircle,
+  ChevronRight,
+  Locate,
+  WifiOff,
+  Wifi,
+  AlertCircle,
+  Home,
+  Power,
+  Wrench,
+  ParkingCircle,
+  PlayCircle,
+  MapPin,
+} from "lucide-react"
+import { toast } from "sonner"
+
+// РЎС‚Р°С‚СѓСЃС‹ Р±РµР· СЂРµР№СЃР°
+const IDLE_STATUSES = [
+  {
+    id: "waiting",
+    label: "РћР¶РёРґР°СЋ СЂРµР№СЃ",
+    icon: ParkingCircle,
+    color: "bg-gray-500",
+    description: "РЎРјРµРЅР° Р°РєС‚РёРІРЅР°, Р¶РґСѓ РЅР°Р·РЅР°С‡РµРЅРёСЏ СЂРµР№СЃР°",
+  },
+  {
+    id: "maintenance",
+    label: "РўРћ / Р РµРјРѕРЅС‚",
+    icon: Wrench,
+    color: "bg-amber-500",
+    description: "РўРµС…РѕР±СЃР»СѓР¶РёРІР°РЅРёРµ",
+    requiresForm: true,
+  },
+] as const
+
+// РЎС‚Р°С‚СѓСЃС‹ РІ СЂРµР№СЃРµ
+const TRIP_STATUSES = [
+  {
+    id: "driving",
+    label: "Р’ РїСѓС‚Рё",
+    icon: Truck,
+    color: "bg-orange-500",
+    description: "Р•РґСѓ РїРѕ РјР°СЂС€СЂСѓС‚Сѓ",
+  },
+  {
+    id: "loading",
+    label: "РџРѕРіСЂСѓР·РєР°",
+    icon: Package,
+    color: "bg-blue-500",
+    description: "РќР° РїРѕРіСЂСѓР·РєРµ",
+  },
+  {
+    id: "unloading",
+    label: "Р’С‹РіСЂСѓР·РєР°",
+    icon: CheckCircle,
+    color: "bg-emerald-500",
+    description: "РќР° РІС‹РіСЂСѓР·РєРµ",
+  },
+  {
+    id: "fueling",
+    label: "Р—Р°РїСЂР°РІРєР°",
+    icon: Fuel,
+    color: "bg-purple-500",
+    description: "Р—Р°РїСЂР°РІР»СЏСЋСЃСЊ",
+  },
+  {
+    id: "resting",
+    label: "РћС‚РґС‹С…",
+    icon: Coffee,
+    color: "bg-amber-500",
+    description: "РџРµСЂРµСЂС‹РІ 15вЂ“45 РјРёРЅ",
+  },
+  {
+    id: "sleeping",
+    label: "РЎРѕРЅ",
+    icon: Moon,
+    color: "bg-indigo-500",
+    description: "РќРѕС‡РЅРѕР№ РѕС‚РґС‹С…",
+  },
+  {
+    id: "waiting_point",
+    label: "РћР¶РёРґР°РЅРёРµ",
+    icon: Clock,
+    color: "bg-gray-500",
+    description: "Р–РґСѓ РЅР° С‚РѕС‡РєРµ",
+  },
+] as const
+
+interface Driver {
+  id: string
+  name: string
+  phone: string
+  vehiclePlate?: string
+  vehicleType?: string
+  vehicleId?: string
+  status?: string
+}
+
+interface Shift {
+  id: string
+  status: string
+  statusDuration: number
+  currentDrivingSeconds: number
+  totalShiftSeconds: number
+  drivingProgress: number
+  drivingRemaining: number
+  needsRest: boolean
+  restWarning: boolean
+}
+
+interface ActiveOrder {
+  id: string
+  routeFrom: string
+  routeTo: string
+  distance: number
+  cargoType: string
+  price?: number
+  clientName?: string
+  status: string
+  deadline?: string
+}
+
+interface ActiveMaintenance {
+  id: string
+  type: string
+  description: string
+  startedAt: string
+}
+
+type GpsStatus = "inactive" | "searching" | "active" | "error"
+
+let geoPermissionToastShown = false
+
+export default function MobileHomePage() {
+  const router = useRouter()
+
+  const [driver, setDriver] = useState<Driver | null>(null)
+  const [shift, setShift] = useState<Shift | null>(null)
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null)
+  const [activeMaintenance, setActiveMaintenance] =
+    useState<ActiveMaintenance | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isChangingStatus, setIsChangingStatus] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>("inactive")
+  const [isGoingToBase, setIsGoingToBase] = useState(false)
+  const [tripStarted, setTripStarted] = useState(false)
+
+  const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const dataIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const watchIdRef = useRef<number | null>(null)
+
+  const { addNotification } = useDriverNotifications(driver?.id)
+
+  // === РђРІС‚РѕСЂРёР·Р°С†РёСЏ ===
+  useEffect(() => {
+    const saved =
+      typeof window !== "undefined"
+        ? localStorage.getItem("driver_session")
+        : null
+
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved)
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
+
+  // === Р—Р°РіСЂСѓР·РєР° РґР°РЅРЅС‹С… ===
+  const fetchData = useCallback(async () => {
+    if (!driver?.id) return
+
+    try {
+      const [shiftRes, orderRes, maintenanceRes] = await Promise.all([
+        fetch(`/api/m/shift?driverId=${driver.id}`),
+        fetch(`/api/drivers/${driver.id}/active-order`),
+        fetch(`/api/m/maintenance?driverId=${driver.id}`),
+      ])
+
+      const shiftData = await shiftRes.json()
+      if (shiftData.success) {
+        setShift(shiftData.shift || null)
+      }
+
+      const orderData = await orderRes.json()
+      if (orderData.success) {
+        const order = orderData.order || null
+        setActiveOrder(order)
+        if (order && ["in_transit", "loading", "unloading"].includes(order.status)) {
+          setTripStarted(true)
+        } else {
+          setTripStarted(false)
+        }
+      }
+
+      const maintenanceData = await maintenanceRes.json()
+      if (maintenanceData.success) {
+        setActiveMaintenance(maintenanceData.maintenance || null)
+      }
+    } catch (error) {
+      console.error("[Mobile] Failed to fetch data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [driver?.id])
+
+  useEffect(() => {
+    if (driver?.id) {
+      fetchData()
+      dataIntervalRef.current = setInterval(fetchData, 30000)
+    }
+
+    return () => {
+      if (dataIntervalRef.current) clearInterval(dataIntervalRef.current)
+    }
+  }, [driver?.id, fetchData])
+
+  // === GPS ===
+  const sendLocation = useCallback(
+    async (position: GeolocationPosition) => {
+      if (!driver?.id) return
+
+      try {
+        const res = await fetch("/api/m/location", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            driverId: driver.id,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            speed: position.coords.speed,
+            heading: position.coords.heading,
+          }),
+        })
+
+        setGpsStatus(res.ok ? "active" : "error")
+      } catch (error) {
+        console.error("[GPS] Send error:", error)
+        setGpsStatus("error")
+      }
+    },
+    [driver?.id]
+  )
+
+  const handleGpsError = useCallback((error: GeolocationPositionError) => {
+    console.error("[GPS] Error:", error.message)
+
+    if (error.code === error.PERMISSION_DENIED) {
+      setGpsStatus("error")
+      if (!geoPermissionToastShown) {
+        geoPermissionToastShown = true
+        toast.error("РќРµС‚ РґРѕСЃС‚СѓРїР° Рє РіРµРѕР»РѕРєР°С†РёРё", {
+          description: "Р Р°Р·СЂРµС€РёС‚Рµ РґРѕСЃС‚СѓРї РІ РЅР°СЃС‚СЂРѕР№РєР°С… Р±СЂР°СѓР·РµСЂР°",
+        })
+      }
+      return
+    }
+
+    if (error.code === error.POSITION_UNAVAILABLE) {
+      setGpsStatus("error")
+      return
+    }
+
+    setGpsStatus("error")
+  }, [])
+
+  // GPS РІРєР»СЋС‡Р°РµРј С‚РѕР»СЊРєРѕ РїСЂРё Р°РєС‚РёРІРЅРѕРј СЂРµР№СЃРµ
+  useEffect(() => {
+    if (!shift || !driver?.id || !tripStarted) {
+      setGpsStatus("inactive")
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      if (gpsIntervalRef.current) {
+        clearInterval(gpsIntervalRef.current)
+        gpsIntervalRef.current = null
+      }
+      return
+    }
+
+    if (!("geolocation" in navigator)) {
+      setGpsStatus("error")
+      toast.error("GPS РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ")
+      return
+    }
+
+    setGpsStatus("searching")
+
+    navigator.geolocation.getCurrentPosition(sendLocation, handleGpsError, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    })
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      sendLocation,
+      handleGpsError,
+      { enableHighAccuracy: true, maximumAge: 30000 }
+    )
+
+    gpsIntervalRef.current = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(sendLocation, () => {}, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      })
+    }, 30000)
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      if (gpsIntervalRef.current) {
+        clearInterval(gpsIntervalRef.current)
+        gpsIntervalRef.current = null
+      }
+    }
+  }, [shift, driver?.id, tripStarted, sendLocation, handleGpsError])
+
+  // === РќР°С‡Р°С‚СЊ СЃРјРµРЅСѓ ===
+  const startShift = async () => {
+    if (!driver?.id) return
+    setIsChangingStatus(true)
+
+    try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+          })
+        })
+        latitude = pos.coords.latitude
+        longitude = pos.coords.longitude
+      } catch {
+        // РјРѕР¶РЅРѕ Р±РµР· РєРѕРѕСЂРґРёРЅР°С‚
+      }
+
+      const res = await fetch("/api/m/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          action: "start",
+          latitude,
+          longitude,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        await fetchData()
+        toast.success("РЎРјРµРЅР° РЅР°С‡Р°С‚Р°", {
+          description: "РҐРѕСЂРѕС€РµРіРѕ СЂР°Р±РѕС‡РµРіРѕ РґРЅСЏ!",
+        })
+        if (navigator.vibrate) navigator.vibrate(100)
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РїСѓСЃРєР° СЃРјРµРЅС‹", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ СЃРјРµРЅСѓ",
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё", {
+        description: "РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕРґРєР»СЋС‡РµРЅРёРµ Рє РёРЅС‚РµСЂРЅРµС‚Сѓ",
+      })
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  // === Р—Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ ===
+  const endShift = async () => {
+    if (!driver?.id || !shift) return
+
+    if (!confirm("Р—Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ?")) return
+
+    setIsChangingStatus(true)
+
+    try {
+      const res = await fetch("/api/m/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          action: "end",
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setShift(null)
+        setActiveOrder(null)
+        setTripStarted(false)
+        toast.success("РЎРјРµРЅР° Р·Р°РІРµСЂС€РµРЅР°", {
+          description: "РћС‚РґС‹С…Р°Р№С‚Рµ!",
+        })
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100])
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РІРµСЂС€РµРЅРёСЏ СЃРјРµРЅС‹", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ",
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  // === РЎС‚Р°С‚СѓСЃ Р±РµР· СЂРµР№СЃР° ===
+  const changeIdleStatus = async (statusId: string) => {
+    if (!driver?.id) return
+
+    // Р•РґРёРЅСЃС‚РІРµРЅРЅРѕРµ СЂРµР°Р»СЊРЅРѕРµ РґРµР№СЃС‚РІРёРµ РІ idle вЂ” РўРћ
+    if (statusId === "maintenance") {
+      router.push("/m/maintenance")
+      return
+    }
+
+    // РЎС‚Р°С‚СѓСЃ "РћР¶РёРґР°СЋ СЂРµР№СЃ" вЂ” СЌС‚Рѕ РїСЂРѕСЃС‚Рѕ С„Р°РєС‚ (СЃРјРµРЅР° РµСЃС‚СЊ, СЂРµР№СЃР° РЅРµС‚).
+    // РќРёРєР°РєРѕРіРѕ PATCH Рє /api/drivers С‚СѓС‚ РЅРµ РЅСѓР¶РЅРѕ.
+  }
+
+  // === РџСЂРёРЅСЏС‚СЊ СЂРµР№СЃ ===
+  const acceptTrip = async () => {
+    if (!driver?.id || !activeOrder) return
+
+    setIsChangingStatus(true)
+
+    try {
+      const res = await fetch(`/api/orders/${activeOrder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_transit" }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setTripStarted(true)
+        setActiveOrder((prev) =>
+          prev ? { ...prev, status: "in_transit" } : prev
+        )
+
+        toast.success("Р РµР№СЃ РЅР°С‡Р°С‚", {
+          description: `${activeOrder.routeFrom} в†’ ${activeOrder.routeTo}`,
+        })
+
+        addNotification?.({
+          type: "route",
+          title: "Р РµР№СЃ РЅР°С‡Р°С‚",
+          message: `РњР°СЂС€СЂСѓС‚: ${activeOrder.routeFrom} в†’ ${activeOrder.routeTo}`,
+          action: { kind: "openOrder", orderId: activeOrder.id },
+        })
+
+        if (navigator.vibrate) navigator.vibrate(100)
+      } else {
+        toast.error("РћС€РёР±РєР° РїСЂРёРЅСЏС‚РёСЏ СЂРµР№СЃР°", {
+          description: data.error || "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ СЂРµР№СЃ",
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  // РњР°РїРїРёРЅРі СЃС‚Р°С‚СѓСЃР° РІРѕРґРёС‚РµР»СЏ в†’ СЃС‚Р°С‚СѓСЃ Р·Р°РєР°Р·Р°
+  const mapTripStatusToOrderStatus = (
+    statusId: string
+  ): string | undefined => {
+    if (statusId === "loading") return "loading"
+    if (statusId === "unloading") return "unloading"
+    if (statusId === "driving") return "in_transit"
+    return undefined
+  }
+
+  // === РЎС‚Р°С‚СѓСЃС‹ РІ СЂРµР№СЃРµ ===
+  const changeTripStatus = async (statusId: string) => {
+    if (!driver?.id || !shift || shift.status === statusId) return
+    setIsChangingStatus(true)
+
+    try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 3000,
+          })
+        })
+        latitude = pos.coords.latitude
+        longitude = pos.coords.longitude
+      } catch {
+        // РєРѕРѕСЂРґРёРЅР°С‚С‹ РЅРµ РєСЂРёС‚РёС‡РЅС‹
+      }
+
+      const res = await fetch("/api/m/shift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driverId: driver.id,
+          action: "status",
+          status: statusId,
+          latitude,
+          longitude,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        const newOrderStatus = mapTripStatusToOrderStatus(statusId)
+        if (activeOrder?.id && newOrderStatus) {
+          try {
+            await fetch(`/api/orders/${activeOrder.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: newOrderStatus }),
+            })
+          } catch (e) {
+            console.error("[Mobile] Failed to update order status", e)
+          }
+        }
+
+        await fetchData()
+
+        if (statusId === "loading") {
+          toast("рџ“¦ РџРѕРіСЂСѓР·РєР°", {
+            description: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР·",
+            action: {
+              label: "РљР°РјРµСЂР°",
+              onClick: () => router.push("/m/photo?context=loading"),
+            },
+          })
+          addNotification?.({
+            type: "photo",
+            title: "Р¤РѕС‚Рѕ РїСЂРё РїРѕРіСЂСѓР·РєРµ",
+            message: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР· РґРѕ Рё РїРѕСЃР»Рµ",
+            action: { kind: "openPhoto", status: "loading" },
+          })
+        } else if (statusId === "unloading") {
+          toast("вњ… Р’С‹РіСЂСѓР·РєР°", {
+            description: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР· РїРѕСЃР»Рµ РІС‹РіСЂСѓР·РєРё",
+            action: {
+              label: "РљР°РјРµСЂР°",
+              onClick: () => router.push("/m/photo?context=unloading"),
+            },
+          })
+          addNotification?.({
+            type: "photo",
+            title: "Р¤РѕС‚Рѕ РїРѕСЃР»Рµ РІС‹РіСЂСѓР·РєРё",
+            message: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ РіСЂСѓР·",
+            action: { kind: "openPhoto", status: "unloading" },
+          })
+        } else if (statusId === "fueling") {
+          toast("в›Ѕ Р—Р°РїСЂР°РІРєР°", {
+            description: "РЎРѕС…СЂР°РЅРёС‚Рµ С‡РµРє",
+            action: {
+              label: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂРѕРІР°С‚СЊ С‡РµРє",
+              onClick: () => router.push("/m/photo?context=fueling"),
+            },
+          })
+          addNotification?.({
+            type: "photo",
+            title: "Р¤РѕС‚Рѕ С‡РµРєР°",
+            message: "РЎС„РѕС‚РѕРіСЂР°С„РёСЂСѓР№С‚Рµ С‡РµРє СЃ Р·Р°РїСЂР°РІРєРё",
+            action: { kind: "openPhoto", status: "fueling" },
+          })
+        } else {
+          const statusMeta = TRIP_STATUSES.find((s) => s.id === statusId)
+          toast.success(`РЎС‚Р°С‚СѓСЃ: ${statusMeta?.label || statusId}`)
+        }
+
+        if (navigator.vibrate) navigator.vibrate(50)
+      } else {
+        toast.error("РћС€РёР±РєР° СЃРјРµРЅС‹ СЃС‚Р°С‚СѓСЃР°", {
+          description: data.error,
+        })
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  // === РќР° Р±Р°Р·Сѓ ===
+  const goToBase = async () => {
+    if (!driver?.id) return
+    setIsGoingToBase(true)
+
+    try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 7000,
+          })
+        })
+        latitude = pos.coords.latitude
+        longitude = pos.coords.longitude
+      } catch {
+        toast.error("Р“РµРѕР»РѕРєР°С†РёСЏ РЅРµРґРѕСЃС‚СѓРїРЅР°")
+        setIsGoingToBase(false)
+        return
+      }
+
+      const res = await fetch("/api/m/base-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId: driver.id, latitude, longitude }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        const distanceKm = data.distanceKm as number
+        const etaMinutes = data.etaMinutes as number
+
+        const formatEta = (min: number) => {
+          if (min < 60) return `${min} РјРёРЅ`
+          const h = Math.floor(min / 60)
+          const m = min % 60
+          return m > 0 ? `${h} С‡ ${m} РјРёРЅ` : `${h} С‡`
+        }
+
+        toast.success("Р’РѕР·РІСЂР°С‚ РЅР° Р±Р°Р·Сѓ", {
+          description: `${distanceKm} РєРј вЂў ~${formatEta(etaMinutes)}`,
+        })
+      } else {
+        toast.error("РћС€РёР±РєР° РјР°СЂС€СЂСѓС‚Р°")
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР°")
+    } finally {
+      setIsGoingToBase(false)
+    }
+  }
+
+  // === Р—Р°РІРµСЂС€РёС‚СЊ РўРћ ===
+  const completeMaintenance = async () => {
+    if (!activeMaintenance || !driver?.id) return
+
+    setIsChangingStatus(true)
+
+    try {
+      const res = await fetch("/api/m/maintenance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          maintenanceId: activeMaintenance.id,
+          driverId: driver.id,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setActiveMaintenance(null)
+        setDriver((prev) =>
+          prev ? { ...prev, status: "available" } : prev
+        )
+        toast.success("РўРћ Р·Р°РІРµСЂС€РµРЅРѕ")
+      } else {
+        toast.error("РћС€РёР±РєР° Р·Р°РІРµСЂС€РµРЅРёСЏ РўРћ")
+      }
+    } catch {
+      toast.error("РћС€РёР±РєР° СЃРІСЏР·Рё")
+    } finally {
+      setIsChangingStatus(false)
+    }
+  }
+
+  const formatDuration = (seconds: number): string => {
+    if (!seconds || seconds < 0) return "0 Рј"
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return `${h} С‡ ${m} Рј`
+    return `${m} Рј`
+  }
+
+  const currentTripStatus =
+    TRIP_STATUSES.find((s) => s.id === shift?.status) || TRIP_STATUSES[0]
+
+  if (isLoading || !driver) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    )
+  }
+
+  const hasActiveTrip = activeOrder !== null && tripStarted
+  const hasPendingTrip = activeOrder !== null && !tripStarted
+  const isOnMaintenance = activeMaintenance !== null
+
+  return (
+    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+      {/* HEADER */}
+      <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-bold truncate">{driver.name}</h1>
+              <p className="text-xs text-gray-500 truncate">
+                {driver.vehiclePlate || "РќРµС‚ РўРЎ"}
+                {driver.vehicleType && ` вЂў ${driver.vehicleType}`}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 ml-3">
+              {hasActiveTrip && shift && (
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    gpsStatus === "active"
+                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      : gpsStatus === "error"
+                      ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                      : gpsStatus === "searching"
+                      ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                      : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                  }`}
+                >
+                  {gpsStatus === "active" && <Wifi className="h-3 w-3" />}
+                  {gpsStatus === "error" && <WifiOff className="h-3 w-3" />}
+                  {gpsStatus === "searching" && (
+                    <Locate className="h-3 w-3 animate-pulse" />
+                  )}
+                  {gpsStatus === "inactive" && <WifiOff className="h-3 w-3" />}
+                  <span>GPS</span>
+                </div>
+              )}
+
+              <DriverNotificationsBell driverId={driver.id} />
+
+              <button
+                onClick={() => router.push("/m/chat")}
+                className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
+              >
+                <MessageCircle className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* MAIN */}
+      <main className="p-4 space-y-4">
+        {/* РЎРјРµРЅР° РЅРµ РЅР°С‡Р°С‚Р° */}
+        {!shift ? (
+          <div className="bg-gradient-to-br from-[#1a1a1f] to-[#141418] border border-gray-800 rounded-2xl p-6 text-center">
+            <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-orange-500/20 flex items-center justify-center">
+              <Play className="h-10 w-10 text-orange-500" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">РќР°С‡Р°С‚СЊ СЂР°Р±РѕС‡РёР№ РґРµРЅСЊ</h2>
+            <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto">
+              РќР°Р¶РјРёС‚Рµ РєРЅРѕРїРєСѓ, С‡С‚РѕР±С‹ РЅР°С‡Р°С‚СЊ СЃРјРµРЅСѓ
+            </p>
+            <button
+              onClick={startShift}
+              disabled={isChangingStatus}
+              className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-orange-500/25"
+            >
+              {isChangingStatus ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  <Play className="h-5 w-5" />
+                  РќР°С‡Р°С‚СЊ СЃРјРµРЅСѓ
+                </>
+              )}
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* РўРћ Р°РєС‚РёРІРЅРѕ */}
+            {isOnMaintenance && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
+                    <Wrench className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-amber-400 mb-1">
+                      РўРћ / Р РµРјРѕРЅС‚
+                    </p>
+                    <p className="text-sm text-gray-300 mb-1">
+                      {activeMaintenance!.description}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      РќР°С‡Р°С‚Рѕ:{" "}
+                      {new Date(
+                        activeMaintenance!.startedAt
+                      ).toLocaleString("ru-RU")}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={completeMaintenance}
+                  disabled={isChangingStatus}
+                  className="w-full mt-4 py-3 bg-emerald-500 hover:bg-emerald-600 rounded-xl font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {isChangingStatus ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      Р—Р°РІРµСЂС€РёС‚СЊ РўРћ
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* РќР°Р·РЅР°С‡РµРЅРЅС‹Р№, РЅРѕ РЅРµ РїСЂРёРЅСЏС‚С‹Р№ СЂРµР№СЃ */}
+            {hasPendingTrip && !isOnMaintenance && (
+              <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/40 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Package className="h-5 w-5 text-orange-500" />
+                  <span className="font-bold text-orange-400">
+                    РќРѕРІС‹Р№ СЂРµР№СЃ
+                  </span>
+                </div>
+
+                <div className="space-y-3 mb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-3 h-3 rounded-full bg-green-500 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">РџРѕРіСЂСѓР·РєР°</p>
+                      <p className="font-medium">
+                        {activeOrder!.routeFrom}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-3 h-3 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-500">Р’С‹РіСЂСѓР·РєР°</p>
+                      <p className="font-medium">
+                        {activeOrder!.routeTo}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-sm text-gray-400 mb-4 pb-4 border-b border-gray-700/50">
+                  <span>{activeOrder!.cargoType}</span>
+                  <span>{activeOrder!.distance} РєРј</span>
+                  {activeOrder!.price && (
+                    <span className="font-bold text-orange-400">
+                      {activeOrder!.price.toLocaleString("ru-RU")} в‚Ѕ
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  onClick={acceptTrip}
+                  disabled={isChangingStatus}
+                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/25"
+                >
+                  {isChangingStatus ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <>
+                      <PlayCircle className="h-5 w-5" />
+                      РќР°С‡Р°С‚СЊ СЂРµР№СЃ
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() =>
+                    router.push(`/m/orders/${activeOrder!.id}`)
+                  }
+                  className="w-full mt-2 py-3 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+                >
+                  РџРѕРґСЂРѕР±РЅРµРµ Рѕ СЂРµР№СЃРµ в†’
+                </button>
+              </div>
+            )}
+
+            {/* РђРєС‚РёРІРЅС‹Р№ СЂРµР№СЃ */}
+            {hasActiveTrip && !isOnMaintenance && (
+              <>
+                {shift?.restWarning && (
+                  <div
+                    className={`p-4 rounded-xl flex items-center gap-3 ${
+                      shift.needsRest
+                        ? "bg-red-500/20 border border-red-500/30"
+                        : "bg-yellow-500/20 border border-yellow-500/30"
+                    }`}
+                  >
+                    <AlertCircle
+                      className={`h-5 w-5 flex-shrink-0 ${
+                        shift.needsRest ? "text-red-400" : "text-yellow-400"
+                      }`}
+                    />
+                    <p
+                      className={`text-sm font-medium ${
+                        shift.needsRest ? "text-red-400" : "text-yellow-400"
+                      }`}
+                    >
+                      {shift.needsRest
+                        ? "РўСЂРµР±СѓРµС‚СЃСЏ РѕС‚РґС‹С…! Р‘РѕР»РµРµ 4.5 С‡Р°СЃРѕРІ Р·Р° СЂСѓР»С‘Рј"
+                        : "РЎРєРѕСЂРѕ РїРѕС‚СЂРµР±СѓРµС‚СЃСЏ РѕС‚РґС‹С…"}
+                    </p>
+                  </div>
+                )}
+
+                <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-14 h-14 rounded-xl ${currentTripStatus.color} flex items-center justify-center shadow-lg`}
+                      >
+                        <currentTripStatus.icon className="h-7 w-7 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-lg">
+                          {currentTripStatus.label}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {currentTripStatus.description}
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          Р’ СЃС‚Р°С‚СѓСЃРµ:{" "}
+                          {formatDuration(shift!.statusDuration)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500 mb-0.5">
+                        Р’ СЃРјРµРЅРµ
+                      </div>
+                      <div className="font-mono text-xl font-bold text-orange-500">
+                        {formatDuration(shift!.totalShiftSeconds)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                      <span>Р’СЂРµРјСЏ Р·Р° СЂСѓР»С‘Рј</span>
+                      <span>
+                        {Math.round(shift!.drivingProgress)}% / 4.5 С‡
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          shift!.drivingProgress >= 100
+                            ? "bg-red-500"
+                            : shift!.drivingProgress >= 85
+                            ? "bg-yellow-500"
+                            : "bg-orange-500"
+                        }`}
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            shift!.drivingProgress
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 mb-2">
+                    {TRIP_STATUSES.slice(0, 4).map((status) => {
+                      const isActive = shift!.status === status.id
+                      return (
+                        <button
+                          key={status.id}
+                          onClick={() => changeTripStatus(status.id)}
+                          disabled={isChangingStatus || isActive}
+                          className={`p-3 rounded-xl flex flex-col items-center gap-1.5 transition-all active:scale-95 disabled:opacity-70 ${
+                            isActive
+                              ? `${status.color} text-white shadow-lg`
+                              : "bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700"
+                          }`}
+                        >
+                          <status.icon className="h-5 w-5" />
+                          <span className="text-[10px] font-medium leading-tight text-center">
+                            {status.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {TRIP_STATUSES.slice(4).map((status) => {
+                      const isActive = shift!.status === status.id
+                      return (
+                        <button
+                          key={status.id}
+                          onClick={() => changeTripStatus(status.id)}
+                          disabled={isChangingStatus || isActive}
+                          className={`p-3 rounded-xl flex flex-col items-center gap-1.5 transition-all active:scale-95 disabled:opacity-70 ${
+                            isActive
+                              ? `${status.color} text-white shadow-lg`
+                              : "bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700"
+                          }`}
+                        >
+                          <status.icon className="h-5 w-5" />
+                          <span className="text-[10px] font-medium leading-tight text-center">
+                            {status.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() =>
+                    router.push(`/m/orders/${activeOrder!.id}`)
+                  }
+                  className="w-full bg-[#1a1a1f] border border-gray-800 hover:border-gray-700 rounded-2xl p-4 text-left active:scale-[0.99] transition-all"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-orange-500" />
+                      <span className="text-sm font-medium text-orange-400">
+                        РўРµРєСѓС‰РёР№ СЂРµР№СЃ
+                      </span>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-gray-500" />
+                  </div>
+
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <span className="font-medium truncate">
+                        {activeOrder!.routeFrom}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                      <span className="font-medium truncate">
+                        {activeOrder!.routeTo}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                    <span className="text-sm text-gray-500">
+                      {activeOrder!.cargoType} вЂў {activeOrder!.distance} РєРј
+                    </span>
+                    {activeOrder!.price && activeOrder!.price > 0 && (
+                      <span className="font-bold text-orange-400">
+                        {activeOrder!.price.toLocaleString("ru-RU")} в‚Ѕ
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                <button
+                  onClick={goToBase}
+                  disabled={isGoingToBase}
+                  className="w-full py-3.5 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-300 flex items-center justify-center gap-3 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {isGoingToBase ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-orange-400" />
+                      <span>Р Р°СЃС‡С‘С‚ РјР°СЂС€СЂСѓС‚Р°...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Home className="h-4 w-4 text-orange-400" />
+                      <span>Р•РґСѓ РЅР° Р±Р°Р·Сѓ</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+
+            {/* РќР•Рў СЂРµР№СЃР° Рё РќР•Рў РўРћ в†’ "РћР¶РёРґР°СЋ СЂРµР№СЃ" */}
+            {!activeOrder && !isOnMaintenance && (
+              <div className="bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-gray-500 flex items-center justify-center">
+                      <ParkingCircle className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-bold">РћР¶РёРґР°СЋ СЂРµР№СЃ</div>
+                      <div className="text-xs text-gray-500">
+                        РЎРјРµРЅР° Р°РєС‚РёРІРЅР°, Р»РѕРіРёСЃС‚ РЅР°Р·РЅР°С‡РёС‚ РІР°Рј СЃР»РµРґСѓСЋС‰РёР№ СЂРµР№СЃ
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500 mb-0.5">
+                      Р’ СЃРјРµРЅРµ
+                    </div>
+                    <div className="font-mono text-lg font-bold text-orange-500">
+                      {formatDuration(shift!.totalShiftSeconds)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {driver.vehicleId ? (
+                    <button
+                      onClick={() => changeIdleStatus("maintenance")}
+                      className="w-full py-3 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-200 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                    >
+                      <Wrench className="h-4 w-4 text-amber-400" />
+                      <span>РџРѕСЃС‚Р°РІРёС‚СЊ РјР°С€РёРЅСѓ РЅР° РўРћ</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => router.push("/m/profile")}
+                      className="w-full py-3 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-200 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                    >
+                      <Truck className="h-4 w-4 text-blue-400" />
+                      <span>Р’С‹Р±СЂР°С‚СЊ Р°РІС‚РѕРјРѕР±РёР»СЊ</span>
+                    </button>
+                  )}
+
+                  <div className="p-4 bg-gray-800/30 rounded-xl text-center">
+                    <Package className="h-8 w-8 mx-auto mb-2 text-gray-600" />
+                    <p className="text-gray-500 text-sm">
+                      РћР¶РёРґР°Р№С‚Рµ РЅР°Р·РЅР°С‡РµРЅРёСЏ СЂРµР№СЃР° РѕС‚ Р»РѕРіРёСЃС‚Р°
+                    </p>
+                    <button
+                      onClick={() => router.push("/m/orders")}
+                      className="text-orange-500 text-sm font-medium mt-2 hover:underline"
+                    >
+                      РџРѕСЃРјРѕС‚СЂРµС‚СЊ РёСЃС‚РѕСЂРёСЋ СЂРµР№СЃРѕРІ в†’
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Р—Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ (РєСЂРѕРјРµ РўРћ) */}
+            {!isOnMaintenance && (
+              <button
+                onClick={endShift}
+                disabled={isChangingStatus}
+                className="w-full py-3.5 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-xl font-medium text-gray-400 flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {isChangingStatus ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Power className="h-4 w-4" />
+                    Р—Р°РІРµСЂС€РёС‚СЊ СЃРјРµРЅСѓ
+                  </>
+                )}
+              </button>
+            )}
+          </>
+        )}
+      </main>
+
+      {shift && !isOnMaintenance && (
+        <SosButton driverId={driver.id} orderId={activeOrder?.id} />
+      )}
+
+      <BottomNav />
+    </div>
+  )
+}
+
+==================== app\orders\page.tsx ====================
+// app/orders/page.tsx
+
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
+import { Sidebar } from "@/components/sidebar"
+import { Header } from "@/components/header"
+import { OrdersSandbox } from "@/components/orders/orders-sandbox"
+import { AIParserDemo } from "@/components/orders/ai-parser-demo"
+import { AtiSearchPanel } from "@/components/orders/ati-search-panel"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Package, Bot, Loader2, Truck } from "lucide-react"
+
+export default function OrdersPage() {
+  const { user, isLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push("/")
+    }
+    // Р’РѕРґРёС‚РµР»РµР№ С‡РµСЂРµР· СЌС‚РѕС‚ Р»РѕРіРёРЅ Р±РѕР»СЊС€Рµ РЅРµС‚, РїРѕСЌС‚РѕРјСѓ
+    // СЂРµРґРёСЂРµРєС‚ РЅР° /m С‚СѓС‚ РЅРµ РЅСѓР¶РµРЅ.
+  }, [user, isLoading, router])
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
+        <Header />
+        <main className="p-6 space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold">Р—Р°РєР°Р·С‹</h1>
+              <p className="text-muted-foreground">
+                РЈРїСЂР°РІР»РµРЅРёРµ РіСЂСѓР·РѕРІС‹РјРё Р·Р°РєР°Р·Р°РјРё
+              </p>
+            </div>
+          </div>
+
+          <Tabs defaultValue="orders" className="space-y-6">
+            <TabsList className="bg-secondary w-full justify-start p-1">
+              <TabsTrigger value="orders" className="gap-2 px-6">
+                <Package className="h-4 w-4" />
+                РњРѕРё Р·Р°РєР°Р·С‹ (РџРµСЃРѕС‡РЅРёС†Р°)
+              </TabsTrigger>
+
+              <TabsTrigger value="ati" className="gap-2 px-6">
+                <Truck className="h-4 w-4" />
+                ATI.SU РџРѕРёСЃРє
+              </TabsTrigger>
+
+              <TabsTrigger value="parser" className="gap-2 px-6">
+                <Bot className="h-4 w-4" />
+                AI РёРјРїРѕСЂС‚
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="orders">
+              <OrdersSandbox />
+            </TabsContent>
+
+            <TabsContent value="ati">
+              <AtiSearchPanel />
+            </TabsContent>
+
+            <TabsContent value="parser">
+              <AIParserDemo />
+            </TabsContent>
+          </Tabs>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+==================== components\orders\assign-driver-dialog.tsx ====================
+// components/orders/assign-driver-dialog.tsx
+
+"use client"
+
+import { useState, useEffect } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Loader2 } from "lucide-react"
+
+interface AssignDriverDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onAssign: (driverId: string) => Promise<void>
+}
+
+export function AssignDriverDialog({ open, onOpenChange, onAssign }: AssignDriverDialogProps) {
+  const [drivers, setDrivers] = useState<any[]>([])
+  const [selectedDriver, setSelectedDriver] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      fetch('/api/drivers?status=available')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setDrivers(data.drivers)
+        })
+    }
+  }, [open])
+
+  const handleAssign = async () => {
+    if (!selectedDriver) return
+    setLoading(true)
+    try {
+      await onAssign(selectedDriver)
+      onOpenChange(false)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>РќР°Р·РЅР°С‡РёС‚СЊ РІРѕРґРёС‚РµР»СЏ</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <Select value={selectedDriver} onValueChange={setSelectedDriver}>
+            <SelectTrigger>
+              <SelectValue placeholder="Р’С‹Р±РµСЂРёС‚Рµ РІРѕРґРёС‚РµР»СЏ" />
+            </SelectTrigger>
+            <SelectContent>
+              {drivers.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name} ({d.vehiclePlate || 'Р‘РµР· Р°РІС‚Рѕ'})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {drivers.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center">
+              РќРµС‚ СЃРІРѕР±РѕРґРЅС‹С… РІРѕРґРёС‚РµР»РµР№
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>РћС‚РјРµРЅР°</Button>
+          <Button onClick={handleAssign} disabled={!selectedDriver || loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            РќР°Р·РЅР°С‡РёС‚СЊ
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+==================== hooks\use-fleet.ts ====================
+// hooks/use-fleet.ts
+
+import { useState, useEffect, useCallback } from 'react'
+
+export function useFleet() {
+  const [drivers, setDrivers] = useState<any[]>([])
+  const [vehicles, setVehicles] = useState<any[]>([])
+  const [stats, setStats] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const fetchAll = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const [driversRes, vehiclesRes, statsRes] = await Promise.all([
+        fetch('/api/drivers'),
+        fetch('/api/vehicles'),
+        fetch('/api/fleet/stats'),
+      ])
+      
+      const [driversData, vehiclesData, statsData] = await Promise.all([
+        driversRes.json(),
+        vehiclesRes.json(),
+        statsRes.json(),
+      ])
+      
+      if (driversData.success) setDrivers(driversData.drivers)
+      if (vehiclesData.success) setVehicles(vehiclesData.vehicles)
+      if (statsData.success) setStats(statsData)
+    } catch (e) {
+      console.error('useFleet error:', e)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchAll()
+  }, [fetchAll])
+
+  // Р”РѕР±Р°РІРёС‚СЊ РІРѕРґРёС‚РµР»СЏ
+  const addDriver = async (data: any) => {
+    const res = await fetch('/api/drivers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    const result = await res.json()
+    if (!result.success) throw new Error(result.error)
+    await fetchAll()
+    return result.driver
+  }
+
+  // РЈРґР°Р»РёС‚СЊ РІРѕРґРёС‚РµР»СЏ
+  const deleteDriver = async (id: string) => {
+    const res = await fetch(`/api/drivers/${id}`, { method: 'DELETE' })
+    const result = await res.json()
+    if (!result.success) throw new Error(result.error)
+    await fetchAll()
+  }
+
+  // Р”РѕР±Р°РІРёС‚СЊ РўРЎ
+  const addVehicle = async (data: any) => {
+    const res = await fetch('/api/vehicles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    const result = await res.json()
+    if (!result.success) throw new Error(result.error)
+    await fetchAll()
+    return result.vehicle
+  }
+
+  // РЈРґР°Р»РёС‚СЊ РўРЎ
+  const deleteVehicle = async (id: string) => {
+    const res = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' })
+    const result = await res.json()
+    if (!result.success) throw new Error(result.error)
+    await fetchAll()
+  }
+
+  // РЎРІРѕР±РѕРґРЅС‹Рµ РўРЎ (РґР»СЏ РІС‹РїР°РґР°С€РєРё)
+  const getAvailableVehicles = async () => {
+    const res = await fetch('/api/vehicles?available=true')
+    const data = await res.json()
+    return data.success ? data.vehicles : []
+  }
+
+  return {
+    drivers,
+    vehicles,
+    stats,
+    isLoading,
+    refresh: fetchAll,
+    addDriver,
+    deleteDriver,
+    addVehicle,
+    deleteVehicle,
+    getAvailableVehicles,
+  }
+}

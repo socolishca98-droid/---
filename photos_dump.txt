@@ -1,0 +1,1378 @@
+PHOTOS SNAPSHOT
+Generated: 01/19/2026 23:18:10
+
+
+==================== 
+FILE: D:\loistics_new\app\api\m\photos\route.ts
+====================
+
+// app/api/m/photos/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+// Получить фото водителя
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get("driverId")
+    const orderId = searchParams.get("orderId")
+    const type = searchParams.get("type")
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: "driverId обязателен" },
+        { status: 400 }
+      )
+    }
+
+    const where: Record<string, string> = { driverId }
+    if (orderId) where.orderId = orderId
+    if (type) where.type = type
+
+    const photos = await prisma.photo.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+
+    return NextResponse.json({
+      success: true,
+      photos,
+    })
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error"
+    console.error("[Photos GET] Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+// Загрузить новое фото (JSON: { driverId, orderId, type, url, description })
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { driverId, orderId, type, url, description } = body
+
+    if (!driverId || !type || !url) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "driverId, type и url обязательны",
+        },
+        { status: 400 }
+      )
+    }
+
+    const validTypes = [
+      "cargo_before",
+      "cargo_after",
+      "receipt",
+      "waybill",
+      "damage",
+      "document",
+    ]
+
+    if (!validTypes.includes(type)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Неверный тип фото. Допустимые: ${validTypes.join(
+            ", "
+          )}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const photo = await prisma.photo.create({
+      data: {
+        driverId,
+        orderId: orderId || null,
+        type,
+        url,
+        description: description || null,
+      },
+    })
+
+    // Создаём уведомление для логиста
+    await prisma.notification.create({
+      data: {
+        userId: "logist",
+        userRole: "logist",
+        type: "new_photo",
+        title: "Новое фото от водителя",
+        message: `Водитель загрузил фото: ${type}`,
+        driverId,
+        orderId: orderId || null,
+        photoId: photo.id,
+        priority: type === "damage" ? "high" : "normal",
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      photo,
+    })
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error"
+    console.error("[Photos POST] Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+// Удалить фото
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "id обязателен" },
+        { status: 400 }
+      )
+    }
+
+    await prisma.photo.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error"
+    console.error("[Photos DELETE] Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\photos\page.tsx
+====================
+
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { Sidebar } from "@/components/sidebar"
+import { Header } from "@/components/header"
+import { PhotoUpload } from "@/components/photos/photo-upload"
+import { PhotoGallery } from "@/components/photos/photo-gallery"
+import { ReceiptSummary } from "@/components/photos/receipt-summary"
+import { CargoAnalysisCard } from "@/components/photos/cargo-analysis-card"
+import { mockPhotos, mockRoutes, mockDogrizSuggestions } from "@/lib/mock-data"
+// Убрали PhotoUpload, т.к. его нет в lib/types
+import type { Photo } from "@/lib/types"
+import { Loader2 } from "lucide-react"
+
+export default function PhotosPage() {
+  const { user, isLoading } = useAuth()
+  const router = useRouter()
+  // Приводим моки к any, чтобы TS не ругался на несовпадение полей
+  const [photos, setPhotos] = useState<Photo[]>(mockPhotos as any[])
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push("/")
+    }
+    if (!isLoading && user?.role === "driver") {
+      router.push("/m")
+    }
+  }, [user, isLoading, router])
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // Принимаем any, так как PhotoUpload типа нет
+  const handleUpload = (uploads: any[]) => {
+    const newPhotos = uploads
+      .filter((u) => u.result)
+      .map((u) => u.result as Photo)
+    setPhotos((prev) => [...newPhotos, ...prev])
+  }
+
+  const latestCargoPhoto = photos.find(
+  (p) =>
+    (p.type as string) === "cargo_after" &&
+    p.aiClassification?.cargoFillPercent !== undefined,
+)
+  const activeRoute = (mockRoutes as any[]).find((r) => r.status === "active")
+  const pendingSuggestions = (mockDogrizSuggestions as any[]).filter(
+    (s) => s.status === "pending",
+  )
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <div className="pl-64">
+        <Header />
+        <main className="p-6 space-y-6">
+          {/* Page Title */}
+          <div>
+            <h1 className="text-2xl font-bold">Фотографии</h1>
+            <p className="text-muted-foreground">
+              AI-классификация фото кузова и OCR-распознавание чеков
+            </p>
+          </div>
+
+          {latestCargoPhoto && (
+            <CargoAnalysisCard
+              photo={latestCargoPhoto}
+              route={activeRoute}
+              suggestions={pendingSuggestions}
+            />
+          )}
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Upload & Summary Column */}
+            <div className="space-y-6">
+              <PhotoUpload onUpload={handleUpload} />
+              <ReceiptSummary photos={photos} />
+            </div>
+
+            {/* Gallery Column */}
+            <div className="lg:col-span-2">
+              <PhotoGallery photos={photos} />
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+==================== 
+FILE: D:\loistics_new\components\photos\cargo-analysis-card.tsx
+====================
+
+"use client"
+
+import { useState } from "react"
+import type { Photo, Route, DogrizSuggestion } from "@/lib/types"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import {
+  Sparkles,
+  Truck,
+  Package,
+  MapPin,
+  Phone,
+  Check,
+  X,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Weight,
+  Box,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+
+interface CargoAnalysisCardProps {
+  photo: Photo
+  route?: Route
+  suggestions?: DogrizSuggestion[]
+  onAcceptSuggestion?: (suggestionId: string) => void
+  onRejectSuggestion?: (suggestionId: string) => void
+}
+
+export function CargoAnalysisCard({
+  photo,
+  route,
+  suggestions = [],
+  onAcceptSuggestion,
+  onRejectSuggestion,
+}: CargoAnalysisCardProps) {
+  const [showSuggestions, setShowSuggestions] = useState(true)
+
+  const fillPercent = photo.aiClassification?.cargoFillPercent || 0
+  const hasSuggestions = suggestions.length > 0
+
+  // Determine fill status
+  const getFillStatus = (percent: number) => {
+    if (percent >= 90) return { label: "Полная загрузка", color: "text-green-600", bg: "bg-green-500" }
+    if (percent >= 70) return { label: "Хорошая загрузка", color: "text-blue-600", bg: "bg-blue-500" }
+    if (percent >= 40) return { label: "Частичная загрузка", color: "text-amber-600", bg: "bg-amber-500" }
+    return { label: "Низкая загрузка", color: "text-red-600", bg: "bg-red-500" }
+  }
+
+  const fillStatus = getFillStatus(fillPercent)
+
+  return (
+    <Card className={cn("border-2", hasSuggestions ? "border-primary/50 bg-primary/5" : "border-border")}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/20">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            ИИ-анализ загрузки кузова
+          </CardTitle>
+          {hasSuggestions && <Badge className="bg-primary animate-pulse">Есть догруз!</Badge>}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Photo preview */}
+        <div className="flex gap-4">
+          <div className="w-32 h-24 rounded-lg overflow-hidden bg-secondary flex-shrink-0">
+            <img src={photo.url || "/placeholder.svg"} alt="Фото груза" className="w-full h-full object-cover" />
+          </div>
+
+          <div className="flex-1 space-y-3">
+            {/* Fill percentage */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium">Загрузка кузова</span>
+                <span className={cn("text-sm font-bold", fillStatus.color)}>{fillPercent}%</span>
+              </div>
+              <Progress value={fillPercent} className="h-3" />
+              <p className={cn("text-xs mt-1", fillStatus.color)}>{fillStatus.label}</p>
+            </div>
+
+            {/* AI description */}
+            <p className="text-sm text-muted-foreground">{photo.aiClassification?.description}</p>
+          </div>
+        </div>
+
+        {/* Available capacity info */}
+        {route && fillPercent < 90 && (
+          <div className="p-3 rounded-lg bg-secondary/50 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Truck className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm">Маршрут: {route.name}</span>
+              </div>
+            </div>
+            <Badge variant="outline">Свободно ~{Math.round(((100 - fillPercent) / 100) * 20)}т</Badge>
+          </div>
+        )}
+
+        {/* Dogriz suggestions */}
+        {hasSuggestions && (
+          <div className="space-y-3">
+            <button
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              className="flex items-center justify-between w-full text-sm font-medium"
+            >
+              <span className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                Предложения по догрузу ({suggestions.length})
+              </span>
+              {showSuggestions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+
+            {showSuggestions && (
+              <div className="space-y-3">
+                {suggestions.map((suggestion) => (
+                  <div key={suggestion.id} className="p-4 rounded-lg bg-background border border-border">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 space-y-2">
+                        {/* Order info */}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{suggestion.suggestedOrder.cargoType}</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {suggestion.suggestedOrder.source}
+                          </Badge>
+                        </div>
+
+                        {/* Route */}
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5" />
+                          <span>{suggestion.suggestedOrder.routeFrom}</span>
+                          <ArrowRight className="h-3 w-3" />
+                          <span>{suggestion.suggestedOrder.routeTo}</span>
+                        </div>
+
+                        {/* Weight and volume */}
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="flex items-center gap-1">
+                            <Weight className="h-3.5 w-3.5 text-muted-foreground" />
+                            {(suggestion.suggestedOrder.weight / 1000).toFixed(1)}т
+                          </span>
+                          {suggestion.suggestedOrder.volume && (
+                            <span className="flex items-center gap-1">
+                              <Box className="h-3.5 w-3.5 text-muted-foreground" />
+                              {suggestion.suggestedOrder.volume}м³
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Price */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-lg font-bold text-primary">
+                            +{suggestion.suggestedOrder.price?.toLocaleString("ru-RU")} ₽
+                          </span>
+                          <span className="text-sm text-muted-foreground">{suggestion.suggestedOrder.clientName}</span>
+                        </div>
+
+                        {/* AI reason */}
+                        <p className="text-xs text-muted-foreground italic">{suggestion.aiReason}</p>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                      <Button size="sm" className="flex-1" onClick={() => onAcceptSuggestion?.(suggestion.id)}>
+                        <Phone className="h-3.5 w-3.5 mr-1" />
+                        Позвонить
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 bg-transparent"
+                        onClick={() => onAcceptSuggestion?.(suggestion.id)}
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        Взять
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() => onRejectSuggestion?.(suggestion.id)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* No suggestions message */}
+        {!hasSuggestions && fillPercent < 70 && (
+          <div className="p-3 rounded-lg bg-secondary/30 text-center">
+            <p className="text-sm text-muted-foreground">ИИ ищет подходящие заказы для догруза...</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+==================== 
+FILE: D:\loistics_new\components\photos\photo-gallery.tsx
+====================
+
+"use client"
+
+import { useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import type { Photo } from "@/lib/types"
+import {
+  ImageIcon,
+  Truck,
+  Receipt,
+  FileText,
+  AlertTriangle,
+  Calendar,
+  Bot,
+  ZoomIn,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
+
+// Локальное определение типов
+type PhotoType = "cargo_before" | "cargo_after" | "damage" | "receipt" | "waybill"
+
+interface PhotoGalleryProps {
+  photos: Photo[]
+}
+
+const photoTypeConfig: Record<
+  string,
+  { label: string; icon: typeof ImageIcon; className: string }
+> = {
+  cargo_before: {
+    label: "До погрузки",
+    icon: Truck,
+    className: "bg-chart-2/20 text-chart-2",
+  },
+  cargo_after: {
+    label: "После погрузки",
+    icon: Truck,
+    className: "bg-success/20 text-success",
+  },
+  damage: {
+    label: "Повреждение",
+    icon: AlertTriangle,
+    className: "bg-destructive/20 text-destructive",
+  },
+  receipt: {
+    label: "Чек",
+    icon: Receipt,
+    className: "bg-warning/20 text-warning",
+  },
+  waybill: {
+    label: "Накладная",
+    icon: FileText,
+    className: "bg-primary/20 text-primary",
+  },
+  other: {
+    label: "Другое",
+    icon: ImageIcon,
+    className: "bg-secondary text-secondary-foreground",
+  },
+}
+
+export function PhotoGallery({ photos }: PhotoGalleryProps) {
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null)
+  const [filter, setFilter] = useState<PhotoType | "all">("all")
+
+  // Приводим к any, чтобы TS не ругался на расширенные типы
+  const safePhotos = photos as any[]
+
+  const filteredPhotos =
+    filter === "all" ? safePhotos : safePhotos.filter((p) => p.type === filter)
+
+  const currentIndex = selectedPhoto
+    ? filteredPhotos.findIndex((p) => p.id === selectedPhoto.id)
+    : -1
+
+  const navigatePhoto = (direction: "prev" | "next") => {
+    if (!selectedPhoto) return
+    const newIndex =
+      direction === "prev"
+        ? (currentIndex - 1 + filteredPhotos.length) % filteredPhotos.length
+        : (currentIndex + 1) % filteredPhotos.length
+    setSelectedPhoto(filteredPhotos[newIndex])
+  }
+
+  // Group photos by type
+  const photosByType = safePhotos.reduce(
+    (acc, photo) => {
+      const type = photo.type || "other"
+      if (!acc[type]) acc[type] = []
+      acc[type].push(photo)
+      return acc
+    },
+    {} as Record<string, any[]>,
+  )
+
+  const selectedAny = selectedPhoto as any
+
+  return (
+    <>
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-primary" />
+              Галерея фотографий
+            </CardTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              {Object.entries(photosByType).map((entry) => {
+                const type = entry[0]
+                const typePhotos = entry[1] as any[] // Явное приведение внутри map
+                
+                const config = photoTypeConfig[type] || photoTypeConfig.other
+                return (
+                  <Badge
+                    key={type}
+                    variant="secondary"
+                    className={`${config.className} cursor-pointer`}
+                    onClick={() =>
+                      setFilter(filter === type ? "all" : (type as PhotoType))
+                    }
+                  >
+                    {config.label}: {typePhotos.length}
+                  </Badge>
+                )
+              })}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {filteredPhotos.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Нет загруженных фотографий</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {filteredPhotos.map((photo) => {
+                const config =
+                  photoTypeConfig[photo.type] || photoTypeConfig.other
+                const TypeIcon = config.icon
+
+                return (
+                  <div
+                    key={photo.id}
+                    className="group relative aspect-[4/3] rounded-lg overflow-hidden bg-muted cursor-pointer"
+                    onClick={() => setSelectedPhoto(photo)}
+                  >
+                    <img
+                      src={photo.url || "/placeholder.svg"}
+                      alt={config.label}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                    />
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                    <Badge
+                      variant="secondary"
+                      className={`absolute top-2 left-2 ${config.className}`}
+                    >
+                      <TypeIcon className="h-3 w-3 mr-1" />
+                      {config.label}
+                    </Badge>
+
+                    {photo.ocrData?.amount && (
+                      <Badge
+                        variant="secondary"
+                        className="absolute top-2 right-2 bg-success/80 text-success-foreground"
+                      >
+                        {photo.ocrData.amount.toLocaleString()} ₽
+                      </Badge>
+                    )}
+
+                    <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-between text-xs text-white">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {photo.uploadedAt
+                            ? new Date(photo.uploadedAt).toLocaleDateString(
+                                "ru-RU",
+                              )
+                            : ""}
+                        </span>
+                        <ZoomIn className="h-4 w-4" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Photo Modal */}
+      <Dialog
+        open={!!selectedPhoto}
+        onOpenChange={() => setSelectedPhoto(null)}
+      >
+        <DialogContent className="max-w-4xl bg-card p-0 overflow-hidden">
+          {selectedAny && (
+            <>
+              <div className="relative">
+                <img
+                  src={selectedAny.url || "/placeholder.svg"}
+                  alt={
+                    (
+                      photoTypeConfig[selectedAny.type] ||
+                      photoTypeConfig.other
+                    ).label
+                  }
+                  className="w-full max-h-[60vh] object-contain bg-black"
+                />
+
+                {filteredPhotos.length > 1 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white hover:bg-black/70"
+                      onClick={() => navigatePhoto("prev")}
+                    >
+                      <ChevronLeft className="h-6 w-6" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white hover:bg-black/70"
+                      onClick={() => navigatePhoto("next")}
+                    >
+                      <ChevronRight className="h-6 w-6" />
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Badge
+                    variant="secondary"
+                    className={
+                      (
+                        photoTypeConfig[selectedAny.type] ||
+                        photoTypeConfig.other
+                      ).className
+                    }
+                  >
+                    {
+                      (
+                        photoTypeConfig[selectedAny.type] ||
+                        photoTypeConfig.other
+                      ).label
+                    }
+                  </Badge>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    {new Date(selectedAny.uploadedAt).toLocaleString("ru-RU")}
+                  </div>
+                </div>
+
+                {selectedAny.aiClassification && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-secondary/50">
+                    <Bot className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-sm font-medium mb-1">
+                        AI-анализ (
+                        {Math.round(
+                          selectedAny.aiClassification.confidence * 100,
+                        )}
+                        % уверенность)
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedAny.aiClassification.description}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {selectedAny.ocrData && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {selectedAny.ocrData.amount && (
+                      <div className="p-3 rounded-lg bg-secondary/50">
+                        <div className="text-xs text-muted-foreground">
+                          Сумма
+                        </div>
+                        <div className="text-lg font-bold text-primary">
+                          {selectedAny.ocrData.amount.toLocaleString()} ₽
+                        </div>
+                      </div>
+                    )}
+                    {selectedAny.ocrData.date && (
+                      <div className="p-3 rounded-lg bg-secondary/50">
+                        <div className="text-xs text-muted-foreground">
+                          Дата
+                        </div>
+                        <div className="font-medium">
+                          {selectedAny.ocrData.date}
+                        </div>
+                      </div>
+                    )}
+                    {selectedAny.ocrData.purpose && (
+                      <div className="p-3 rounded-lg bg-secondary/50">
+                        <div className="text-xs text-muted-foreground">
+                          Назначение
+                        </div>
+                        <div className="font-medium">
+                          {selectedAny.ocrData.purpose}
+                        </div>
+                      </div>
+                    )}
+                    {selectedAny.ocrData.vendor && (
+                      <div className="p-3 rounded-lg bg-secondary/50">
+                        <div className="text-xs text-muted-foreground">
+                          Поставщик
+                        </div>
+                        <div className="font-medium">
+                          {selectedAny.ocrData.vendor}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+==================== 
+FILE: D:\loistics_new\components\photos\photo-upload.tsx
+====================
+
+"use client"
+
+import type React from "react"
+import { useState, useCallback } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Upload, Camera, X, Loader2, Check, AlertCircle, Bot } from "lucide-react"
+
+// Локальные типы (в lib/types их нет)
+export type PhotoType = "cargo_before" | "cargo_after" | "damage" | "receipt" | "waybill"
+
+export interface PhotoUpload {
+  file: File
+  preview: string
+  status: "pending" | "analyzing" | "done" | "error"
+  result?: any // используем any для результата, чтобы не конфликтовать с Photo
+}
+
+interface PhotoUploadProps {
+  onUpload: (photos: PhotoUpload[]) => void
+}
+
+const photoTypeLabels: Record<PhotoType, string> = {
+  cargo_before: "Кузов до погрузки",
+  cargo_after: "Кузов после погрузки",
+  damage: "Повреждения",
+  receipt: "Чек",
+  waybill: "Накладная",
+}
+
+export function PhotoUpload({ onUpload }: PhotoUploadProps) {
+  const [uploads, setUploads] = useState<PhotoUpload[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleFiles = useCallback(
+    async (files: FileList) => {
+      const newUploads: PhotoUpload[] = Array.from(files).map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+        status: "pending" as const,
+      }))
+
+      setUploads((prev) => [...prev, ...newUploads])
+
+      for (let i = 0; i < newUploads.length; i++) {
+        const index = uploads.length + i
+
+        setUploads((prev) =>
+          prev.map((u, idx) => (idx === index ? { ...u, status: "analyzing" } : u)),
+        )
+
+        await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000))
+
+        const types: PhotoType[] = ["cargo_before", "cargo_after", "receipt", "waybill", "damage"]
+        const detectedType = types[Math.floor(Math.random() * types.length)]
+        const isReceipt = detectedType === "receipt" || detectedType === "waybill"
+
+        setUploads((prev) =>
+          prev.map((u, idx) =>
+            idx === index
+              ? {
+                  ...u,
+                  status: "done",
+                  result: {
+                    id: `upload-${Date.now()}-${idx}`,
+                    orderId: "",
+                    type: detectedType,
+                    url: u.preview,
+                    uploadedBy: "current-user",
+                    uploadedAt: new Date(),
+                    aiClassification: {
+                      detectedType,
+                      confidence: 0.85 + Math.random() * 0.14,
+                      description: isReceipt
+                        ? "Документ успешно распознан. Данные извлечены."
+                        : "Фото классифицировано. Состояние зафиксировано.",
+                    },
+                    ...(isReceipt && {
+                      ocrData: {
+                        amount: Math.floor(1000 + Math.random() * 5000),
+                        date: new Date().toISOString().split("T")[0],
+                        purpose: detectedType === "receipt" ? "Топливо" : "ТТН",
+                        vendor: "Распознанный поставщик",
+                      },
+                    }),
+                  },
+                }
+              : u,
+          ),
+        )
+      }
+    },
+    [uploads.length],
+  )
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setIsDragging(false)
+      if (e.dataTransfer.files.length) {
+        handleFiles(e.dataTransfer.files)
+      }
+    },
+    [handleFiles],
+  )
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
+  }
+
+  const removeUpload = (index: number) => {
+    setUploads((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleSave = () => {
+    const completedUploads = uploads.filter((u) => u.status === "done")
+    onUpload(completedUploads)
+    setUploads([])
+  }
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Camera className="h-5 w-5 text-primary" />
+          Загрузка фотографий
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+            isDragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+          }`}
+        >
+          <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground mb-2">Перетащите фото сюда или</p>
+          <label>
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => e.target.files && handleFiles(e.target.files)}
+            />
+            <Button variant="outline" size="sm" asChild>
+              <span className="cursor-pointer">Выберите файлы</span>
+            </Button>
+          </label>
+          <p className="text-xs text-muted-foreground mt-4">
+            ИИ автоматически определит тип: кузов, чеки или накладные
+          </p>
+        </div>
+
+        {uploads.length > 0 && (
+          <div className="space-y-3">
+            {uploads.map((upload, index) => (
+              <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+                <div className="h-16 w-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                  <img
+                    src={upload.preview || "/placeholder.svg"}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {upload.status === "pending" && <Badge variant="secondary">Ожидание</Badge>}
+                    {upload.status === "analyzing" && (
+                      <Badge variant="secondary" className="bg-primary/20 text-primary">
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        Анализ...
+                      </Badge>
+                    )}
+                    {upload.status === "done" && upload.result && (
+                      <>
+                        <Badge variant="secondary" className="bg-success/20 text-success">
+                          <Check className="h-3 w-3 mr-1" />
+                          {photoTypeLabels[upload.result.type as PhotoType]}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round((upload.result.aiClassification?.confidence || 0) * 100)}% уверенность
+                        </span>
+                      </>
+                    )}
+                    {upload.status === "error" && (
+                      <Badge variant="destructive">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Ошибка
+                      </Badge>
+                    )}
+                  </div>
+
+                  {upload.status === "analyzing" && <Progress value={66} className="h-1" />}
+
+                  {upload.status === "done" && upload.result?.aiClassification && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {upload.result.aiClassification.description}
+                    </p>
+                  )}
+
+                  {upload.status === "done" && upload.result?.ocrData && (
+                    <div className="flex items-center gap-2 mt-1 text-xs">
+                      <Bot className="h-3 w-3 text-primary" />
+                      <span className="text-primary font-medium">
+                        {upload.result.ocrData.amount?.toLocaleString()} ₽
+                      </span>
+                      <span className="text-muted-foreground">— {upload.result.ocrData.purpose}</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button variant="ghost" size="icon" className="flex-shrink-0" onClick={() => removeUpload(index)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+
+            {uploads.some((u) => u.status === "done") && (
+              <Button className="w-full bg-primary text-primary-foreground" onClick={handleSave}>
+                <Check className="h-4 w-4 mr-2" />
+                Сохранить {uploads.filter((u) => u.status === "done").length} фото
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+==================== 
+FILE: D:\loistics_new\components\photos\receipt-summary.tsx
+====================
+
+"use client"
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import type { Photo } from "@/lib/types"
+import {
+  Receipt,
+  Fuel,
+  ParkingCircle,
+  Wrench,
+  FileText,
+  TrendingUp,
+} from "lucide-react"
+
+interface ReceiptSummaryProps {
+  photos: Photo[]
+}
+
+export function ReceiptSummary({ photos }: ReceiptSummaryProps) {
+  // Приведение к any, т.к. ocrData нет в типе Photo
+  const safePhotos = photos as any[]
+
+  const receipts = safePhotos.filter(
+    (p) => p.type === "receipt" && p.ocrData?.amount,
+  )
+
+  const totalAmount = receipts.reduce(
+    (sum, r) => sum + (r.ocrData?.amount || 0),
+    0,
+  )
+
+  // Group by purpose
+  const byPurpose = receipts.reduce(
+    (acc, receipt) => {
+      const purpose = receipt.ocrData?.purpose || "Прочее"
+      if (!acc[purpose]) {
+        acc[purpose] = { count: 0, amount: 0 }
+      }
+      acc[purpose].count++
+      acc[purpose].amount += receipt.ocrData?.amount || 0
+      return acc
+    },
+    {} as Record<string, { count: number; amount: number }>,
+  )
+
+  const purposeIcons: Record<string, typeof Receipt> = {
+    Топливо: Fuel,
+    "Топливо ДТ": Fuel,
+    Стоянка: ParkingCircle,
+    Ремонт: Wrench,
+    ТТН: FileText,
+  }
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-primary" />
+            Сводка по чекам
+          </span>
+          <Badge variant="secondary" className="bg-primary/20 text-primary">
+            {receipts.length} чеков
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Total */}
+        <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-muted-foreground">
+                Общая сумма расходов
+              </div>
+              <div className="text-3xl font-bold text-primary">
+                {totalAmount.toLocaleString()} ₽
+              </div>
+            </div>
+            <TrendingUp className="h-8 w-8 text-primary opacity-50" />
+          </div>
+        </div>
+
+        {/* By Purpose */}
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-muted-foreground">
+            По категориям
+          </div>
+          {Object.entries(byPurpose).map((entry) => {
+            const purpose = entry[0]
+            const data = entry[1] as { count: number; amount: number } // Явное приведение внутри map
+
+            const Icon = purposeIcons[purpose] || Receipt
+            const percentage =
+              totalAmount > 0
+                ? Math.round((data.amount / totalAmount) * 100)
+                : 0
+
+            return (
+              <div
+                key={purpose}
+                className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50"
+              >
+                <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Icon className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{purpose}</span>
+                    <span className="font-bold">
+                      {data.amount.toLocaleString()} ₽
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{data.count} чеков</span>
+                    <span>{percentage}% от общей суммы</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {receipts.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <Receipt className="h-10 w-10 mx-auto mb-2 opacity-50" />
+            <p>Нет распознанных чеков</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+==================== 
+FILE: D:\loistics_new\lib\types.ts
+====================
+
+// lib/types.ts
+
+// ============================================
+// ЧАТ
+// ============================================
+export interface ChatMessage {
+  id: string
+  senderId: string
+  senderRole: "driver" | "logist"
+  senderName: string
+  recipientId?: string
+  routeId?: string
+  content: string
+  type: "text" | "photo" | "location" | "alert"
+  isImportant?: boolean
+  importantReason?: string | null
+  attachmentUrl?: string
+  isRead: boolean
+  createdAt: Date
+}
+
+// ============================================
+// ВОДИТЕЛИ
+// ============================================
+export interface Driver {
+  id: string
+  name: string
+  phone: string
+  vehicleId?: string
+  vehicleType: string
+  vehiclePlate: string
+  currentLocation?: string
+  latitude?: number
+  longitude?: number
+  lastGpsUpdate?: Date
+  status: "available" | "busy" | "offline"
+  ordersCompleted: number
+  rating: number
+  licenseNumber?: string
+  licenseExpiry?: Date
+  medicalExpiry?: Date
+  hiredAt?: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
+// ============================================
+// ТРАНСПОРТ
+// ============================================
+export interface Vehicle {
+  id: string
+  plate: string
+  type: string
+  brand?: string
+  model?: string
+  year?: number
+  capacity: number
+  volume?: number
+  length?: number
+  width?: number
+  height?: number
+  features: string[]
+  driverId?: string
+  status: "available" | "in_use" | "maintenance"
+  lastMaintenanceDate?: Date
+  nextMaintenanceDate?: Date
+  mileage?: number
+  insuranceExpiry?: Date
+  inspectionExpiry?: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
+// ============================================
+// ЗАКАЗЫ
+// ============================================
+export interface Order {
+  id: string
+  source: string
+  sourceId?: string
+  routeFrom: string
+  routeTo: string
+  distance: number
+  weight: number
+  volume?: number
+  cargoType: string
+  loadingType: string
+  requirements?: string
+  price?: number
+  priceNegotiable: boolean
+  paymentType?: string
+  vatType?: string
+  deferredDays?: number
+  isPaid: boolean
+  paidAt?: Date
+  dueDate?: Date
+  clientName?: string
+  clientContact: string
+  clientFirmId?: string
+  deadline: Date
+  status: "new" | "confirmed" | "in_transit" | "delivered" | "cancelled" | "processing"
+  priority: "profitable" | "possible" | "needs_clarification" | "reject"
+  aiScore: number
+  aiReason?: string
+  assignedDriverId?: string
+  assignedVehicleId?: string
+  routeId?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+// ============================================
+// МАРШРУТЫ
+// ============================================
+export interface Route {
+  id: string
+  name: string
+  status: "pending" | "active" | "completed" | "cancelled"
+  driver?: Driver
+  vehicle?: Vehicle
+  orders: Order[]
+  totalDistance: number
+  totalWeight: number
+  estimatedDuration: number
+  startTime?: Date
+  endTime?: Date
+  createdAt: Date
+}
+
+// ============================================
+// ФОТО
+// ============================================
+export interface Photo {
+  id: string
+  url: string
+  type: "cargo" | "document" | "damage" | "other"
+  driverId: string
+  orderId?: string
+  routeId?: string
+  description?: string
+  aiClassification?: {
+    cargoType?: string
+    cargoFillPercent?: number
+    description?: string
+    issues?: string[]
+  }
+  createdAt: Date
+}
+
+// ============================================
+// ДОГРУЗ (AI-подсказки)
+// ============================================
+export interface DogrizSuggestion {
+  id: string
+  currentFillPercent: number
+  availableCapacity: number
+  suggestedOrder: {
+    id: string
+    cargoType: string
+    source: string
+    routeFrom: string
+    routeTo: string
+    weight: number
+    volume?: number
+    price?: number
+    clientName?: string
+  }
+  aiReason: string
+}
+
+// ============================================
+// ПОЛЬЗОВАТЕЛИ
+// ============================================
+export interface User {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  role: "admin" | "logist" | "driver"
+  driverId?: string
+  avatar?: string
+  createdAt: Date
+}

@@ -1,0 +1,105 @@
+
+> my-v0-project@0.1.0 build
+> prisma generate && next build
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+
+✔ Generated Prisma Client (v5.22.0) to .\node_modules\@prisma\client in 935ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want real-time updates to your database without manual polling? Discover how with Pulse: https://pris.ly/tip-0-pulse
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   ▲ Next.js 16.0.3 (Turbopack)
+   - Environments: .env.local, .env
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled successfully in 79s
+   Running TypeScript ...
+   Collecting page data using 1 worker ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 1 worker (0/56) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 1 worker (14/56) 
+   Generating static pages using 1 worker (28/56) 
+   Generating static pages using 1 worker (42/56) 
+ ✓ Generating static pages using 1 worker (56/56) in 7.6s
+   Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/ati/cache
+├ ƒ /api/ati/cities
+├ ƒ /api/ati/cron
+├ ƒ /api/ati/debug
+├ ƒ /api/ati/debug-dump
+├ ƒ /api/ati/geo
+├ ƒ /api/ati/import
+├ ƒ /api/ati/sandbox
+├ ƒ /api/ati/scan
+├ ƒ /api/chat
+├ ƒ /api/dashboard/routes
+├ ƒ /api/drivers
+├ ƒ /api/drivers/[id]
+├ ƒ /api/drivers/[id]/active-order
+├ ƒ /api/drivers/[id]/location
+├ ƒ /api/drivers/locations
+├ ƒ /api/fleet
+├ ƒ /api/fleet/assign
+├ ƒ /api/fleet/drivers
+├ ƒ /api/fleet/settings
+├ ƒ /api/fleet/stats
+├ ƒ /api/fleet/vehicles
+├ ƒ /api/m/base-route
+├ ƒ /api/m/location
+├ ƒ /api/m/login
+├ ƒ /api/m/maintenance
+├ ƒ /api/m/me
+├ ƒ /api/m/orders
+├ ƒ /api/m/photos
+├ ƒ /api/m/route/accept-load
+├ ƒ /api/m/shift
+├ ƒ /api/m/sos
+├ ƒ /api/m/vehicle
+├ ƒ /api/orders
+├ ƒ /api/orders/[id]
+├ ƒ /api/routes
+├ ƒ /api/routes/[routeId]
+├ ƒ /api/routes/[routeId]/add-load
+├ ƒ /api/routes/[routeId]/complete
+├ ƒ /api/traffic/batch
+├ ƒ /api/vehicles
+├ ƒ /api/vehicles/[id]
+├ ○ /chat
+├ ○ /dashboard
+├ ƒ /debug
+├ ○ /driver
+├ ○ /drivers
+├ ○ /fleet
+├ ○ /m
+├ ○ /m/chat
+├ ○ /m/history
+├ ○ /m/login
+├ ○ /m/maintenance
+├ ○ /m/notifications
+├ ○ /m/orders
+├ ƒ /m/orders/[id]
+├ ○ /m/photo
+├ ○ /m/profile
+├ ○ /m/vehicle
+├ ○ /orders
+├ ○ /payments
+├ ○ /photos
+├ ○ /reports
+└ ○ /routes
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

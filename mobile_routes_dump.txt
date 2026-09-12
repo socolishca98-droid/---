@@ -1,0 +1,1462 @@
+MOBILE ROUTES SNAPSHOT
+Generated: 01/19/2026 23:50:17
+
+
+==================== 
+FILE: D:\loistics_new\app\api\m\base-route\route.ts
+====================
+
+import { NextRequest, NextResponse } from "next/server"
+
+const BASE_LAT = 57.6261
+const BASE_LNG = 39.8845
+
+function toRad(deg: number) {
+  return (deg * Math.PI) / 180
+}
+
+function haversineDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+
+    const driverId = body?.driverId as string | undefined
+    const latitude = body?.latitude as number | undefined
+    const longitude = body?.longitude as number | undefined
+
+    if (
+      !driverId ||
+      typeof latitude !== "number" ||
+      typeof longitude !== "number"
+    ) {
+      return NextResponse.json(
+        { success: false, error: "driverId, latitude, longitude обязательны" },
+        { status: 400 }
+      )
+    }
+
+    const distanceKm = haversineDistanceKm(latitude, longitude, BASE_LAT, BASE_LNG)
+    const avgSpeedKmH = 60
+    const etaMinutes = Math.round((distanceKm / avgSpeedKmH) * 60)
+
+    return NextResponse.json({
+      success: true,
+      distanceKm: Math.round(distanceKm),
+      etaMinutes,
+    })
+  } catch (error) {
+    console.error("POST /api/m/base-route error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\location\route.ts
+====================
+
+// app/api/m/location/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+// POST /api/m/location
+// body: { driverId: string; lat: number; lng: number }
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const { driverId, lat, lng } = body as {
+      driverId?: string
+      lat?: number
+      lng?: number
+    }
+
+    if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
+      return NextResponse.json(
+        { success: false, error: "driverId, lat, lng required" },
+        { status: 400 },
+      )
+    }
+
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+    })
+
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: "Driver not found" },
+        { status: 404 },
+      )
+    }
+
+    const updated = await prisma.driver.update({
+      where: { id: driverId },
+      data: {
+        latitude: lat,
+        longitude: lng,
+        lastGpsUpdate: new Date(),
+      },
+    })
+
+    return NextResponse.json({ success: true, driver: updated })
+  } catch (error: any) {
+    console.error("[m/location] POST Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "Location update error" },
+      { status: 500 },
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\login\route.ts
+====================
+
+// app/api/m/login/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+const TEST_ORGANIZATION_NAME = "АИ Логистика"
+
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.startsWith("8") && digits.length === 11) return "7" + digits.slice(1)
+  return digits
+}
+
+function normalizeOrgName(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json()) as {
+      phone?: string
+      organization?: string
+    }
+
+    const phone = body.phone
+    const organization = body.organization
+
+    if (!phone || !organization) {
+      return NextResponse.json(
+        { success: false, error: "Организация и телефон обязательны" },
+        { status: 400 }
+      )
+    }
+
+    const normalizedOrg = normalizeOrgName(organization)
+    const expectedOrg = normalizeOrgName(TEST_ORGANIZATION_NAME)
+
+    // Пока у нас одна тестовая организация — просто проверяем имя.
+    // Когда появится модель Organization, сюда добавится фильтр по orgId.
+    if (normalizedOrg !== expectedOrg) {
+      return NextResponse.json(
+        { success: false, error: "Организация не найдена" },
+        { status: 404 }
+      )
+    }
+
+    const normalizedPhone = normalizePhone(phone)
+    const last10 = normalizedPhone.slice(-10)
+
+    const driver = await prisma.driver.findFirst({
+      where: {
+        phone: { contains: last10 },
+        // TODO: когда появится orgId у Driver:
+        // orgId: someOrgId
+      },
+    })
+
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: "Водитель не найден" },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      driver: {
+        id: driver.id,
+        name: driver.name,
+        phone: driver.phone,
+        vehicleType: driver.vehicleType,
+        vehiclePlate: driver.vehiclePlate,
+      },
+    })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error"
+    console.error("POST /api/m/login error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\maintenance\route.ts
+====================
+
+// app/api/m/maintenance/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+// GET — текущее активное ТО
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const driverId = searchParams.get("driverId")
+    const vehicleId = searchParams.get("vehicleId")
+
+    let targetVehicleId = vehicleId
+
+    // Если нет vehicleId, ищем машину водителя
+    if (!targetVehicleId && driverId) {
+      const driver = await prisma.driver.findUnique({
+        where: { id: driverId },
+      })
+      // Используем null, чтобы совпадало с типом переменной
+      targetVehicleId = driver?.vehicleId || null
+    }
+
+    if (!targetVehicleId) {
+      return NextResponse.json({
+        success: true,
+        maintenance: null,
+      })
+    }
+
+    const maintenance = await prisma.maintenanceLog.findFirst({
+      where: {
+        vehicleId: targetVehicleId,
+        status: { in: ["in_progress", "planned"] },
+      },
+      orderBy: { startedAt: "desc" },
+    })
+
+    return NextResponse.json({
+      success: true,
+      maintenance,
+    })
+  } catch (error) {
+    console.error("GET /api/m/maintenance error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
+// POST — начать/запланировать ТО
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+
+    const {
+      driverId,
+      vehicleId,
+      type,
+      description,
+      mileage,
+      cost,
+      performer,
+      serviceName,
+      status = "in_progress",
+      plannedDate,
+    } = body as {
+      driverId?: string
+      vehicleId?: string
+      type?: string
+      description?: string
+      mileage?: number | null
+      cost?: number | null
+      performer?: "driver" | "service"
+      serviceName?: string | null
+      status?: "in_progress" | "planned"
+      plannedDate?: string
+    }
+
+    if (!type || !description) {
+      return NextResponse.json(
+        { success: false, error: "type и description обязательны" },
+        { status: 400 }
+      )
+    }
+
+    let finalVehicleId = vehicleId
+
+    if (!finalVehicleId && driverId) {
+      const driver = await prisma.driver.findUnique({
+        where: { id: driverId },
+      })
+      finalVehicleId = driver?.vehicleId || undefined
+    }
+
+    if (!finalVehicleId) {
+      return NextResponse.json(
+        { success: false, error: "Не указан автомобиль" },
+        { status: 400 }
+      )
+    }
+
+    const startDate = plannedDate ? new Date(plannedDate) : new Date()
+
+    const maintenance = await prisma.maintenanceLog.create({
+      data: {
+        vehicleId: finalVehicleId,
+        driverId, // может быть null
+        type,
+        description,
+        mileage: mileage ?? null,
+        cost: cost ?? null,
+        performer: performer === "service" ? "service" : "driver",
+        serviceName: performer === "service" ? serviceName || null : null,
+        status: status,
+        startedAt: startDate,
+      },
+    })
+
+    // Если статус "in_progress" — обновляем статус машины и водителей
+    if (status === "in_progress") {
+      // Обновляем машину
+      await prisma.vehicle.update({
+        where: { id: finalVehicleId },
+        data: { status: "maintenance" },
+      })
+
+      // Обновляем всех водителей, привязанных к этой машине
+      // (Убрали лишний запрос findUnique с include, который вызывал ошибку)
+      await prisma.driver.updateMany({
+        where: { vehicleId: finalVehicleId },
+        data: { status: "maintenance" },
+      })
+    }
+
+    return NextResponse.json({
+      success: true,
+      maintenance,
+    })
+  } catch (error) {
+    console.error("POST /api/m/maintenance error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
+// PATCH — завершить ТО
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json()
+
+    const { maintenanceId, cost } = body as {
+      maintenanceId?: string
+      cost?: number | null
+    }
+
+    if (!maintenanceId) {
+      return NextResponse.json(
+        { success: false, error: "maintenanceId обязателен" },
+        { status: 400 }
+      )
+    }
+
+    const maintenance = await prisma.maintenanceLog.update({
+      where: { id: maintenanceId },
+      data: {
+        status: "completed",
+        completedAt: new Date(),
+        cost: cost ?? undefined,
+      },
+    })
+
+    // Машина снова свободна
+    await prisma.vehicle.update({
+      where: { id: maintenance.vehicleId },
+      data: {
+        status: "available",
+        lastMaintenanceDate: new Date(),
+      },
+    })
+
+    // Водители снова свободны
+    await prisma.driver.updateMany({
+      where: { vehicleId: maintenance.vehicleId },
+      data: { status: "available" },
+    })
+
+    return NextResponse.json({
+      success: true,
+      maintenance,
+    })
+  } catch (error) {
+    console.error("PATCH /api/m/maintenance error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\me\route.ts
+====================
+
+// app/api/m/me/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get('driverId')
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: 'driverId обязателен' },
+        { status: 400 }
+      )
+    }
+
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        vehicleType: true,
+        vehiclePlate: true,
+        status: true,
+        latitude: true,
+        longitude: true,
+        lastGpsUpdate: true,
+        ordersCompleted: true,
+        rating: true,
+        licenseNumber: true,
+        licenseExpiry: true,
+        medicalExpiry: true,
+        hiredAt: true,
+        createdAt: true,
+      }
+    })
+
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: 'Водитель не найден' },
+        { status: 404 }
+      )
+    }
+
+    // Получаем активную смену
+    const activeShift = await prisma.driverShift.findFirst({
+      where: {
+        driverId: driverId,
+        endedAt: null
+      },
+      orderBy: {
+        startedAt: 'desc'
+      }
+    })
+
+    // Статистика за сегодня
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const todayStats = await prisma.order.aggregate({
+      where: {
+        assignedDriverId: driverId,
+        status: 'delivered',
+        updatedAt: { gte: today }
+      },
+      _count: true,
+      _sum: {
+        distance: true,
+        price: true
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      driver,
+      activeShift: activeShift || null,
+      todayStats: {
+        ordersDelivered: todayStats._count || 0,
+        distanceKm: todayStats._sum.distance || 0,
+        earnings: todayStats._sum.price || 0
+      }
+    })
+
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[Me API] Error:', message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\orders\route.ts
+====================
+
+// app/api/m/orders/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get('driverId')
+    const status = searchParams.get('status') // 'active' | 'history'
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: 'driverId обязателен' },
+        { status: 400 }
+      )
+    }
+
+    const activeStatuses = [
+      'new',
+      'confirmed',
+      'in_transit',
+      'processing',
+      'loading',
+      'unloading',
+    ]
+
+    const historyStatuses = ['delivered', 'cancelled']
+
+    const orders = await prisma.order.findMany({
+      where: {
+        assignedDriverId: driverId,
+        status: {
+          in: status === 'history' ? historyStatuses : activeStatuses,
+        },
+      },
+      orderBy: {
+        createdAt: status === 'history' ? 'desc' : 'asc',
+      },
+      take: 50,
+    })
+
+    // Статистика для водителя
+    const stats = await prisma.order.aggregate({
+      where: {
+        assignedDriverId: driverId,
+        status: 'delivered',
+      },
+      _count: true,
+      _sum: {
+        price: true,
+        distance: true,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      orders,
+      stats: {
+        completedOrders: stats._count || 0,
+        totalEarnings: stats._sum.price || 0,
+        totalDistance: stats._sum.distance || 0,
+      },
+    })
+  } catch (error: unknown) {
+    console.error('GET /api/m/orders error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\photos\route.ts
+====================
+
+// app/api/m/photos/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+// Получить фото водителя
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get("driverId")
+    const orderId = searchParams.get("orderId")
+    const type = searchParams.get("type")
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: "driverId обязателен" },
+        { status: 400 }
+      )
+    }
+
+    const where: Record<string, string> = { driverId }
+    if (orderId) where.orderId = orderId
+    if (type) where.type = type
+
+    const photos = await prisma.photo.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+
+    return NextResponse.json({
+      success: true,
+      photos,
+    })
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error"
+    console.error("[Photos GET] Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+// Загрузить новое фото (JSON: { driverId, orderId, type, url, description })
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { driverId, orderId, type, url, description } = body
+
+    if (!driverId || !type || !url) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "driverId, type и url обязательны",
+        },
+        { status: 400 }
+      )
+    }
+
+    const validTypes = [
+      "cargo_before",
+      "cargo_after",
+      "receipt",
+      "waybill",
+      "damage",
+      "document",
+    ]
+
+    if (!validTypes.includes(type)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Неверный тип фото. Допустимые: ${validTypes.join(
+            ", "
+          )}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const photo = await prisma.photo.create({
+      data: {
+        driverId,
+        orderId: orderId || null,
+        type,
+        url,
+        description: description || null,
+      },
+    })
+
+    // Создаём уведомление для логиста
+    await prisma.notification.create({
+      data: {
+        userId: "logist",
+        userRole: "logist",
+        type: "new_photo",
+        title: "Новое фото от водителя",
+        message: `Водитель загрузил фото: ${type}`,
+        driverId,
+        orderId: orderId || null,
+        photoId: photo.id,
+        priority: type === "damage" ? "high" : "normal",
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      photo,
+    })
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error"
+    console.error("[Photos POST] Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+// Удалить фото
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "id обязателен" },
+        { status: 400 }
+      )
+    }
+
+    await prisma.photo.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error"
+    console.error("[Photos DELETE] Error:", message)
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\route\accept-load\route.ts
+====================
+
+// app/api/m/route/accept-load/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { orderId, driverId, accept, rejectionReason } = body as {
+      orderId: string
+      driverId: string
+      accept: boolean
+      rejectionReason?: string
+    }
+
+    if (!orderId || !driverId) {
+      return NextResponse.json(
+        { success: false, error: "orderId и driverId обязательны" },
+        { status: 400 }
+      )
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+    })
+
+    if (!order) {
+      return NextResponse.json(
+        { success: false, error: "Заказ не найден" },
+        { status: 404 }
+      )
+    }
+
+    if (order.assignedDriverId !== driverId) {
+      return NextResponse.json(
+        { success: false, error: "Заказ назначен другому водителю" },
+        { status: 403 }
+      )
+    }
+
+    if (!order.proposedToDriver) {
+      return NextResponse.json(
+        { success: false, error: "Заказ не требует подтверждения" },
+        { status: 400 }
+      )
+    }
+
+    if (accept) {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: "confirmed",
+          proposedToDriver: false,
+          acceptedAt: new Date(),
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "Догруз принят",
+      })
+    } else {
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "rejected",
+            proposedToDriver: false,
+            rejectedAt: new Date(),
+            rejectionReason: rejectionReason || "Отклонено водителем",
+          },
+        })
+
+        await tx.notification.create({
+          data: {
+            userId: "logist",
+            userRole: "logist",
+            type: "load_rejected",
+            title: "Догруз отклонён",
+            message: `Водитель отклонил: ${order.routeFrom} → ${order.routeTo}. Причина: ${rejectionReason || "Не указана"}`,
+            orderId: order.id,
+            routeId: order.routeId,
+            priority: "high",
+          },
+        })
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "Догруз отклонён",
+      })
+    }
+  } catch (error: any) {
+    console.error("[Accept Load] Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\shift\route.ts
+====================
+
+// app/api/m/shift/route.ts
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+
+async function getActiveOrderForDriver(driverId: string) {
+  return prisma.order.findFirst({
+    where: {
+      assignedDriverId: driverId,
+      status: { in: ACTIVE_ORDER_STATUSES as any },
+    },
+    orderBy: { createdAt: "asc" },
+  })
+}
+
+// GET /api/m/shift?driverId=...
+// Текущая активная смена + активный заказ (если есть)
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get("driverId")
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: "driverId required" },
+        { status: 400 },
+      )
+    }
+
+    const [shift, activeOrder] = await Promise.all([
+      prisma.driverShift.findFirst({
+        where: {
+          driverId,
+          endedAt: null,
+        },
+        orderBy: { startedAt: "desc" },
+      }),
+      getActiveOrderForDriver(driverId),
+    ])
+
+    return NextResponse.json({
+      success: true,
+      shift,
+      activeOrder,
+    })
+  } catch (error: any) {
+    console.error("[m/shift] GET Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "Shift GET error" },
+      { status: 500 },
+    )
+  }
+}
+
+// POST /api/m/shift
+// body: { driverId: string }
+// Старт смены:
+// - если есть активный заказ → Shift.status = 'driving', Driver.status = 'busy'
+// - если нет заказа → Shift.status = 'waiting', Driver.status = 'available'
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const { driverId } = body as { driverId?: string }
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: "driverId required" },
+        { status: 400 },
+      )
+    }
+
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+    })
+
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: "Driver not found" },
+        { status: 404 },
+      )
+    }
+
+    // Проверяем, что нет уже активной смены
+    const existingShift = await prisma.driverShift.findFirst({
+      where: { driverId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    })
+
+    if (existingShift) {
+      return NextResponse.json({
+        success: true,
+        alreadyActive: true,
+        shift: existingShift,
+      })
+    }
+
+    const activeOrder = await getActiveOrderForDriver(driverId)
+
+    const { shift } = await prisma.$transaction(async (tx) => {
+      const shiftStatus = activeOrder ? "driving" : "waiting"
+
+      const newShift = await tx.driverShift.create({
+        data: {
+          driverId,
+          status: shiftStatus,
+          startedAt: new Date(),
+          lastStatusChangeAt: new Date(),
+        },
+      })
+
+      // Driver.status в БД:
+      //   maintenance — только руками/ТО
+      //   busy       — есть активный заказ
+      //   available  — нет заказа
+      if (driver.status !== "maintenance") {
+        await tx.driver.update({
+          where: { id: driverId },
+          data: {
+            status: activeOrder ? "busy" : "available",
+          },
+        })
+      }
+
+      return { shift: newShift }
+    })
+
+    return NextResponse.json({
+      success: true,
+      shift,
+      activeOrder,
+    })
+  } catch (error: any) {
+    console.error("[m/shift] POST Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "Shift start error" },
+      { status: 500 },
+    )
+  }
+}
+
+// PATCH /api/m/shift
+// body: { driverId: string, status: 'driving' | 'waiting' | 'resting' | 'sleeping' | 'loading' | 'unloading' }
+// Обновление статуса текущей смены (для карты / аналитики)
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const { driverId, status } = body as {
+      driverId?: string
+      status?: string
+    }
+
+    if (!driverId || !status) {
+      return NextResponse.json(
+        { success: false, error: "driverId and status required" },
+        { status: 400 },
+      )
+    }
+
+    const shift = await prisma.driverShift.findFirst({
+      where: { driverId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    })
+
+    if (!shift) {
+      return NextResponse.json(
+        { success: false, error: "No active shift" },
+        { status: 400 },
+      )
+    }
+
+    const allowedStatuses = [
+      "driving",
+      "waiting",
+      "resting",
+      "sleeping",
+      "loading",
+      "unloading",
+    ]
+    if (!allowedStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid shift status" },
+        { status: 400 },
+      )
+    }
+
+    const updated = await prisma.driverShift.update({
+      where: { id: shift.id },
+      data: {
+        status,
+        lastStatusChangeAt: new Date(),
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      shift: updated,
+    })
+  } catch (error: any) {
+    console.error("[m/shift] PATCH Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "Shift update error" },
+      { status: 500 },
+    )
+  }
+}
+
+// DELETE /api/m/shift?driverId=...
+// Завершение смены:
+// - если нет активных заказов → Driver.status = 'available'
+// - если есть активные заказы (теоретически) → Driver.status = 'busy'
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const driverId = searchParams.get("driverId")
+
+    if (!driverId) {
+      return NextResponse.json(
+        { success: false, error: "driverId required" },
+        { status: 400 },
+      )
+    }
+
+    const shift = await prisma.driverShift.findFirst({
+      where: { driverId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    })
+
+    if (!shift) {
+      return NextResponse.json({
+        success: true,
+        alreadyEnded: true,
+      })
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.driverShift.update({
+        where: { id: shift.id },
+        data: {
+          endedAt: new Date(),
+          lastStatusChangeAt: new Date(),
+        },
+      })
+
+      const activeOrdersCount = await tx.order.count({
+        where: {
+          assignedDriverId: driverId,
+          status: { in: ACTIVE_ORDER_STATUSES as any },
+        },
+      })
+
+      const newStatus = activeOrdersCount > 0 ? "busy" : "available"
+
+      await tx.driver.update({
+        where: { id: driverId },
+        data: {
+          status: newStatus,
+        },
+      })
+    })
+
+    return NextResponse.json({
+      success: true,
+    })
+  } catch (error: any) {
+    console.error("[m/shift] DELETE Error:", error)
+    return NextResponse.json(
+      { success: false, error: error.message || "Shift end error" },
+      { status: 500 },
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\sos\route.ts
+====================
+
+// app/api/m/sos/route.ts
+
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+// Типы SOS сигналов
+const SOS_LABELS: Record<string, string> = {
+  accident: '🚨 ДТП / Авария',
+  breakdown: '🔧 Поломка ТС',
+  medical: '🏥 Проблемы со здоровьем',
+  robbery: '🚔 Ограбление / Угроза',
+  cargo: '📦 Проблема с грузом',
+  other: '⚠️ Другая ситуация',
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { driverId, type, latitude, longitude, message, orderId } = body
+    
+    // Валидация
+    if (!driverId || !type) {
+      return NextResponse.json(
+        { success: false, error: 'driverId and type are required' },
+        { status: 400 }
+      )
+    }
+
+    if (latitude === undefined || longitude === undefined) {
+      return NextResponse.json(
+        { success: false, error: 'GPS coordinates required for SOS' },
+        { status: 400 }
+      )
+    }
+
+    // Получаем данные водителя
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+      select: { 
+        name: true, 
+        phone: true, 
+        vehiclePlate: true,
+        vehicleType: true
+      }
+    })
+
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: 'Driver not found' },
+        { status: 404 }
+      )
+    }
+
+    // Создаём SOS алерт
+    const sos = await prisma.sosAlert.create({
+      data: {
+        driverId,
+        type,
+        latitude,
+        longitude,
+        message: message || null,
+        orderId: orderId || null,
+        status: 'active',
+      }
+    })
+
+    // Создаём уведомление для логистов
+    const sosLabel = SOS_LABELS[type] || SOS_LABELS.other
+    
+    await prisma.notification.create({
+      data: {
+        userId: 'all_logists',
+        userRole: 'logist',
+        type: 'sos_alert',
+        title: `🆘 SOS от водителя`,
+        message: `${driver.name} (${driver.vehiclePlate || 'Нет ТС'}) отправил сигнал: ${sosLabel}${message ? `. ${message}` : ''}`,
+        driverId,
+        orderId: orderId || null,
+        sosId: sos.id,
+        priority: 'critical',
+      }
+    })
+
+    // Добавляем сообщение в чат как системное уведомление
+    await prisma.chatMessage.create({
+      data: {
+        senderId: driverId,
+        senderRole: 'driver',
+        senderName: driver.name,
+        recipientId: null, // Для всех логистов
+        content: `🆘 SOS: ${sosLabel}${message ? ` - ${message}` : ''}`,
+        type: 'alert',
+        isImportant: true,
+        importantReason: 'SOS сигнал',
+      }
+    })
+
+    console.log(`🆘 SOS Alert created: ${sos.id} | Driver: ${driver.name} | Type: ${type}`)
+
+    return NextResponse.json({ 
+      success: true, 
+      sosId: sos.id,
+      message: 'SOS сигнал отправлен' 
+    })
+
+  } catch (error: any) {
+    console.error('[SOS API] Error:', error)
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// GET - получить активные SOS алерты (для дашборда логиста)
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get('status') || 'active'
+    const limit = parseInt(searchParams.get('limit') || '50')
+
+    const alerts = await prisma.sosAlert.findMany({
+      where: { 
+        status: status === 'all' ? undefined : status 
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
+
+    // Получаем данные водителей
+    const driverIds = [...new Set(alerts.map(a => a.driverId))]
+    const drivers = await prisma.driver.findMany({
+      where: { id: { in: driverIds } },
+      select: { id: true, name: true, phone: true, vehiclePlate: true }
+    })
+
+    const alertsWithDrivers = alerts.map(alert => ({
+      ...alert,
+      driver: drivers.find(d => d.id === alert.driverId),
+      typeLabel: SOS_LABELS[alert.type] || alert.type,
+    }))
+
+    return NextResponse.json({
+      success: true,
+      alerts: alertsWithDrivers,
+      total: alertsWithDrivers.length
+    })
+
+  } catch (error: any) {
+    console.error('[SOS API] GET Error:', error)
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+// PATCH - обновить статус SOS (отметить как обработанный)
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { sosId, status, resolution, resolvedBy } = body
+
+    if (!sosId || !status) {
+      return NextResponse.json(
+        { success: false, error: 'sosId and status required' },
+        { status: 400 }
+      )
+    }
+
+    const validStatuses = ['active', 'responding', 'resolved', 'false_alarm']
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    const updateData: any = { status }
+
+    if (status === 'resolved' || status === 'false_alarm') {
+      updateData.resolvedAt = new Date()
+      updateData.resolvedBy = resolvedBy || null
+      updateData.resolution = resolution || null
+    }
+
+    if (status === 'responding') {
+      updateData.respondedAt = new Date()
+      updateData.respondedBy = resolvedBy || null
+    }
+
+    const updated = await prisma.sosAlert.update({
+      where: { id: sosId },
+      data: updateData
+    })
+
+    return NextResponse.json({ 
+      success: true, 
+      sos: updated 
+    })
+
+  } catch (error: any) {
+    console.error('[SOS API] PATCH Error:', error)
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+==================== 
+FILE: D:\loistics_new\app\api\m\vehicle\route.ts
+====================
+
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+// GET — список доступных машин
+export async function GET(req: NextRequest) {
+  try {
+    const vehicles = await prisma.vehicle.findMany({
+      orderBy: { plate: "asc" },
+    })
+
+    // Получаем информацию о привязанных водителях
+    const drivers = await prisma.driver.findMany({
+      where: {
+        vehicleId: { not: null },
+      },
+      select: {
+        id: true,
+        name: true,
+        vehicleId: true,
+      },
+    })
+
+    const driverMap = new Map(
+      drivers.map((d) => [d.vehicleId, { id: d.id, name: d.name }])
+    )
+
+    const vehiclesWithDrivers = vehicles.map((v) => ({
+      ...v,
+      assignedDriver: driverMap.get(v.id) || null,
+    }))
+
+    return NextResponse.json({
+      success: true,
+      vehicles: vehiclesWithDrivers,
+    })
+  } catch (error) {
+    console.error("GET /api/m/vehicle error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
+// POST — водитель выбирает машину
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+
+    const { driverId, vehicleId } = body as {
+      driverId?: string
+      vehicleId?: string
+    }
+
+    if (!driverId || !vehicleId) {
+      return NextResponse.json(
+        { success: false, error: "driverId и vehicleId обязательны" },
+        { status: 400 }
+      )
+    }
+
+    // Проверяем что машина существует и доступна
+    const vehicle = await prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+    })
+
+    if (!vehicle) {
+      return NextResponse.json(
+        { success: false, error: "Машина не найдена" },
+        { status: 404 }
+      )
+    }
+
+    if (vehicle.status === "maintenance") {
+      return NextResponse.json(
+        { success: false, error: "Машина на ТО" },
+        { status: 400 }
+      )
+    }
+
+    // Обновляем водителя
+    const driver = await prisma.driver.update({
+      where: { id: driverId },
+      data: {
+        vehicleId: vehicleId,
+        vehiclePlate: vehicle.plate,
+        vehicleType: vehicle.type,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      driver,
+      vehicle,
+    })
+  } catch (error) {
+    console.error("POST /api/m/vehicle error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
