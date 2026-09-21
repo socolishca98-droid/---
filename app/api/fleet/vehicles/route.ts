@@ -51,17 +51,15 @@ export async function GET(req: NextRequest) {
 
     const vehiclesWithDrivers = await Promise.all(
       vehicles.map(async (v) => {
-        const driver = v.driverId
-          ? await prisma.driver.findUnique({
-              where: { id: v.driverId },
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-                status: true,
-              },
-            })
-          : null
+        const driver = await prisma.driver.findFirst({
+          where: { vehicleId: v.id },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            status: true,
+          },
+        })
 
         const hasActiveOrder =
           (activeOrdersByVehicle.get(v.id) || 0) > 0

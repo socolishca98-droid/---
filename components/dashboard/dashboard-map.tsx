@@ -256,8 +256,10 @@ export default function DashboardMap() {
       }
       
       setLastUpdate(new Date())
-    } catch (e) {
-      console.error("Failed to fetch data:", e)
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        console.warn("Failed to fetch data:", e?.message || e)
+      }
     } finally {
       setIsLoading(false)
     }

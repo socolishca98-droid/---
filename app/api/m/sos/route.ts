@@ -17,12 +17,13 @@ const SOS_LABELS: Record<string, string> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { driverId, type, latitude, longitude, message, orderId } = body
+    const { driverId, latitude, longitude, message, orderId } = body
+    const type = body.type || body.reason || "other"
 
     // Валидация
-    if (!driverId || !type) {
+    if (!driverId) {
       return NextResponse.json(
-        { success: false, error: "driverId and type are required" },
+        { success: false, error: "driverId is required" },
         { status: 400 },
       )
     }

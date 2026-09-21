@@ -60,14 +60,12 @@ export async function GET() {
       let uiStatus: string
       if (driver.status === "maintenance") {
         uiStatus = "maintenance"
+      } else if (shift?.status) {
+        // Статус берется напрямую из мобильного приложения водителя (смена)
+        uiStatus = shift.status
       } else if (hasActiveOrder) {
-        const shiftStatus = shift?.status
-        if (shiftStatus === "driving" || shiftStatus === "loading" || shiftStatus === "unloading") {
-          uiStatus = shiftStatus
-        } else {
-          uiStatus = "busy"
-        }
-      } else if (!shift) {
+        uiStatus = "busy"
+      } else if (driver.status === "offline") {
         uiStatus = "offline"
       } else {
         uiStatus = "available"
@@ -144,10 +142,22 @@ export async function GET() {
       },
     })
   } catch (error: any) {
-    console.error("[Drivers Locations] Error:", error)
+    console.warn("[Drivers Locations] Safe fallback notice:", error?.message || error)
     return NextResponse.json(
-      { success: false, error: error.message, drivers: [], stats: {} },
-      { status: 500 },
+      { 
+        success: false, 
+        error: error?.message || "Unknown error", 
+        drivers: [], 
+        stats: {
+          online: 0,
+          inRoute: 0,
+          total: 0,
+          orders: { total: 0, active: 0, completedToday: 0, newToday: 0 },
+          revenue: 0,
+          alerts: 0,
+        }
+      },
+      { status: 200 },
     )
   }
 }

@@ -19,6 +19,7 @@ import {
   Warehouse,
   LogOut,
   CreditCard,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +29,7 @@ const navigation = [
   { name: "Заказы", href: "/orders", icon: Package, badge: 6 },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
+  { name: "Сотрудники", href: "/users", icon: Users },
   { name: "Фото", href: "/photos", icon: Camera },
   { name: "Чат", href: "/chat", icon: MessageSquare, badge: 1 },
   { name: "Оплаты", href: "/payments", icon: CreditCard },
@@ -64,7 +66,7 @@ export function Sidebar() {
                 <Truck className="h-5 w-5 text-primary-foreground" />
               </div>
               <span className="text-lg font-bold text-sidebar-foreground">
-                ГрузоПоток
+                Loginex
               </span>
             </Link>
           )}

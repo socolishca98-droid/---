@@ -43,7 +43,7 @@ interface RouteTimelineProps {
 }
 
 // Хелпер для парсинга JSON
-function parseEventData(jsonString: string | null) {
+function parseEventData(jsonString?: string | null) {
   if (!jsonString) return null
   try {
     return JSON.parse(jsonString)

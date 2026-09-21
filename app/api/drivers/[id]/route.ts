@@ -153,12 +153,6 @@ export async function DELETE(
       )
     }
 
-    // Отвязываем машину, если была
-    await prisma.vehicle.updateMany({
-      where: { driverId: id },
-      data: { driverId: null },
-    })
-
     await prisma.driver.delete({
       where: { id },
     })

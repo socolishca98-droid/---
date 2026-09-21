@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import type { DriverLocation } from "../types"
-import { STATUS_CONFIG, ACTIVE_STATUSES } from "../constants"
+import { STATUS_CONFIG, ACTIVE_STATUSES, formatDuration } from "../constants"
 
 interface DriverMarkersProps {
   /** ✅ ИСПРАВЛЕНО: теперь это L.Map | null */
@@ -80,7 +80,7 @@ export function DriverMarkers({
           </div>
           <div class="popup-status" style="background: ${statusInfo.bg}; border-color: ${statusInfo.color}40">
             <span class="popup-status-dot" style="background: ${statusInfo.color}"></span>
-            <span style="color: ${statusInfo.color}">${statusInfo.label}</span>
+            <span style="color: ${statusInfo.color}">${statusInfo.label}${driver.statusDuration && driver.statusDuration > 0 ? ` (${formatDuration(driver.statusDuration)})` : ""}</span>
           </div>
           ${
             driver.routeFrom

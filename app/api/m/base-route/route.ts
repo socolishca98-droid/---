@@ -62,3 +62,47 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const driverId = searchParams.get("driverId")
+    let lat = searchParams.get("latitude") ? parseFloat(searchParams.get("latitude")!) : null
+    let lng = searchParams.get("longitude") ? parseFloat(searchParams.get("longitude")!) : null
+
+    if ((lat === null || lng === null) && driverId) {
+      const { prisma } = await import("@/lib/prisma")
+      const driver = await prisma.driver.findUnique({
+        where: { id: driverId },
+        select: { latitude: true, longitude: true },
+      })
+      if (driver?.latitude && driver?.longitude) {
+        lat = driver.latitude
+        lng = driver.longitude
+      }
+    }
+
+    if (lat === null || lng === null) {
+      lat = 55.7558
+      lng = 37.6173
+    }
+
+    const distanceKm = haversineDistanceKm(lat, lng, BASE_LAT, BASE_LNG)
+    const avgSpeedKmH = 60
+    const etaMinutes = Math.round((distanceKm / avgSpeedKmH) * 60)
+
+    return NextResponse.json({
+      success: true,
+      distanceKm: Math.round(distanceKm),
+      etaMinutes,
+      baseLat: BASE_LAT,
+      baseLng: BASE_LNG,
+    })
+  } catch (error) {
+    console.error("GET /api/m/base-route error:", error)
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}

@@ -173,10 +173,12 @@ export async function PATCH(request: NextRequest) {
     const allowedStatuses = [
       "driving",
       "waiting",
+      "waiting_point",
       "resting",
       "sleeping",
       "loading",
       "unloading",
+      "fueling",
     ]
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json(

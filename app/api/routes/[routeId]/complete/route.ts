@@ -62,6 +62,15 @@ export async function POST(
     }
 
     await prisma.$transaction(async (tx) => {
+      // 1. Помечаем сам рейс завершённым
+      await tx.route.updateMany({
+        where: { id: routeId },
+        data: {
+          status: "completed",
+          completedAt: new Date(),
+        },
+      })
+
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
           where: {

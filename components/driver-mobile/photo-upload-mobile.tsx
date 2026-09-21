@@ -86,22 +86,35 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
 
   const uploadFile = async (item: QueuedItem) => {
     try {
-      const formData = new FormData()
-      formData.append("file", item.file)
-      formData.append("category", item.category)
-      if (routeId) formData.append("orderId", routeId)
-      if (driverId) formData.append("driverId", driverId)
+      // Конвертируем изображение в Base64 dataURL для надёжного сохранения
+      const reader = new FileReader()
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(item.file)
+      })
+      const photoUrl = await base64Promise
 
-      // TODO: Реализовать API загрузки
-      // const res = await fetch('/api/m/photos', { method: 'POST', body: formData })
-      
-      // Имитация загрузки
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      const res = await fetch("/api/photos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: photoUrl,
+          type: item.category,
+          driverId: driverId || "drv-1",
+          orderId: routeId || null,
+          description: `Фото категории ${item.category} от водителя`,
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error("Failed to upload photo to server")
+      }
 
       setUploads((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: "done" } : u)))
       onUploadComplete?.()
     } catch (error) {
-      console.error('Upload failed:', error)
+      console.error("Upload failed:", error)
       setUploads((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: "failed" } : u)))
     }
   }

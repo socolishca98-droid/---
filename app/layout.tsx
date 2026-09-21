@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "sonner"
 import { AuthProvider } from "@/lib/auth-context"
 import { SidebarProvider } from "@/lib/sidebar-context"
 
 export const metadata: Metadata = {
-  title: "TMS - Transport Management System",
-  description: "Система управления грузоперевозками",
+  title: "Loginex TMS — Система управления грузоперевозками",
+  description: "Loginex TMS: управление грузоперевозками, мониторинг автопарка, координация рейсов и мобильное приложение водителя",
 }
 
 export default function RootLayout({
@@ -23,6 +24,7 @@ export default function RootLayout({
           </SidebarProvider>
         </AuthProvider>
         <Toaster />
+        <SonnerToaster richColors position="top-right" />
       </body>
     </html>
   )

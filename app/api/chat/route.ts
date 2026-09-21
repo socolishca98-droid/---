@@ -82,7 +82,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { senderId, senderRole, senderName, recipientId, content, type = 'text', attachmentUrl } = body
+    const { senderId, senderRole, senderName, content, type = 'text', attachmentUrl } = body
+    const recipientId = body.recipientId || body.driverId || null
     
     if (!senderId || !senderName || !content) {
       return NextResponse.json(

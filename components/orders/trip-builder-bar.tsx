@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { X, Route, Truck } from "lucide-react"
+import { useSidebar } from "@/lib/sidebar-context"
 
 interface TripBuilderBarProps {
   selectedCount: number
@@ -11,12 +12,17 @@ interface TripBuilderBarProps {
 }
 
 export function TripBuilderBar({ selectedCount, selectedOrders, onClear, onCreateTrip }: TripBuilderBarProps) {
+  const { isCollapsed } = useSidebar()
+
   // Суммируем вес и цену
   const totalWeight = selectedOrders.reduce((sum, o) => sum + (o.weight || 0), 0) / 1000
   const totalRevenue = selectedOrders.reduce((sum, o) => sum + (o.price || 0), 0)
   
   return (
-    <div className="fixed bottom-6 left-64 right-6 z-50 animate-in slide-in-from-bottom-10">
+    <div
+      className="fixed bottom-6 right-6 z-50 transition-all duration-300 ease-in-out animate-in slide-in-from-bottom-10"
+      style={{ left: isCollapsed ? "96px" : "272px" }}
+    >
       <div className="bg-[#121217] border border-orange-500/30 shadow-2xl rounded-2xl p-4 flex items-center justify-between">
         
         <div className="flex items-center gap-6">

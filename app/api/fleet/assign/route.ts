@@ -18,9 +18,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const [driver, vehicle] = await Promise.all([
+    const [driver, vehicle, currentAssignedDriver] = await Promise.all([
       prisma.driver.findUnique({ where: { id: driverId } }),
       prisma.vehicle.findUnique({ where: { id: vehicleId } }),
+      prisma.driver.findFirst({
+        where: { vehicleId, id: { not: driverId } },
+        select: { id: true, name: true },
+      }),
     ])
 
     if (!driver) {
@@ -37,42 +41,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (vehicle.driverId && vehicle.driverId !== driverId) {
-      const currentDriver = await prisma.driver.findUnique({
-        where: { id: vehicle.driverId },
-        select: { name: true },
-      })
-
+    if (currentAssignedDriver) {
       return NextResponse.json(
         {
           success: false,
-          error: `Машина уже закреплена за ${currentDriver?.name || "другим водителем"}`,
+          error: `Машина уже закреплена за водителем ${currentAssignedDriver.name}`,
         },
         { status: 400 },
       )
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (driver.vehicleId && driver.vehicleId !== vehicleId) {
-        await tx.vehicle.update({
-          where: { id: driver.vehicleId },
-          data: { driverId: null },
-        })
-      }
-
-      await tx.driver.update({
-        where: { id: driverId },
-        data: {
-          vehicleId,
-          vehiclePlate: vehicle.plate,
-          vehicleType: vehicle.type,
-        },
-      })
-
-      await tx.vehicle.update({
-        where: { id: vehicleId },
-        data: { driverId },
-      })
+    // Если за этим водителем была другая машина, просто перезаписываем vehicleId
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: {
+        vehicleId,
+        vehiclePlate: vehicle.plate,
+        vehicleType: vehicle.type,
+      },
     })
 
     return NextResponse.json({ success: true })
@@ -98,49 +84,17 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (driverId) {
-        const driver = await tx.driver.findUnique({
-          where: { id: driverId },
-          select: { vehicleId: true },
-        })
-
-        if (driver?.vehicleId) {
-          await tx.vehicle.update({
-            where: { id: driver.vehicleId },
-            data: { driverId: null },
-          })
-        }
-
-        await tx.driver.update({
-          where: { id: driverId },
-          data: {
-            vehicleId: null,
-          },
-        })
-      }
-
-      if (vehicleId && !driverId) {
-        const vehicle = await tx.vehicle.findUnique({
-          where: { id: vehicleId },
-          select: { driverId: true },
-        })
-
-        if (vehicle?.driverId) {
-          await tx.driver.update({
-            where: { id: vehicle.driverId },
-            data: {
-              vehicleId: null,
-            },
-          })
-        }
-
-        await tx.vehicle.update({
-          where: { id: vehicleId },
-          data: { driverId: null },
-        })
-      }
-    })
+    if (driverId) {
+      await prisma.driver.update({
+        where: { id: driverId },
+        data: { vehicleId: null },
+      })
+    } else if (vehicleId) {
+      await prisma.driver.updateMany({
+        where: { vehicleId },
+        data: { vehicleId: null },
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

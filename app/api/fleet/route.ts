@@ -66,18 +66,12 @@ export async function GET(_req: NextRequest) {
       let uiStatus: string
       if (d.status === "maintenance") {
         uiStatus = "maintenance"
+      } else if (shift?.status) {
+        // Статус из мобильного приложения водителя
+        uiStatus = shift.status
       } else if (hasActiveOrder) {
-        const shiftStatus = shift?.status
-        if (
-          shiftStatus === "driving" ||
-          shiftStatus === "loading" ||
-          shiftStatus === "unloading"
-        ) {
-          uiStatus = shiftStatus
-        } else {
-          uiStatus = "busy"
-        }
-      } else if (!shift) {
+        uiStatus = "busy"
+      } else if (d.status === "offline") {
         uiStatus = "offline"
       } else {
         uiStatus = "available"
@@ -133,7 +127,7 @@ export async function GET(_req: NextRequest) {
         }
       }
 
-      const driver = driversOut.find((d) => d.vehicleId === v.id || d.id === v.driverId)
+      const driver = driversOut.find((d) => d.vehicleId === v.id)
 
       return {
         ...v,

@@ -89,25 +89,60 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const order = await prisma.order.create({
-      data: {
-        source,
-        sourceId,
-        routeFrom,
-        routeTo,
-        distance: distance || 0,
-        weight: weight || 0,
-        volume,
-        cargoType: cargoType || "Груз",
-        price: price || 0,
-        clientName,
-        clientContact: clientContact || "",
-        deadline: deadline ? new Date(deadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        status: assignedDriverId ? "confirmed" : "new",
-        assignedDriverId,
-        assignedVehicleId,
-        routeId,
-      },
+    const order = await prisma.$transaction(async (tx) => {
+      let finalRouteId = routeId
+      if (!finalRouteId && (assignedDriverId || assignedVehicleId)) {
+        finalRouteId = `route_${Date.now()}`
+        await tx.route.create({
+          data: {
+            id: finalRouteId,
+            name: `Рейс: ${routeFrom} — ${routeTo}`,
+            status: "active",
+            driverId: assignedDriverId || null,
+            vehicleId: assignedVehicleId || null,
+            totalDistance: distance || 0,
+            totalCost: price || 0,
+            cargoWeight: weight || 0,
+          },
+        })
+      }
+
+      const created = await tx.order.create({
+        data: {
+          source,
+          sourceId,
+          routeFrom,
+          routeTo,
+          distance: distance || 0,
+          weight: weight || 0,
+          volume,
+          cargoType: cargoType || "Груз",
+          price: price || 0,
+          clientName,
+          clientContact: clientContact || "",
+          deadline: deadline ? new Date(deadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: assignedDriverId ? "confirmed" : "new",
+          assignedDriverId,
+          assignedVehicleId,
+          routeId: finalRouteId,
+        },
+      })
+
+      if (assignedDriverId) {
+        await tx.driver.updateMany({
+          where: { id: assignedDriverId },
+          data: { status: "busy" },
+        })
+      }
+
+      if (assignedVehicleId) {
+        await tx.vehicle.updateMany({
+          where: { id: assignedVehicleId },
+          data: { status: "in_use" },
+        })
+      }
+
+      return created
     })
 
     return NextResponse.json({ success: true, order })

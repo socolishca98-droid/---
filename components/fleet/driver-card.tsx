@@ -45,19 +45,39 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   },
   driving: {
     label: "В пути",
-    color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    color: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+  },
+  resting: {
+    label: "Отдых (РТО)",
+    color: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+  },
+  sleeping: {
+    label: "Сон (ночной)",
+    color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  },
+  waiting: {
+    label: "Ожидание",
+    color: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  },
+  waiting_point: {
+    label: "Ожидание",
+    color: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  },
+  fueling: {
+    label: "Заправка",
+    color: "bg-purple-500/10 text-purple-400 border-purple-500/20",
   },
   loading: {
     label: "Погрузка",
-    color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    color: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   },
   unloading: {
     label: "Выгрузка",
-    color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
   },
   maintenance: {
     label: "На ТО",
-    color: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+    color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
   },
   offline: {
     label: "Не на связи",

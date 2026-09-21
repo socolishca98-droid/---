@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { ChatList } from "@/components/chat/chat-list"
@@ -28,6 +29,7 @@ interface Driver {
 
 export default function ChatPage() {
   const { user, isLoading: authLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
   const router = useRouter()
   
   const [drivers, setDrivers] = useState<Driver[]>([])
@@ -145,7 +147,10 @@ export default function ChatPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="pl-64">
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <main className="p-6">
           <div className="mb-6 flex items-center justify-between">

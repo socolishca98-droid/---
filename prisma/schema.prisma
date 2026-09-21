@@ -10,6 +10,27 @@ datasource db {
 }
 
 // ============================================
+// СИСТЕМА ПОЛЬЗОВАТЕЛЕЙ И АВТОРИЗАЦИЯ
+// ============================================
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  salt         String
+  role         String    @default("logist") // admin | logist
+  status       String    @default("pending_approval") // pending_approval | active | deactivated
+  approvedBy   String?
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+  @@index([role])
+}
+
+// ============================================
 // ATI.SU ИНТЕГРАЦИЯ
 // ============================================
 
@@ -85,6 +106,38 @@ model GeoCache {
 }
 
 // ============================================
+// МАРШРУТЫ И РЕЙСЫ
+// ============================================
+
+model Route {
+  id            String       @id @default(cuid())
+  name          String?      // Например "Рейс #101: Москва — Тверь — СПб"
+  status        String       @default("planned") // planned | active | in_transit | completed | cancelled
+  driverId      String?
+  driver        Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicleId     String?
+  vehicle       Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  totalDistance Int?         // км
+  totalCost     Int?         // руб
+  fuelExpense   Int?         // руб
+  cargoWeight   Int?         // кг
+  cargoVolume   Float?       // м3
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  orders        Order[]
+  stages        RouteStage[]
+  events        RouteEvent[]
+
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
+}
+
+// ============================================
 // ОСНОВНЫЕ СУЩНОСТИ
 // ============================================
 
@@ -116,22 +169,28 @@ model Order {
   priority          String    @default("needs_clarification")
   aiScore           Int       @default(50)
   aiReason          String?
+
   assignedDriverId  String?
+  driver            Driver?   @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
+
   assignedVehicleId String?
+  vehicle           Vehicle?  @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+
   routeId           String?
+  route             Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
 
   // Догруз
-  isAdditionalLoad Boolean   @default(false)
-  addedToRouteAt   DateTime?
-  proposedToDriver Boolean   @default(false)
-  proposedAt       DateTime?
-  acceptedAt       DateTime?
-  rejectedAt       DateTime?
-  rejectionReason  String?
-  routeSequence    Int?
+  isAdditionalLoad  Boolean   @default(false)
+  addedToRouteAt    DateTime?
+  proposedToDriver  Boolean   @default(false)
+  proposedAt        DateTime?
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  rejectionReason   String?
+  routeSequence     Int?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([status])
   @@index([priority])
@@ -146,10 +205,11 @@ model Order {
 /// Водитель
 /// Допустимые значения status: available, busy, maintenance, offline
 model Driver {
-  id              String    @id @default(cuid())
+  id              String            @id @default(cuid())
   name            String
-  phone           String
+  phone           String            @unique
   vehicleId       String?
+  vehicle         Vehicle?          @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   vehicleType     String
   vehiclePlate    String
   currentLocation String?
@@ -157,15 +217,24 @@ model Driver {
   longitude       Float?
   lastGpsUpdate   DateTime?
   /// Статус водителя: available | busy | maintenance | offline
-  status          String    @default("available")
-  ordersCompleted Int       @default(0)
-  rating          Float     @default(5.0)
+  status          String            @default("available")
+  ordersCompleted Int               @default(0)
+  rating          Float             @default(5.0)
   licenseNumber   String?
   licenseExpiry   DateTime?
   medicalExpiry   DateTime?
   hiredAt         DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  orders          Order[]
+  routes          Route[]
+  shifts          DriverShift[]
+  sosAlerts       SosAlert[]
+  photos          Photo[]
+  maintenanceLogs MaintenanceLog[]
+  stages          RouteStage[]
+  events          RouteEvent[]
 
   @@index([status])
   @@index([vehicleId])
@@ -174,8 +243,8 @@ model Driver {
 /// Транспортное средство
 /// Допустимые значения status: available, in_use, maintenance
 model Vehicle {
-  id                  String    @id @default(cuid())
-  plate               String    @unique
+  id                  String           @id @default(cuid())
+  plate               String           @unique
   type                String
   brand               String?
   model               String?
@@ -185,20 +254,25 @@ model Vehicle {
   length              Float?
   width               Float?
   height              Float?
-  features            String    @default("[]")
-  driverId            String?
+  features            String           @default("[]")
   /// Статус ТС: available | in_use | maintenance
-  status              String    @default("available")
+  status              String           @default("available")
   lastMaintenanceDate DateTime?
   nextMaintenanceDate DateTime?
   mileage             Int?
   insuranceExpiry     DateTime?
   inspectionExpiry    DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  drivers             Driver[]
+  orders              Order[]
+  routes              Route[]
+  maintenanceLogs     MaintenanceLog[]
+  stages              RouteStage[]
+  events              RouteEvent[]
 
   @@index([status])
-  @@index([driverId])
 }
 
 // ============================================
@@ -208,6 +282,7 @@ model Vehicle {
 model DriverShift {
   id                      String       @id @default(cuid())
   driverId                String
+  driver                  Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
   startedAt               DateTime     @default(now())
   endedAt                 DateTime?
   status                  String       @default("driving")
@@ -248,6 +323,7 @@ model ShiftEvent {
 model SosAlert {
   id          String    @id @default(cuid())
   driverId    String
+  driver      Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
   type        String
   message     String?
@@ -327,6 +403,7 @@ model Photo {
   url         String
   type        String
   driverId    String
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
   description String?
   ocrText     String?
@@ -345,7 +422,9 @@ model Photo {
 model MaintenanceLog {
   id          String    @id @default(cuid())
   vehicleId   String
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   driverId    String?
+  driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
   type        String
   description String
   mileage     Int?
@@ -377,20 +456,23 @@ model FleetSettings {
 // ============================================
 
 model RouteStage {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   routeId        String
+  route          Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
   driverId       String?
+  driver         Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicleId      String?
+  vehicle        Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   type           String   // loading | driving | unloading | rest | other
-  status         String   @default("planned") // planned | active | completed | cancelled
+  status         String    @default("planned") // planned | active | completed | cancelled
   sequence       Int?
   plannedStartAt DateTime?
   plannedEndAt   DateTime?
   startedAt      DateTime?
   endedAt        DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([routeId])
   @@index([driverId])
@@ -402,9 +484,12 @@ model RouteStage {
 model RouteEvent {
   id        String   @id @default(cuid())
   routeId   String
+  route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId   String?
   driverId  String
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   stageId   String?
   type      String   // location | status | photo | sos | note | eta_update | custom
   status    String?

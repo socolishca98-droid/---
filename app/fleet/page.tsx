@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { useFleet } from "@/hooks/use-fleet"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
@@ -33,6 +34,7 @@ import { toast } from "sonner"
 
 export default function FleetPage() {
   const { user, isLoading: authLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
   const router = useRouter()
 
   const {
@@ -145,7 +147,10 @@ export default function FleetPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="pl-64">
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <main className="p-6 space-y-6">
           {/* Инфо-панель */}

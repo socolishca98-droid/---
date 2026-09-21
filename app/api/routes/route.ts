@@ -68,7 +68,27 @@ export async function POST(request: NextRequest) {
     const routeId = generateRouteId()
 
     const created = await prisma.$transaction(async (tx) => {
-      // создаём заказы, связанные общим routeId
+      // 1. Создаём запись в таблице Route для маршрутной аналитики
+      const fromCity = orders[0]?.routeFrom || "Пункт А"
+      const toCity = orders[orders.length - 1]?.routeTo || "Пункт Б"
+      const totalDist = orders.reduce((sum, o) => sum + (o.distance || 0), 0)
+      const totalCost = orders.reduce((sum, o) => sum + (o.price || 0), 0)
+      const totalWeight = orders.reduce((sum, o) => sum + (o.weight || 0), 0)
+
+      await tx.route.create({
+        data: {
+          id: routeId,
+          name: `Рейс: ${fromCity} — ${toCity}`,
+          status: "active",
+          driverId: driverId || null,
+          vehicleId: vehicleId,
+          totalDistance: totalDist,
+          totalCost: totalCost,
+          cargoWeight: totalWeight,
+        },
+      })
+
+      // 2. Создаём заказы, связанные общим routeId
       const createdOrders = await Promise.all(
         orders.map((o, idx) =>
           tx.order.create({
