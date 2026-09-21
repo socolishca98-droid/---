@@ -7,7 +7,15 @@
     "dev:webpack": "NODE_OPTIONS='--no-turbopack' next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:build && node --test \"tests/*.test.mjs\"",
+    "test:build": "tsc -p tests/tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:sql:auth": "prisma db execute --file prisma/sql/2026-09-21-auth-users-sessions.sql --schema prisma/schema.prisma",
+    "seed:auth": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/seed-auth.ts",
+    "verify:security": "node scripts/verify-security.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -61,6 +69,7 @@
     "react-leaflet": "^5.0.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.4",
+    "server-only": "^0.0.1",
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
