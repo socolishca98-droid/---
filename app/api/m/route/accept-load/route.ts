@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
+import { logRouteEvent } from "@/lib/routes/service"
 
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
@@ -65,19 +66,13 @@ export async function POST(request: NextRequest) {
       // Событие "догруз принят"
       try {
         if (order.routeId) {
-          await prisma.routeEvent.create({
-            data: {
-              routeId: order.routeId,
-              driverId,
-              vehicleId: order.assignedVehicleId || null,
-              orderId: order.id,
-              type: "status",
-              status: "load_accepted",
-              latitude: null,
-              longitude: null,
-              address: null,
-              data: null,
-            },
+          await logRouteEvent(prisma, {
+            routeId: order.routeId,
+            driverId,
+            vehicleId: order.assignedVehicleId || null,
+            orderId: order.id,
+            type: "status",
+            status: "load_accepted",
           })
         }
       } catch (e) {
@@ -117,21 +112,14 @@ export async function POST(request: NextRequest) {
       // Событие "догруз отклонён"
       try {
         if (order.routeId) {
-          await prisma.routeEvent.create({
-            data: {
-              routeId: order.routeId,
-              driverId,
-              vehicleId: order.assignedVehicleId || null,
-              orderId: order.id,
-              type: "status",
-              status: "load_rejected",
-              latitude: null,
-              longitude: null,
-              address: null,
-              data: rejectionReason
-                ? JSON.stringify({ rejectionReason })
-                : null,
-            },
+          await logRouteEvent(prisma, {
+            routeId: order.routeId,
+            driverId,
+            vehicleId: order.assignedVehicleId || null,
+            orderId: order.id,
+            type: "status",
+            status: "load_rejected",
+            data: rejectionReason ? JSON.stringify({ rejectionReason }) : null,
           })
         }
       } catch (e) {

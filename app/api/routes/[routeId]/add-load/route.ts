@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
+import { ensureRouteRow, recalcRoute } from "@/lib/routes/service"
 
 type RouteParams = {
   params: Promise<{ routeId: string }>
@@ -41,23 +43,45 @@ export async function POST(
       insertAfterOrderId,
     } = body
 
-    const existingOrders = await prisma.order.findMany({
-      where: {
-        routeId,
-        status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
-      },
-      orderBy: { routeSequence: "asc" },
+    const route = await prisma.route.findUnique({
+      where: { id: routeId },
+      select: { id: true, status: true, driverId: true, vehicleId: true },
     })
 
-    if (existingOrders.length === 0) {
+    const existingOrders = (await prisma.order.findMany({
+      where: {
+        routeId,
+        status: { in: [...OCCUPYING_ORDER_STATUSES] },
+      },
+      orderBy: { routeSequence: "asc" },
+    })) as (RouteOrderLike & {
+      id: string
+      assignedDriverId: string | null
+      assignedVehicleId: string | null
+      routeSequence: number | null
+    })[]
+
+    if (!route && existingOrders.length === 0) {
       return NextResponse.json(
         { success: false, error: "Активный маршрут не найден" },
         { status: 404 }
       )
     }
 
-    const driverId = existingOrders[0].assignedDriverId
-    const vehicleId = existingOrders[0].assignedVehicleId
+    if (route?.status === "cancelled" || route?.status === "completed") {
+      return NextResponse.json(
+        { success: false, error: "Рейс закрыт — догруз добавить нельзя" },
+        { status: 409 }
+      )
+    }
+
+    // исторический routeId без строки Route — добираем запись
+    if (!route) {
+      await ensureRouteRow(prisma, { routeId })
+    }
+
+    const driverId = route?.driverId ?? existingOrders[0]?.assignedDriverId ?? null
+    const vehicleId = route?.vehicleId ?? existingOrders[0]?.assignedVehicleId ?? null
 
     if (vehicleId) {
       const vehicle = await prisma.vehicle.findUnique({
@@ -157,9 +181,13 @@ export async function POST(
       return order
     })
 
+    // итоги и имя рейса пересчитываются по его заказам
+    const summary = await recalcRoute(prisma, routeId)
+
     return NextResponse.json({
       success: true,
       order: newOrder,
+      summary,
       message: proposeToDriver ? "Догруз предложен водителю" : "Догруз добавлен к маршруту",
     })
   } catch (error) {

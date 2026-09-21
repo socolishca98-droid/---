@@ -13,6 +13,7 @@ import {
   calculateRouteCost,
   type ETARequest,
 } from "@/lib/eta"
+import { logRouteEvent } from "@/lib/routes/service"
 
 const COMPLETED_STATUSES = ["delivered", "cancelled", "rejected"]
 
@@ -59,21 +60,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Пишем событие
-    const event = await prisma.routeEvent.create({
-      data: {
-        routeId,
-        driverId,
-        vehicleId: vehicleId || null,
-        stageId: stageId || null,
-        orderId: orderId || null,
-        type,
-        status: status || null,
-        latitude: typeof latitude === "number" ? latitude : null,
-        longitude: typeof longitude === "number" ? longitude : null,
-        address: address || null,
-        data: data != null ? JSON.stringify(data) : null,
-      },
+    // Пишем событие через единую точку записи: она же добирает строку Route,
+    // если рейс «исторический» (routeId есть в заказах, а в таблице Route нет)
+    await logRouteEvent(prisma, {
+      routeId,
+      driverId,
+      vehicleId: vehicleId || null,
+      stageId: stageId || null,
+      orderId: orderId || null,
+      type,
+      status: status || null,
+      latitude: typeof latitude === "number" ? latitude : null,
+      longitude: typeof longitude === "number" ? longitude : null,
+      address: address || null,
+      data: data != null ? JSON.stringify(data) : null,
+    })
+
+    const event = await prisma.routeEvent.findFirst({
+      where: { routeId, driverId, type },
+      orderBy: { createdAt: "desc" },
     })
 
     // Пересчёт Live ETA (упрощённый, без OSRM, по остаточному расстоянию)

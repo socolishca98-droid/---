@@ -279,6 +279,17 @@ export async function canDriverAccessRoute(
   routeId: string,
 ): Promise<boolean> {
   if (session.kind === "staff") return true
+
+  // Рейс — настоящая запись в таблице Route: водитель своего рейса
+  // определяется по Route.driverId (источник правды с задачи 2).
+  const route = await prisma.route.findUnique({
+    where: { id: routeId },
+    select: { driverId: true },
+  })
+  if (route?.driverId) return route.driverId === session.driver.id
+
+  // Рейса в таблице нет (исторический routeId) или водитель не назначен —
+  // проверяем по заказам, как раньше.
   const total = await prisma.order.count({ where: { routeId } })
   if (total === 0) return false
   const own = await prisma.order.count({

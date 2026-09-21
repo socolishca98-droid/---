@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { normalizePhone } from "@/lib/auth/constants"
 import { generateTemporaryPassword, hashPassword } from "@/lib/auth/password"
+import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
+import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 // ✅ Допустимые статусы водителя
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 
@@ -82,8 +84,6 @@ export async function POST(request: NextRequest) {
       name,
       phone,
       vehicleId,
-      vehicleType,
-      vehiclePlate,
       licenseNumber,
       licenseExpiry,
       medicalExpiry,
@@ -91,8 +91,6 @@ export async function POST(request: NextRequest) {
       name?: string
       phone?: string
       vehicleId?: string
-      vehicleType?: string
-      vehiclePlate?: string
       licenseNumber?: string
       licenseExpiry?: string
       medicalExpiry?: string
@@ -110,15 +108,18 @@ export async function POST(request: NextRequest) {
         name,
         phone,
         status: "available",
-        vehicleId: vehicleId || null,
-        vehicleType: vehicleType || "",
-        vehiclePlate: vehiclePlate || "",
         licenseNumber: licenseNumber || null,
         licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
         medicalExpiry: medicalExpiry ? new Date(medicalExpiry) : null,
         hiredAt: new Date(),
       },
     })
+
+    // Машина закрепляется единым путём: Driver.vehicleId + кэш номера/типа
+    // из данных самой машины (vehicleType/vehiclePlate из запроса игнорируются).
+    if (vehicleId) {
+      await linkDriverToVehicle(prisma, driver.id, vehicleId)
+    }
 
     // Учётка для входа в приложение водителя: одна система доступа на всех.
     // Пароль временный, водитель обязан сменить его при первом входе.
@@ -171,11 +172,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, driver, credentials, warning })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Drivers POST error"
+    // Driver.phone теперь @unique: повтор телефона — это 409 с понятным текстом,
+    // а не 500 с техническим сообщением Prisma
+    const friendly = friendlyDbError(error)
+    const message = friendly || (error instanceof Error ? error.message : "Drivers POST error")
     console.error("[Drivers] POST Error:", message)
     return NextResponse.json(
       { success: false, error: message },
-      { status: 500 }
+      { status: friendly ? friendlyDbErrorStatus(error) : 500 }
     )
   }
 }

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
+import { logRouteEvent } from "@/lib/routes/service"
 
 const ACTIVE_ORDER_STATUSES = [
   "confirmed",
@@ -59,19 +60,14 @@ export async function POST(request: NextRequest) {
     try {
       const activeOrder = await getActiveOrderForDriver(driverId)
       if (activeOrder?.routeId) {
-        await prisma.routeEvent.create({
-          data: {
-            routeId: activeOrder.routeId,
-            driverId,
-            vehicleId: updated.vehicleId || null,
-            orderId: activeOrder.id,
-            type: "location",
-            status: null,
-            latitude: lat,
-            longitude: lng,
-            address: null,
-            data: null,
-          },
+        await logRouteEvent(prisma, {
+          routeId: activeOrder.routeId,
+          driverId,
+          vehicleId: updated.vehicleId || null,
+          orderId: activeOrder.id,
+          type: "location",
+          latitude: lat,
+          longitude: lng,
         })
       }
     } catch (e) {

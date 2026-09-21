@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma"
 
 import { SOS_LABELS } from "@/lib/sos-labels"
 import { requireDriver } from "@/lib/auth/session"
+import { logRouteEvent } from "@/lib/routes/service"
 // POST - отправить SOS сигнал
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
@@ -118,19 +119,16 @@ export async function POST(request: NextRequest) {
       }
 
       if (routeId) {
-        await prisma.routeEvent.create({
-          data: {
-            routeId,
-            driverId,
-            vehicleId,
-            orderId: orderId || null,
-            type: "sos",
-            status: type,
-            latitude,
-            longitude,
-            address: null,
-            data: message ? JSON.stringify({ message }) : null,
-          },
+        await logRouteEvent(prisma, {
+          routeId,
+          driverId,
+          vehicleId,
+          orderId: orderId || null,
+          type: "sos",
+          status: type,
+          latitude,
+          longitude,
+          data: message ? JSON.stringify({ message }) : null,
         })
       }
     } catch (e) {

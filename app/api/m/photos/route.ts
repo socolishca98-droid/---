@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { forbidden, requireDriver } from "@/lib/auth/session"
+import { logRouteEvent } from "@/lib/routes/service"
 // Получить фото водителя (только свои)
 export async function GET(request: NextRequest) {
   const auth = await requireDriver(request)
@@ -112,19 +113,14 @@ export async function POST(request: NextRequest) {
       }
 
       if (routeId) {
-        await prisma.routeEvent.create({
-          data: {
-            routeId,
-            driverId,
-            vehicleId,
-            orderId: orderId || null,
-            type: "photo",
-            status: type,
-            latitude: null,
-            longitude: null,
-            address: null,
-            data: description ? JSON.stringify({ description }) : null,
-          },
+        await logRouteEvent(prisma, {
+          routeId,
+          driverId,
+          vehicleId,
+          orderId: orderId || null,
+          type: "photo",
+          status: type,
+          data: description ? JSON.stringify({ description }) : null,
         })
       }
     } catch (e) {

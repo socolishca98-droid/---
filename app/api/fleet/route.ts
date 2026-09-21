@@ -137,7 +137,9 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const driver = driversOut.find((d) => d.vehicleId === v.id || d.id === v.driverId)
+      // закрепление машины хранится на стороне водителя (Driver.vehicleId);
+      // Vehicle.driverId удалён из схемы (задача 2)
+      const driver = driversOut.find((d) => d.vehicleId === v.id)
 
       return {
         ...v,
@@ -153,6 +155,8 @@ export async function GET(request: NextRequest) {
               status: driver.status,
             }
           : null,
+        // производное поле — форма ответа для клиентов не меняется
+        driverId: driver?.id ?? null,
       }
     })
 

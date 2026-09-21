@@ -107,7 +107,9 @@ export function useFleet() {
   }
 
   const getAvailableVehicles = async () => {
-    return data.vehicles.filter((v) => v.status === "available" && !v.driverId)
+    // машина свободна, если за ней не закреплён водитель
+    // (связь хранится в Driver.vehicleId; driverId в ответе — производное поле)
+    return data.vehicles.filter((v) => v.status === "available" && !v.driver && !v.driverId)
   }
 
   return {

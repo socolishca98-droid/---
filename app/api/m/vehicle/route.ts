@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
+import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 // GET — список доступных машин
 export async function GET(request: NextRequest) {
   const auth = await requireDriver(request)
@@ -87,14 +88,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Обновляем водителя
-    const driver = await prisma.driver.update({
+    // Машина может быть закреплена только за одним водителем: связь хранится
+    // в Driver.vehicleId (единственный источник правды, задача 2).
+    const occupant = await findVehicleOccupant(prisma, vehicleId, driverId)
+    if (occupant) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Машина уже закреплена за ${occupant.name || "другим водителем"}`,
+        },
+        { status: 409 }
+      )
+    }
+
+    // Единый путь записи: Driver.vehicleId + кэш номера/типа из данных машины
+    await linkDriverToVehicle(prisma, driverId, vehicleId)
+    const driver = await prisma.driver.findUniqueOrThrow({
       where: { id: driverId },
-      data: {
-        vehicleId: vehicleId,
-        vehiclePlate: vehicle.plate,
-        vehicleType: vehicle.type,
-      },
     })
 
     return NextResponse.json({

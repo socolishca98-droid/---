@@ -85,6 +85,46 @@ model GeoCache {
 }
 
 // ============================================
+// МАРШРУТЫ И РЕЙСЫ
+// ============================================
+
+/// Рейс: один водитель + одна машина + один или несколько заказов.
+/// Раньше «маршрут» был просто строкой routeId в заказах — ни статуса,
+/// ни времени, ни итогов рейса хранить было негде.
+/// Допустимые значения status: planned | active | in_transit | completed | cancelled
+model Route {
+  id            String       @id @default(cuid())
+  /// Человекочитаемое название, например «Рейс: Ярославль — Иваново — СПб»
+  name          String?
+  status        String       @default("planned")
+  driverId      String?
+  driver        Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicleId     String?
+  vehicle       Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  /// Фактическое время начала и конца рейса
+  startedAt     DateTime?
+  completedAt   DateTime?
+  /// Итоги рейса: км, расходы руб, топливо руб, вес кг, объём м3
+  totalDistance Int?
+  totalCost     Int?
+  fuelExpense   Int?
+  cargoWeight   Int?
+  cargoVolume   Float?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  orders        Order[]
+  stages        RouteStage[]
+  events        RouteEvent[]
+
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([createdAt])
+}
+
+// ============================================
 // ОСНОВНЫЕ СУЩНОСТИ
 // ============================================
 
@@ -117,8 +157,14 @@ model Order {
   aiScore           Int       @default(50)
   aiReason          String?
   assignedDriverId  String?
+  driver            Driver?   @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
+
   assignedVehicleId String?
+  vehicle           Vehicle?  @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
+
+  /// Рейс, в который собран заказ (одна машина может везти несколько заказов)
   routeId           String?
+  route             Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
 
   // Догруз
   isAdditionalLoad Boolean   @default(false)
@@ -132,6 +178,12 @@ model Order {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// Фото, сигналы SOS и точки маршрута, относящиеся к заказу
+  photos     Photo[]
+  sosAlerts  SosAlert[]
+  stages     RouteStage[]
+  routeEvents RouteEvent[]
 
   @@index([status])
   @@index([priority])
@@ -148,8 +200,14 @@ model Order {
 model Driver {
   id              String    @id @default(cuid())
   name            String
-  phone           String
+  /// Телефон — логин водителя в мобильном приложении, поэтому уникальный
+  phone           String    @unique
+  /// Единственное место, где хранится связь водитель<->машина.
+  /// (Раньше она была продублирована в Vehicle.driverId и расходилась.)
   vehicleId       String?
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  /// Кэш для списков и уведомлений; синхронизируется с Vehicle при любом
+  /// назначении через lib/fleet/assignment.ts — руками не менять
   vehicleType     String
   vehiclePlate    String
   currentLocation String?
@@ -170,6 +228,15 @@ model Driver {
   /// Учётная запись для входа в мобильное приложение (роль driver)
   user            User?
 
+  orders          Order[]
+  routes          Route[]
+  shifts          DriverShift[]
+  sosAlerts       SosAlert[]
+  photos          Photo[]
+  maintenanceLogs MaintenanceLog[]
+  stages          RouteStage[]
+  events          RouteEvent[]
+
   @@index([status])
   @@index([vehicleId])
 }
@@ -189,7 +256,6 @@ model Vehicle {
   width               Float?
   height              Float?
   features            String    @default("[]")
-  driverId            String?
   /// Статус ТС: available | in_use | maintenance
   status              String    @default("available")
   lastMaintenanceDate DateTime?
@@ -200,8 +266,15 @@ model Vehicle {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
+  /// Закреплённый водитель — связь хранится на стороне Driver (Driver.vehicleId)
+  drivers             Driver[]
+  orders              Order[]
+  routes              Route[]
+  maintenanceLogs     MaintenanceLog[]
+  stages              RouteStage[]
+  events              RouteEvent[]
+
   @@index([status])
-  @@index([driverId])
 }
 
 // ============================================
@@ -211,6 +284,7 @@ model Vehicle {
 model DriverShift {
   id                      String       @id @default(cuid())
   driverId                String
+  driver                  Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
   startedAt               DateTime     @default(now())
   endedAt                 DateTime?
   status                  String       @default("driving")
@@ -251,7 +325,9 @@ model ShiftEvent {
 model SosAlert {
   id          String    @id @default(cuid())
   driverId    String
+  driver      Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
+  order       Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   type        String
   message     String?
   latitude    Float
@@ -330,7 +406,9 @@ model Photo {
   url         String
   type        String
   driverId    String
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   description String?
   ocrText     String?
   ocrData     String?
@@ -348,7 +426,9 @@ model Photo {
 model MaintenanceLog {
   id          String    @id @default(cuid())
   vehicleId   String
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   driverId    String?
+  driver      Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
   type        String
   description String
   mileage     Int?
@@ -382,9 +462,13 @@ model FleetSettings {
 model RouteStage {
   id             String   @id @default(cuid())
   routeId        String
+  route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   driverId       String?
+  driver         Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicleId      String?
+  vehicle        Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   type           String   // loading | driving | unloading | rest | other
   status         String   @default("planned") // planned | active | completed | cancelled
   sequence       Int?
@@ -405,9 +489,13 @@ model RouteStage {
 model RouteEvent {
   id        String   @id @default(cuid())
   routeId   String
+  route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   driverId  String
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   stageId   String?
   type      String   // location | status | photo | sos | note | eta_update | custom
   status    String?

@@ -9,6 +9,8 @@ import {
   requireStaff,
   revokeAllSessions,
 } from "@/lib/auth/session"
+import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
+import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 // ✅ Добавлен 'offline' в список разрешённых статусов
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 type DriverStatus = typeof ALLOWED_DRIVER_STATUSES[number]
@@ -86,8 +88,6 @@ export async function PATCH(
       phone,
       status,
       vehicleId,
-      vehicleType,
-      vehiclePlate,
       licenseNumber,
       licenseExpiry,
       medicalExpiry,
@@ -99,8 +99,6 @@ export async function PATCH(
       phone?: string
       status?: string
       vehicleId?: string | null
-      vehicleType?: string
-      vehiclePlate?: string
       licenseNumber?: string | null
       licenseExpiry?: string | null
       medicalExpiry?: string | null
@@ -125,9 +123,6 @@ export async function PATCH(
       data.status = status
     }
 
-    if (vehicleId !== undefined) data.vehicleId = vehicleId
-    if (vehicleType !== undefined) data.vehicleType = vehicleType
-    if (vehiclePlate !== undefined) data.vehiclePlate = vehiclePlate
     if (licenseNumber !== undefined) data.licenseNumber = licenseNumber
     if (licenseExpiry !== undefined) {
       data.licenseExpiry = licenseExpiry ? new Date(licenseExpiry) : null
@@ -139,18 +134,29 @@ export async function PATCH(
     if (latitude !== undefined) data.latitude = latitude
     if (longitude !== undefined) data.longitude = longitude
 
-    const driver = await prisma.driver.update({
-      where: { id },
-      data,
-    })
+    // Закрепление машины пишется только через единый путь (задача 2):
+    // Driver.vehicleId — источник правды, vehicleType/vehiclePlate — кэш,
+    // который заполняется из данных машины, а не из тела запроса.
+    let driver
+    if (vehicleId !== undefined) {
+      await prisma.$transaction(async (tx) => {
+        await tx.driver.update({ where: { id }, data })
+        await linkDriverToVehicle(tx, id, vehicleId)
+      })
+      driver = await prisma.driver.findUniqueOrThrow({ where: { id } })
+    } else {
+      driver = await prisma.driver.update({ where: { id }, data })
+    }
 
     return NextResponse.json({ success: true, driver })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Driver PATCH error"
+    // повтор телефона (Driver.phone @unique) → 409 с понятным текстом
+    const friendly = friendlyDbError(error)
+    const message = friendly || (error instanceof Error ? error.message : "Driver PATCH error")
     console.error("[Driver] PATCH Error:", message)
     return NextResponse.json(
       { success: false, error: message },
-      { status: 500 }
+      { status: friendly ? friendlyDbErrorStatus(error) : 500 }
     )
   }
 }
@@ -191,12 +197,9 @@ export async function DELETE(
       await revokeAllSessions(linkedUser.id, "Карточка водителя удалена")
     }
 
-    // Отвязываем машину, если была
-    await prisma.vehicle.updateMany({
-      where: { driverId: id },
-      data: { driverId: null },
-    })
-
+    // Машина отвязывается автоматически: связь хранится в Driver.vehicleId
+    // и удаляется вместе с карточкой водителя (поле Vehicle.driverId удалено
+    // из схемы в задаче 2).
     await prisma.driver.delete({
       where: { id },
     })

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { refreshVehicleCache, unlinkVehicle } from "@/lib/fleet/assignment"
 
 const ALLOWED_VEHICLE_STATUSES = ["available", "in_use", "maintenance"] as const
 type VehicleStatus = typeof ALLOWED_VEHICLE_STATUSES[number]
@@ -151,6 +152,9 @@ export async function PATCH(
       data,
     })
 
+    // у закреплённого водителя обновляем кэш номера/типа машины
+    await refreshVehicleCache(prisma, [id])
+
     return NextResponse.json({ success: true, vehicle })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Vehicle PATCH error"
@@ -179,11 +183,9 @@ export async function DELETE(
       )
     }
 
-    // Отвязываем водителя
-    await prisma.driver.updateMany({
-      where: { vehicleId: id },
-      data: { vehicleId: null },
-    })
+    // Отвязываем водителя: обнуляем Driver.vehicleId и его кэш
+    // (vehiclePlate/vehicleType), иначе у водителя останется «призрачный» номер.
+    await unlinkVehicle(prisma, id)
 
     await prisma.vehicle.delete({
       where: { id },

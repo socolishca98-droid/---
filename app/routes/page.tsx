@@ -65,6 +65,13 @@ interface Vehicle {
 
 interface RouteData {
   id: string
+  /** имя рейса из таблицы Route: «Ярославль → Иваново» */
+  name?: string | null
+  /** статус рейса из таблицы Route: planned | active | in_transit | completed | cancelled */
+  routeStatus?: string
+  startedAt?: string | null
+  completedAt?: string | null
+  notes?: string | null
   driverName: string
   driverId: string | null
   vehiclePlate: string
@@ -76,8 +83,38 @@ interface RouteData {
   totalPrice: number
   availableCapacity: number
   utilizationPercent: number
+  /** статус для карточки: pending | in_progress | completed | cancelled */
   status: string
   orders: RouteOrder[]
+}
+
+interface ApiRoute {
+  id: string
+  name: string | null
+  status: string
+  startedAt: string | null
+  completedAt: string | null
+  notes: string | null
+  driver: { id: string; name: string; phone?: string; status?: string } | null
+  vehicle: { id: string; plate: string; type?: string; capacity?: number } | null
+  orders: RouteOrder[]
+  stats: {
+    totalDistance: number
+    totalWeight: number
+    totalPrice: number
+    completedOrders: number
+  }
+}
+
+/** Статус рейса из БД → статус карточки на странице. */
+function toCardStatus(routeStatus: string, orders: RouteOrder[]): string {
+  if (routeStatus === "cancelled") return "cancelled"
+  if (routeStatus === "completed") return "completed"
+  if (routeStatus === "in_transit" || routeStatus === "active") return "in_progress"
+  if (orders.some((o) => ["in_transit", "loading", "unloading"].includes(o.status))) {
+    return "in_progress"
+  }
+  return "pending"
 }
 
 // ============================================
@@ -102,149 +139,72 @@ export default function RoutesPage() {
     }
   }, [user, authLoading, router])
 
-  // ✅ ИСПРАВЛЕНО: Оптимизированная загрузка с bulk fetch
+  // Рейсы читаются из таблицы Route (задача 2): один запрос вместо
+  // «заказы лимитом 500 → группировка по routeId → два запроса за справочниками».
   const fetchRoutes = useCallback(async () => {
     setIsLoading(true)
     try {
       const statusFilter =
         activeTab === "active"
-          ? "confirmed,in_transit,loading,unloading"
-          : "delivered"
+          ? "planned,active,in_transit"
+          : "completed,cancelled"
 
-      const res = await fetch(`/api/orders?status=${statusFilter}&limit=500`)
-      const data = await res.json()
+      const res = await fetch(`/api/routes?status=${statusFilter}&limit=200`, {
+        cache: "no-store",
+      })
+      const data = (await res.json()) as {
+        success?: boolean
+        error?: string
+        routes?: ApiRoute[]
+      }
 
       if (!data.success) {
-        throw new Error(data.error || "Failed to fetch orders")
+        throw new Error(data.error || "Failed to fetch routes")
       }
 
-      const orders: RouteOrder[] = data.orders || []
-
-      // Группируем заказы по routeId
-      const routeMap: Record<
-        string,
-        {
-          id: string
-          driverId: string | null
-          vehicleId: string | null
-          orders: RouteOrder[]
-        }
-      > = {}
-
-      for (const order of orders) {
-        if (!order.routeId) continue
-
-        if (!routeMap[order.routeId]) {
-          routeMap[order.routeId] = {
-            id: order.routeId,
-            driverId: order.assignedDriverId || null,
-            vehicleId: order.assignedVehicleId || null,
-            orders: [],
-          }
-        }
-
-        routeMap[order.routeId].orders.push(order)
-      }
-
-      // ✅ Собираем уникальные ID водителей и транспорта
-      const driverIds = new Set<string>()
-      const vehicleIds = new Set<string>()
-
-      Object.values(routeMap).forEach((route) => {
-        if (route.driverId) driverIds.add(route.driverId)
-        if (route.vehicleId) vehicleIds.add(route.vehicleId)
-      })
-
-      // ✅ Делаем ОДИН bulk-запрос для водителей и ОДИН для транспорта
-      const [driversResponse, vehiclesResponse] = await Promise.all([
-        driverIds.size > 0
-          ? fetch(`/api/drivers?ids=${Array.from(driverIds).join(",")}`)
-          : Promise.resolve(null),
-        vehicleIds.size > 0
-          ? fetch(`/api/vehicles?ids=${Array.from(vehicleIds).join(",")}`)
-          : Promise.resolve(null),
-      ])
-
-      // Парсим ответы
-      let driversMap: Record<string, Driver> = {}
-      let vehiclesMap: Record<string, Vehicle> = {}
-
-      if (driversResponse) {
-        const driversData = await driversResponse.json()
-        if (driversData.success && driversData.driversMap) {
-          driversMap = driversData.driversMap
-        }
-      }
-
-      if (vehiclesResponse) {
-        const vehiclesData = await vehiclesResponse.json()
-        if (vehiclesData.success && vehiclesData.vehiclesMap) {
-          vehiclesMap = vehiclesData.vehiclesMap
-        }
-      }
-
-      // ✅ Строим обогащённые маршруты без дополнительных запросов
-      const enrichedRoutes: RouteData[] = []
-
-      for (const routeId of Object.keys(routeMap)) {
-        const routeData = routeMap[routeId]
-        const sortedOrders = routeData.orders.sort((a, b) => {
+      const enrichedRoutes: RouteData[] = (data.routes || []).map((route) => {
+        const sortedOrders = [...route.orders].sort((a, b) => {
           if (a.routeSequence != null && b.routeSequence != null) {
             return a.routeSequence - b.routeSequence
           }
           return 0
         })
 
-        // ✅ Получаем данные из Map (O(1) вместо сетевого запроса)
-        const driver = routeData.driverId
-          ? driversMap[routeData.driverId]
-          : null
-        const vehicle = routeData.vehicleId
-          ? vehiclesMap[routeData.vehicleId]
-          : null
-
-        const totalWeight = sortedOrders.reduce(
-          (sum, o) => sum + (o.weight || 0),
-          0
-        )
-        const vehicleCapacity = vehicle?.capacity || 0
+        const totalWeight = route.stats?.totalWeight ?? 0
+        const vehicleCapacity = route.vehicle?.capacity || 0
         const availableCapacity = Math.max(0, vehicleCapacity - totalWeight)
 
-        enrichedRoutes.push({
-          id: routeId,
-          driverName: driver?.name || "Не назначен",
-          driverId: driver?.id || null,
-          vehiclePlate: vehicle?.plate || "—",
-          vehicleId: vehicle?.id || null,
+        return {
+          id: route.id,
+          name: route.name,
+          routeStatus: route.status,
+          startedAt: route.startedAt,
+          completedAt: route.completedAt,
+          notes: route.notes,
+          driverName: route.driver?.name || "Не назначен",
+          driverId: route.driver?.id || null,
+          vehiclePlate: route.vehicle?.plate || "—",
+          vehicleId: route.vehicle?.id || null,
           ordersCount: sortedOrders.length,
-          completedOrders: sortedOrders.filter((o) => o.status === "delivered")
-            .length,
-          totalDistance: sortedOrders.reduce(
-            (sum, o) => sum + (o.distance || 0),
-            0
-          ),
+          completedOrders: route.stats?.completedOrders ?? 0,
+          totalDistance: route.stats?.totalDistance ?? 0,
           totalWeight,
-          totalPrice: sortedOrders.reduce((sum, o) => sum + (o.price || 0), 0),
+          totalPrice: route.stats?.totalPrice ?? 0,
           availableCapacity,
           utilizationPercent:
             vehicleCapacity > 0
               ? Math.round((totalWeight / vehicleCapacity) * 100)
               : 0,
-          status: sortedOrders.some((o) =>
-            ["in_transit", "loading", "unloading"].includes(o.status)
-          )
-            ? "in_progress"
-            : sortedOrders.every((o) => o.status === "delivered")
-              ? "completed"
-              : "pending",
+          status: toCardStatus(route.status, sortedOrders),
           orders: sortedOrders,
-        })
-      }
+        }
+      })
 
       setRoutes(enrichedRoutes)
     } catch (error) {
-      console.error("Failed to fetch routes:", error)
-      toast.error("Ошибка загрузки маршрутов")
+      const message = error instanceof Error ? error.message : "Неизвестная ошибка"
+      console.error("Failed to fetch routes:", message)
+      toast.error(`Ошибка загрузки маршрутов: ${message}`)
     } finally {
       setIsLoading(false)
     }
