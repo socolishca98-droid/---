@@ -1,28 +1,28 @@
 // app/api/m/sos/route.ts
+// Водитель отправляет SOS-сигнал. Список сигналов и их обработка —
+// штабная операция и живёт в /api/sos (доступ только для admin/logist).
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// Типы SOS сигналов
-const SOS_LABELS: Record<string, string> = {
-  accident: "🚨 ДТП / Авария",
-  breakdown: "🔧 Поломка ТС",
-  medical: "🏥 Проблемы со здоровьем",
-  robbery: "🚔 Ограбление / Угроза",
-  cargo: "📦 Проблема с грузом",
-  other: "⚠️ Другая ситуация",
-}
-
+import { SOS_LABELS } from "@/lib/sos-labels"
+import { requireDriver } from "@/lib/auth/session"
 // POST - отправить SOS сигнал
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  // Автор сигнала — водитель из проверенной сессии
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json()
-    const { driverId, type, latitude, longitude, message, orderId } = body
+    const { type, latitude, longitude, message, orderId } = body
 
     // Валидация
-    if (!driverId || !type) {
+    if (!type) {
       return NextResponse.json(
-        { success: false, error: "driverId and type are required" },
+        { success: false, error: "type is required" },
         { status: 400 },
       )
     }
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Получаем данные водителя
+    // Данные водителя — из карточки, привязанной к сессии
     const driver = await prisma.driver.findUnique({
       where: { id: driverId },
       select: {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     if (!driver) {
       return NextResponse.json(
-        { success: false, error: "Driver not found" },
+        { success: false, error: "Карточка водителя не найдена" },
         { status: 404 },
       )
     }
@@ -155,100 +155,3 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - получить SOS алерты (для дашборда логиста)
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const status = searchParams.get("status") || "active"
-    const limit = parseInt(searchParams.get("limit") || "50", 10)
-
-    const alerts = await prisma.sosAlert.findMany({
-      where: {
-        status: status === "all" ? undefined : status,
-      },
-      orderBy: { createdAt: "desc" },
-      take: Number.isFinite(limit) && limit > 0 ? limit : 50,
-    })
-
-    const driverIds = [...new Set(alerts.map((a) => a.driverId))]
-    const drivers = await prisma.driver.findMany({
-      where: { id: { in: driverIds } },
-      select: { id: true, name: true, phone: true, vehiclePlate: true },
-    })
-
-    const alertsWithDrivers = alerts.map((alert) => ({
-      ...alert,
-      driver: drivers.find((d) => d.id === alert.driverId),
-      typeLabel: SOS_LABELS[alert.type] || alert.type,
-    }))
-
-    return NextResponse.json({
-      success: true,
-      alerts: alertsWithDrivers,
-      total: alertsWithDrivers.length,
-    })
-  } catch (error: any) {
-    console.error("[SOS API] GET Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 },
-    )
-  }
-}
-
-// PATCH - обновить статус SOS (отметить как обработанный)
-export async function PATCH(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { sosId, status, resolution, resolvedBy } = body
-
-    if (!sosId || !status) {
-      return NextResponse.json(
-        { success: false, error: "sosId and status required" },
-        { status: 400 },
-      )
-    }
-
-    const validStatuses = ["active", "responding", "resolved", "false_alarm"]
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid status. Must be one of: ${validStatuses.join(
-            ", ",
-          )}`,
-        },
-        { status: 400 },
-      )
-    }
-
-    const updateData: Record<string, any> = { status }
-
-    if (status === "resolved" || status === "false_alarm") {
-      updateData.resolvedAt = new Date()
-      updateData.resolvedBy = resolvedBy || null
-      updateData.resolution = resolution || null
-    }
-
-    if (status === "responding") {
-      updateData.respondedAt = new Date()
-      updateData.respondedBy = resolvedBy || null
-    }
-
-    const updated = await prisma.sosAlert.update({
-      where: { id: sosId },
-      data: updateData,
-    })
-
-    return NextResponse.json({
-      success: true,
-      sos: updated,
-    })
-  } catch (error: any) {
-    console.error("[SOS API] PATCH Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 },
-    )
-  }
-}

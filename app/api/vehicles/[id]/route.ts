@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
+
 const ALLOWED_VEHICLE_STATUSES = ["available", "in_use", "maintenance"] as const
 type VehicleStatus = typeof ALLOWED_VEHICLE_STATUSES[number]
 
@@ -12,9 +14,11 @@ type RouteParams = {
 
 // GET /api/vehicles/[id]
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { id } = await params
 
@@ -52,6 +56,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { id } = await params
 
@@ -158,9 +164,11 @@ export async function PATCH(
 
 // DELETE /api/vehicles/[id]
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { id } = await params
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
+import { requireDriver } from "@/lib/auth/session"
+
 const BASE_LAT = 57.6261
 const BASE_LNG = 39.8845
 
@@ -26,21 +28,19 @@ function haversineDistanceKm(
   return R * c
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
+export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
 
-    const driverId = body?.driverId as string | undefined
+  try {
+    const body = await request.json()
+
     const latitude = body?.latitude as number | undefined
     const longitude = body?.longitude as number | undefined
 
-    if (
-      !driverId ||
-      typeof latitude !== "number" ||
-      typeof longitude !== "number"
-    ) {
+    if (typeof latitude !== "number" || typeof longitude !== "number") {
       return NextResponse.json(
-        { success: false, error: "driverId, latitude, longitude обязательны" },
+        { success: false, error: "latitude и longitude обязательны" },
         { status: 400 }
       )
     }

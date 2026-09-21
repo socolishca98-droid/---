@@ -167,6 +167,9 @@ model Driver {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  /// Учётная запись для входа в мобильное приложение (роль driver)
+  user            User?
+
   @@index([status])
   @@index([vehicleId])
 }
@@ -419,4 +422,78 @@ model RouteEvent {
   @@index([vehicleId])
   @@index([type])
   @@index([createdAt])
+}
+
+// ============================================
+// АВТОРИЗАЦИЯ: ПОЛЬЗОВАТЕЛИ И СЕССИИ
+// ============================================
+
+/// Учётная запись человека, который входит в систему.
+/// роли: admin | logist | driver
+/// статусы: pending (ожидает одобрения) | active (доступ разрешён) | suspended (доступ закрыт)
+/// Для роли driver обязателен phone и связь с Driver, email может отсутствовать.
+/// Для ролей admin/logist обязателен email.
+model User {
+  id           String   @id @default(cuid())
+  /// Email — уникальный идентификатор входа для admin/logist
+  email        String?  @unique
+  /// Телефон — уникальный идентификатор входа для driver
+  phone        String?  @unique
+  name         String
+  /// Хэш пароля (scrypt, hex). Проверяется на сервере, наружу никогда не отдаётся
+  passwordHash String
+  /// Соль пароля (hex, 16 байт). Хранится отдельно от хэша
+  passwordSalt String
+  role         String   @default("logist")
+  status       String   @default("pending")
+
+  /// Ссылка на карточку водителя (только для role = "driver")
+  driverId     String?  @unique
+  driver       Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  /// Кто одобрил регистрацию
+  approvedById String?
+  approvedBy   User?    @relation("UserApprovals", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvals    User[]   @relation("UserApprovals")
+  approvedAt   DateTime?
+
+  /// Блокировка доступа (увольнение). Запись не удаляется — доступ можно восстановить
+  suspendedAt   DateTime?
+  suspendReason String?
+  restoredAt    DateTime?
+  restoredById  String?
+
+  mustChangePassword Boolean  @default(false)
+  lastLoginAt        DateTime?
+  failedLoginCount   Int      @default(0)
+  lockedUntil        DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  sessions  Session[]
+
+  @@index([status])
+  @@index([role])
+  @@index([role, status])
+}
+
+/// Серверная сессия. id = jti подписанного токена в httpOnly-cookie.
+/// Удаление/отзыв строки немедленно закрывает доступ — это настоящий серверный выход.
+model Session {
+  id         String    @id
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  revokeReason String?
+  lastSeenAt DateTime?
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
 }

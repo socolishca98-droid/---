@@ -6,6 +6,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { requireDriver } from "@/lib/auth/session"
+
 import {
   calculateAllCoefficients,
   calculateRouteCost,
@@ -15,12 +17,17 @@ import {
 const COMPLETED_STATUSES = ["delivered", "cancelled", "rejected"]
 
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  // Автор события — всегда водитель из сессии, поле driverId из тела не принимается
+  const driverId = auth.value.driver.id
+
   try {
     const body = (await request.json().catch(() => null)) as
       | {
           routeId?: string
           orderId?: string | null
-          driverId?: string
           vehicleId?: string | null
           stageId?: string | null
           type?: string
@@ -39,14 +46,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { routeId, driverId, vehicleId, stageId, orderId } = body
+    const { routeId, vehicleId, stageId, orderId } = body
     const { type, status, latitude, longitude, address, data } = body
 
-    if (!routeId || !driverId || !type) {
+    if (!routeId || !type) {
       return NextResponse.json(
         {
           success: false,
-          error: "routeId, driverId и type обязательны",
+          error: "routeId и type обязательны",
         },
         { status: 400 },
       )

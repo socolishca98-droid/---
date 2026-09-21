@@ -1,7 +1,9 @@
 // app/api/dashboard/routes/route.ts
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+
+import { requireStaff } from "@/lib/auth/session"
 
 const OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 
@@ -132,7 +134,9 @@ function generateSmoothCurve(points: Point[]): [number, number][] {
   return result
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     // ========== ЛОГИКА БАЗЫ ==========
     const settings = await prisma.fleetSettings.findFirst({

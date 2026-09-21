@@ -28,8 +28,18 @@ import {
   MapPin,
   Settings,
   PieChart,
+  Copy,
+  KeyRound,
 } from "lucide-react"
 import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 export default function FleetPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -56,15 +66,33 @@ export default function FleetPage() {
   const [maintenanceVehicle, setMaintenanceVehicle] = useState<any>(null)
   const [assignVehicle, setAssignVehicle] = useState<any>(null) // Для привязки водителя
   const [showSettings, setShowSettings] = useState(false) // Настройки базы
+  // Временный пароль нового водителя (показывается один раз)
+  const [newDriverCredentials, setNewDriverCredentials] = useState<{
+    name: string
+    phone: string
+    temporaryPassword: string
+  } | null>(null)
 
   const [availableVehicles, setAvailableVehicles] = useState<any[]>([])
   const [fleetSettings, setFleetSettings] = useState<any>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/")
+      router.replace("/login")
     }
   }, [user, authLoading, router])
+
+  // Временный пароль нового водителя показывается один раз — даём скопировать
+  const copyTemporaryPassword = async () => {
+    if (!newDriverCredentials) return
+    try {
+      await navigator.clipboard.writeText(newDriverCredentials.temporaryPassword)
+      toast.success("Пароль скопирован")
+    } catch (error) {
+      console.error("[fleet] не удалось скопировать пароль:", error)
+      toast.error("Скопировать не удалось — перепишите пароль вручную")
+    }
+  }
 
   const loadSettings = () => {
     fetch("/api/fleet/settings")
@@ -317,9 +345,21 @@ export default function FleetPage() {
         open={showAddDriver}
         onOpenChange={setShowAddDriver}
         onSubmit={async (data) => {
-          await addDriver(data)
+          const result: any = await addDriver(data)
           setShowAddDriver(false)
-          toast.success("Водитель добавлен")
+
+          if (result?.warning) toast.warning("Водитель добавлен", { description: result.warning })
+
+          if (result?.credentials?.temporaryPassword) {
+            // Временный пароль показываем один раз — сохранить его больше негде
+            setNewDriverCredentials({
+              name: data.name,
+              phone: result.credentials.phone,
+              temporaryPassword: result.credentials.temporaryPassword,
+            })
+          } else if (!result?.warning) {
+            toast.success("Водитель добавлен")
+          }
         }}
         availableVehicles={availableVehicles}
       />
@@ -353,6 +393,54 @@ export default function FleetPage() {
           setAssignVehicle(null)
         }}
       />
+
+      {/* Учётка нового водителя: временный пароль показываем один раз */}
+      <Dialog
+        open={Boolean(newDriverCredentials)}
+        onOpenChange={(open) => !open && setNewDriverCredentials(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Доступ для водителя
+            </DialogTitle>
+            <DialogDescription>
+              Учётка создана. Передайте водителю телефон и временный пароль: при первом
+              входе в приложение система потребует его сменить. Пароль показывается один раз.
+            </DialogDescription>
+          </DialogHeader>
+
+          {newDriverCredentials && (
+            <div className="space-y-3 rounded-lg border border-border bg-secondary/40 p-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Водитель</div>
+                <div className="font-medium">{newDriverCredentials.name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Телефон (логин)</div>
+                <div className="font-medium">{newDriverCredentials.phone}</div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs text-muted-foreground">Временный пароль</div>
+                  <div className="font-mono text-base break-all">
+                    {newDriverCredentials.temporaryPassword}
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => void copyTemporaryPassword()}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Копировать
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => setNewDriverCredentials(null)}>Понятно</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

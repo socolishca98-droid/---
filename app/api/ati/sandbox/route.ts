@@ -2,8 +2,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
 // GET — грузы в песочнице (status = "imported")
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const items = await prisma.atiCache.findMany({
       where: { status: "imported" },
@@ -35,9 +38,11 @@ export async function GET() {
 }
 
 // DELETE — вернуть груз обратно в базу (status = "new")
-export async function DELETE(req: NextRequest) {
+export async function DELETE(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
-    const body = await req.json().catch(() => ({}))
+    const body = await request.json().catch(() => ({}))
     const { id } = body as { id?: string }
 
     if (!id) {

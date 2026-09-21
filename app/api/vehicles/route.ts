@@ -3,9 +3,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
 // GET /api/vehicles?available=true
 // GET /api/vehicles?ids=id1,id2,id3 — bulk fetch
 export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { searchParams } = new URL(request.url)
     const available = searchParams.get("available")
@@ -67,6 +70,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/vehicles
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const body = await request.json().catch(() => ({}))
     const {

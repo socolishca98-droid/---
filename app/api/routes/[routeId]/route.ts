@@ -3,12 +3,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
+
 type RouteParams = {
   params: Promise<{ routeId: string }>
 }
 
 // GET /api/routes/[routeId] – получить маршрут со всеми заказами
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { routeId } = await params
 
@@ -83,6 +87,8 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
 // PATCH /api/routes/[routeId] – обновить порядок точек (routeSequence)
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { routeId } = await params
 
@@ -167,7 +173,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 }
 
 // DELETE /api/routes/[routeId] – отменить весь маршрут
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { routeId } = await params
 

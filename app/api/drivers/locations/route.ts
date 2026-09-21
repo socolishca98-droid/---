@@ -1,11 +1,15 @@
 // app/api/drivers/locations/route.ts
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+
+import { requireStaff } from "@/lib/auth/session"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const [allDrivers, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({

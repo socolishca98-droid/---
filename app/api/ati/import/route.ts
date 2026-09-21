@@ -2,7 +2,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { importAtiLoadToOrder } from "@/lib/ati-client"
 
+import { requireStaff } from "@/lib/auth/session"
+
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const body = await request.json().catch(() => ({}))
     const { cacheId, fetchContacts } = body as {

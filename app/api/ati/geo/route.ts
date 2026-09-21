@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCitiesList } from "@/lib/ati-client"
 
+import { requireStaff } from "@/lib/auth/session"
 // Тип, который ждет фронтенд (компонент GeoSelect)
 interface GeoOption {
   id: number
@@ -11,6 +12,8 @@ interface GeoOption {
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   const { searchParams } = new URL(request.url)
   const query = searchParams.get("q")?.toLowerCase().trim()
 

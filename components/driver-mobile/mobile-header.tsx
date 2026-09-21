@@ -1,7 +1,6 @@
 "use client"
 
-import { useAuth } from "@/lib/auth-context"
-import { useRouter } from "next/navigation"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Truck, Bell, LogOut, Wifi, WifiOff, Cloud } from "lucide-react"
@@ -13,8 +12,8 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({ notificationCount = 0 }: MobileHeaderProps) {
-  const { user, logout } = useAuth()
-  const router = useRouter()
+  // Шапка мобильного контура: сессия водителя, а не штабного пользователя
+  const { driver, logout } = useDriverSession({ requireAuth: false })
   const [isOnline, setIsOnline] = useState(true)
   const [pendingUploads, setPendingUploads] = useState(0)
 
@@ -45,9 +44,9 @@ export function MobileHeader({ notificationCount = 0 }: MobileHeaderProps) {
     }
   }, [])
 
-  const handleLogout = () => {
-    logout()
-    router.push("/")
+  const handleLogout = async () => {
+    // Серверный выход: отзыв сессии в БД + удаление cookie + редирект на /m/login
+    await logout()
   }
 
   return (
@@ -58,7 +57,7 @@ export function MobileHeader({ notificationCount = 0 }: MobileHeaderProps) {
             <Truck className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <p className="font-semibold text-sm">{user?.name || "Водитель"}</p>
+            <p className="font-semibold text-sm">{driver?.name || "Водитель"}</p>
             <div className="flex items-center gap-2">
               {isOnline ? (
                 <span className="flex items-center gap-1 text-xs text-green-600">

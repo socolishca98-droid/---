@@ -829,7 +829,7 @@ export default function MobileHomePage() {
         {/* ... */}
       </main>
 
-      {shift && !isOnMaintenance && <SosButton driverId={driver.id} orderId={activeOrder?.id} />}
+      {shift && !isOnMaintenance && <SosButton orderId={activeOrder?.id} />}
 
       <BottomNav />
     </div>

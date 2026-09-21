@@ -3,11 +3,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireAnySession, requireStaff } from "@/lib/auth/session"
 export async function GET(request: NextRequest) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
-    const driverId = searchParams.get("driverId")
+    // Водитель всегда ограничен своими заказами, какие бы параметры он ни прислал
+    const driverId =
+      auth.value.kind === "driver" ? auth.value.driver.id : searchParams.get("driverId")
     const routeId = searchParams.get("routeId")
     const limit = parseInt(searchParams.get("limit") || "100", 10)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
@@ -61,6 +67,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+
   try {
     const body = await request.json()
     

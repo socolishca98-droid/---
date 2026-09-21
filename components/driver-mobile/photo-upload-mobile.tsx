@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils"
 
 interface PhotoUploadMobileProps {
   routeId?: string
-  driverId?: string
   onUploadComplete?: () => void
 }
 
@@ -36,7 +35,7 @@ interface QueuedItem {
   status: "pending" | "uploading" | "done" | "failed"
 }
 
-export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: PhotoUploadMobileProps) {
+export function PhotoUploadMobile({ routeId, onUploadComplete }: PhotoUploadMobileProps) {
   const [selectedCategory, setSelectedCategory] = useState<PhotoCategory>("cargo_before")
   const [uploads, setUploads] = useState<QueuedItem[]>([])
   const [isOnline, setIsOnline] = useState(true)
@@ -90,7 +89,7 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
       formData.append("file", item.file)
       formData.append("category", item.category)
       if (routeId) formData.append("orderId", routeId)
-      if (driverId) formData.append("driverId", driverId)
+      // driverId не добавляем: сервер берёт водителя из сессии
 
       // TODO: Реализовать API загрузки
       // const res = await fetch('/api/m/photos', { method: 'POST', body: formData })

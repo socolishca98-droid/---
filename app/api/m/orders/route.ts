@@ -3,18 +3,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+import { requireDriver } from "@/lib/auth/session"
+
 export async function GET(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  // Водитель видит только свои заказы: driverId из сессии, query-параметр игнорируется
+  const driverId = auth.value.driver.id
+
   try {
     const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get('driverId')
     const status = searchParams.get('status') // 'active' | 'history'
-
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: 'driverId обязателен' },
-        { status: 400 }
-      )
-    }
 
     const activeStatuses = [
       'new',

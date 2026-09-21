@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+import { requireAnySession } from "@/lib/auth/session"
 // Ключевые слова для определения важности
 const IMPORTANT_KEYWORDS = [
   // Проблемы на дороге
@@ -50,11 +51,19 @@ function detectImportance(text: string): { isImportant: boolean; reason: string 
 }
 
 // GET - получить сообщения
+// Водитель видит только свою переписку; логист — переписку выбранного водителя или всю
 export async function GET(request: NextRequest) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get('driverId')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const driverId =
+      auth.value.kind === 'driver'
+        ? auth.value.driver.id
+        : searchParams.get('driverId')
+    const requestedLimit = parseInt(searchParams.get('limit') || '50', 10)
+    const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, requestedLimit)) : 50
     
     const where: any = {}
     
@@ -79,17 +88,26 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - отправить сообщение
+// Отправитель всегда берётся из проверенной сессии: senderId/senderRole/senderName
+// из тела запроса игнорируются — иначе любой мог писать от чужого имени
 export async function POST(request: NextRequest) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+
   try {
     const body = await request.json()
-    const { senderId, senderRole, senderName, recipientId, content, type = 'text', attachmentUrl } = body
-    
-    if (!senderId || !senderName || !content) {
+    const { recipientId, content, type = 'text', attachmentUrl } = body
+
+    if (!content || !String(content).trim()) {
       return NextResponse.json(
-        { success: false, error: 'senderId, senderName и content обязательны' },
+        { success: false, error: 'content обязателен' },
         { status: 400 }
       )
     }
+
+    const senderId = auth.value.kind === 'driver' ? auth.value.driver.id : auth.value.user.id
+    const senderRole = auth.value.kind === 'driver' ? 'driver' : auth.value.user.role
+    const senderName = auth.value.kind === 'driver' ? auth.value.driver.name : auth.value.user.name
     
     // Определяем важность сообщения
     const { isImportant, reason } = type === 'alert' 
@@ -117,20 +135,28 @@ export async function POST(request: NextRequest) {
 }
 
 // PATCH - пометить как прочитанное
+// PATCH - пометить как прочитанное.
+// Водитель может отмечать только те сообщения, где он получатель.
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+
   try {
     const body = await request.json()
     const { messageIds } = body
-    
+
     if (!messageIds || !Array.isArray(messageIds)) {
       return NextResponse.json(
         { success: false, error: 'messageIds должен быть массивом' },
         { status: 400 }
       )
     }
-    
+
+    const ownerFilter =
+      auth.value.kind === 'driver' ? { recipientId: auth.value.driver.id } : {}
+
     await prisma.chatMessage.updateMany({
-      where: { id: { in: messageIds } },
+      where: { id: { in: messageIds }, ...ownerFilter },
       data: { isRead: true, readAt: new Date() }
     })
     

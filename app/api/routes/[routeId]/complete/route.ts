@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { canDriverAccessRoute, forbidden, requireAnySession } from "@/lib/auth/session"
 type RouteParams = {
   params: Promise<{ routeId: string }>
 }
@@ -11,6 +12,9 @@ export async function POST(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { routeId } = await params
 
@@ -21,9 +25,13 @@ export async function POST(
       )
     }
 
+    // Водитель может завершить только свой рейс
+    if (!(await canDriverAccessRoute(auth.value, routeId))) {
+      return forbidden("Рейс назначен другому водителю")
+    }
+
     const body = await request.json().catch(() => ({}))
     const { force = false } = body as {
-      driverId?: string
       force?: boolean
     }
 

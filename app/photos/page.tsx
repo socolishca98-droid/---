@@ -21,13 +21,11 @@ export default function PhotosPage() {
   const [photos, setPhotos] = useState<any[]>([])
   const [loadingPhotos, setLoadingPhotos] = useState(false)
 
-  // Авторизация / роль
+  // Авторизация: доступ есть только у сотрудника (логист/администратор).
+  // Водителей на штабные страницы не пускает middleware.
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push("/")
-    }
-    if (!isLoading && user?.role === "driver") {
-      router.push("/m")
+      router.replace("/login")
     }
   }, [user, isLoading, router])
 

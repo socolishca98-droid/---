@@ -2,7 +2,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -15,13 +15,7 @@ import {
   FileText,
 } from "lucide-react"
 import { toast } from "sonner"
-
-interface Driver {
-  id: string
-  name: string
-  vehicleId?: string | null
-  vehiclePlate?: string | null
-}
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 const MAINTENANCE_TYPES = [
   {
@@ -59,7 +53,8 @@ const MAINTENANCE_TYPES = [
 export default function MaintenancePage() {
   const router = useRouter()
 
-  const [driver, setDriver] = useState<Driver | null>(null)
+  // Сессия водителя — с сервера: в ней уже есть id, машина и её госномер
+  const { driver, updateDriver } = useDriverSession()
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [description, setDescription] = useState("")
   const [mileage, setMileage] = useState("")
@@ -67,38 +62,6 @@ export default function MaintenancePage() {
   const [performer, setPerformer] = useState<"driver" | "service">("driver")
   const [serviceName, setServiceName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (!saved) {
-      router.push("/m/login")
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as Driver
-      if (!parsed?.id) throw new Error("Invalid session")
-
-      fetch(`/api/drivers/${parsed.id}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.driver) {
-            setDriver({
-              id: data.driver.id,
-              name: data.driver.name,
-              vehicleId: data.driver.vehicleId,
-              vehiclePlate: data.driver.vehiclePlate,
-            })
-          } else {
-            setDriver(parsed)
-          }
-        })
-        .catch(() => setDriver(parsed))
-    } catch {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
-  }, [router])
 
   const handleSubmit = async () => {
     if (!driver?.id || !selectedType) {
@@ -129,8 +92,8 @@ export default function MaintenancePage() {
       const res = await fetch("/api/m/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // driverId не передаём: сервер берёт его из сессии водителя
         body: JSON.stringify({
-          driverId: driver.id,
           vehicleId: driver.vehicleId,
           type: selectedType,
           description: description.trim(),
@@ -151,8 +114,7 @@ export default function MaintenancePage() {
               : `СТО: ${serviceName.trim()}`,
         })
 
-        const updated = { ...driver, status: "maintenance" }
-        localStorage.setItem("driver_session", JSON.stringify(updated))
+        updateDriver({ status: "maintenance" })
 
         router.push("/m")
       } else {

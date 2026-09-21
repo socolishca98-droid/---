@@ -74,7 +74,10 @@ export function useFleet() {
     const result = await res.json()
     if (!result.success) throw new Error(result.error)
     await fetchAll()
-    return result.driver
+    // result.driver — карточка; result.credentials — временный пароль для входа
+    // в приложение водителя (показывается один раз); result.warning — если учётку
+    // создать не удалось
+    return result
   }
 
   const deleteDriver = async (id: string) => {

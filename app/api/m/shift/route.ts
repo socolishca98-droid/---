@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireDriver } from "@/lib/auth/session"
+
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 async function getActiveOrderForDriver(driverId: string) {
@@ -15,19 +17,16 @@ async function getActiveOrderForDriver(driverId: string) {
   })
 }
 
-// GET /api/m/shift?driverId=...
-// Текущая активная смена + активный заказ (если есть)
+// GET /api/m/shift
+// Текущая активная смена + активный заказ (если есть).
+// Водитель — из проверенной сессии, query-параметр driverId больше не принимается.
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get("driverId")
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
 
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: "driverId required" },
-        { status: 400 },
-      )
-    }
+  const driverId = auth.value.driver.id
+
+  try {
 
     const [shift, activeOrder] = await Promise.all([
       prisma.driverShift.findFirst({
@@ -55,21 +54,17 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/m/shift
-// body: { driverId: string }
+// body не требуется: смена стартует для водителя из сессии
 // Старт смены:
 // - если есть активный заказ → Shift.status = 'driving', Driver.status = 'busy'
 // - если нет заказа → Shift.status = 'waiting', Driver.status = 'available'
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json().catch(() => ({}))
-    const { driverId } = body as { driverId?: string }
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
 
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: "driverId required" },
-        { status: 400 },
-      )
-    }
+  const driverId = auth.value.driver.id
+
+  try {
 
     const driver = await prisma.driver.findUnique({
       where: { id: driverId },
@@ -141,19 +136,23 @@ export async function POST(request: NextRequest) {
 }
 
 // PATCH /api/m/shift
-// body: { driverId: string, status: 'driving' | 'waiting' | 'resting' | 'sleeping' | 'loading' | 'unloading' }
+// body: { status: 'driving' | 'waiting' | 'resting' | 'sleeping' | 'loading' | 'unloading' }
 // Обновление статуса текущей смены (для карты / аналитики)
 export async function PATCH(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json().catch(() => ({}))
-    const { driverId, status } = body as {
-      driverId?: string
+    const { status } = body as {
       status?: string
     }
 
-    if (!driverId || !status) {
+    if (!status) {
       return NextResponse.json(
-        { success: false, error: "driverId and status required" },
+        { success: false, error: "status required" },
         { status: 400 },
       )
     }
@@ -206,21 +205,16 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE /api/m/shift?driverId=...
-// Завершение смены:
+// DELETE /api/m/shift — завершение своей смены
 // - если нет активных заказов → Driver.status = 'available'
 // - если есть активные заказы (теоретически) → Driver.status = 'busy'
 export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get("driverId")
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
 
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: "driverId required" },
-        { status: 400 },
-      )
-    }
+  const driverId = auth.value.driver.id
+
+  try {
 
     const shift = await prisma.driverShift.findFirst({
       where: { driverId, endedAt: null },

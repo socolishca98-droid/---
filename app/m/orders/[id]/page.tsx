@@ -43,6 +43,7 @@ export default function OrderDetailsPage() {
   const orderId = params?.id as string
 
   const [order, setOrder] = useState<Order | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -51,15 +52,21 @@ export default function OrderDetailsPage() {
 
       try {
         const res = await fetch(`/api/orders/${orderId}`)
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         if (data.success && data.order) {
           setOrder(data.order as Order)
+          setErrorMessage(null)
         } else {
+          // Сервер отвечает 401/403/404 с понятным текстом — показываем его,
+          // а не безликое «не найдено» (иначе водитель не отличит «нет доступа»
+          // от «заказ удалён»)
           setOrder(null)
+          setErrorMessage(data?.error || `Заказ не загружен (код ${res.status})`)
         }
       } catch (e) {
         console.error("Failed to load order:", e)
         setOrder(null)
+        setErrorMessage("Не удалось связаться с сервером")
       } finally {
         setIsLoading(false)
       }
@@ -103,7 +110,7 @@ export default function OrderDetailsPage() {
     return (
       <div className="min-h-screen bg-[#09090b] text-white flex flex-col items-center justify-center gap-4 p-4">
         <Package className="h-16 w-16 text-gray-700" />
-        <p className="text-gray-400 text-center">Заказ не найден</p>
+        <p className="text-gray-400 text-center">{errorMessage || "Заказ не найден"}</p>
         <button
           onClick={() => router.push("/m/orders")}
           className="px-6 py-3 rounded-xl bg-orange-500 text-white font-medium"

@@ -2,13 +2,17 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-
+import { requireStaff } from "@/lib/auth/session"
+import { normalizePhone } from "@/lib/auth/constants"
+import { generateTemporaryPassword, hashPassword } from "@/lib/auth/password"
 // ✅ Допустимые статусы водителя
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 
 // GET /api/drivers?status=available|busy|maintenance|offline|all
 // GET /api/drivers?ids=id1,id2,id3 — bulk fetch
 export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || undefined
@@ -70,6 +74,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/drivers
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const body = await request.json().catch(() => ({}))
     const {
@@ -114,7 +120,56 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ success: true, driver })
+    // Учётка для входа в приложение водителя: одна система доступа на всех.
+    // Пароль временный, водитель обязан сменить его при первом входе.
+    const normalizedPhone = normalizePhone(phone)
+    let credentials: { phone: string; temporaryPassword: string } | null = null
+    let warning: string | undefined
+
+    if (normalizedPhone.length >= 10) {
+      const existing = await prisma.user.findFirst({
+        where: { OR: [{ phone: normalizedPhone }, { driverId: driver.id }] },
+        select: { id: true },
+      })
+
+      if (existing) {
+        warning =
+          "Учётка с таким телефоном уже есть — водитель входит под существующим паролем. " +
+          "При необходимости сбросьте пароль в разделе «Сотрудники и доступ»."
+      } else {
+        const temporaryPassword = generateTemporaryPassword()
+        const { hash, salt } = await hashPassword(temporaryPassword)
+
+        try {
+          await prisma.user.create({
+            data: {
+              phone: normalizedPhone,
+              name,
+              passwordHash: hash,
+              passwordSalt: salt,
+              role: "driver",
+              status: "active",
+              driverId: driver.id,
+              approvedAt: new Date(),
+              approvedById: auth.value.user.id,
+              mustChangePassword: true,
+            },
+          })
+          credentials = { phone: normalizedPhone, temporaryPassword }
+        } catch (userError) {
+          console.error("[Drivers] не удалось создать учётку водителя:", userError)
+          warning =
+            "Карточка водителя создана, но учётку для входа создать не удалось. " +
+            "Проверьте телефон и создайте доступ в разделе «Сотрудники и доступ»."
+        }
+      }
+    } else {
+      warning =
+        "Карточка водителя создана, но телефон не распознан — учётка для входа не создана. " +
+        "Укажите корректный телефон и сбросьте пароль в разделе «Сотрудники и доступ»."
+    }
+
+    return NextResponse.json({ success: true, driver, credentials, warning })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Drivers POST error"
     console.error("[Drivers] POST Error:", message)

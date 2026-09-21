@@ -32,10 +32,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push("/")
-    }
-    if (!isLoading && user?.role === "driver") {
-      router.push("/m")
+      router.replace("/login")
     }
   }, [user, isLoading, router])
 

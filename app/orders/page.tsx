@@ -21,7 +21,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push("/")
+      router.replace("/login")
     }
     // Водителей через этот логин больше нет, поэтому
     // редирект на /m тут не нужен.

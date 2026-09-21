@@ -13,6 +13,8 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react"
+import { toast } from "sonner"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 interface Vehicle {
   id: string
@@ -27,32 +29,23 @@ interface Vehicle {
 
 export default function VehicleSelectPage() {
   const router = useRouter()
+  // driverId и текущая машина — из серверной сессии водителя
+  const { driver, updateDriver, refresh } = useDriverSession()
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [driverId, setDriverId] = useState<string | null>(null)
   const [currentVehicleId, setCurrentVehicleId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Получаем driverId из localStorage
-    const stored = localStorage.getItem("driverSession")
-    if (stored) {
-      try {
-        const session = JSON.parse(stored)
-        setDriverId(session.driverId || session.id)
-      } catch {
-        router.push("/m/login")
-        return
-      }
-    } else {
-      router.push("/m/login")
-      return
+    if (!driver?.id) return
+    void loadVehicles()
+    if (driver.vehicleId) {
+      setCurrentVehicleId(driver.vehicleId)
+      setSelectedId(driver.vehicleId)
     }
-
-    loadVehicles()
-    loadCurrentVehicle()
-  }, [router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driver?.id, driver?.vehicleId])
 
   const loadVehicles = async () => {
     try {
@@ -68,26 +61,8 @@ export default function VehicleSelectPage() {
     }
   }
 
-  const loadCurrentVehicle = async () => {
-    const stored = localStorage.getItem("driverSession")
-    if (!stored) return
-
-    try {
-      const session = JSON.parse(stored)
-      const did = session.driverId || session.id
-      const res = await fetch(`/api/drivers/${did}`)
-      const data = await res.json()
-      if (data.success && data.driver?.vehicleId) {
-        setCurrentVehicleId(data.driver.vehicleId)
-        setSelectedId(data.driver.vehicleId)
-      }
-    } catch (e) {
-      console.error("Failed to load current vehicle:", e)
-    }
-  }
-
   const handleSelect = async (vehicleId: string) => {
-    if (!driverId) return
+    if (!driver?.id) return
     
     setSelectedId(vehicleId)
     setIsSaving(true)
@@ -96,21 +71,20 @@ export default function VehicleSelectPage() {
       const res = await fetch("/api/m/vehicle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId, vehicleId }),
+        // driverId не передаём: сервер привязывает машину к водителю из сессии
+        body: JSON.stringify({ vehicleId }),
       })
 
       const data = await res.json()
 
       if (data.success) {
-        // Обновляем сессию
-        const stored = localStorage.getItem("driverSession")
-        if (stored) {
-          const session = JSON.parse(stored)
-          session.vehicleId = vehicleId
-          session.vehiclePlate = data.vehicle?.plate
-          session.vehicleType = data.vehicle?.type
-          localStorage.setItem("driverSession", JSON.stringify(session))
-        }
+        // Обновляем данные водителя в сессии (локально + на сервере)
+        updateDriver({
+          vehicleId,
+          vehiclePlate: data.vehicle?.plate,
+          vehicleType: data.vehicle?.type,
+        })
+        void refresh()
 
         setCurrentVehicleId(vehicleId)
         
@@ -119,7 +93,7 @@ export default function VehicleSelectPage() {
           router.push("/m")
         }, 500)
       } else {
-        alert(data.error || "Ошибка выбора машины")
+        toast.error(data.error || "Ошибка выбора машины")
         setSelectedId(currentVehicleId)
       }
     } catch (e) {
@@ -144,7 +118,7 @@ export default function VehicleSelectPage() {
 
   const getStatusText = (vehicle: Vehicle) => {
     if (vehicle.status === "maintenance") return "На ТО"
-    if (vehicle.assignedDriver && vehicle.assignedDriver.id !== driverId) {
+    if (vehicle.assignedDriver && vehicle.assignedDriver.id !== driver?.id) {
       return `Занята: ${vehicle.assignedDriver.name}`
     }
     return "Доступна"
@@ -152,7 +126,7 @@ export default function VehicleSelectPage() {
 
   const isDisabled = (vehicle: Vehicle) => {
     if (vehicle.status === "maintenance") return true
-    if (vehicle.assignedDriver && vehicle.assignedDriver.id !== driverId) return true
+    if (vehicle.assignedDriver && vehicle.assignedDriver.id !== driver?.id) return true
     return false
   }
 

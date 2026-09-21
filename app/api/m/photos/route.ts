@@ -3,20 +3,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// Получить фото водителя
+import { forbidden, requireDriver } from "@/lib/auth/session"
+// Получить фото водителя (только свои)
 export async function GET(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  const driverId = auth.value.driver.id
+
   try {
     const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get("driverId")
     const orderId = searchParams.get("orderId")
     const type = searchParams.get("type")
-
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: "driverId обязателен" },
-        { status: 400 },
-      )
-    }
 
     const where: Record<string, string> = { driverId }
     if (orderId) where.orderId = orderId
@@ -43,17 +41,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Загрузить новое фото (JSON: { driverId, orderId, type, url, description })
+// Загрузить новое фото (JSON: { orderId, type, url, description })
+// Автор фото всегда берётся из сессии — driverId в теле запроса игнорируется
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json()
-    const { driverId, orderId, type, url, description } = body
+    const { orderId, type, url, description } = body
 
-    if (!driverId || !type || !url) {
+    if (!type || !url) {
       return NextResponse.json(
         {
           success: false,
-          error: "driverId, type и url обязательны",
+          error: "type и url обязательны",
         },
         { status: 400 },
       )
@@ -157,8 +161,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Удалить фото
+// Удалить фото — только своё
 export async function DELETE(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
@@ -168,6 +175,22 @@ export async function DELETE(request: NextRequest) {
         { success: false, error: "id обязателен" },
         { status: 400 },
       )
+    }
+
+    const photo = await prisma.photo.findUnique({
+      where: { id },
+      select: { id: true, driverId: true },
+    })
+
+    if (!photo) {
+      return NextResponse.json(
+        { success: false, error: "Фото не найдено" },
+        { status: 404 },
+      )
+    }
+
+    if (photo.driverId !== auth.value.driver.id) {
+      return forbidden("Можно удалять только свои фото")
     }
 
     await prisma.photo.delete({

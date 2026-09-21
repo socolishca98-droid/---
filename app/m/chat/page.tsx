@@ -11,6 +11,7 @@ import {
   Headphones,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 interface ChatMessage {
   id: string
@@ -23,42 +24,25 @@ interface ChatMessage {
   createdAt: string
 }
 
-interface Driver {
-  id: string
-  name: string
-}
-
 export default function DriverChatPage() {
   const router = useRouter()
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const [driver, setDriver] = useState<Driver | null>(null)
+  // Сессия водителя хранится на сервере (httpOnly-cookie), а не в localStorage
+  const { driver } = useDriverSession()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
-
-  // Авторизация
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (saved) {
-      try {
-        setDriver(JSON.parse(saved))
-      } catch {
-        router.push("/m/login")
-      }
-    } else {
-      router.push("/m/login")
-    }
-  }, [router])
 
   // Загрузка сообщений
   const fetchMessages = useCallback(async () => {
     if (!driver?.id) return
 
     try {
-      const res = await fetch(`/api/chat?driverId=${driver.id}`)
+      // Кто пишет — сервер определяет по сессии
+      const res = await fetch("/api/chat")
       const data = await res.json()
 
       if (data.success) {
@@ -103,13 +87,8 @@ export default function DriverChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senderId: driver.id,
-          senderRole: "driver",
-          senderName: driver.name,
-          content,
-          type: "text",
-        }),
+        // senderId/senderRole/senderName не передаются: сервер берёт их из сессии
+        body: JSON.stringify({ content, type: "text" }),
       })
 
       const data = await res.json()

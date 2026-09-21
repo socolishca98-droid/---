@@ -5,7 +5,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { calculateETA, formatDuration, formatDistance } from "@/lib/eta/service"
 import type { ETARequest } from "@/lib/eta/types"
 
+import { requireStaff } from "@/lib/auth/session"
+
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const body = await request.json()
 
@@ -62,7 +66,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   return NextResponse.json({
     service: "ETA Calculator",
     status: "ok",

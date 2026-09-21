@@ -70,11 +70,7 @@ export default function ChatPage() {
   // Начальная загрузка
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/")
-      return
-    }
-    if (!authLoading && user?.role === "driver") {
-      router.push("/m")
+      router.replace("/login")
       return
     }
     
@@ -105,10 +101,9 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // senderId / senderRole / senderName не передаём:
+        // сервер берёт отправителя из проверенной сессии
         body: JSON.stringify({
-          senderId: user.id,
-          senderRole: 'logist',
-          senderName: user.name,
           recipientId: selectedDriverId,
           content,
           type

@@ -19,6 +19,7 @@ import {
   Check,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 // Этот экспорт всё равно оставим для надёжности
 export const dynamic = "force-dynamic"
@@ -38,11 +39,6 @@ type PhotoContext =
   | "damage"
   | "document"
   | "generic"
-
-interface DriverSession {
-  id: string
-  name: string
-}
 
 interface Order {
   id: string
@@ -128,7 +124,8 @@ function PhotoPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [driver, setDriver] = useState<DriverSession | null>(null)
+  // Сессия водителя — с сервера (httpOnly-cookie)
+  const { driver } = useDriverSession()
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -141,21 +138,6 @@ function PhotoPageContent() {
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
 
   useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as DriverSession
-        if (!parsed?.id) throw new Error("Invalid session")
-        setDriver(parsed)
-      } catch {
-        router.push("/m/login")
-      }
-    } else {
-      router.push("/m/login")
-    }
-  }, [router])
-
-  useEffect(() => {
     const ctxRaw = searchParams?.get("context") ?? "generic"
     const ctx = ctxRaw as PhotoContext
     setSelectedCategory(mapContextToCategory(ctx))
@@ -166,8 +148,9 @@ function PhotoPageContent() {
 
     try {
       const [activeRes, historyRes] = await Promise.all([
-        fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
-        fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
+        // driverId не передаём: сервер берёт его из сессии водителя
+        fetch("/api/m/orders?status=active"),
+        fetch("/api/m/orders?status=history"),
       ])
 
       const activeData = await activeRes.json()

@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
+import {  } from "react"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import { MobileHeader } from "@/components/driver-mobile/mobile-header"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import { ChatButton } from "@/components/driver-mobile/chat-button"
@@ -12,16 +11,11 @@ import { mockOrders, mockChatMessages } from "@/lib/mock-data"
 import { Loader2, MapPin, Calendar, CheckCircle } from "lucide-react"
 
 export default function DriverHistoryPage() {
-  const { user, isLoading } = useAuth()
-  const router = useRouter()
+  // Страница водителя: доступ по водительской сессии.
+  // Хук сам разворачивает на /m/login, если сессии нет или она истекла.
+  const { driver, isLoading } = useDriverSession()
 
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push("/")
-    }
-  }, [user, isLoading, router])
-
-  if (isLoading || !user) {
+  if (isLoading || !driver) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

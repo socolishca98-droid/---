@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
+
 type RouteParams = {
   params: Promise<{ routeId: string }>
 }
@@ -11,6 +13,8 @@ export async function POST(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const { routeId } = await params
 

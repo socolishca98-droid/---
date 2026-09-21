@@ -1,0 +1,23 @@
+{
+  "//": "Компиляция чистых модулей авторизации в CommonJS, чтобы их можно было тестировать в Node без Next.js и без Prisma. Результат кладётся в .test-build (в git не попадает).",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "outDir": "../.test-build",
+    "rootDir": "..",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "../lib/auth/constants.ts",
+    "../lib/auth/access.ts",
+    "../lib/auth/token.ts",
+    "../lib/auth/password.ts"
+  ]
+}

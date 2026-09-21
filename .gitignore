@@ -1,2 +1,50 @@
-node_modules
-.next
+# --- Зависимости и сборка ---
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# --- Секреты и локальные настройки ---
+# ВНИМАНИЕ: .env и .env.local были закоммичены ранее — ключи в истории git
+# остаются доступными, их нужно считать скомпрометированными (см. docs/task-1-security.md)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- TLS-сертификаты для локального https ---
+certificates/
+*.pem
+*.key
+*.crt
+*.p12
+
+# --- Локальная база данных ---
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+
+# --- Логи ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- ОС / редакторы ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Рабочие дампы и отладочные выгрузки (не являются кодом) ---
+/_dumps/
+
+# --- Артефакты тестов (компиляция чистых модулей для node --test) ---
+.test-build/

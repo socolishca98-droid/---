@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireDriver } from "@/lib/auth/session"
 // GET — список доступных машин
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
   try {
     const vehicles = await prisma.vehicle.findMany({
       orderBy: { plate: "asc" },
@@ -42,19 +46,24 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — водитель выбирает машину
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
+// POST — водитель выбирает машину (привязывает её к себе)
+export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
 
-    const { driverId, vehicleId } = body as {
-      driverId?: string
+  // Водитель может привязать машину только к себе
+  const driverId = auth.value.driver.id
+
+  try {
+    const body = await request.json()
+
+    const { vehicleId } = body as {
       vehicleId?: string
     }
 
-    if (!driverId || !vehicleId) {
+    if (!vehicleId) {
       return NextResponse.json(
-        { success: false, error: "driverId и vehicleId обязательны" },
+        { success: false, error: "vehicleId обязателен" },
         { status: 400 }
       )
     }

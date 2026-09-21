@@ -3,6 +3,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireDriver } from "@/lib/auth/session"
+
 const ACTIVE_ORDER_STATUSES = [
   "confirmed",
   "in_transit",
@@ -21,31 +23,27 @@ async function getActiveOrderForDriver(driverId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  // Водитель отправляет только свою позицию: driverId из тела запроса больше не принимается
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json().catch(() => ({}))
-    
-    // Поддержка обоих вариантов именования
-    const driverId = body.driverId
+
+    // Поддержка обоих вариантов именования координат
     const lat = typeof body.lat === "number" ? body.lat : body.latitude
     const lng = typeof body.lng === "number" ? body.lng : body.longitude
 
-    if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
+    if (typeof lat !== "number" || typeof lng !== "number") {
       return NextResponse.json(
-        { success: false, error: "driverId, lat, lng required" },
+        { success: false, error: "lat и lng обязательны" },
         { status: 400 },
       )
     }
 
-    const driver = await prisma.driver.findUnique({
-      where: { id: driverId },
-    })
-
-    if (!driver) {
-      return NextResponse.json(
-        { success: false, error: "Driver not found" },
-        { status: 404 },
-      )
-    }
+    // Карточка водителя гарантированно существует — её проверила сессия
 
     const updated = await prisma.driver.update({
       where: { id: driverId },

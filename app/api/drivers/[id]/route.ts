@@ -2,7 +2,13 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-
+import {
+  forbidden,
+  isSelfOrStaff,
+  requireAnySession,
+  requireStaff,
+  revokeAllSessions,
+} from "@/lib/auth/session"
 // ✅ Добавлен 'offline' в список разрешённых статусов
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 type DriverStatus = typeof ALLOWED_DRIVER_STATUSES[number]
@@ -13,9 +19,12 @@ type RouteParams = {
 
 // GET /api/drivers/[id]
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { id } = await params
 
@@ -24,6 +33,11 @@ export async function GET(
         { success: false, error: "Driver ID is required" },
         { status: 400 }
       )
+    }
+
+    // Водитель читает только свою карточку
+    if (!isSelfOrStaff(auth.value, id)) {
+      return forbidden("Недостаточно прав для просмотра этой карточки водителя")
     }
 
     const driver = await prisma.driver.findUnique({
@@ -53,6 +67,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { id } = await params
 
@@ -140,9 +157,12 @@ export async function PATCH(
 
 // DELETE /api/drivers/[id]
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+
   try {
     const { id } = await params
 
@@ -151,6 +171,24 @@ export async function DELETE(
         { success: false, error: "Driver ID is required" },
         { status: 400 }
       )
+    }
+
+    // Доступ водителя закрываем вместе с карточкой: иначе учётка останется
+    // активной, а войти по ней будет нельзя (связь с Driver обнулится)
+    const linkedUser = await prisma.user.findFirst({
+      where: { driverId: id },
+      select: { id: true, name: true },
+    })
+    if (linkedUser) {
+      await prisma.user.update({
+        where: { id: linkedUser.id },
+        data: {
+          status: "suspended",
+          suspendedAt: new Date(),
+          suspendReason: `Карточка водителя «${linkedUser.name}» удалена`,
+        },
+      })
+      await revokeAllSessions(linkedUser.id, "Карточка водителя удалена")
     }
 
     // Отвязываем машину, если была

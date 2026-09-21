@@ -3,19 +3,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireDriver } from "@/lib/auth/session"
+
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  // Водитель отвечает только за себя: driverId из сессии, а не из тела запроса
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json()
-    const { orderId, driverId, accept, rejectionReason } = body as {
+    const { orderId, accept, rejectionReason } = body as {
       orderId: string
-      driverId: string
       accept: boolean
       rejectionReason?: string
     }
 
-    if (!orderId || !driverId) {
+    if (!orderId) {
       return NextResponse.json(
-        { success: false, error: "orderId и driverId обязательны" },
+        { success: false, error: "orderId обязателен" },
         { status: 400 },
       )
     }

@@ -19,6 +19,7 @@ import {
   Warehouse,
   LogOut,
   CreditCard,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +33,7 @@ const navigation = [
   { name: "Чат", href: "/chat", icon: MessageSquare, badge: 1 },
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
+  { name: "Сотрудники", href: "/users", icon: Users },
 ]
 
 export function Sidebar() {
@@ -40,13 +42,12 @@ export function Sidebar() {
   const { user, logout } = useAuth()
   const { isCollapsed, toggle } = useSidebar()
 
-  const handleLogout = () => {
-    logout()
-    router.push("/")
+  const handleLogout = async () => {
+    // Серверный выход: сессия отзывается в БД, httpOnly-cookie удаляется
+    await logout()
+    router.replace("/login")
+    router.refresh()
   }
-
-  // Приведение user к any для доступа к email (которого нет в строгом типе)
-  const userAny = user as any
 
   return (
     <aside
@@ -137,7 +138,7 @@ export function Sidebar() {
                 {user.name}
               </p>
               <p className="text-xs text-muted-foreground truncate">
-                {userAny.email || userAny.phone || "Пользователь"}
+                {user.email || "—"}
               </p>
             </div>
           )}

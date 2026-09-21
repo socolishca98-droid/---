@@ -98,7 +98,7 @@ export default function RoutesPage() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/")
+      router.replace("/login")
     }
   }, [user, authLoading, router])
 

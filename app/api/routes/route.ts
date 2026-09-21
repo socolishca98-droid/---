@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { randomUUID } from "crypto"
 
+import { requireStaff } from "@/lib/auth/session"
+
 type SandboxOrderPayload = {
   atiCacheId?: string
   routeFrom: string
@@ -37,6 +39,8 @@ function generateRouteId(): string {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   try {
     const body = (await request.json().catch(() => null)) as
       | CreateRouteBody
@@ -134,7 +138,9 @@ export async function POST(request: NextRequest) {
 }
 
 // GET можно оставить как простой ping/debug, чтобы не ломать ожидания
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
   return NextResponse.json({
     success: true,
     message:
