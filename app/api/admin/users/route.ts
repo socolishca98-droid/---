@@ -1,11 +1,11 @@
-// app/api/admin/users/route.ts
+// app/api/admin/users/route.ts - P1-4 audit + P1-6 zod
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getStaffSession } from "@/lib/auth-server"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
+import { adminUserActionSchema, zodErrorResponse } from "@/lib/validators"
 
-// GET: список сотрудников
 export async function GET(req: NextRequest) {
   try {
     const sessionUser = await getStaffSession(req)
@@ -18,14 +18,9 @@ export async function GET(req: NextRequest) {
     const query = searchParams.get("q")
 
     const where: any = {}
-    if (status && status !== "all") {
-      where.status = status
-    }
+    if (status && status !== "all") where.status = status
     if (query) {
-      where.OR = [
-        { name: { contains: query } },
-        { email: { contains: query } },
-      ]
+      where.OR = [{ name: { contains: query } }, { email: { contains: query } }]
     }
 
     const users = await prisma.user.findMany({
@@ -57,7 +52,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PATCH: одобрение, деактивация, активация, смена роли
 export async function PATCH(req: NextRequest) {
   try {
     const sessionUser = await getStaffSession(req)
@@ -65,23 +59,23 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Требуется авторизация" }, { status: 401 })
     }
 
-    const body = await req.json()
-    const { userId, action, role } = body as {
-      userId: string
-      action: "approve" | "deactivate" | "activate" | "change_role"
-      role?: "admin" | "logist"
+    const rawBody = await req.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 })
     }
 
-    if (!userId || !action) {
-      return NextResponse.json({ success: false, error: "userId и action обязательны" }, { status: 400 })
+    const parsed = adminUserActionSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
     }
+
+    const { userId, action, role } = parsed.data
 
     const targetUser = await prisma.user.findUnique({ where: { id: userId } })
     if (!targetUser) {
       return NextResponse.json({ success: false, error: "Пользователь не найден" }, { status: 404 })
     }
 
-    // Защита от деактивации самого себя
     if (targetUser.id === sessionUser.id && action === "deactivate") {
       return NextResponse.json(
         { success: false, error: "Вы не можете деактивировать собственный аккаунт" },
@@ -90,32 +84,19 @@ export async function PATCH(req: NextRequest) {
     }
 
     let updateData: any = {}
-
     switch (action) {
       case "approve":
-        updateData = {
-          status: "active",
-          approvedBy: sessionUser.id,
-          approvedAt: new Date(),
-        }
+        updateData = { status: "active", approvedBy: sessionUser.id, approvedAt: new Date() }
         break
       case "deactivate":
-        updateData = {
-          status: "deactivated",
-        }
+        updateData = { status: "deactivated" }
         break
       case "activate":
-        updateData = {
-          status: "active",
-        }
+        updateData = { status: "active" }
         break
       case "change_role":
-        if (role && (role === "admin" || role === "logist")) {
-          updateData = { role }
-        }
+        if (role) updateData = { role }
         break
-      default:
-        return NextResponse.json({ success: false, error: "Неизвестное действие" }, { status: 400 })
     }
 
     const updated = await prisma.user.update({
@@ -133,7 +114,6 @@ export async function PATCH(req: NextRequest) {
       },
     })
 
-    // P1-4: audit log
     const ip = getClientIp(req)
     await logAudit({
       actorId: sessionUser.id,

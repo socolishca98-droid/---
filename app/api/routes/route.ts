@@ -1,11 +1,9 @@
-// app/api/routes/route.ts
-// Создание рейса из песочницы Заказов
-// POST /api/routes
-
+// app/api/routes/route.ts - P1-6 zod
 import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { randomUUID } from "crypto"
+import { createRouteSchema, zodErrorResponse } from "@/lib/validators"
 
 type SandboxOrderPayload = {
   atiCacheId?: string
@@ -20,15 +18,6 @@ type SandboxOrderPayload = {
   groupId?: string | null
 }
 
-type CreateRouteBody = {
-  vehicleId: string
-  driverId?: string | null
-  orders: SandboxOrderPayload[]
-  totalPrice?: number
-  totalDistance?: number
-  totalWeight?: number
-}
-
 function generateRouteId(): string {
   try {
     return randomUUID()
@@ -38,42 +27,33 @@ function generateRouteId(): string {
 }
 
 export async function POST(request: NextRequest) {
-  const __auth = await requireStaffAuth(request);
-  if (__auth.error) return __auth.error;
-
+  const __auth = await requireStaffAuth(request)
+  if (__auth.error) return __auth.error
 
   try {
-    const body = (await request.json().catch(() => null)) as
-      | CreateRouteBody
-      | null
-
-    if (!body) {
-      return NextResponse.json(
-        { success: false, error: "Invalid JSON body" },
-        { status: 400 },
-      )
+    const rawBody = await request.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 })
     }
 
-    const { vehicleId, driverId, orders } = body
+    const parsed = createRouteSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
+    }
+
+    const { vehicleId, driverId, orders } = parsed.data as any
 
     if (!vehicleId) {
-      return NextResponse.json(
-        { success: false, error: "vehicleId is required" },
-        { status: 400 },
-      )
+      return NextResponse.json({ success: false, error: "vehicleId is required" }, { status: 400 })
     }
 
     if (!Array.isArray(orders) || orders.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "orders[] is required" },
-        { status: 400 },
-      )
+      return NextResponse.json({ success: false, error: "orders[] is required" }, { status: 400 })
     }
 
     const routeId = generateRouteId()
 
     const created = await prisma.$transaction(async (tx: any) => {
-      // 1. Создаём запись в таблице Route для маршрутной аналитики
       const fromCity = orders[0]?.routeFrom || "Пункт А"
       const toCity = orders[orders.length - 1]?.routeTo || "Пункт Б"
       const totalDist = orders.reduce((sum: any, o: any) => sum + (o.distance || 0), 0)
@@ -93,7 +73,6 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // 2. Создаём заказы, связанные общим routeId
       const createdOrders = await Promise.all(
         orders.map((o: any, idx: any) =>
           tx.order.create({
@@ -111,7 +90,7 @@ export async function POST(request: NextRequest) {
               clientName: o.clientCompany || null,
               clientContact: o.clientPhone || "",
               deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-              status: "confirmed", // активный рейс
+              status: "confirmed",
               priority: "needs_clarification",
               aiScore: 50,
               assignedDriverId: driverId || null,
@@ -122,51 +101,32 @@ export async function POST(request: NextRequest) {
               proposedToDriver: false,
               routeSequence: idx + 1,
             },
-          }),
-        ),
+          })
+        )
       )
 
-      // обновляем статусы водителя и машины
       if (driverId) {
-        await tx.driver.updateMany({
-          where: { id: driverId },
-          data: { status: "busy" },
-        })
+        await tx.driver.updateMany({ where: { id: driverId }, data: { status: "busy" } })
       }
-
-      await tx.vehicle.updateMany({
-        where: { id: vehicleId },
-        data: { status: "in_use" },
-      })
+      await tx.vehicle.updateMany({ where: { id: vehicleId }, data: { status: "in_use" } })
 
       return createdOrders
     })
 
-    return NextResponse.json({
-      success: true,
-      routeId,
-      ordersCount: created.length,
-    })
+    return NextResponse.json({ success: true, routeId, ordersCount: created.length })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Route creation error"
+    const message = error instanceof Error ? error.message : "Route creation error"
     console.error("[Routes API] POST /api/routes error:", message, error)
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
-// GET можно оставить как простой ping/debug, чтобы не ломать ожидания
 export async function GET(request: NextRequest) {
-  const __auth = await requireStaffAuth(request);
-  if (__auth.error) return __auth.error;
-
+  const __auth = await requireStaffAuth(request)
+  if (__auth.error) return __auth.error
 
   return NextResponse.json({
     success: true,
-    message:
-      "POST /api/routes создаёт рейс из песочницы. Для расчёта ETA используйте POST /api/routes/calculate-eta",
+    message: "POST /api/routes создаёт рейс из песочницы. Для расчёта ETA используйте POST /api/routes/calculate-eta",
   })
 }

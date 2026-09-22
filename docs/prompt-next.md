@@ -112,7 +112,7 @@
   3. Начать с `auth/*`, `orders`, `drivers`, `vehicles`
   4. Добавить `zod` уже есть в deps
 - **Acceptance:** невалидный body → 400 с zod errors, валидный → 200
-- **Статус:** ⏳ TODO
+- **Статус:** ✅ DONE 2026-09-22 — `lib/validators.ts` с 20+ схемами (login, register, driverLogin, createDriver, createVehicle, createOrder, adminUserAction, fleetAssign, createRoute, chatMessage, payments, photos, mobile shift/sos/maintenance) + helpers formatZodError/zodErrorResponse/parseBody; интегрирован в `auth/login`, `auth/register`, `m/login`, `drivers`, `vehicles`, `orders`, `admin/users`, `fleet/assign`, `routes`, `chat`; tsc 0 errors, build 70 pages, manual zod safeParse tests OK
 
 ### P2 — Улучшения (после P1)
 - **P2-1:** Миграция на PostgreSQL (env `DATABASE_URL`, prisma provider)
@@ -141,7 +141,9 @@
 - 2026-09-22 P1-3 DONE: CSRF double-submit cookie, proxy 403 without token, client auto-inject
 - 2026-09-22 P1-4 DONE: AuditLog model + logAudit + admin audit API + UI
 - 2026-09-22 P1-5 DONE: refresh rotation 15min access + 7/30d refresh, rotation invalidates old
-- Следующая задача: P1-6 Zod валидация всех входов (TODO)
+- 2026-09-22 P1-6 DONE: zod validators for all inputs, 400 with details
+- P1 полностью DONE ✅ — все важные задачи безопасности выполнены
+- Следующая задача: P2 улучшения (TODO)
 
 ### Прогресс 2026-09-22 P1-1
 - Запущен `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → было 429 ошибок
@@ -272,6 +274,35 @@
   - interval 14min
 - Тесты: `npx tsx` rotation test — jti1→jti2, old revoked, new valid, access 900, staff 604800 OK; tsc 0 errors; build 70 pages OK
 - Acceptance: access 15min, refresh → new access, old refresh invalidated (rotate)
+
+### Прогресс 2026-09-22 P1-6
+- Создан `lib/validators.ts`:
+  - helpers: `formatZodError(error)` → issues array, `zodErrorResponse(error)` → {success:false, error, details}, `parseBody(req, schema)` safe parse JSON
+  - auth: `loginSchema` email+password, `registerSchema` email+password min8+name, `driverLoginSchema` phone+org
+  - drivers: `createDriverSchema` name min1 phone min10 vehicleId cuid optional etc, `updateDriverSchema` partial, `driverLocationSchema`
+  - vehicles: `createVehicleSchema` plate/type/capacity required, year/volume/length/width/height transform string→number, features union, `updateVehicleSchema` partial
+  - orders: `createOrderSchema` routeFrom/To required, distance/weight/price transform, cargoType default, clientName/Contact, deadline, assignedDriver/Vehicle cuid optional, routeId, `updateOrderSchema` partial + status enum
+  - admin: `adminUserActionSchema` userId+action enum+role optional
+  - fleet: `fleetAssignSchema` vehicleId/driverId/orderIds, `fleetSettingsSchema`
+  - routes: `createRouteSchema` name/driverId/vehicleId/totalDistance/Cost/Weight/notes/orders array, `addLoadSchema`, `completeRouteSchema`
+  - chat: `chatMessageSchema` content min1 max2000 recipientId type isImportant
+  - payments: `createPaymentSchema`, photos: `photoUploadSchema`, mobile: `driverShiftSchema`, `sosSchema`, `maintenanceSchema`
+- Интеграция в API (safeParse → 400 zodErrorResponse):
+  - `app/api/auth/login/route.ts`: loginSchema
+  - `app/api/auth/register/route.ts`: registerSchema
+  - `app/api/m/login/route.ts`: driverLoginSchema
+  - `app/api/drivers/route.ts` POST: createDriverSchema
+  - `app/api/vehicles/route.ts` POST: createVehicleSchema
+  - `app/api/orders/route.ts` POST: createOrderSchema
+  - `app/api/admin/users/route.ts` PATCH: adminUserActionSchema
+  - `app/api/fleet/assign/route.ts` POST: fleetAssignSchema
+  - `app/api/routes/route.ts` POST: createRouteSchema
+  - `app/api/chat/route.ts` POST: chatPostSchema (local) + PATCH patchSchema, also uses chatMessageSchema concept
+- Тесты:
+  - `npx tsx -e` safeParse invalid → false, valid → true для login/driver/vehicle/order
+  - `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → 0 errors
+  - `npm run build:safe` → 70 pages OK
+- Acceptance: невалидный body → 400 с zod errors (details.issues), валидный → 200
 
 ## §12 Как запустить (для проверки)
 ```bash

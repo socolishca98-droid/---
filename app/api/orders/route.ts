@@ -1,7 +1,8 @@
-// app/api/orders/route.ts - P0 secured
+// app/api/orders/route.ts - P0 secured + P1-6 zod
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
+import { createOrderSchema, zodErrorResponse } from "@/lib/validators"
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +17,6 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get("offset") || "0", 10)
 
     const where: any = {}
-
     if (status) {
       if (status.includes(",")) {
         where.status = { in: status.split(",") }
@@ -24,22 +24,13 @@ export async function GET(request: NextRequest) {
         where.status = status
       }
     }
-
-    if (driverId) {
-      where.assignedDriverId = driverId
-    }
-
-    if (routeId) {
-      where.routeId = routeId
-    }
+    if (driverId) where.assignedDriverId = driverId
+    if (routeId) where.routeId = routeId
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where,
-        orderBy: [
-          { routeSequence: "asc" },
-          { createdAt: "desc" },
-        ],
+        orderBy: [{ routeSequence: "asc" }, { createdAt: "desc" }],
         take: limit,
         skip: offset,
       }),
@@ -56,10 +47,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("[Orders API] GET Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message, orders: [] },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: error.message, orders: [] }, { status: 500 })
   }
 }
 
@@ -68,8 +56,16 @@ export async function POST(request: NextRequest) {
     const auth = await requireStaffAuth(request)
     if (auth.error) return auth.error
 
-    const body = await request.json()
-    
+    const rawBody = await request.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 })
+    }
+
+    const parsed = createOrderSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
+    }
+
     const {
       source = "manual",
       sourceId,
@@ -86,14 +82,7 @@ export async function POST(request: NextRequest) {
       assignedDriverId,
       assignedVehicleId,
       routeId,
-    } = body
-
-    if (!routeFrom || !routeTo) {
-      return NextResponse.json(
-        { success: false, error: "routeFrom и routeTo обязательны" },
-        { status: 400 }
-      )
-    }
+    } = parsed.data
 
     const order = await prisma.$transaction(async (tx: any) => {
       let finalRouteId = routeId
@@ -126,7 +115,7 @@ export async function POST(request: NextRequest) {
           price: price || 0,
           clientName,
           clientContact: clientContact || "",
-          deadline: deadline ? new Date(deadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          deadline: deadline ? new Date(deadline as any) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           status: assignedDriverId ? "confirmed" : "new",
           assignedDriverId,
           assignedVehicleId,
@@ -135,17 +124,10 @@ export async function POST(request: NextRequest) {
       })
 
       if (assignedDriverId) {
-        await tx.driver.updateMany({
-          where: { id: assignedDriverId },
-          data: { status: "busy" },
-        })
+        await tx.driver.updateMany({ where: { id: assignedDriverId }, data: { status: "busy" } })
       }
-
       if (assignedVehicleId) {
-        await tx.vehicle.updateMany({
-          where: { id: assignedVehicleId },
-          data: { status: "in_use" },
-        })
+        await tx.vehicle.updateMany({ where: { id: assignedVehicleId }, data: { status: "in_use" } })
       }
 
       return created
@@ -154,9 +136,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, order })
   } catch (error: any) {
     console.error("[Orders API] POST Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

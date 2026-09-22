@@ -1,4 +1,4 @@
-// app/api/m/login/route.ts - P1-5 refresh rotation
+// app/api/m/login/route.ts - P1-5 refresh + P1-6 zod
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import {
@@ -16,6 +16,7 @@ import {
   buildRateLimitHeaders,
 } from "@/lib/rate-limiter"
 import { generateJti, createRefreshEntry } from "@/lib/refresh-tokens"
+import { driverLoginSchema, zodErrorResponse } from "@/lib/validators"
 
 const TEST_ORGANIZATION_NAME = "АИ Логистика"
 
@@ -31,20 +32,16 @@ function normalizeOrgName(name: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as {
-      phone?: string
-      organization?: string
+    const rawBody = await req.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 })
+    }
+    const parsed = driverLoginSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
     }
 
-    const phone = body.phone
-    const organization = body.organization
-
-    if (!phone || !organization) {
-      return NextResponse.json(
-        { success: false, error: "Организация и телефон обязательны" },
-        { status: 400 }
-      )
-    }
+    const { phone, organization } = parsed.data
 
     const targetDigits = normalizePhone(phone).slice(-10)
     const ip = getClientIp(req)
@@ -53,10 +50,7 @@ export async function POST(req: NextRequest) {
     const rlCheck = checkRateLimit(rateKey)
     if (!rlCheck.allowed) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Слишком много попыток входа. Попробуйте через 15 минут.",
-        },
+        { success: false, error: "Слишком много попыток входа. Попробуйте через 15 минут." },
         { status: 429, headers: buildRateLimitHeaders(rlCheck) }
       )
     }
@@ -88,13 +82,7 @@ export async function POST(req: NextRequest) {
 
     resetRateLimit(rateKey)
 
-    // P1-5: access 15min + refresh 30d
-    const accessToken = signAccessJwt({
-      sub: driver.id,
-      phone: driver.phone,
-      role: "driver",
-    })
-
+    const accessToken = signAccessJwt({ sub: driver.id, phone: driver.phone, role: "driver" })
     const jti = generateJti()
     const refreshToken = signRefreshJwt({ sub: driver.id, role: "driver", jti }, DRIVER_REFRESH_EXPIRES_IN)
 
@@ -137,9 +125,6 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Unknown error"
     console.error("POST /api/m/login error:", message)
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

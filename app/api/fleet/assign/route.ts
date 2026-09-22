@@ -1,25 +1,29 @@
-// app/api/fleet/assign/route.ts
-
+// app/api/fleet/assign/route.ts - P1-6 zod
 import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { fleetAssignSchema, zodErrorResponse } from "@/lib/validators"
 
 export async function POST(request: NextRequest) {
-  const __auth = await requireStaffAuth(request);
-  if (__auth.error) return __auth.error;
-
+  const __auth = await requireStaffAuth(request)
+  if (__auth.error) return __auth.error
 
   try {
-    const body = await request.json()
-    const { driverId, vehicleId } = body as {
-      driverId?: string
-      vehicleId?: string
+    const rawBody = await request.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 })
     }
+    const parsed = fleetAssignSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
+    }
+
+    const { driverId, vehicleId } = parsed.data
 
     if (!driverId || !vehicleId) {
       return NextResponse.json(
         { success: false, error: "Укажите driverId и vehicleId" },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
@@ -33,37 +37,21 @@ export async function POST(request: NextRequest) {
     ])
 
     if (!driver) {
-      return NextResponse.json(
-        { success: false, error: "Водитель не найден" },
-        { status: 404 },
-      )
+      return NextResponse.json({ success: false, error: "Водитель не найден" }, { status: 404 })
     }
-
     if (!vehicle) {
-      return NextResponse.json(
-        { success: false, error: "Машина не найдена" },
-        { status: 404 },
-      )
+      return NextResponse.json({ success: false, error: "Машина не найдена" }, { status: 404 })
     }
-
     if (currentAssignedDriver) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `Машина уже закреплена за водителем ${currentAssignedDriver.name}`,
-        },
-        { status: 400 },
+        { success: false, error: `Машина уже закреплена за водителем ${currentAssignedDriver.name}` },
+        { status: 400 }
       )
     }
 
-    // Если за этим водителем была другая машина, просто перезаписываем vehicleId
     await prisma.driver.update({
       where: { id: driverId },
-      data: {
-        vehicleId,
-        vehiclePlate: vehicle.plate,
-        vehicleType: vehicle.type,
-      },
+      data: { vehicleId, vehiclePlate: vehicle.plate, vehicleType: vehicle.type },
     })
 
     return NextResponse.json({ success: true })
@@ -71,15 +59,14 @@ export async function POST(request: NextRequest) {
     console.error("[Fleet Assign] Error:", error)
     return NextResponse.json(
       { success: false, error: error.message || "Ошибка назначения водителя" },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  const __auth = await requireStaffAuth(request);
-  if (__auth.error) return __auth.error;
-
+  const __auth = await requireStaffAuth(request)
+  if (__auth.error) return __auth.error
 
   try {
     const { searchParams } = new URL(request.url)
@@ -89,20 +76,14 @@ export async function DELETE(request: NextRequest) {
     if (!driverId && !vehicleId) {
       return NextResponse.json(
         { success: false, error: "Укажите driverId или vehicleId" },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
     if (driverId) {
-      await prisma.driver.update({
-        where: { id: driverId },
-        data: { vehicleId: null },
-      })
+      await prisma.driver.update({ where: { id: driverId }, data: { vehicleId: null } })
     } else if (vehicleId) {
-      await prisma.driver.updateMany({
-        where: { vehicleId },
-        data: { vehicleId: null },
-      })
+      await prisma.driver.updateMany({ where: { vehicleId }, data: { vehicleId: null } })
     }
 
     return NextResponse.json({ success: true })
@@ -110,7 +91,7 @@ export async function DELETE(request: NextRequest) {
     console.error("[Fleet Unassign] Error:", error)
     return NextResponse.json(
       { success: false, error: error.message || "Ошибка отвязки" },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

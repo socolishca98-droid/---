@@ -1,4 +1,4 @@
-// app/api/auth/login/route.ts - P1-5 refresh rotation
+// app/api/auth/login/route.ts - P1-5 refresh + P1-6 zod
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import {
@@ -18,21 +18,23 @@ import {
   buildRateLimitHeaders,
 } from "@/lib/rate-limiter"
 import { generateJti, createRefreshEntry } from "@/lib/refresh-tokens"
+import { loginSchema, zodErrorResponse } from "@/lib/validators"
 
 export async function POST(req: NextRequest) {
   try {
     await ensureDbInitialized()
 
-    const body = await req.json()
-    const { email, password } = body as { email?: string; password?: string }
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { success: false, error: "Укажите email и пароль" },
-        { status: 400 }
-      )
+    const rawBody = await req.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 })
     }
 
+    const parsed = loginSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
+    }
+
+    const { email, password } = parsed.data
     const cleanEmail = email.trim().toLowerCase()
     const ip = getClientIp(req)
     const rateKey = `staff:${ip}:${cleanEmail}`
@@ -40,26 +42,12 @@ export async function POST(req: NextRequest) {
     const rlCheck = checkRateLimit(rateKey)
     if (!rlCheck.allowed) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Слишком много попыток входа. Попробуйте через 15 минут.",
-        },
+        { success: false, error: "Слишком много попыток входа. Попробуйте через 15 минут." },
         { status: 429, headers: buildRateLimitHeaders(rlCheck) }
       )
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(cleanEmail) || password.length < 1 || password.length > 128) {
-      const after = recordFailure(rateKey)
-      return NextResponse.json(
-        { success: false, error: "Неверный email или пароль" },
-        { status: 401, headers: buildRateLimitHeaders(after) }
-      )
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: cleanEmail },
-    })
+    const user = await prisma.user.findUnique({ where: { email: cleanEmail } })
 
     if (!user) {
       const after = recordFailure(rateKey)
@@ -82,8 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Ваша регистрация ожидает одобрения администратором/логистом. Доступ будет открыт после подтверждения.",
+          error: "Ваша регистрация ожидает одобрения администратором/логистом. Доступ будет открыт после подтверждения.",
           status: "pending_approval",
         },
         { status: 403, headers: buildRateLimitHeaders(rlCheck) }
@@ -103,7 +90,6 @@ export async function POST(req: NextRequest) {
 
     resetRateLimit(rateKey)
 
-    // P1-5: access 15min + refresh 7d with rotation
     const accessToken = signAccessJwt({
       sub: user.id,
       email: user.email,
@@ -129,7 +115,7 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         token: accessToken,
-        refreshToken, // also return for debugging, but httpOnly cookie is primary
+        refreshToken,
         user: {
           id: user.id,
           email: user.email,
