@@ -37,6 +37,8 @@ import {
   Loader2,
   RefreshCw,
   UserPlus,
+  History,
+  FileText,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -59,6 +61,19 @@ interface UserCounts {
   deactivated: number
 }
 
+interface AuditLogEntry {
+  id: string
+  actorId: string
+  actorEmail: string | null
+  action: string
+  targetId: string | null
+  targetType: string
+  targetEmail: string | null
+  metadata: any
+  ip: string | null
+  createdAt: string
+}
+
 export default function UsersManagementPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth()
   const { isCollapsed } = useSidebar()
@@ -75,6 +90,9 @@ export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"all" | "pending_approval" | "active" | "deactivated">("all")
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [showAudit, setShowAudit] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !currentUser) {
@@ -100,9 +118,31 @@ export default function UsersManagementPage() {
     }
   }
 
+  const fetchAuditLogs = async () => {
+    if ((currentUser as any)?.role !== "admin") return
+    setAuditLoading(true)
+    try {
+      const res = await fetch("/api/admin/audit?limit=50")
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setAuditLogs(data.logs)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setAuditLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchUsers()
   }, [])
+
+  useEffect(() => {
+    if (showAudit) {
+      fetchAuditLogs()
+    }
+  }, [showAudit, currentUser])
 
   const handleAction = async (
     userId: string,
@@ -129,6 +169,7 @@ export default function UsersManagementPage() {
             : "Роль обновлена"
         )
         await fetchUsers()
+        if (showAudit) await fetchAuditLogs()
       } else {
         toast.error(data.error || "Не удалось выполнить операцию")
       }
@@ -136,6 +177,36 @@ export default function UsersManagementPage() {
       toast.error("Ошибка сети")
     } finally {
       setActionLoadingId(null)
+    }
+  }
+
+  const getActionLabel = (action: string) => {
+    switch (action) {
+      case "approve":
+        return "Одобрение"
+      case "deactivate":
+        return "Деактивация"
+      case "activate":
+        return "Активация"
+      case "change_role":
+        return "Смена роли"
+      default:
+        return action
+    }
+  }
+
+  const getActionColor = (action: string) => {
+    switch (action) {
+      case "approve":
+        return "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+      case "deactivate":
+        return "bg-rose-500/10 text-rose-600 border-rose-500/30"
+      case "activate":
+        return "bg-blue-500/10 text-blue-600 border-blue-500/30"
+      case "change_role":
+        return "bg-purple-500/10 text-purple-600 border-purple-500/30"
+      default:
+        return "bg-muted text-muted-foreground"
     }
   }
 
@@ -497,6 +568,117 @@ export default function UsersManagementPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Audit Log - P1-4 */}
+          {(currentUser as any)?.role === "admin" && (
+            <Card className="border-border/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <History className="h-5 w-5 text-primary" />
+                      Журнал аудита
+                    </CardTitle>
+                    <CardDescription className="text-xs mt-1">
+                      Логи одобрений, деактиваций, смен ролей (только для администратора)
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAudit(!showAudit)}
+                      className="h-8 text-xs"
+                    >
+                      {showAudit ? "Скрыть" : "Показать логи"}
+                    </Button>
+                    {showAudit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={fetchAuditLogs}
+                        disabled={auditLoading}
+                        className="h-8 w-8 p-0"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${auditLoading ? "animate-spin" : ""}`} />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              {showAudit && (
+                <CardContent className="p-0">
+                  {auditLoading ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  ) : auditLogs.length === 0 ? (
+                    <div className="text-center p-8 text-muted-foreground">
+                      <FileText className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">Логов пока нет</p>
+                      <p className="text-xs mt-1">Выполните действие с пользователем — появится запись</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Время</TableHead>
+                            <TableHead>Действие</TableHead>
+                            <TableHead>Кто</TableHead>
+                            <TableHead>Кого</TableHead>
+                            <TableHead>Детали</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {auditLogs.map((log) => (
+                            <TableRow key={log.id}>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                {new Date(log.createdAt).toLocaleString("ru-RU", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={getActionColor(log.action)}>
+                                  {getActionLabel(log.action)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{log.actorEmail || log.actorId.slice(0, 8)}</span>
+                                  {log.ip && <span className="text-[10px] text-muted-foreground">{log.ip}</span>}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {log.targetEmail || (log.targetId ? log.targetId.slice(0, 8) : "—")}
+                              </TableCell>
+                              <TableCell className="text-xs max-w-[300px] truncate">
+                                {log.metadata ? (
+                                  <span className="text-muted-foreground">
+                                    {log.metadata.previousRole && log.metadata.newRole
+                                      ? `${log.metadata.previousRole} → ${log.metadata.newRole}`
+                                      : log.metadata.previousStatus && log.metadata.newStatus
+                                      ? `${log.metadata.previousStatus} → ${log.metadata.newStatus}`
+                                      : JSON.stringify(log.metadata).slice(0, 100)}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          )}
         </main>
       </div>
     </div>

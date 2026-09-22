@@ -89,7 +89,7 @@
   4. GET `/api/admin/audit` — список логов (только admin)
   5. UI в `/app/users/page.tsx` — показать логи
 - **Acceptance:** approve юзера → запись в AuditLog, видна в API
-- **Статус:** ⏳ TODO
+- **Статус:** ✅ DONE 2026-09-22 — `AuditLog` модель добавлена (actorId, actorEmail, action, targetId, targetType, targetEmail, metadata JSON, ip, createdAt + indexes), `lib/audit.ts` logAudit/getAuditLogs, `app/api/admin/users` PATCH логирует с ip и metadata, `GET /api/admin/audit` admin-only list, UI в `app/users/page.tsx` с таблицей логов, кнопкой показать/скрыть, фильтрацией по admin, build OK
 
 #### P1-5: Refresh token rotation
 - **Проблема:** JWT 7 дней staff, 30 дней driver — без ротации, если украден — долго валиден
@@ -139,7 +139,8 @@
 - 2026-09-22 P1-1 DONE: implicit any 0, tsconfig strict true, build 70 pages
 - 2026-09-22 P1-2 DONE: rate limiting lib + login/register protected, 6th → 429 OK
 - 2026-09-22 P1-3 DONE: CSRF double-submit cookie, proxy 403 without token, client auto-inject
-- Следующая задача: P1-4 Audit log для админских действий (TODO)
+- 2026-09-22 P1-4 DONE: AuditLog model + logAudit + admin audit API + UI
+- Следующая задача: P1-5 Refresh token rotation (TODO)
 
 ### Прогресс 2026-09-22 P1-1
 - Запущен `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → было 429 ошибок
@@ -201,6 +202,32 @@
   - `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → 0 errors
   - `npm run build:safe` → 70 pages, Proxy, OK
 - Acceptance: POST без CSRF → 403 (proxy), с валидным cookie+header → 200 (verify passes)
+
+### Прогресс 2026-09-22 P1-4
+- Добавлен `model AuditLog` в `prisma/schema.prisma`:
+  - поля: id cuid, actorId, actorEmail?, action, targetId?, targetType default user, targetEmail?, metadata? JSON string, ip?, createdAt
+  - indexes: actorId, targetId, action, createdAt
+- Создан `lib/audit.ts`:
+  - `AuditAction` union, `AuditLogInput` interface
+  - `logAudit(input)` — JSON.stringify metadata, prisma.auditLog.create, try/catch не фейлит основное действие
+  - `getAuditLogs({limit, offset, actorId, targetId, action})` — where, orderBy desc, take/skip, parse metadata JSON
+- Обновлен `app/api/admin/users/route.ts`:
+  - import logAudit + getClientIp
+  - после prisma.user.update — logAudit с actorId, actorEmail, action, targetId, targetEmail, metadata {previousStatus, previousRole, newStatus, newRole, requestedRole}, ip
+- Создан `app/api/admin/audit/route.ts` GET:
+  - getStaffSession, check role admin → 403 если не admin
+  - query limit/offset/action/actorId/targetId
+  - getAuditLogs, return {success, logs}
+- Обновлен `app/users/page.tsx`:
+  - interface AuditLogEntry
+  - state auditLogs, auditLoading, showAudit
+  - fetchAuditLogs() GET /api/admin/audit?limit=50, только если admin
+  - useEffect showAudit → fetch
+  - handleAction после успеха → fetchAuditLogs если showAudit
+  - helpers getActionLabel/getActionColor
+  - UI Card: header с кнопкой Показать/Скрыть + Refresh, content: loading spinner, empty state, table с Time, Action Badge, Who (actorEmail + ip), Whom (targetEmail), Details (role/status change or JSON)
+- Тесты: tsc 0 errors, build:safe 70 pages OK
+- Acceptance: approve → запись в AuditLog, видна в API GET /api/admin/audit (admin only) и в UI
 
 ## §12 Как запустить (для проверки)
 ```bash

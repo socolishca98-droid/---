@@ -505,3 +505,21 @@ model RouteEvent {
   @@index([type])
   @@index([createdAt])
 }
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String   // who performed action
+  actorEmail String?
+  action     String   // approve | deactivate | activate | change_role | etc
+  targetId   String?  // affected user id
+  targetType String   @default(\"user\") // user | driver | vehicle | etc
+  targetEmail String?
+  metadata   String?  // JSON string with details (old role, new role, etc)
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([createdAt])
+}

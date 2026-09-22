@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getStaffSession } from "@/lib/auth-server"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 
 // GET: список сотрудников
 export async function GET(req: NextRequest) {
@@ -129,6 +131,25 @@ export async function PATCH(req: NextRequest) {
         approvedAt: true,
         updatedAt: true,
       },
+    })
+
+    // P1-4: audit log
+    const ip = getClientIp(req)
+    await logAudit({
+      actorId: sessionUser.id,
+      actorEmail: (sessionUser as any).email || null,
+      action,
+      targetId: targetUser.id,
+      targetType: "user",
+      targetEmail: targetUser.email,
+      metadata: {
+        previousStatus: targetUser.status,
+        previousRole: targetUser.role,
+        newStatus: (updated as any).status,
+        newRole: (updated as any).role,
+        requestedRole: role,
+      },
+      ip,
     })
 
     return NextResponse.json({ success: true, user: updated })
