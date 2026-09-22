@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { hashPassword } from "@/lib/auth-server"
 import { ensureDbInitialized } from "@/lib/db-init"
+import {
+  getClientIp,
+  checkRateLimit,
+  recordFailure,
+  resetRateLimit,
+  buildRateLimitHeaders,
+} from "@/lib/rate-limiter"
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,19 +29,34 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (password.length < 8) {
+    const cleanEmailForRate = email.trim().toLowerCase()
+    const ip = getClientIp(req)
+    const rateKey = `register:${ip}:${cleanEmailForRate}`
+    const rlCheck = checkRateLimit(rateKey)
+    if (!rlCheck.allowed) {
       return NextResponse.json(
-        { success: false, error: "Пароль должен содержать не менее 8 символов" },
-        { status: 400 }
+        {
+          success: false,
+          error: "Слишком много попыток регистрации. Попробуйте позже.",
+        },
+        { status: 429, headers: buildRateLimitHeaders(rlCheck) }
       )
     }
 
-    // P0: basic email validation
+    if (password.length < 8) {
+      const after = recordFailure(rateKey)
+      return NextResponse.json(
+        { success: false, error: "Пароль должен содержать не менее 8 символов" },
+        { status: 400, headers: buildRateLimitHeaders(after) }
+      )
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
+      const after = recordFailure(rateKey)
       return NextResponse.json(
         { success: false, error: "Некорректный формат email" },
-        { status: 400 }
+        { status: 400, headers: buildRateLimitHeaders(after) }
       )
     }
 
@@ -46,7 +68,7 @@ export async function POST(req: NextRequest) {
     if (existing) {
       return NextResponse.json(
         { success: false, error: "Пользователь с таким email уже зарегистрирован" },
-        { status: 400 }
+        { status: 400, headers: buildRateLimitHeaders(rlCheck) }
       )
     }
 
@@ -63,7 +85,6 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Создаем системное уведомление для администраторов/логистов
     await prisma.notification.create({
       data: {
         userId: "all_logists",
@@ -75,16 +96,29 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({
-      success: true,
-      message: "Заявка на регистрацию отправлена. Она будет активирована после одобрения логистом или администратором.",
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        status: user.status,
+    resetRateLimit(rateKey)
+
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          "Заявка на регистрацию отправлена. Она будет активирована после одобрения логистом или администратором.",
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          status: user.status,
+        },
       },
-    })
+      {
+        headers: buildRateLimitHeaders({
+          allowed: true,
+          remaining: 5,
+          resetAt: Date.now() + 15 * 60 * 1000,
+          currentCount: 0,
+        }),
+      }
+    )
   } catch (error: any) {
     console.error("[Auth Register] Error:", error)
     return NextResponse.json(

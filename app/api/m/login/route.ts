@@ -3,6 +3,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { signJwt, setDriverAuthCookie } from "@/lib/auth-server"
+import {
+  getClientIp,
+  checkRateLimit,
+  recordFailure,
+  resetRateLimit,
+  buildRateLimitHeaders,
+} from "@/lib/rate-limiter"
 
 const TEST_ORGANIZATION_NAME = "АИ Логистика"
 
@@ -33,18 +40,32 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const targetDigits = normalizePhone(phone).slice(-10)
+    const ip = getClientIp(req)
+    const rateKey = `driver:${ip}:${targetDigits}`
+
+    const rlCheck = checkRateLimit(rateKey)
+    if (!rlCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Слишком много попыток входа. Попробуйте через 15 минут.",
+        },
+        { status: 429, headers: buildRateLimitHeaders(rlCheck) }
+      )
+    }
+
     const normalizedOrg = normalizeOrgName(organization)
     const expectedOrg = normalizeOrgName(TEST_ORGANIZATION_NAME)
 
     // Проверяем принадлежность к автопарку
     if (normalizedOrg !== expectedOrg && normalizedOrg !== "loginex") {
+      const after = recordFailure(rateKey)
       return NextResponse.json(
         { success: false, error: "Организация не найдена" },
-        { status: 404 }
+        { status: 404, headers: buildRateLimitHeaders(after) }
       )
     }
-
-    const targetDigits = normalizePhone(phone).slice(-10)
 
     // Ищем водителя с нормализацией телефона без привязки к скобкам и дефисам
     const allDrivers = await prisma.driver.findMany()
@@ -54,11 +75,15 @@ export async function POST(req: NextRequest) {
     })
 
     if (!driver) {
+      const after = recordFailure(rateKey)
       return NextResponse.json(
         { success: false, error: "Водитель не найден в штате автопарка" },
-        { status: 404 }
+        { status: 404, headers: buildRateLimitHeaders(after) }
       )
     }
+
+    // Успешный вход — сбрасываем
+    resetRateLimit(rateKey)
 
     // Создаем подписанный токен для водителя на 30 дней
     const token = signJwt(
@@ -70,18 +95,28 @@ export async function POST(req: NextRequest) {
       30 * 24 * 3600
     )
 
-    const response = NextResponse.json({
-      success: true,
-      token,
-      driver: {
-        id: driver.id,
-        name: driver.name,
-        phone: driver.phone,
-        vehicleType: driver.vehicleType,
-        vehiclePlate: driver.vehiclePlate,
-        status: driver.status,
+    const response = NextResponse.json(
+      {
+        success: true,
+        token,
+        driver: {
+          id: driver.id,
+          name: driver.name,
+          phone: driver.phone,
+          vehicleType: driver.vehicleType,
+          vehiclePlate: driver.vehiclePlate,
+          status: driver.status,
+        },
       },
-    })
+      {
+        headers: buildRateLimitHeaders({
+          allowed: true,
+          remaining: 5,
+          resetAt: Date.now() + 15 * 60 * 1000,
+          currentCount: 0,
+        }),
+      }
+    )
 
     // Устанавливаем защищенную HttpOnly cookie
     setDriverAuthCookie(response, token)

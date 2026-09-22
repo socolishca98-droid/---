@@ -65,7 +65,7 @@
   4. Очищать старые записи
   5. Добавить заголовки `X-RateLimit-*`
 - **Acceptance:** 6-й запрос за 15 мин → 429, тесты через curl
-- **Статус:** ⏳ TODO
+- **Статус:** ✅ DONE 2026-09-22 — `lib/rate-limiter.ts` с Map, WINDOW 15min, MAX 5, BLOCK 15min, cleanup; `getClientIp` x-forwarded-for/x-real-ip; `checkRateLimit`, `recordFailure`, `resetRateLimit`, `buildRateLimitHeaders`; интегрирован в `app/api/auth/login`, `app/api/m/login`, `app/api/auth/register`; тест `npx tsx` показал 6-й запрос 429 Retry-After 900; build 70 pages OK
 
 #### P1-3: CSRF защита
 - **Проблема:** Формы логина/регистрации без CSRF токена, хотя cookies `sameSite: lax` частично защищает
@@ -136,8 +136,9 @@
 
 ## §11 Текущий прогресс
 - 2026-09-22 P0 done, build passes, 60 файлов изменено, ветка запушена
-- 2026-09-22 P1-1 DONE: implicit any 0, tsconfig strict true, build 70 pages, commit pending
-- Следующая задача: P1-2 Rate limiting для auth (TODO)
+- 2026-09-22 P1-1 DONE: implicit any 0, tsconfig strict true, build 70 pages
+- 2026-09-22 P1-2 DONE: rate limiting lib + login/register protected, 6th → 429 OK
+- Следующая задача: P1-3 CSRF защита (TODO)
 
 ### Прогресс 2026-09-22 P1-1
 - Запущен `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → было 429 ошибок
@@ -155,6 +156,24 @@
 - Итог: `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → 0 errors
 - Обновлены: `tsconfig.json` `noImplicitAny:true`, `next.config.mjs` `ignoreBuildErrors:false`
 - `npm run build:safe` → 70 pages, Proxy middleware, OK
+
+### Прогресс 2026-09-22 P1-2
+- Создан `lib/rate-limiter.ts`:
+  - `store: Map<string, {count, firstAttempt, blockedUntil}>`
+  - `WINDOW_MS=15min`, `MAX=5`, `BLOCK=15min`
+  - `getClientIp(req)` — x-forwarded-for split, x-real-ip, fallback unknown
+  - `checkRateLimit(key)` — проверяет blockedUntil, window expiry, count>=MAX → block
+  - `recordFailure(key)` — инкремент, установка blockedUntil при >=MAX
+  - `resetRateLimit(key)` — delete на успешный логин
+  - `buildRateLimitHeaders(result)` — X-RateLimit-Limit/Remaining/Reset + Retry-After
+  - cleanup при size>1000, prune expired, limit 2000
+- Интеграция:
+  - `app/api/auth/login/route.ts`: ключ `staff:${ip}:${email}`, check до проверки пароля, recordFailure на invalid email/pass/user not found, reset на успех, headers во всех ответах, 429 с сообщением
+  - `app/api/m/login/route.ts`: ключ `driver:${ip}:${last10digits}`, аналогично, 404 тоже считается failure
+  - `app/api/auth/register/route.ts`: ключ `register:${ip}:${email}`, защита от спама регистраций
+- Тест: `npx tsx -e` симуляция 5 failures → 6-й blocked retryAfter 900, соответствует acceptance
+- `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → 0 errors
+- `npm run build:safe` → 70 pages OK
 
 ## §12 Как запустить (для проверки)
 ```bash
