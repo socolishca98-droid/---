@@ -6,6 +6,18 @@ if (!process.env.DATABASE_URL) {
   if (process.env.NODE_ENV === 'production') {
     console.warn('[Prisma] DATABASE_URL not set, using default file:./dev.db - set explicit URL in production')
   }
+} else {
+  // P2-1: log provider detection
+  const url = process.env.DATABASE_URL
+  if (url.startsWith('postgresql://') || url.startsWith('postgres://')) {
+    if (process.env.NODE_ENV !== 'production' || !isBuildPhase()) {
+      console.log('[Prisma] Using PostgreSQL provider')
+    }
+  } else if (url.startsWith('file:')) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[Prisma] Using SQLite in production - consider migrating to PostgreSQL (see docs/postgres-migration.md)')
+    }
+  }
 }
 
 const globalForPrisma = globalThis as unknown as { prisma?: any }
