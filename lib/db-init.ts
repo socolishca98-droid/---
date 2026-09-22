@@ -1,8 +1,27 @@
-// lib/db-init.ts
+// lib/db-init.ts - P0 hardened
 import { prisma } from "@/lib/prisma"
 import { hashPassword } from "@/lib/auth-server"
 
 let isInitialized = false
+
+function getDefaultAdminPassword(): string {
+  const envPassword = process.env.ADMIN_DEFAULT_PASSWORD || process.env.DEFAULT_ADMIN_PASSWORD
+  if (envPassword) {
+    if (envPassword.length < 8) {
+      console.warn('[DB Init] ADMIN_DEFAULT_PASSWORD too short, should be at least 8 chars')
+    }
+    return envPassword
+  }
+  if (process.env.NODE_ENV === 'production') {
+    // In production, require explicit password
+    console.warn('[DB Init] ADMIN_DEFAULT_PASSWORD not set in production, using random secure password - check logs and change immediately')
+    // Generate random password for production if not set, but log warning
+    const crypto = require('node:crypto')
+    return crypto.randomBytes(16).toString('hex')
+  }
+  // Development fallback
+  return "demo"
+}
 
 export async function ensureDbInitialized() {
   if (isInitialized) return
@@ -14,7 +33,8 @@ export async function ensureDbInitialized() {
     })
 
     if (!admin) {
-      const { salt, hash } = hashPassword("demo")
+      const defaultPassword = getDefaultAdminPassword()
+      const { salt, hash } = hashPassword(defaultPassword)
       await prisma.user.create({
         data: {
           email: "admin@loginex.ru",
@@ -25,7 +45,11 @@ export async function ensureDbInitialized() {
           status: "active",
         },
       })
-      console.log("[Loginex DB] Default admin created: admin@loginex.ru / demo")
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Loginex DB] Default admin created: admin@loginex.ru / ${defaultPassword}`)
+      } else {
+        console.log(`[Loginex DB] Default admin created: admin@loginex.ru - password set from env or generated`)
+      }
     }
 
     // 2. Проверка наличия хотя бы одного активного водителя для мобильного входа
@@ -100,7 +124,12 @@ export async function ensureDbInitialized() {
     for (const r of routesToEnsure) {
       const existing = await prisma.route.findUnique({ where: { id: r.id } })
       if (!existing) {
-        await prisma.route.create({ data: r })
+        try {
+          await prisma.route.create({ data: r })
+        } catch (e) {
+          // Ignore if driver/vehicle not exist yet
+          console.warn(`[Loginex DB] Could not create route ${r.id}:`, e)
+        }
       }
     }
 
@@ -108,5 +137,14 @@ export async function ensureDbInitialized() {
   } catch (err) {
     console.error("[Loginex DB] Init error:", err)
     isInitialized = false
+    // P0: Don't swallow error in production, rethrow for visibility
+    if (process.env.NODE_ENV === 'production') {
+      throw err
+    }
   }
+}
+
+// For testing: reset initialization flag
+export function resetDbInitFlag() {
+  isInitialized = false
 }

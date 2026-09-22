@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 
 const BASE_LAT = 57.6261
 const BASE_LNG = 39.8845
@@ -27,6 +28,9 @@ function haversineDistanceKm(
 }
 
 export async function POST(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await req.json()
 
@@ -64,6 +68,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(req.url)
     const driverId = searchParams.get("driverId")

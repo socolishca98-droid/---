@@ -1,20 +1,19 @@
-// app/api/drivers/route.ts
-
+// app/api/drivers/route.ts - P0 secured
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { requireStaffAuth } from "@/lib/api-auth"
 
-// ✅ Допустимые статусы водителя
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 
-// GET /api/drivers?status=available|busy|maintenance|offline|all
-// GET /api/drivers?ids=id1,id2,id3 — bulk fetch
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireStaffAuth(request)
+    if (auth.error) return auth.error
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || undefined
     const idsParam = searchParams.get("ids")
 
-    // ✅ Bulk fetch по списку ID
     if (idsParam) {
       const ids = idsParam.split(",").filter(Boolean)
       
@@ -33,7 +32,6 @@ export async function GET(request: NextRequest) {
         where: { id: { in: ids } },
       })
 
-      // Возвращаем Map для быстрого доступа на клиенте
       const driversMap: Record<string, typeof drivers[0]> = {}
       drivers.forEach((driver) => {
         driversMap[driver.id] = driver
@@ -46,9 +44,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Стандартный запрос с фильтрацией по статусу
     const where: Record<string, unknown> = {}
     if (status && status !== "all") {
+      if (!ALLOWED_DRIVER_STATUSES.includes(status as any)) {
+        return NextResponse.json({ success: false, error: "Invalid status" }, { status: 400 })
+      }
       where.status = status
     }
 
@@ -71,9 +71,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/drivers
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireStaffAuth(request)
+    if (auth.error) return auth.error
+
     const body = await request.json().catch(() => ({}))
     const {
       name,
@@ -102,10 +104,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Basic phone validation
+    const cleanPhone = phone.trim()
+    if (cleanPhone.length < 10) {
+      return NextResponse.json({ success: false, error: "Invalid phone format" }, { status: 400 })
+    }
+
     const driver = await prisma.driver.create({
       data: {
-        name,
-        phone,
+        name: name.trim(),
+        phone: cleanPhone,
         status: "available",
         vehicleId: vehicleId || null,
         vehicleType: vehicleType || "",

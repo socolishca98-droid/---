@@ -1,11 +1,16 @@
 // app/api/fleet/drivers/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { searchParams } = new URL(request.url)
     const statusFilter = searchParams.get("status") || undefined // UI-статус: available | busy | maintenance | offline | driving/loading/unloading

@@ -1,6 +1,7 @@
 // app/api/m/shift/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
@@ -18,6 +19,9 @@ async function getActiveOrderForDriver(driverId: string) {
 // GET /api/m/shift?driverId=...
 // Текущая активная смена + активный заказ (если есть)
 export async function GET(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(request.url)
     const driverId = searchParams.get("driverId")
@@ -60,6 +64,9 @@ export async function GET(request: NextRequest) {
 // - если есть активный заказ → Shift.status = 'driving', Driver.status = 'busy'
 // - если нет заказа → Shift.status = 'waiting', Driver.status = 'available'
 export async function POST(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await request.json().catch(() => ({}))
     const { driverId } = body as { driverId?: string }
@@ -144,6 +151,9 @@ export async function POST(request: NextRequest) {
 // body: { driverId: string, status: 'driving' | 'waiting' | 'resting' | 'sleeping' | 'loading' | 'unloading' }
 // Обновление статуса текущей смены (для карты / аналитики)
 export async function PATCH(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await request.json().catch(() => ({}))
     const { driverId, status } = body as {
@@ -213,6 +223,9 @@ export async function PATCH(request: NextRequest) {
 // - если нет активных заказов → Driver.status = 'available'
 // - если есть активные заказы (теоретически) → Driver.status = 'busy'
 export async function DELETE(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(request.url)
     const driverId = searchParams.get("driverId")

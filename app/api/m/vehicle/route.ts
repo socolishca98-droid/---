@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 // GET — список доступных машин
 export async function GET(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const vehicles = await prisma.vehicle.findMany({
       orderBy: { plate: "asc" },
@@ -44,6 +48,9 @@ export async function GET(req: NextRequest) {
 
 // POST — водитель выбирает машину
 export async function POST(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await req.json()
 

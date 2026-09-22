@@ -1,5 +1,6 @@
 // app/api/chat/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
@@ -51,6 +52,10 @@ function detectImportance(text: string): { isImportant: boolean; reason: string 
 
 // GET - получить сообщения
 export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { searchParams } = new URL(request.url)
     const driverId = searchParams.get('driverId')
@@ -80,6 +85,10 @@ export async function GET(request: NextRequest) {
 
 // POST - отправить сообщение
 export async function POST(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json()
     const { senderId, senderRole, senderName, content, type = 'text', attachmentUrl } = body
@@ -119,6 +128,10 @@ export async function POST(request: NextRequest) {
 
 // PATCH - пометить как прочитанное
 export async function PATCH(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json()
     const { messageIds } = body

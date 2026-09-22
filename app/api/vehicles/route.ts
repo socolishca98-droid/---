@@ -1,11 +1,16 @@
 // app/api/vehicles/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 // GET /api/vehicles?available=true
 // GET /api/vehicles?ids=id1,id2,id3 — bulk fetch
 export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { searchParams } = new URL(request.url)
     const available = searchParams.get("available")
@@ -67,6 +72,10 @@ export async function GET(request: NextRequest) {
 
 // POST /api/vehicles
 export async function POST(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json().catch(() => ({}))
     const {

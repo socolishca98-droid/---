@@ -1,12 +1,17 @@
 // app/api/fleet/route.ts
 // (обновлённая версия с nextAvailableAt для машин)
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 export async function GET(_req: NextRequest) {
+  const __auth = await requireStaffAuth(_req);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const [drivers, vehicles, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({

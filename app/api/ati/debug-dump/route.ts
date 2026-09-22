@@ -1,9 +1,14 @@
 // app/api/ati/debug-dump/route.ts
-import { NextResponse } from "next/server"
+import { requireStaffAuth } from "@/lib/api-auth"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { safeJsonParse } from "@/lib/safe-json"
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const __auth = await requireStaffAuth(req);
+  if (__auth.error) return __auth.error;
+
+
   const url = new URL(req.url)
   const mode = url.searchParams.get("mode")
 

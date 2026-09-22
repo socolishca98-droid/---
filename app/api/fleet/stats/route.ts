@@ -1,11 +1,16 @@
 // app/api/fleet/stats/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 export async function GET(_request: NextRequest) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const [vehicles, drivers] = await Promise.all([
       prisma.vehicle.findMany(),

@@ -1,10 +1,14 @@
 // app/api/m/photos/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 // Получить фото водителя
 export async function GET(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(request.url)
     const driverId = searchParams.get("driverId")
@@ -45,6 +49,9 @@ export async function GET(request: NextRequest) {
 
 // Загрузить новое фото (JSON: { driverId, orderId, type, url, description })
 export async function POST(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await request.json()
     const { driverId, orderId, type, url, description } = body
@@ -159,6 +166,9 @@ export async function POST(request: NextRequest) {
 
 // Удалить фото
 export async function DELETE(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")

@@ -1,9 +1,14 @@
 // app/api/ati/sandbox/route.ts
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 // GET — грузы в песочнице (status = "imported")
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const items = await prisma.atiCache.findMany({
       where: { status: "imported" },
@@ -36,6 +41,10 @@ export async function GET() {
 
 // DELETE — вернуть груз обратно в базу (status = "new")
 export async function DELETE(req: NextRequest) {
+  const __auth = await requireStaffAuth(req);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await req.json().catch(() => ({}))
     const { id } = body as { id?: string }

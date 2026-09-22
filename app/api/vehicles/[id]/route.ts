@@ -1,5 +1,6 @@
 // app/api/vehicles/[id]/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -11,10 +12,12 @@ type RouteParams = {
 }
 
 // GET /api/vehicles/[id]
-export async function GET(
-  _request: NextRequest,
-  { params }: RouteParams
-) {
+export async function GET(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { id } = await params
 
@@ -48,10 +51,12 @@ export async function GET(
 }
 
 // PATCH /api/vehicles/[id]
-export async function PATCH(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function PATCH(request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { id } = await params
 
@@ -157,10 +162,12 @@ export async function PATCH(
 }
 
 // DELETE /api/vehicles/[id]
-export async function DELETE(
-  _request: NextRequest,
-  { params }: RouteParams
-) {
+export async function DELETE(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { id } = await params
 

@@ -1,5 +1,6 @@
 // app/api/drivers/[id]/location/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma" // ✅ Используем синглтон
 
@@ -8,6 +9,10 @@ type RouteParams = {
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     // ✅ Next.js 15+ требует await для params
     const { id } = await params

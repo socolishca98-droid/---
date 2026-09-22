@@ -1,6 +1,7 @@
 // app/api/m/sos/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 // Типы SOS сигналов
@@ -15,6 +16,9 @@ const SOS_LABELS: Record<string, string> = {
 
 // POST - отправить SOS сигнал
 export async function POST(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await request.json()
     const { driverId, latitude, longitude, message, orderId } = body
@@ -158,6 +162,9 @@ export async function POST(request: NextRequest) {
 
 // GET - получить SOS алерты (для дашборда логиста)
 export async function GET(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "active"
@@ -199,6 +206,9 @@ export async function GET(request: NextRequest) {
 
 // PATCH - обновить статус SOS (отметить как обработанный)
 export async function PATCH(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await request.json()
     const { sosId, status, resolution, resolvedBy } = body

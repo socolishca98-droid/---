@@ -22,9 +22,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (password.length < 4) {
+    if (password.length < 8) {
       return NextResponse.json(
-        { success: false, error: "Пароль должен содержать не менее 4 символов" },
+        { success: false, error: "Пароль должен содержать не менее 8 символов" },
+        { status: 400 }
+      )
+    }
+
+    // P0: basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email.trim())) {
+      return NextResponse.json(
+        { success: false, error: "Некорректный формат email" },
         { status: 400 }
       )
     }

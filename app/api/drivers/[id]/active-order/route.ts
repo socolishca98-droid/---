@@ -1,5 +1,6 @@
 // app/api/drivers/[id]/active-order/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -9,10 +10,12 @@ type RouteParams = {
   params: Promise<{ id: string }>
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: RouteParams
-) {
+export async function GET(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     // ✅ Next.js 15+ требует await для params
     const { id: driverId } = await params

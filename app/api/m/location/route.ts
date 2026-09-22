@@ -1,6 +1,7 @@
 // app/api/m/location/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 const ACTIVE_ORDER_STATUSES = [
@@ -21,6 +22,9 @@ async function getActiveOrderForDriver(driverId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const __auth = await requireDriverAuth(request);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await request.json().catch(() => ({}))
     

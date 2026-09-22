@@ -1,8 +1,13 @@
 // app/api/ati/import/route.ts
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { importAtiLoadToOrder } from "@/lib/ati-client"
 
 export async function POST(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json().catch(() => ({}))
     const { cacheId, fetchContacts } = body as {

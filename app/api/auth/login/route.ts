@@ -18,7 +18,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (password.length < 1 || password.length > 128) {
+      return NextResponse.json(
+        { success: false, error: "Неверный email или пароль" },
+        { status: 401 }
+      )
+    }
+
     const cleanEmail = email.trim().toLowerCase()
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(cleanEmail)) {
+      return NextResponse.json(
+        { success: false, error: "Неверный email или пароль" },
+        { status: 401 }
+      )
+    }
     const user = await prisma.user.findUnique({
       where: { email: cleanEmail },
     })

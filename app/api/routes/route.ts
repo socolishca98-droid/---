@@ -2,6 +2,7 @@
 // Создание рейса из песочницы Заказов
 // POST /api/routes
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { randomUUID } from "crypto"
@@ -37,6 +38,10 @@ function generateRouteId(): string {
 }
 
 export async function POST(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = (await request.json().catch(() => null)) as
       | CreateRouteBody
@@ -154,7 +159,11 @@ export async function POST(request: NextRequest) {
 }
 
 // GET можно оставить как простой ping/debug, чтобы не ломать ожидания
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   return NextResponse.json({
     success: true,
     message:

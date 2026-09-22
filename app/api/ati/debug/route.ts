@@ -1,6 +1,11 @@
-import { NextResponse } from "next/server";
+import { requireStaffAuth } from "@/lib/api-auth"
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   const token = process.env.ATI_TOKEN;
   
   if (!token) return NextResponse.json({ error: "No Token" });

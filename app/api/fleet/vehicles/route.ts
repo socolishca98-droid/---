@@ -1,11 +1,16 @@
 // app/api/fleet/vehicles/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 export async function GET(req: NextRequest) {
+  const __auth = await requireStaffAuth(req);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { searchParams } = new URL(req.url)
     const minCapacity = parseInt(searchParams.get("minCapacity") || "0", 10)

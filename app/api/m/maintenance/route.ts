@@ -1,10 +1,14 @@
 // app/api/m/maintenance/route.ts
 
 import { NextRequest, NextResponse } from "next/server"
+import { requireDriverAuth } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 // GET — текущее активное ТО
 export async function GET(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const { searchParams } = new URL(req.url)
     const driverId = searchParams.get("driverId")
@@ -51,6 +55,9 @@ export async function GET(req: NextRequest) {
 
 // POST — начать/запланировать ТО
 export async function POST(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await req.json()
 
@@ -149,6 +156,9 @@ export async function POST(req: NextRequest) {
 
 // PATCH — завершить ТО
 export async function PATCH(req: NextRequest) {
+  const __auth = await requireDriverAuth(req);
+  if (__auth.error) return __auth.error;
+
   try {
     const body = await req.json()
 
