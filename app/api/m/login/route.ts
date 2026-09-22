@@ -1,8 +1,13 @@
-// app/api/m/login/route.ts
-
+// app/api/m/login/route.ts - P1-5 refresh rotation
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { signJwt, setDriverAuthCookie } from "@/lib/auth-server"
+import {
+  signAccessJwt,
+  signRefreshJwt,
+  setDriverAuthCookie,
+  setDriverRefreshCookie,
+  DRIVER_REFRESH_EXPIRES_IN,
+} from "@/lib/auth-server"
 import {
   getClientIp,
   checkRateLimit,
@@ -10,6 +15,7 @@ import {
   resetRateLimit,
   buildRateLimitHeaders,
 } from "@/lib/rate-limiter"
+import { generateJti, createRefreshEntry } from "@/lib/refresh-tokens"
 
 const TEST_ORGANIZATION_NAME = "АИ Логистика"
 
@@ -58,7 +64,6 @@ export async function POST(req: NextRequest) {
     const normalizedOrg = normalizeOrgName(organization)
     const expectedOrg = normalizeOrgName(TEST_ORGANIZATION_NAME)
 
-    // Проверяем принадлежность к автопарку
     if (normalizedOrg !== expectedOrg && normalizedOrg !== "loginex") {
       const after = recordFailure(rateKey)
       return NextResponse.json(
@@ -67,7 +72,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Ищем водителя с нормализацией телефона без привязки к скобкам и дефисам
     const allDrivers = await prisma.driver.findMany()
     const driver = allDrivers.find((d: any) => {
       const dDigits = normalizePhone(d.phone || "").slice(-10)
@@ -82,23 +86,31 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Успешный вход — сбрасываем
     resetRateLimit(rateKey)
 
-    // Создаем подписанный токен для водителя на 30 дней
-    const token = signJwt(
-      {
-        sub: driver.id,
-        phone: driver.phone,
-        role: "driver",
-      },
-      30 * 24 * 3600
-    )
+    // P1-5: access 15min + refresh 30d
+    const accessToken = signAccessJwt({
+      sub: driver.id,
+      phone: driver.phone,
+      role: "driver",
+    })
+
+    const jti = generateJti()
+    const refreshToken = signRefreshJwt({ sub: driver.id, role: "driver", jti }, DRIVER_REFRESH_EXPIRES_IN)
+
+    createRefreshEntry({
+      jti,
+      userId: driver.id,
+      role: "driver",
+      expiresInMs: DRIVER_REFRESH_EXPIRES_IN * 1000,
+      ip,
+    })
 
     const response = NextResponse.json(
       {
         success: true,
-        token,
+        token: accessToken,
+        refreshToken,
         driver: {
           id: driver.id,
           name: driver.name,
@@ -118,8 +130,8 @@ export async function POST(req: NextRequest) {
       }
     )
 
-    // Устанавливаем защищенную HttpOnly cookie
-    setDriverAuthCookie(response, token)
+    setDriverAuthCookie(response, accessToken)
+    setDriverRefreshCookie(response, refreshToken)
 
     return response
   } catch (e: unknown) {

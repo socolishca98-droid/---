@@ -101,7 +101,7 @@
   4. Middleware проверять access, если истёк — пытаться refresh (или фронтенд сам)
   5. Обновить `auth-context.tsx` — silent refresh
 - **Acceptance:** access 15 мин, после истечения refresh → новый access, старый refresh инвалидируется
-- **Статус:** ⏳ TODO
+- **Статус:** ✅ DONE 2026-09-22 — `ACCESS_TOKEN_EXPIRES_IN=900`, `STAFF_REFRESH=7d`, `DRIVER_REFRESH=30d`, `lib/refresh-tokens.ts` in-memory store jti→entry, rotation, revoke, cleanup; `auth-server.ts` signAccessJwt/signRefreshJwt/verifyRefreshJwt + setRefreshCookie/clearAll; login routes set access+refresh cookies + store entry; `POST /api/auth/refresh` + `POST /api/m/refresh` rotate old jti → new, set new cookies; logout revoke + clear; `proxy.ts` public refresh/csrf + allow page if refresh cookie exists for silent refresh; `auth-context.tsx` tryRefresh + interval 14min + retry /me; `use-driver-session.ts` tryDriverRefresh + interval; build OK, rotation test OK
 
 #### P1-6: Zod валидация всех входов
 - **Проблема:** Многие роуты делают `body as { ... }` без валидации, можно передать `null` и сломать
@@ -140,7 +140,8 @@
 - 2026-09-22 P1-2 DONE: rate limiting lib + login/register protected, 6th → 429 OK
 - 2026-09-22 P1-3 DONE: CSRF double-submit cookie, proxy 403 without token, client auto-inject
 - 2026-09-22 P1-4 DONE: AuditLog model + logAudit + admin audit API + UI
-- Следующая задача: P1-5 Refresh token rotation (TODO)
+- 2026-09-22 P1-5 DONE: refresh rotation 15min access + 7/30d refresh, rotation invalidates old
+- Следующая задача: P1-6 Zod валидация всех входов (TODO)
 
 ### Прогресс 2026-09-22 P1-1
 - Запущен `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → было 429 ошибок
@@ -228,6 +229,49 @@
   - UI Card: header с кнопкой Показать/Скрыть + Refresh, content: loading spinner, empty state, table с Time, Action Badge, Who (actorEmail + ip), Whom (targetEmail), Details (role/status change or JSON)
 - Тесты: tsc 0 errors, build:safe 70 pages OK
 - Acceptance: approve → запись в AuditLog, видна в API GET /api/admin/audit (admin only) и в UI
+
+### Прогресс 2026-09-22 P1-5
+- Создан `lib/refresh-tokens.ts`:
+  - `RefreshEntry {jti, userId, role, expiresAt, createdAt, ip}`
+  - `store Map jti→entry`, `byUser Map userId→Set<jti>`
+  - `generateJti()` randomBytes 16 hex
+  - `createRefreshEntry({jti, userId, role, expiresInMs, ip})` — store, byUser, limit 5 per user (удаляет oldest), cleanup timer 1h, prune >5000
+  - `getRefreshEntry(jti)` — проверка expiry, cleanup
+  - `revokeRefreshToken(jti)`, `revokeAllForUser(userId)`, `rotateRefreshToken(oldJti, newJti, newExpiresInMs)` — revoke old + create new
+- Обновлен `lib/auth-server.ts`:
+  - константы `ACCESS_TOKEN_EXPIRES_IN=900`, `STAFF_REFRESH_EXPIRES_IN=604800`, `DRIVER_REFRESH_EXPIRES_IN=2592000`
+  - `RefreshTokenPayload {sub, role, jti, type:refresh, exp, iat}`
+  - `signAccessJwt(payload)` → signJwt 15min
+  - `signRefreshJwt({sub, role, jti}, expires)` → type refresh
+  - `verifyRefreshJwt(token)` — verify + check type refresh
+  - cookie setters: `setStaffAuthCookie` maxAge 900, `setDriverAuthCookie` 900, `setStaffRefreshCookie` 7d, `setDriverRefreshCookie` 30d, `clearRefreshCookies`, `clearAllAuthCookies`
+  - export cookie names refresh
+- Обновлены login:
+  - `app/api/auth/login/route.ts`: signAccessJwt + generateJti + signRefreshJwt + createRefreshEntry + set both cookies + return both tokens
+  - `app/api/m/login/route.ts`: аналогично driver
+- Созданы refresh endpoints:
+  - `POST /api/auth/refresh`: читает refresh из cookie `loginex_refresh` или body/header, verifyRefreshJwt, check store getRefreshEntry, check user active, rotateRefreshToken old→new, sign new access + refresh, set cookies, return user
+  - `POST /api/m/refresh`: аналогично driver, cookie `loginex_driver_refresh`
+- Обновлены logout:
+  - `app/api/auth/logout`: verify refresh cookie, revokeRefreshToken(jti), clearAllAuthCookies
+  - `app/api/m/logout`: аналогично driver
+- Обновлен `proxy.ts`:
+  - PUBLIC_API_PATHS добавлен `/api/auth/csrf`, `/api/auth/refresh`, `/api/m/refresh`
+  - STAFF_REFRESH_COOKIE_NAME, DRIVER_REFRESH_COOKIE_NAME
+  - shouldCheckCsrf уже пропускает /api/m/* и /api/auth/csrf
+  - В начале proxy после CSRF: public bypass
+  - Для страниц: если access не валиден, но refresh cookie есть — NextResponse.next() (allow) для silent refresh
+  - Для API: `/api/auth/refresh` и `/api/m/refresh` allowed если refresh cookie present
+- Обновлен `lib/auth-context.tsx`:
+  - `tryRefresh()` POST /api/auth/refresh credentials include
+  - `refreshUser()` GET /api/auth/me, если 401 → tryRefresh → retry /me, иначе clear user
+  - interval 14min silent refresh, cleanup on unmount, logout clears interval
+- Обновлен `hooks/use-driver-session.ts`:
+  - `tryDriverRefresh()` POST /api/m/refresh
+  - `refresh()` GET driver, если 401 → tryDriverRefresh → retry
+  - interval 14min
+- Тесты: `npx tsx` rotation test — jti1→jti2, old revoked, new valid, access 900, staff 604800 OK; tsc 0 errors; build 70 pages OK
+- Acceptance: access 15min, refresh → new access, old refresh invalidated (rotate)
 
 ## §12 Как запустить (для проверки)
 ```bash

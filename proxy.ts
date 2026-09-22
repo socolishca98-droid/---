@@ -15,11 +15,16 @@ try {
 
 const STAFF_COOKIE_NAME = "loginex_token"
 const DRIVER_COOKIE_NAME = "loginex_driver_token"
+const STAFF_REFRESH_COOKIE_NAME = "loginex_refresh"
+const DRIVER_REFRESH_COOKIE_NAME = "loginex_driver_refresh"
 
 const PUBLIC_API_PATHS = [
   "/api/auth/login",
   "/api/auth/register",
+  "/api/auth/csrf",
+  "/api/auth/refresh",
   "/api/m/login",
+  "/api/m/refresh",
   "/api/health",
 ]
 
@@ -127,6 +132,9 @@ export async function proxy(req: NextRequest) {
     }
   }
 
+  const staffRefreshToken = req.cookies.get(STAFF_REFRESH_COOKIE_NAME)?.value
+  const driverRefreshToken = req.cookies.get(DRIVER_REFRESH_COOKIE_NAME)?.value
+
   if (pathname === "/m/login") {
     if (isDriverAuthenticated) {
       return NextResponse.redirect(new URL("/m", req.url))
@@ -136,6 +144,10 @@ export async function proxy(req: NextRequest) {
 
   if (pathname.startsWith("/m")) {
     if (!isDriverAuthenticated) {
+      // P1-5: allow if driver refresh exists, let client silent-refresh
+      if (driverRefreshToken) {
+        return NextResponse.next()
+      }
       const loginUrl = new URL("/m/login", req.url)
       return NextResponse.redirect(loginUrl)
     }
@@ -152,6 +164,10 @@ export async function proxy(req: NextRequest) {
   if (pathname.startsWith("/api/")) {
     if (pathname.startsWith("/api/m/")) {
       if (!isDriverAuthenticated && !isStaffAuthenticated) {
+        // P1-5: allow refresh endpoint to be handled by its own route even without access
+        if (pathname === "/api/m/refresh" && driverRefreshToken) {
+          return NextResponse.next()
+        }
         return NextResponse.json({ success: false, error: "Unauthorized - driver authentication required" }, { status: 401 })
       }
       return NextResponse.next()
@@ -168,6 +184,11 @@ export async function proxy(req: NextRequest) {
       return NextResponse.next()
     }
 
+    // P1-5: allow refresh endpoint even if access expired, if refresh cookie present
+    if (pathname === "/api/auth/refresh" && staffRefreshToken) {
+      return NextResponse.next()
+    }
+
     if (!isStaffAuthenticated) {
       return NextResponse.json({ success: false, error: "Unauthorized - staff authentication required" }, { status: 401 })
     }
@@ -176,6 +197,10 @@ export async function proxy(req: NextRequest) {
   }
 
   if (!isStaffAuthenticated) {
+    // P1-5: allow page if refresh token exists, client will silent-refresh
+    if (staffRefreshToken) {
+      return NextResponse.next()
+    }
     const loginUrl = new URL("/login", req.url)
     loginUrl.searchParams.set("from", pathname)
     return NextResponse.redirect(loginUrl)

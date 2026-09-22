@@ -1,14 +1,10 @@
-// hooks/use-driver-session.ts
+// hooks/use-driver-session.ts - P1-5 with silent refresh
 
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/safe-json"
-
-// ============================================
-// ТИПЫ
-// ============================================
 
 export interface DriverSession {
   id: string
@@ -23,39 +19,22 @@ export interface DriverSession {
 }
 
 interface UseDriverSessionOptions {
-  /** Редирект на логин если нет сессии (по умолчанию true) */
   requireAuth?: boolean
-  /** Путь для редиректа (по умолчанию /m/login) */
   loginPath?: string
 }
 
 interface UseDriverSessionReturn {
-  /** Данные водителя или null */
   driver: DriverSession | null
-  /** Идёт загрузка сессии */
   isLoading: boolean
-  /** Авторизован ли пользователь */
   isAuthenticated: boolean
-  /** Сохранить сессию водителя */
   login: (driver: DriverSession) => void
-  /** Удалить сессию */
   logout: () => void
-  /** Обновить данные водителя */
   updateDriver: (updates: Partial<DriverSession>) => void
-  /** Перезагрузить данные с сервера */
   refresh: () => Promise<void>
 }
 
-// ============================================
-// КОНСТАНТЫ
-// ============================================
-
 const STORAGE_KEY = "driver_session"
 const LOGIN_PATH = "/m/login"
-
-// ============================================
-// ХУК
-// ============================================
 
 export function useDriverSession(
   options: UseDriverSessionOptions = {}
@@ -66,21 +45,13 @@ export function useDriverSession(
   const [driver, setDriver] = useState<DriverSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Загрузка сессии из localStorage при монтировании
   useEffect(() => {
     const loadSession = () => {
       try {
-        // Безопасное чтение из localStorage
-        const savedDriver = safeLocalStorageGet<DriverSession | null>(
-          STORAGE_KEY,
-          null
-        )
-
-        // Валидация: должен быть объект с id
+        const savedDriver = safeLocalStorageGet<DriverSession | null>(STORAGE_KEY, null)
         if (savedDriver && typeof savedDriver === "object" && savedDriver.id) {
           setDriver(savedDriver)
         } else if (requireAuth) {
-          // Нет валидной сессии - редирект на логин
           router.replace(loginPath)
         }
       } catch (error) {
@@ -92,17 +63,14 @@ export function useDriverSession(
         setIsLoading(false)
       }
     }
-
     loadSession()
   }, [requireAuth, loginPath, router])
 
-  // Сохранение сессии
   const login = useCallback((newDriver: DriverSession) => {
     if (!newDriver?.id) {
       console.error("[useDriverSession] Invalid driver data for login")
       return
     }
-
     const success = safeLocalStorageSet(STORAGE_KEY, newDriver)
     if (success) {
       setDriver(newDriver)
@@ -111,12 +79,10 @@ export function useDriverSession(
     }
   }, [])
 
-  // Выход
   const logout = useCallback(() => {
     try {
       if (typeof window !== "undefined") {
         localStorage.removeItem(STORAGE_KEY)
-        // Очищаем также старые ключи для совместимости
         localStorage.removeItem("driver_id")
         localStorage.removeItem("driver_name")
       }
@@ -127,11 +93,9 @@ export function useDriverSession(
     }
   }, [router, loginPath])
 
-  // Обновление данных водителя
   const updateDriver = useCallback(
     (updates: Partial<DriverSession>) => {
       if (!driver) return
-
       const updatedDriver = { ...driver, ...updates }
       const success = safeLocalStorageSet(STORAGE_KEY, updatedDriver)
       if (success) {
@@ -141,14 +105,30 @@ export function useDriverSession(
     [driver]
   )
 
-  // Перезагрузка данных с сервера
+  const tryDriverRefresh = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/m/refresh", { method: "POST", credentials: "include" })
+      if (res.ok) {
+        const data = await res.json()
+        return data.success === true
+      }
+      return false
+    } catch {
+      return false
+    }
+  }, [])
+
   const refresh = useCallback(async () => {
     if (!driver?.id) return
-
     try {
-      const response = await fetch(`/api/drivers/${driver.id}`)
+      let response = await fetch(`/api/drivers/${driver.id}`, { credentials: "include" })
+      if (response.status === 401) {
+        const ok = await tryDriverRefresh()
+        if (ok) {
+          response = await fetch(`/api/drivers/${driver.id}`, { credentials: "include" })
+        }
+      }
       const data = await response.json()
-
       if (data.success && data.driver) {
         const refreshedDriver: DriverSession = {
           id: data.driver.id,
@@ -161,7 +141,6 @@ export function useDriverSession(
           rating: data.driver.rating,
           ordersCompleted: data.driver.ordersCompleted,
         }
-
         const success = safeLocalStorageSet(STORAGE_KEY, refreshedDriver)
         if (success) {
           setDriver(refreshedDriver)
@@ -170,13 +149,18 @@ export function useDriverSession(
     } catch (error) {
       console.error("[useDriverSession] Error refreshing driver:", error)
     }
-  }, [driver?.id])
+  }, [driver?.id, tryDriverRefresh])
 
-  // Мемоизированное значение isAuthenticated
+  useEffect(() => {
+    if (!driver) return
+    const interval = setInterval(async () => {
+      await tryDriverRefresh()
+    }, 14 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [driver, tryDriverRefresh])
+
   const isAuthenticated = useMemo(() => {
-    return (
-      driver !== null && typeof driver.id === "string" && driver.id.length > 0
-    )
+    return driver !== null && typeof driver.id === "string" && driver.id.length > 0
   }, [driver])
 
   return {
@@ -190,26 +174,14 @@ export function useDriverSession(
   }
 }
 
-// ============================================
-// ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ
-// ============================================
-
-/**
- * Получить ID водителя без хука (для API-вызовов вне компонентов)
- */
 export function getDriverId(): string | null {
   if (typeof window === "undefined") return null
-
   const session = safeLocalStorageGet<DriverSession | null>(STORAGE_KEY, null)
   return session?.id ?? null
 }
 
-/**
- * Проверить наличие сессии (для middleware/guards)
- */
 export function hasDriverSession(): boolean {
   if (typeof window === "undefined") return false
-
   const session = safeLocalStorageGet<DriverSession | null>(STORAGE_KEY, null)
   return session !== null && typeof session.id === "string"
 }

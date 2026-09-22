@@ -1,7 +1,14 @@
-// app/api/auth/login/route.ts
+// app/api/auth/login/route.ts - P1-5 refresh rotation
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { verifyPassword, signJwt, setStaffAuthCookie } from "@/lib/auth-server"
+import {
+  verifyPassword,
+  signAccessJwt,
+  signRefreshJwt,
+  setStaffAuthCookie,
+  setStaffRefreshCookie,
+  STAFF_REFRESH_EXPIRES_IN,
+} from "@/lib/auth-server"
 import { ensureDbInitialized } from "@/lib/db-init"
 import {
   getClientIp,
@@ -10,6 +17,7 @@ import {
   resetRateLimit,
   buildRateLimitHeaders,
 } from "@/lib/rate-limiter"
+import { generateJti, createRefreshEntry } from "@/lib/refresh-tokens"
 
 export async function POST(req: NextRequest) {
   try {
@@ -70,7 +78,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Проверка статуса пользователя
     if (user.status === "pending_approval") {
       return NextResponse.json(
         {
@@ -94,21 +101,35 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Успешный вход — сбрасываем счетчик
     resetRateLimit(rateKey)
 
-    // Создаем подписанный токен
-    const token = signJwt({
+    // P1-5: access 15min + refresh 7d with rotation
+    const accessToken = signAccessJwt({
       sub: user.id,
       email: user.email,
       role: user.role,
       name: user.name || user.email,
     })
 
+    const jti = generateJti()
+    const refreshToken = signRefreshJwt(
+      { sub: user.id, role: user.role as "admin" | "logist", jti },
+      STAFF_REFRESH_EXPIRES_IN
+    )
+
+    createRefreshEntry({
+      jti,
+      userId: user.id,
+      role: user.role as "admin" | "logist",
+      expiresInMs: STAFF_REFRESH_EXPIRES_IN * 1000,
+      ip,
+    })
+
     const response = NextResponse.json(
       {
         success: true,
-        token,
+        token: accessToken,
+        refreshToken, // also return for debugging, but httpOnly cookie is primary
         user: {
           id: user.id,
           email: user.email,
@@ -127,7 +148,8 @@ export async function POST(req: NextRequest) {
       }
     )
 
-    setStaffAuthCookie(response, token)
+    setStaffAuthCookie(response, accessToken)
+    setStaffRefreshCookie(response, refreshToken)
     return response
   } catch (error: any) {
     console.error("[Auth Login] Error:", error)
