@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   ShieldCheck,
 } from "lucide-react"
+import { getCsrfToken } from "@/lib/csrf-client"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -52,9 +53,16 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
+      let csrfToken = ""
+      try {
+        csrfToken = await getCsrfToken()
+      } catch {}
       const res = await fetch("/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim().toLowerCase(),

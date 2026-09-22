@@ -1,8 +1,10 @@
 // proxy.ts - P0 hardened: enforce auth on all API routes (Next.js 16+)
 // Replaces middleware.ts - Next.js 16 deprecates middleware file convention
+// P1-3: CSRF protection for mutating API routes
 
 import { NextResponse, type NextRequest } from "next/server"
 import { verifyJwtEdge, getEdgeSecret } from "@/lib/jwt-edge"
+import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "@/lib/csrf"
 
 let AUTH_SECRET: string
 try {
@@ -34,11 +36,58 @@ function isStaticAsset(pathname: string): boolean {
   )
 }
 
+function isMutatingMethod(method: string): boolean {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase())
+}
+
+function shouldCheckCsrf(req: NextRequest): boolean {
+  const { pathname } = req.nextUrl
+  const method = req.method
+
+  if (!isMutatingMethod(method)) return false
+  if (!pathname.startsWith("/api/")) return false
+  if (pathname.startsWith("/api/m/")) return false // mobile uses Bearer
+  if (pathname === "/api/auth/csrf") return false
+  if (pathname.startsWith("/api/ati/cron")) return false // server-to-server with secret
+  // Skip CSRF if Authorization Bearer present (API client, not browser cookie)
+  const authHeader = req.headers.get("authorization")
+  if (authHeader?.startsWith("Bearer ")) return false
+
+  return true
+}
+
+function verifyCsrfEdge(req: NextRequest): { valid: boolean; reason?: string } {
+  const cookieToken = req.cookies.get(CSRF_COOKIE_NAME)?.value || null
+  const headerToken = req.headers.get(CSRF_HEADER_NAME) || req.headers.get("X-CSRF-Token") || null
+
+  if (!cookieToken) return { valid: false, reason: "missing cookie" }
+  if (!headerToken) return { valid: false, reason: "missing header" }
+  // constant-time-ish compare
+  if (cookieToken.length !== headerToken.length) return { valid: false, reason: "mismatch" }
+  let result = 0
+  for (let i = 0; i < cookieToken.length; i++) {
+    result |= cookieToken.charCodeAt(i) ^ headerToken.charCodeAt(i)
+  }
+  if (result !== 0) return { valid: false, reason: "mismatch" }
+  return { valid: true }
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   if (isStaticAsset(pathname)) {
     return NextResponse.next()
+  }
+
+  // P1-3: CSRF check for mutating API routes (before public bypass, so login/register also protected)
+  if (shouldCheckCsrf(req)) {
+    const csrfResult = verifyCsrfEdge(req)
+    if (!csrfResult.valid) {
+      return NextResponse.json(
+        { success: false, error: "CSRF verification failed", reason: csrfResult.reason },
+        { status: 403 }
+      )
+    }
   }
 
   if (isPublicApiPath(pathname)) {

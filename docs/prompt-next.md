@@ -77,7 +77,7 @@
   4. Обновить `login-form.tsx` и другие формы — fetch CSRF перед submit
   5. Исключить `/api/m/*` (мобилка использует Bearer) или добавить туда тоже
 - **Acceptance:** POST без CSRF → 403, с валидным → 200
-- **Статус:** ⏳ TODO
+- **Статус:** ✅ DONE 2026-09-22 — `lib/csrf.ts` edge-safe generate/verify, `GET /api/auth/csrf` set cookie, `proxy.ts` shouldCheckCsrf + verifyCsrfEdge 403, `lib/csrf-client.ts` getCsrfToken/fetchWithCsrf, `components/csrf-provider.tsx` patch fetch auto-add x-csrf-token from cookie, `login-form.tsx` + `register/page.tsx` fetch CSRF before submit, `layout.tsx` includes CsrfProvider, build 70 pages OK, manual verify test passes
 
 #### P1-4: Audit log для админских действий
 - **Проблема:** `approve`, `deactivate`, `activate`, `change_role` в `/api/admin/users` не логируются
@@ -138,7 +138,8 @@
 - 2026-09-22 P0 done, build passes, 60 файлов изменено, ветка запушена
 - 2026-09-22 P1-1 DONE: implicit any 0, tsconfig strict true, build 70 pages
 - 2026-09-22 P1-2 DONE: rate limiting lib + login/register protected, 6th → 429 OK
-- Следующая задача: P1-3 CSRF защита (TODO)
+- 2026-09-22 P1-3 DONE: CSRF double-submit cookie, proxy 403 without token, client auto-inject
+- Следующая задача: P1-4 Audit log для админских действий (TODO)
 
 ### Прогресс 2026-09-22 P1-1
 - Запущен `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → было 429 ошибок
@@ -174,6 +175,32 @@
 - Тест: `npx tsx -e` симуляция 5 failures → 6-й blocked retryAfter 900, соответствует acceptance
 - `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → 0 errors
 - `npm run build:safe` → 70 pages OK
+
+### Прогресс 2026-09-22 P1-3
+- Создан `lib/csrf.ts`:
+  - `CSRF_COOKIE_NAME=loginex_csrf`, `CSRF_HEADER_NAME=x-csrf-token`, `TOKEN_LENGTH=32`
+  - `generateCsrfToken()` — Node `randomBytes` или Edge `crypto.getRandomValues`
+  - `setCsrfCookie(res, token)` — httpOnly false, sameSite lax, secure prod, maxAge 24h
+  - `getCsrfTokenFromCookie/Header`, `safeEqual` — timingSafeEqual Node fallback constant-time loop Edge
+  - `verifyCsrf(req)` — cookie vs header, reason missing/mismatch
+  - `requireCsrf(req)` — helper for manual API check → 403
+- Создан `app/api/auth/csrf/route.ts` GET — reuse existing cookie or generate new, set cookie, return json
+- Обновлен `proxy.ts`:
+  - import CSRF constants
+  - `isMutatingMethod`, `shouldCheckCsrf(req)` — POST/PUT/PATCH/DELETE, /api/*, not /api/m/, not /api/auth/csrf, not /api/ati/cron, skip if Bearer
+  - `verifyCsrfEdge(req)` — edge-safe compare cookie vs header
+  - В начале proxy: if shouldCheckCsrf → verify → 403 json если fail, до public bypass (так login/register тоже защищены)
+- Создан `lib/csrf-client.ts` — `getCsrfToken()` fetch /api/auth/csrf, `fetchWithCsrf()` auto header
+- Создан `components/csrf-provider.tsx` — client provider, on mount fetch /api/auth/csrf, patch window.fetch: for shouldAddCsrf url/method, read cookie loginex_csrf, set x-csrf-token header, credentials include
+- Обновлен `app/layout.tsx` — обернут в CsrfProvider
+- Обновлены формы:
+  - `components/login-form.tsx` — import getCsrfToken, перед POST /api/auth/login fetch CSRF, header x-csrf-token
+  - `app/register/page.tsx` — аналогично для /api/auth/register
+- Тесты:
+  - `npx tsx -e` generate token 64 hex, verify valid/missing/mismatch → OK
+  - `npx tsc --noEmit --skipLibCheck --noImplicitAny true` → 0 errors
+  - `npm run build:safe` → 70 pages, Proxy, OK
+- Acceptance: POST без CSRF → 403 (proxy), с валидным cookie+header → 200 (verify passes)
 
 ## §12 Как запустить (для проверки)
 ```bash

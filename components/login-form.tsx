@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { getCsrfToken } from "@/lib/csrf-client"
 import {
   Card,
   CardContent,
@@ -58,9 +59,19 @@ export function LoginForm() {
 
     try {
       if (activeTab === "logist") {
+        // P1-3: fetch CSRF token before login
+        let csrfToken = ""
+        try {
+          csrfToken = await getCsrfToken()
+        } catch {
+          // ignore, server will return 403 if required
+        }
         const res = await fetch("/api/auth/login", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken,
+          },
           body: JSON.stringify({
             email: email.trim(),
             password: password,
