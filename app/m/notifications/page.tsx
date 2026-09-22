@@ -63,7 +63,7 @@ export default function DriverNotificationsPage() {
   )
 
   const handleNotificationPress = (id: string) => {
-    const n = notifications.find((x) => x.id === id)
+    const n = notifications.find((x: any) => x.id === id)
     if (!n) return
 
     markAsRead(id)
@@ -190,7 +190,7 @@ export default function DriverNotificationsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {sortedNotifications.map((n) => {
+            {sortedNotifications.map((n: any) => {
               const isUnread = !n.isRead
 
               return (

@@ -75,7 +75,7 @@ export default function DriverHistoryPage() {
             </CardContent>
           </Card>
         ) : (
-          completedOrders.map((order) => (
+          completedOrders.map((order: any) => (
             <Card key={order.id}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">

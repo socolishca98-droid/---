@@ -62,7 +62,7 @@ export default function DashboardMap() {
 
   // Подготавливаем данные для анимации, добавляя цвета
   const animationRoutes = useMemo(() => {
-    return routes.map((route, index) => ({
+    return routes.map((route: any, index: any) => ({
       ...route,
       color: (route as any).color || ROUTE_COLORS[index % ROUTE_COLORS.length]
     }))
@@ -87,14 +87,14 @@ export default function DashboardMap() {
       allPoints.push(base.coordinates)
     }
     
-    drivers.forEach((d) => {
+    drivers.forEach((d: any) => {
       if (d.latitude && d.longitude) {
         allPoints.push([d.latitude, d.longitude])
       }
     })
     
-    routes.forEach((r) => {
-      r.waypoints?.forEach((wp) => {
+    routes.forEach((r: any) => {
+      r.waypoints?.forEach((wp: any) => {
         if (wp.position) {
           allPoints.push(wp.position)
         }

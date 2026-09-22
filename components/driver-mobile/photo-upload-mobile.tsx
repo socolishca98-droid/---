@@ -111,20 +111,20 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
         throw new Error("Failed to upload photo to server")
       }
 
-      setUploads((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: "done" } : u)))
+      setUploads((prev) => prev.map((u: any) => (u.id === item.id ? { ...u, status: "done" } : u)))
       onUploadComplete?.()
     } catch (error) {
       console.error("Upload failed:", error)
-      setUploads((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: "failed" } : u)))
+      setUploads((prev) => prev.map((u: any) => (u.id === item.id ? { ...u, status: "failed" } : u)))
     }
   }
 
   const removeUpload = (id: string) => {
-    setUploads((prev) => prev.filter((u) => u.id !== id))
+    setUploads((prev) => prev.filter((u: any) => u.id !== id))
   }
 
   const retryUpload = (item: QueuedItem) => {
-    setUploads((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: "uploading" } : u)))
+    setUploads((prev) => prev.map((u: any) => (u.id === item.id ? { ...u, status: "uploading" } : u)))
     uploadFile(item)
   }
 
@@ -144,7 +144,7 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
       <CardContent className="space-y-6 pt-4">
         {/* Категории */}
         <div className="grid grid-cols-3 gap-2">
-          {categories.slice(0, 3).map((cat) => (
+          {categories.slice(0, 3).map((cat: any) => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
@@ -163,7 +163,7 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
           ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {categories.slice(3).map((cat) => (
+          {categories.slice(3).map((cat: any) => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
@@ -225,7 +225,7 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
           <div className="space-y-3 pt-4 border-t border-gray-800">
             <p className="text-sm font-medium text-gray-400">Загруженные фото ({uploads.length})</p>
             <div className="grid grid-cols-3 gap-3">
-              {uploads.map((upload) => (
+              {uploads.map((upload: any) => (
                 <div key={upload.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-800 group border border-gray-700">
                   <img src={upload.preview || "/placeholder.svg"} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" />
                   
@@ -252,7 +252,7 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
                   {/* Бейдж категории */}
                   <div className="absolute bottom-1 left-1 right-1">
                     <Badge variant="secondary" className="w-full justify-center text-[9px] py-0.5 bg-black/60 text-white border-0 backdrop-blur-sm">
-                      {categories.find((c) => c.id === upload.category)?.label}
+                      {categories.find((c: any) => c.id === upload.category)?.label}
                     </Badge>
                   </div>
                 </div>
@@ -262,7 +262,7 @@ export function PhotoUploadMobile({ routeId, driverId, onUploadComplete }: Photo
         )}
 
         {/* Офлайн уведомление */}
-        {!isOnline && uploads.some((u) => u.status === "pending") && (
+        {!isOnline && uploads.some((u: any) => u.status === "pending") && (
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-3">
             <CloudOff className="h-5 w-5 text-amber-500" />
             <p className="text-xs text-amber-500">

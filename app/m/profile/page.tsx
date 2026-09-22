@@ -138,7 +138,7 @@ export default function MobileProfilePage() {
 
   const initials = driver.name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: any) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase()

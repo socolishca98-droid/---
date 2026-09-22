@@ -463,7 +463,7 @@ function DraggableOrderCard({
 
   const isInRoute = !!order.inRouteOrder
   const isInGroup = !!order.groupId
-  const maxRouteOrder = Math.max(0, ...allOrders.map((o) => o.inRouteOrder || 0))
+  const maxRouteOrder = Math.max(0, ...allOrders.map((o: any) => o.inRouteOrder || 0))
   const nextRouteNumber = maxRouteOrder + 1
   const displayName = order.clientCompany || order.clientName || "Заказ"
 
@@ -476,7 +476,7 @@ function DraggableOrderCard({
     [nextRouteNumber],
   )
 
-  const groupColor = group ? GROUP_COLORS.find((c) => c.id === group.color) : null
+  const groupColor = group ? (GROUP_COLORS as any).find((c: any) => c.id === group.color) : null
   const hasShortComment = Boolean(order.comment && order.comment.trim().length > 0)
 
   return (
@@ -621,7 +621,7 @@ function DraggableOrderCard({
                         Убрать из маршрута
                       </DropdownMenuItem>
                     ) : (
-                      availablePositions.map((position) => (
+                      availablePositions.map((position: any) => (
                         <DropdownMenuItem
                           key={position}
                           onClick={() => onSetRoutePosition(position)}
@@ -729,7 +729,7 @@ function DraggableOrderCard({
                 "border-t border-slate-700/40",
             )}
           >
-            {attachedNotes.map((note) => (
+            {attachedNotes.map((note: any) => (
               <div key={note.id} className="flex items-start gap-1 text-slate-200">
                 <div className="flex-1 whitespace-pre-wrap">{note.text}</div>
                 <button
@@ -778,20 +778,20 @@ function GroupContainer({
 }) {
   if (orders.length === 0) return null
 
-  const minX = Math.min(...orders.map((o) => o.x)) - 14
-  const minY = Math.min(...orders.map((o) => o.y)) - 10
-  const maxX = Math.max(...orders.map((o) => o.x + CARD_WIDTH)) + 14
-  const maxY = Math.max(...orders.map((o) => o.y + CARD_HEIGHT)) + 4
+  const minX = Math.min(...orders.map((o: any) => o.x)) - 14
+  const minY = Math.min(...orders.map((o: any) => o.y)) - 10
+  const maxX = Math.max(...orders.map((o: any) => o.x + CARD_WIDTH)) + 14
+  const maxY = Math.max(...orders.map((o: any) => o.y + CARD_HEIGHT)) + 4
 
   const width = maxX - minX
   const height = maxY - minY
 
   const groupColor =
-    GROUP_COLORS.find((c) => c.id === group.color) ?? GROUP_COLORS[0]
+    GROUP_COLORS.find((c: any) => c.id === group.color) ?? GROUP_COLORS[0]
 
-  const totalPrice = orders.reduce((sum, o) => sum + o.price, 0)
-  const totalWeight = orders.reduce((sum, o) => sum + o.weight, 0)
-  const effectiveDistance = Math.max(...orders.map((o) => o.distance))
+  const totalPrice = orders.reduce((sum: any, o: any) => sum + o.price, 0)
+  const totalWeight = orders.reduce((sum: any, o: any) => sum + o.weight, 0)
+  const effectiveDistance = Math.max(...orders.map((o: any) => o.distance))
   const pricePerKm =
     effectiveDistance > 0 ? Math.round(totalPrice / effectiveDistance) : 0
 
@@ -799,8 +799,8 @@ function GroupContainer({
     (max, o) => (o.weight > max.weight ? o : max),
     orders[0],
   )
-  const dogruzOrders = orders.filter((o) => o.id !== mainOrder.id)
-  const dogruzWeight = dogruzOrders.reduce((sum, o) => sum + o.weight, 0)
+  const dogruzOrders = orders.filter((o: any) => o.id !== mainOrder.id)
+  const dogruzWeight = dogruzOrders.reduce((sum: any, o: any) => sum + o.weight, 0)
 
   const topHeaderY = minY - 24
   const bottomStatsY = maxY + 6
@@ -935,7 +935,7 @@ function DraggableNote({
       style={style}
       className={cn(
         "w-48 rounded-lg border shadow-lg transition-all group",
-        NOTE_COLORS[note.color],
+        (NOTE_COLORS as any)[note.color],
         isDragging && "opacity-70 scale-105 rotate-3",
       )}
     >
@@ -1082,8 +1082,8 @@ export function OrdersSandbox() {
 
   const usedAtiIds = useMemo(() => {
     const set = new Set<string>()
-    sheets.forEach((sheet) => {
-      sheet.orders.forEach((order) => {
+    sheets.forEach((sheet: any) => {
+      sheet.orders.forEach((order: any) => {
         if (order.atiCacheId) {
           set.add(order.atiCacheId)
         }
@@ -1094,7 +1094,7 @@ export function OrdersSandbox() {
 
   const attachedNotesByOrderId = useMemo(() => {
     const map = new Map<string, NoteItem[]>()
-    activeSheet.notes.forEach((note) => {
+    activeSheet.notes.forEach((note: any) => {
       if (note.orderId) {
         const existing = map.get(note.orderId) ?? []
         existing.push(note)
@@ -1111,7 +1111,7 @@ export function OrdersSandbox() {
         const parsed = JSON.parse(saved) as unknown
         if (Array.isArray(parsed) && parsed.length > 0) {
           const parsedSheets = parsed as CanvasSheet[]
-          const migrated: CanvasSheet[] = parsedSheets.map((sheet) => ({
+          const migrated: CanvasSheet[] = parsedSheets.map((sheet: any) => ({
             ...sheet,
             groups: sheet.groups || [],
           }))
@@ -1144,7 +1144,7 @@ export function OrdersSandbox() {
         const arr = JSON.parse(rawHidden) as unknown
         if (Array.isArray(arr)) {
           setHiddenProposalIds(
-            new Set(arr.filter((x) => typeof x === "string")),
+            new Set(arr.filter((x: any) => typeof x === "string")),
           )
         }
       }
@@ -1153,7 +1153,7 @@ export function OrdersSandbox() {
       if (rawSent) {
         const arr = JSON.parse(rawSent) as unknown
         if (Array.isArray(arr)) {
-          setSentProposalIds(new Set(arr.filter((x) => typeof x === "string")))
+          setSentProposalIds(new Set(arr.filter((x: any) => typeof x === "string")))
         }
       }
 
@@ -1217,7 +1217,7 @@ export function OrdersSandbox() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId }),
       })
-      setAtiOrders((prev) => prev.filter((o) => o.id !== orderId))
+      setAtiOrders((prev) => prev.filter((o: any) => o.id !== orderId))
       toast.success("Груз возвращён в базу")
     } catch {
       toast.error("Ошибка")
@@ -1227,7 +1227,7 @@ export function OrdersSandbox() {
   const updateSheet = useCallback(
     (updater: (sheet: CanvasSheet) => CanvasSheet) => {
       setSheets((prev) =>
-        prev.map((s) => (s.id === activeSheetId ? updater(s) : s)),
+        prev.map((s: any) => (s.id === activeSheetId ? updater(s) : s)),
       )
     },
     [activeSheetId],
@@ -1344,7 +1344,7 @@ export function OrdersSandbox() {
 
       const totalWeightKg = routeCalculation.totalWeight
       const candidates = vehicles
-        .filter((v) => v.status === "available" && v.capacity >= totalWeightKg)
+        .filter((v: any) => v.status === "available" && v.capacity >= totalWeightKg)
         .sort((a, b) => a.capacity - b.capacity)
 
       if (candidates.length === 0) {
@@ -1372,7 +1372,7 @@ export function OrdersSandbox() {
     const id = active.id as string
 
     if (id.startsWith("order-")) {
-      const anchor = activeSheet.orders.find((o) => o.id === id)
+      const anchor = activeSheet.orders.find((o: any) => o.id === id)
       if (!anchor) return
 
       let dx = delta.x
@@ -1396,7 +1396,7 @@ export function OrdersSandbox() {
       if (anchor.groupId) {
         updateSheet((s) => ({
           ...s,
-          orders: s.orders.map((o) =>
+          orders: s.orders.map((o: any) =>
             o.groupId === anchor.groupId
               ? { ...o, x: o.x + dx, y: o.y + dy }
               : o,
@@ -1405,7 +1405,7 @@ export function OrdersSandbox() {
       } else {
         updateSheet((s) => ({
           ...s,
-          orders: s.orders.map((o) =>
+          orders: s.orders.map((o: any) =>
             o.id === id ? { ...o, x: o.x + dx, y: o.y + dy } : o,
           ),
         }))
@@ -1415,10 +1415,10 @@ export function OrdersSandbox() {
 
     if (id.startsWith("note-")) {
       updateSheet((s) => {
-        const movedNotes = s.notes.map((n) =>
+        const movedNotes = s.notes.map((n: any) =>
           n.id === id ? { ...n, x: n.x + delta.x, y: n.y + delta.y } : n,
         )
-        const note = movedNotes.find((n) => n.id === id)
+        const note = movedNotes.find((n: any) => n.id === id)
         if (!note) return { ...s, notes: movedNotes }
 
         const centerX = note.x + NOTE_WIDTH / 2
@@ -1438,7 +1438,7 @@ export function OrdersSandbox() {
         }
 
         if (attachedOrderId && attachedOrder) {
-          const updatedNotes = movedNotes.map((n) =>
+          const updatedNotes = movedNotes.map((n: any) =>
             n.id === id
               ? {
                   ...n,
@@ -1451,7 +1451,7 @@ export function OrdersSandbox() {
           return { ...s, notes: updatedNotes }
         }
 
-        const updatedNotes = movedNotes.map((n) =>
+        const updatedNotes = movedNotes.map((n: any) =>
           n.id === id ? { ...n, orderId: null } : n,
         )
         return { ...s, notes: updatedNotes }
@@ -1464,8 +1464,7 @@ export function OrdersSandbox() {
 
   const handleConnectEnd = (orderId: string): void => {
     if (connectingFrom && connectingFrom !== orderId) {
-      const exists = activeSheet.connections.some(
-        (c) =>
+      const exists = activeSheet.connections.some((c: any) =>
           (c.from === connectingFrom && c.to === orderId) ||
           (c.from === orderId && c.to === connectingFrom),
       )
@@ -1486,7 +1485,7 @@ export function OrdersSandbox() {
   const removeConnection = (connId: string): void =>
     updateSheet((s) => ({
       ...s,
-      connections: s.connections.filter((c) => c.id !== connId),
+      connections: s.connections.filter((c: any) => c.id !== connId),
     }))
 
   const createGroup = (): void => {
@@ -1520,15 +1519,15 @@ export function OrdersSandbox() {
 
     updateSheet((s) => ({
       ...s,
-      orders: s.orders.map((o) =>
+      orders: s.orders.map((o: any) =>
         o.id === orderId ? { ...o, groupId: activeGroupId } : o,
       ),
-      groups: s.groups.map((g) =>
+      groups: s.groups.map((g: any) =>
         g.id === activeGroupId
           ? {
               ...g,
               orderIds: [
-                ...g.orderIds.filter((existingId) => existingId !== orderId),
+                ...g.orderIds.filter((existingId: any) => existingId !== orderId),
                 orderId,
               ],
             }
@@ -1538,17 +1537,17 @@ export function OrdersSandbox() {
   }
 
   const removeOrderFromGroup = (orderId: string): void => {
-    const order = activeSheet.orders.find((o) => o.id === orderId)
+    const order = activeSheet.orders.find((o: any) => o.id === orderId)
     if (!order?.groupId) return
 
     updateSheet((s) => ({
       ...s,
-      orders: s.orders.map((o) =>
+      orders: s.orders.map((o: any) =>
         o.id === orderId ? { ...o, groupId: null } : o,
       ),
-      groups: s.groups.map((g) =>
+      groups: s.groups.map((g: any) =>
         g.id === order.groupId
-          ? { ...g, orderIds: g.orderIds.filter((id) => id !== orderId) }
+          ? { ...g, orderIds: g.orderIds.filter((id: any) => id !== orderId) }
           : g,
       ),
     }))
@@ -1557,10 +1556,10 @@ export function OrdersSandbox() {
   const removeGroup = (groupId: string): void => {
     updateSheet((s) => ({
       ...s,
-      orders: s.orders.map((o) =>
+      orders: s.orders.map((o: any) =>
         o.groupId === groupId ? { ...o, groupId: null } : o,
       ),
-      groups: s.groups.filter((g) => g.id !== groupId),
+      groups: s.groups.filter((g: any) => g.id !== groupId),
     }))
     if (activeGroupId === groupId) setActiveGroupId(null)
     toast.success("Группа расформирована")
@@ -1569,15 +1568,14 @@ export function OrdersSandbox() {
   const removeOrder = (orderId: string): void =>
     updateSheet((s) => ({
       ...s,
-      orders: s.orders.filter((o) => o.id !== orderId),
-      connections: s.connections.filter(
-        (c) => c.from !== orderId && c.to !== orderId,
+      orders: s.orders.filter((o: any) => o.id !== orderId),
+      connections: s.connections.filter((c: any) => c.from !== orderId && c.to !== orderId,
       ),
-      groups: s.groups.map((g) => ({
+      groups: s.groups.map((g: any) => ({
         ...g,
-        orderIds: g.orderIds.filter((id) => id !== orderId),
+        orderIds: g.orderIds.filter((id: any) => id !== orderId),
       })),
-      notes: s.notes.map((n) =>
+      notes: s.notes.map((n: any) =>
         n.orderId === orderId ? { ...n, orderId: null } : n,
       ),
     }))
@@ -1585,14 +1583,14 @@ export function OrdersSandbox() {
   const setOrderRoutePosition = (orderId: string, position: number): void => {
     if (position === 0) {
       updateSheet((s) => {
-        const order = s.orders.find((o) => o.id === orderId)
+        const order = s.orders.find((o: any) => o.id === orderId)
         if (!order || order.inRouteOrder == null) return s
 
         const currentOrderPos = order.inRouteOrder
 
         return {
           ...s,
-          orders: s.orders.map((o) => {
+          orders: s.orders.map((o: any) => {
             if (o.id === orderId) {
               return { ...o, inRouteOrder: null, status: "new" as const }
             }
@@ -1605,15 +1603,15 @@ export function OrdersSandbox() {
       })
     } else {
       updateSheet((s) => {
-        let updatedOrders = s.orders.map((o) =>
+        let updatedOrders = s.orders.map((o: any) =>
           o.id === orderId ? { ...o, inRouteOrder: null } : o,
         )
-        updatedOrders = updatedOrders.map((o) =>
+        updatedOrders = updatedOrders.map((o: any) =>
           o.inRouteOrder != null && o.inRouteOrder >= position
             ? { ...o, inRouteOrder: o.inRouteOrder + 1 }
             : o,
         )
-        updatedOrders = updatedOrders.map((o) =>
+        updatedOrders = updatedOrders.map((o: any) =>
           o.id === orderId
             ? { ...o, inRouteOrder: position, status: "in_route" as const }
             : o,
@@ -1625,14 +1623,14 @@ export function OrdersSandbox() {
 
   const toggleOrderInRoute = (orderId: string): void => {
     updateSheet((s) => {
-      const order = s.orders.find((o) => o.id === orderId)
+      const order = s.orders.find((o: any) => o.id === orderId)
       if (!order) return s
 
       if (order.inRouteOrder != null) {
         const currentOrderPos = order.inRouteOrder
         return {
           ...s,
-          orders: s.orders.map((o) => {
+          orders: s.orders.map((o: any) => {
             if (o.id === orderId) {
               return { ...o, inRouteOrder: null, status: "new" as const }
             }
@@ -1644,10 +1642,10 @@ export function OrdersSandbox() {
         }
       }
 
-      const maxOrder = Math.max(0, ...s.orders.map((o) => o.inRouteOrder || 0))
+      const maxOrder = Math.max(0, ...s.orders.map((o: any) => o.inRouteOrder || 0))
       return {
         ...s,
-        orders: s.orders.map((o) =>
+        orders: s.orders.map((o: any) =>
           o.id === orderId
             ? {
                 ...o,
@@ -1663,7 +1661,7 @@ export function OrdersSandbox() {
   const saveOrderEdit = (updatedOrder: OrderItem): void => {
     updateSheet((s) => ({
       ...s,
-      orders: s.orders.map((o) => (o.id === updatedOrder.id ? updatedOrder : o)),
+      orders: s.orders.map((o: any) => (o.id === updatedOrder.id ? updatedOrder : o)),
     }))
     setSelectedOrderForEdit(null)
   }
@@ -1691,13 +1689,13 @@ export function OrdersSandbox() {
   const updateNoteText = (noteId: string, text: string): void =>
     updateSheet((s) => ({
       ...s,
-      notes: s.notes.map((n) => (n.id === noteId ? { ...n, text } : n)),
+      notes: s.notes.map((n: any) => (n.id === noteId ? { ...n, text } : n)),
     }))
 
   const removeNote = (noteId: string): void =>
     updateSheet((s) => ({
       ...s,
-      notes: s.notes.filter((n) => n.id !== noteId),
+      notes: s.notes.filter((n: any) => n.id !== noteId),
     }))
 
   const clearCanvas = (): void => {
@@ -1713,9 +1711,9 @@ export function OrdersSandbox() {
   }
 
   const renderConnections = (): React.ReactNode => {
-    return activeSheet.connections.map((conn) => {
-      const from = activeSheet.orders.find((o) => o.id === conn.from)
-      const to = activeSheet.orders.find((o) => o.id === conn.to)
+    return activeSheet.connections.map((conn: any) => {
+      const from = activeSheet.orders.find((o: any) => o.id === conn.from)
+      const to = activeSheet.orders.find((o: any) => o.id === conn.to)
       if (!from || !to) return null
 
       const x1 = from.x + CARD_WIDTH / 2
@@ -1797,7 +1795,7 @@ export function OrdersSandbox() {
   }
 
   const routeOrders = activeSheet.orders
-    .filter((o) => o.inRouteOrder)
+    .filter((o: any) => o.inRouteOrder)
     .sort((a, b) => (a.inRouteOrder ?? 0) - (b.inRouteOrder ?? 0))
 
   const routeCalculation = useMemo(() => {
@@ -1807,14 +1805,14 @@ export function OrdersSandbox() {
 
     const processedGroups = new Set<string>()
 
-    routeOrders.forEach((order) => {
+    routeOrders.forEach((order: any) => {
       totalPrice += order.price
       totalWeight += order.weight
 
       if (order.groupId) {
         if (!processedGroups.has(order.groupId)) {
-          const groupOrders = routeOrders.filter((o) => o.groupId === order.groupId)
-          const maxDistance = Math.max(...groupOrders.map((o) => o.distance))
+          const groupOrders = routeOrders.filter((o: any) => o.groupId === order.groupId)
+          const maxDistance = Math.max(...groupOrders.map((o: any) => o.distance))
           effectiveDistance += maxDistance
           processedGroups.add(order.groupId)
         }
@@ -1825,7 +1823,7 @@ export function OrdersSandbox() {
 
     const pricePerKm =
       effectiveDistance > 0 ? Math.round(totalPrice / effectiveDistance) : 0
-    const naiveDistance = routeOrders.reduce((sum, o) => sum + o.distance, 0)
+    const naiveDistance = routeOrders.reduce((sum: any, o: any) => sum + o.distance, 0)
     const savedDistance = naiveDistance - effectiveDistance
 
     return {
@@ -1900,7 +1898,7 @@ export function OrdersSandbox() {
     const proposals: AutoProposal[] = []
 
     const routeCities = new Set<string>()
-    routeOrders.forEach((o) => {
+    routeOrders.forEach((o: any) => {
       routeCities.add(normalizeCity(o.routeFrom))
       routeCities.add(normalizeCity(o.routeTo))
     })
@@ -1993,11 +1991,11 @@ export function OrdersSandbox() {
     }
 
     for (const [key, list] of byCorridor.entries()) {
-      const ungrouped = list.filter((o) => !o.groupId)
+      const ungrouped = list.filter((o: any) => !o.groupId)
       if (ungrouped.length < 2) continue
 
-      const totalWeight = ungrouped.reduce((s, o) => s + o.weight, 0)
-      const totalPrice = ungrouped.reduce((s, o) => s + o.price, 0)
+      const totalWeight = ungrouped.reduce((s: any, o: any) => s + o.weight, 0)
+      const totalPrice = ungrouped.reduce((s: any, o: any) => s + o.price, 0)
 
       proposals.push({
         id: `bundle:${key}`,
@@ -2008,7 +2006,7 @@ export function OrdersSandbox() {
         reasons: [
           "Группа поможет оценить экономику сборного рейса (дистанция берётся по максимуму).",
         ],
-        orderIds: ungrouped.map((o) => o.id),
+        orderIds: ungrouped.map((o: any) => o.id),
         score: 65,
       })
     }
@@ -2016,8 +2014,8 @@ export function OrdersSandbox() {
     // 4) dogruz — кандидаты из ATI под текущий маршрут
     if (routeOrders.length > 0) {
       const candidates = atiOrders
-        .filter((a) => !usedAtiIds.has(a.id))
-        .map((a) => {
+        .filter((a: any) => !usedAtiIds.has(a.id))
+        .map((a: any) => {
           const fromCity = normalizeCity(a.from)
           const toCity = normalizeCity(a.to)
 
@@ -2088,7 +2086,7 @@ export function OrdersSandbox() {
 
     // статусы: sent/hidden/snoozed
     const now = Date.now()
-    return proposals.map((p) => {
+    return proposals.map((p: any) => {
       if (sentProposalIds.has(p.id)) return { ...p, status: "sent" as const }
       if (hiddenProposalIds.has(p.id)) return { ...p, status: "hidden" as const }
       const until = snoozedUntilById[p.id]
@@ -2111,7 +2109,7 @@ export function OrdersSandbox() {
     timeTick,
   ])
 
-  const openProposals = autoProposals.filter((p) => p.status === "open")
+  const openProposals = autoProposals.filter((p: any) => p.status === "open")
 
   // ==================== ОФОРМЛЕНИЕ РЕЙСА: ПОДБОР МАШИНЫ ====================
   const handleAssembleRoute = async (): Promise<void> => {
@@ -2152,8 +2150,7 @@ export function OrdersSandbox() {
       setAvailableVehicles(vehicles)
 
       const totalWeight = routeCalculation.totalWeight
-      const candidates = vehicles.filter(
-        (v) => v.status === "available" && v.capacity >= totalWeight,
+      const candidates = vehicles.filter((v: any) => v.status === "available" && v.capacity >= totalWeight,
       )
 
       if (candidates.length > 0) {
@@ -2198,7 +2195,7 @@ export function OrdersSandbox() {
         body: JSON.stringify({
           vehicleId: selectedVehicle.id,
           driverId: selectedVehicle.driver?.id,
-          orders: routeOrders.map((o) => ({
+          orders: routeOrders.map((o: any) => ({
             atiCacheId: o.atiCacheId,
             routeFrom: o.routeFrom,
             routeTo: o.routeTo,
@@ -2232,8 +2229,8 @@ export function OrdersSandbox() {
 
         updateSheet((s) => ({
           ...s,
-          orders: s.orders.filter((o) => !o.inRouteOrder),
-          groups: s.groups.filter((g) => !routeOrders.some((o) => o.groupId === g.id)),
+          orders: s.orders.filter((o: any) => !o.inRouteOrder),
+          groups: s.groups.filter((g: any) => !routeOrders.some((o: any) => o.groupId === g.id)),
         }))
 
         setShowVehicleDialog(false)
@@ -2289,7 +2286,7 @@ export function OrdersSandbox() {
               </div>
             ) : (
               <div className="space-y-2 pr-4">
-                {atiOrders.map((order) => {
+                {atiOrders.map((order: any) => {
                   const isUsed = usedAtiIds.has(order.id)
 
                   return (
@@ -2321,8 +2318,7 @@ export function OrdersSandbox() {
                         className="cursor-pointer mt-3"
                         onClick={() => {
                           if (isUsed) {
-                            const existing = activeSheet.orders.find(
-                              (o) => o.atiCacheId === order.id,
+                            const existing = activeSheet.orders.find((o: any) => o.atiCacheId === order.id,
                             )
                             if (existing) {
                               setHighlightOrderId(existing.id)
@@ -2567,8 +2563,8 @@ export function OrdersSandbox() {
                 <g style={{ pointerEvents: "all" }}>{renderConnections()}</g>
               </svg>
 
-              {activeSheet.groups.map((group) => {
-                const groupOrders = activeSheet.orders.filter((o) => o.groupId === group.id)
+              {activeSheet.groups.map((group: any) => {
+                const groupOrders = activeSheet.orders.filter((o: any) => o.groupId === group.id)
                 return (
                   <GroupContainer
                     key={group.id}
@@ -2579,7 +2575,7 @@ export function OrdersSandbox() {
                 )
               })}
 
-              {activeSheet.orders.map((order) => (
+              {activeSheet.orders.map((order: any) => (
                 <DraggableOrderCard
                   key={order.id}
                   order={order}
@@ -2588,7 +2584,7 @@ export function OrdersSandbox() {
                   isConnectionStart={connectingFrom === order.id}
                   isHighlighted={highlightOrderId === order.id}
                   allOrders={activeSheet.orders}
-                  group={activeSheet.groups.find((g) => g.id === order.groupId)}
+                  group={activeSheet.groups.find((g: any) => g.id === order.groupId)}
                   attachedNotes={attachedNotesByOrderId.get(order.id) ?? []}
                   onDoubleClick={() => setSelectedOrderForEdit(order)}
                   onConnectStart={() => handleConnectStart(order.id)}
@@ -2604,8 +2600,8 @@ export function OrdersSandbox() {
               ))}
 
               {activeSheet.notes
-                .filter((note) => !note.orderId)
-                .map((note) => (
+                .filter((note: any) => !note.orderId)
+                .map((note: any) => (
                   <DraggableNote
                     key={note.id}
                     note={note}
@@ -2646,10 +2642,10 @@ export function OrdersSandbox() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  {routeOrders.map((order, idx) => {
-                    const group = activeSheet.groups.find((g) => g.id === order.groupId)
+                  {routeOrders.map((order: any, idx: any) => {
+                    const group = activeSheet.groups.find((g: any) => g.id === order.groupId)
                     const groupColor = group
-                      ? GROUP_COLORS.find((c) => c.id === group.color)
+                      ? GROUP_COLORS.find((c: any) => c.id === group.color)
                       : null
 
                     return (
@@ -2828,7 +2824,7 @@ export function OrdersSandbox() {
           )}
 
           <div className="h-10 bg-slate-950 border-t border-slate-800 flex items-end px-4 gap-1 flex-shrink-0">
-            {sheets.map((sheet) => (
+            {sheets.map((sheet: any) => (
               <button
                 key={sheet.id}
                 type="button"
@@ -2954,12 +2950,12 @@ export function OrdersSandbox() {
                         "risk_delay",
                         "reroute",
                       ] as AutoProposalType[]
-                    ).map((type) => {
-                      const items = openProposals.filter((p) => p.type === type)
+                    ).map((type: any) => {
+                      const items = openProposals.filter((p: any) => p.type === type)
                       if (items.length === 0) return null
 
-                      const collapsed = !!collapsedProposalTypes[type]
-                      const meta = AUTOPROPOSAL_TYPE_META[type]
+                      const collapsed = !!(collapsedProposalTypes as any)[type]
+                      const meta = (AUTOPROPOSAL_TYPE_META as any)[type]
 
                       return (
                         <div
@@ -2972,7 +2968,7 @@ export function OrdersSandbox() {
                             onClick={() =>
                               setCollapsedProposalTypes((prev) => ({
                                 ...prev,
-                                [type]: !prev[type],
+                                [type]: !(prev as any)[type],
                               }))
                             }
                           >
@@ -3002,10 +2998,10 @@ export function OrdersSandbox() {
 
                           {!collapsed && (
                             <div className="px-3 pb-3 space-y-2">
-                              {items.map((p) => {
+                              {items.map((p: any) => {
                                 const canAddFromAti =
                                   p.atiOrderId &&
-                                  atiOrders.some((a) => a.id === p.atiOrderId)
+                                  atiOrders.some((a: any) => a.id === p.atiOrderId)
                                 const isAlreadyOnCanvas = p.atiOrderId
                                   ? usedAtiIds.has(p.atiOrderId)
                                   : false
@@ -3039,7 +3035,7 @@ export function OrdersSandbox() {
 
                                     {p.reasons && p.reasons.length > 0 && (
                                       <ul className="mt-2 space-y-1 text-[11px] text-slate-400">
-                                        {p.reasons.slice(0, 4).map((r, idx) => (
+                                        {p.reasons.slice(0, 4).map((r: any, idx: any) => (
                                           <li key={idx} className="flex gap-2">
                                             <span className="mt-[6px] h-1 w-1 rounded-full bg-slate-600 flex-shrink-0" />
                                             <span className="min-w-0">{r}</span>
@@ -3056,14 +3052,12 @@ export function OrdersSandbox() {
                                             className="h-8 bg-slate-200 text-slate-950 hover:bg-white"
                                             disabled={!canAddFromAti}
                                             onClick={() => {
-                                              const ati = atiOrders.find(
-                                                (a) => a.id === p.atiOrderId,
+                                              const ati = atiOrders.find((a: any) => a.id === p.atiOrderId,
                                               )
                                               if (!ati) return
 
                                               if (isAlreadyOnCanvas) {
-                                                const existing = activeSheet.orders.find(
-                                                  (o) => o.atiCacheId === ati.id,
+                                                const existing = activeSheet.orders.find((o: any) => o.atiCacheId === ati.id,
                                                 )
                                                 if (existing) {
                                                   setHighlightOrderId(existing.id)
@@ -3112,7 +3106,7 @@ export function OrdersSandbox() {
                                             className="h-8"
                                             onClick={() => {
                                               const ids = p.orderIds ?? []
-                                              const existingOrders = activeSheet.orders.filter((o) =>
+                                              const existingOrders = activeSheet.orders.filter((o: any) =>
                                                 ids.includes(o.id),
                                               )
                                               if (existingOrders.length < 2) return
@@ -3128,13 +3122,13 @@ export function OrdersSandbox() {
                                                 id: newGroupId,
                                                 name,
                                                 color: "purple",
-                                                orderIds: existingOrders.map((o) => o.id),
+                                                orderIds: existingOrders.map((o: any) => o.id),
                                               }
 
                                               updateSheet((s) => ({
                                                 ...s,
                                                 groups: [...s.groups, newGroup],
-                                                orders: s.orders.map((o) =>
+                                                orders: s.orders.map((o: any) =>
                                                   ids.includes(o.id)
                                                     ? { ...o, groupId: newGroupId }
                                                     : o,
@@ -3162,8 +3156,7 @@ export function OrdersSandbox() {
                                             variant="secondary"
                                             className="h-8"
                                             onClick={() => {
-                                              const o = activeSheet.orders.find(
-                                                (x) => x.id === p.existingOrderId,
+                                              const o = activeSheet.orders.find((x: any) => x.id === p.existingOrderId,
                                               )
                                               if (!o) return
                                               setSelectedOrderForEdit(o)
@@ -3309,14 +3302,14 @@ export function OrdersSandbox() {
                 rows={4}
               />
               <div className="flex gap-2">
-                {(Object.keys(NOTE_COLORS) as NoteItem["color"][]).map((color) => (
+                {(Object.keys(NOTE_COLORS) as NoteItem["color"][]).map((color: any) => (
                   <button
                     key={color}
                     type="button"
                     onClick={() => setNewNoteColor(color)}
                     className={cn(
                       "w-8 h-8 rounded-lg border-2",
-                      NOTE_COLORS[color].split(" ")[0],
+                      (NOTE_COLORS as any)[color].split(" ")[0],
                       newNoteColor === color
                         ? "border-white scale-110"
                         : "border-transparent",
@@ -3361,7 +3354,7 @@ export function OrdersSandbox() {
               <div>
                 <Label>Цвет</Label>
                 <div className="flex gap-2 mt-2">
-                  {GROUP_COLORS.map((color) => (
+                  {GROUP_COLORS.map((color: any) => (
                     <button
                       key={color.id}
                       type="button"
@@ -3443,7 +3436,7 @@ export function OrdersSandbox() {
                         : Number.POSITIVE_INFINITY
                     return aTime - bTime
                   })
-                  .map((v) => {
+                  .map((v: any) => {
                     const fits = v.capacity >= routeCalculation.totalWeight
                     const isAvailable = v.status === "available"
                     const nextAvailable =
@@ -3581,7 +3574,7 @@ function SendDocumentsDialog({
           <DialogTitle>Отправить документы</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-4">
-          {DOCUMENT_TEMPLATES.map((doc) => (
+          {DOCUMENT_TEMPLATES.map((doc: any) => (
             <label
               key={doc.id}
               className={cn(
@@ -3596,7 +3589,7 @@ function SendDocumentsDialog({
                 onCheckedChange={() =>
                   setSelectedDocs((prev) =>
                     prev.includes(doc.id)
-                      ? prev.filter((i) => i !== doc.id)
+                      ? prev.filter((i: any) => i !== doc.id)
                       : [...prev, doc.id],
                   )
                 }

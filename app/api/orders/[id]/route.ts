@@ -97,7 +97,7 @@ export async function PATCH(request: NextRequest,
       : wasActive
     const isCompleting = status === "delivered" || status === "cancelled" || status === "rejected"
 
-    const updatedOrder = await prisma.$transaction(async (tx) => {
+    const updatedOrder = await prisma.$transaction(async (tx: any) => {
       const order = await tx.order.update({
         where: { id },
         data: {
@@ -212,7 +212,7 @@ export async function DELETE(_request: NextRequest,
 
     const wasActive = ACTIVE_ORDER_STATUSES.includes(existing.status as typeof ACTIVE_ORDER_STATUSES[number])
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.order.delete({ where: { id } })
 
       if (wasActive) {

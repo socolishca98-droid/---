@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
 
     const activeOrder = await getActiveOrderForDriver(driverId)
 
-    const { shift } = await prisma.$transaction(async (tx) => {
+    const { shift } = await prisma.$transaction(async (tx: any) => {
       const shiftStatus = activeOrder ? "driving" : "waiting"
 
       const newShift = await tx.driverShift.create({
@@ -249,7 +249,7 @@ export async function DELETE(request: NextRequest) {
       })
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.driverShift.update({
         where: { id: shift.id },
         data: {

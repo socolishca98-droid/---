@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       })
 
       const driversMap: Record<string, typeof drivers[0]> = {}
-      drivers.forEach((driver) => {
+      drivers.forEach((driver: any) => {
         driversMap[driver.id] = driver
       })
 

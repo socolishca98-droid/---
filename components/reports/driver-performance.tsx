@@ -68,11 +68,11 @@ export function DriverPerformance() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {driversStats.map((driver) => {
+        {driversStats.map((driver: any) => {
           const completionRate = Math.round((driver.ordersCompleted / driver.ordersTarget) * 100)
           const initials = driver.name
             .split(" ")
-            .map((n) => n[0])
+            .map((n: any) => n[0])
             .join("")
 
           return (

@@ -260,7 +260,7 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
 
   const groupedEvents = useMemo(() => {
     const groups: Record<string, RouteEventDto[]> = {}
-    events.forEach((e) => {
+    events.forEach((e: any) => {
       const dateKey = formatDate(e.createdAt)
       if (!groups[dateKey]) groups[dateKey] = []
       groups[dateKey].push(e)
@@ -299,7 +299,7 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
           </div>
 
           <div className="space-y-4 pl-4 border-l border-border/50 ml-4">
-            {dayEvents.map((e) => {
+            {dayEvents.map((e: any) => {
               const config = getEventConfig(e.type, e.status)
               const Icon = config.icon
               const eventData = parseEventData(e.data)

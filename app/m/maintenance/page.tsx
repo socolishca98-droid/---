@@ -176,7 +176,7 @@ export default function MaintenancePage() {
     )
   }
 
-  const selectedTypeInfo = MAINTENANCE_TYPES.find((t) => t.id === selectedType)
+  const selectedTypeInfo = MAINTENANCE_TYPES.find((t: any) => t.id === selectedType)
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white pb-8">
@@ -205,7 +205,7 @@ export default function MaintenancePage() {
             Тип работ
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {MAINTENANCE_TYPES.map((type) => {
+            {MAINTENANCE_TYPES.map((type: any) => {
               const isSelected = selectedType === type.id
               return (
                 <button

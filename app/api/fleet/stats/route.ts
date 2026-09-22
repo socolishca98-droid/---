@@ -19,16 +19,16 @@ export async function GET(_request: NextRequest) {
 
     const vehicleStats = {
       total: vehicles.length,
-      available: vehicles.filter((v) => v.status === "available").length,
-      inUse: vehicles.filter((v) => v.status === "in_use").length,
-      maintenance: vehicles.filter((v) => v.status === "maintenance").length,
+      available: vehicles.filter((v: any) => v.status === "available").length,
+      inUse: vehicles.filter((v: any) => v.status === "in_use").length,
+      maintenance: vehicles.filter((v: any) => v.status === "maintenance").length,
     }
 
     const driverStats = {
       total: drivers.length,
-      available: drivers.filter((d) => d.status === "available").length,
-      busy: drivers.filter((d) => d.status === "busy").length,
-      maintenance: drivers.filter((d) => d.status === "maintenance").length,
+      available: drivers.filter((d: any) => d.status === "available").length,
+      busy: drivers.filter((d: any) => d.status === "busy").length,
+      maintenance: drivers.filter((d: any) => d.status === "maintenance").length,
     }
 
     const todayStart = new Date()

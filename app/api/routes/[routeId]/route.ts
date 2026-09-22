@@ -46,14 +46,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
     const stats = {
       totalOrders: orders.length,
-      totalDistance: orders.reduce((sum, o) => sum + (o.distance || 0), 0),
-      totalWeight: orders.reduce((sum, o) => sum + (o.weight || 0), 0),
-      totalPrice: orders.reduce((sum, o) => sum + (o.price || 0), 0),
-      completedOrders: orders.filter((o) => o.status === "delivered").length,
-      pendingOrders: orders.filter(
-        (o) => !["delivered", "cancelled", "rejected"].includes(o.status),
+      totalDistance: orders.reduce((sum: any, o: any) => sum + (o.distance || 0), 0),
+      totalWeight: orders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0),
+      totalPrice: orders.reduce((sum: any, o: any) => sum + (o.price || 0), 0),
+      completedOrders: orders.filter((o: any) => o.status === "delivered").length,
+      pendingOrders: orders.filter((o: any) => !["delivered", "cancelled", "rejected"].includes(o.status),
       ).length,
-      additionalLoads: orders.filter((o) => o.isAdditionalLoad).length,
+      additionalLoads: orders.filter((o: any) => o.isAdditionalLoad).length,
     }
 
     const vehicleCapacity = vehicle?.capacity || 0
@@ -116,12 +115,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // базовая валидация
     const normalized = orderSequence
-      .filter((x) => x && typeof x.orderId === "string")
-      .map((x) => ({
+      .filter((x: any) => x && typeof x.orderId === "string")
+      .map((x: any) => ({
         orderId: x.orderId,
         sequence: Number.isFinite(x.sequence) ? Math.floor(x.sequence) : NaN,
       }))
-      .filter((x) => x.orderId.length > 0 && Number.isFinite(x.sequence) && x.sequence >= 1)
+      .filter((x: any) => x.orderId.length > 0 && Number.isFinite(x.sequence) && x.sequence >= 1)
 
     if (normalized.length !== orderSequence.length) {
       return NextResponse.json(
@@ -130,7 +129,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const ids = normalized.map((x) => x.orderId)
+    const ids = normalized.map((x: any) => x.orderId)
     const uniqueIds = new Set(ids)
     if (uniqueIds.size !== ids.length) {
       return NextResponse.json(
@@ -211,7 +210,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     const driverId = orders[0].assignedDriverId
     const vehicleId = orders[0].assignedVehicleId
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.order.updateMany({
         where: { routeId },
         data: { status: "cancelled" },

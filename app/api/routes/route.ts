@@ -72,13 +72,13 @@ export async function POST(request: NextRequest) {
 
     const routeId = generateRouteId()
 
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx: any) => {
       // 1. Создаём запись в таблице Route для маршрутной аналитики
       const fromCity = orders[0]?.routeFrom || "Пункт А"
       const toCity = orders[orders.length - 1]?.routeTo || "Пункт Б"
-      const totalDist = orders.reduce((sum, o) => sum + (o.distance || 0), 0)
-      const totalCost = orders.reduce((sum, o) => sum + (o.price || 0), 0)
-      const totalWeight = orders.reduce((sum, o) => sum + (o.weight || 0), 0)
+      const totalDist = orders.reduce((sum: any, o: any) => sum + (o.distance || 0), 0)
+      const totalCost = orders.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
+      const totalWeight = orders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0)
 
       await tx.route.create({
         data: {
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
       // 2. Создаём заказы, связанные общим routeId
       const createdOrders = await Promise.all(
-        orders.map((o, idx) =>
+        orders.map((o: any, idx: any) =>
           tx.order.create({
             data: {
               source: o.atiCacheId ? "ATI" : "manual",

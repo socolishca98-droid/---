@@ -189,7 +189,7 @@ export default function VehicleSelectPage() {
             <p className="text-gray-400">Нет доступных машин</p>
           </div>
         ) : (
-          vehicles.map((vehicle) => {
+          vehicles.map((vehicle: any) => {
             const disabled = isDisabled(vehicle)
             const isSelected = selectedId === vehicle.id
             const isCurrent = currentVehicleId === vehicle.id

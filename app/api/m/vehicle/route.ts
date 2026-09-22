@@ -25,10 +25,10 @@ export async function GET(req: NextRequest) {
     })
 
     const driverMap = new Map(
-      drivers.map((d) => [d.vehicleId, { id: d.id, name: d.name }])
+      drivers.map((d: any) => [d.vehicleId, { id: d.id, name: d.name }])
     )
 
-    const vehiclesWithDrivers = vehicles.map((v) => ({
+    const vehiclesWithDrivers = vehicles.map((v: any) => ({
       ...v,
       assignedDriver: driverMap.get(v.id) || null,
     }))

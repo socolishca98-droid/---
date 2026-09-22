@@ -136,9 +136,9 @@ export default function ChatPage() {
     )
   }
 
-  const selectedDriver = drivers.find((d) => d.id === selectedDriverId)
+  const selectedDriver = drivers.find((d: any) => d.id === selectedDriverId)
   const driverMessages = selectedDriverId
-    ? messages.filter((m) => m.senderId === selectedDriverId || m.recipientId === selectedDriverId)
+    ? messages.filter((m: any) => m.senderId === selectedDriverId || m.recipientId === selectedDriverId)
     : []
   
   // Количество непрочитанных важных
@@ -209,7 +209,7 @@ export default function ChatPage() {
                           <AvatarFallback>
                             {selectedDriver.name
                               .split(" ")
-                              .map((n) => n[0])
+                              .map((n: any) => n[0])
                               .join("")}
                           </AvatarFallback>
                         </Avatar>

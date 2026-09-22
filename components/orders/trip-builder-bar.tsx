@@ -15,8 +15,8 @@ export function TripBuilderBar({ selectedCount, selectedOrders, onClear, onCreat
   const { isCollapsed } = useSidebar()
 
   // Суммируем вес и цену
-  const totalWeight = selectedOrders.reduce((sum, o) => sum + (o.weight || 0), 0) / 1000
-  const totalRevenue = selectedOrders.reduce((sum, o) => sum + (o.price || 0), 0)
+  const totalWeight = selectedOrders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0) / 1000
+  const totalRevenue = selectedOrders.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
   
   return (
     <div
@@ -44,7 +44,7 @@ export function TripBuilderBar({ selectedCount, selectedOrders, onClear, onCreat
           <div className="hidden lg:flex items-center gap-2 text-xs text-gray-400">
             <Route className="h-4 w-4 text-orange-500" />
             <span className="text-gray-500 font-mono uppercase">Маршрут:</span>
-            {selectedOrders.map((o, i) => (
+            {selectedOrders.map((o: any, i: any) => (
               <span key={o.id} className="flex items-center">
                 {i > 0 && <span className="mx-1 text-gray-600">→</span>}
                 <span className="text-white">{o.routeFrom.split(',')[0]}</span>

@@ -90,8 +90,7 @@ export default function FleetPage() {
   const filteredVehicles = useMemo(() => {
     if (!searchQuery) return vehicles
     const q = searchQuery.toLowerCase()
-    return vehicles.filter(
-      (v) =>
+    return vehicles.filter((v: any) =>
         v.plate?.toLowerCase().includes(q) ||
         v.type?.toLowerCase().includes(q) ||
         v.brand?.toLowerCase().includes(q),
@@ -101,7 +100,7 @@ export default function FleetPage() {
   const filteredDrivers = useMemo(() => {
     if (!searchQuery) return drivers
     const q = searchQuery.toLowerCase()
-    return drivers.filter((d) => d.name?.toLowerCase().includes(q) || d.phone?.includes(q))
+    return drivers.filter((d: any) => d.name?.toLowerCase().includes(q) || d.phone?.includes(q))
   }, [drivers, searchQuery])
 
   // Helpers
@@ -259,8 +258,8 @@ export default function FleetPage() {
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredVehicles.map((vehicle) => {
-                    const driver = drivers.find((d) => d.vehicleId === vehicle.id) ?? null
+                  {filteredVehicles.map((vehicle: any) => {
+                    const driver = drivers.find((d: any) => d.vehicleId === vehicle.id) ?? null
 
                     const vehicleWithDriver = {
                       ...vehicle,
@@ -290,8 +289,8 @@ export default function FleetPage() {
 
             <TabsContent value="drivers" className="mt-0">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredDrivers.map((driver) => {
-                  const vehicle = vehicles.find((v) => v.id === driver.vehicleId)
+                {filteredDrivers.map((driver: any) => {
+                  const vehicle = vehicles.find((v: any) => v.id === driver.vehicleId)
                   return (
                     <DriverCard
                       key={driver.id}

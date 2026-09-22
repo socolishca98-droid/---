@@ -215,7 +215,7 @@ export default function DriverOrdersPage() {
             </p>
           </div>
         ) : (
-          orders.map((order) => {
+          orders.map((order: any) => {
             const statusInfo = getStatusInfo(order.status)
             const StatusIcon = statusInfo.icon
 

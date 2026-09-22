@@ -185,7 +185,7 @@ function PhotoPageContent() {
         const allHistory = historyData.orders as Order[]
         const now = new Date()
         const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
-        recent = allHistory.filter((o) => {
+        recent = allHistory.filter((o: any) => {
           if (!o.createdAt) return false
           return new Date(o.createdAt) >= twoWeeksAgo
         })
@@ -291,7 +291,7 @@ function PhotoPageContent() {
       })
       const data = await res.json()
       if (data.success) {
-        setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+        setPhotos((prev) => prev.filter((p: any) => p.id !== photoId))
         setPreviewPhoto(null)
         toast.success("Фото удалено")
       } else {
@@ -304,7 +304,7 @@ function PhotoPageContent() {
   }
 
   const getCategoryInfo = (type: string) => {
-    return CATEGORIES.find((c) => c.id === type) || CATEGORIES[0]
+    return CATEGORIES.find((c: any) => c.id === type) || CATEGORIES[0]
   }
 
   if (!driver) {
@@ -373,7 +373,7 @@ function PhotoPageContent() {
             Тип фото
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {CATEGORIES.map((cat) => {
+            {CATEGORIES.map((cat: any) => {
               const isSelected = selectedCategory === cat.id
               return (
                 <button
@@ -459,7 +459,7 @@ function PhotoPageContent() {
               Загруженные фото
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {photos.map((photo) => {
+              {photos.map((photo: any) => {
                 const catInfo = getCategoryInfo(photo.type)
                 return (
                   <button
@@ -537,7 +537,7 @@ function PhotoPageContent() {
                   <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
                     Активные рейсы
                   </div>
-                  {activeOrders.map((order) => (
+                  {activeOrders.map((order: any) => (
                     <button
                       key={order.id}
                       onClick={() => {
@@ -562,7 +562,7 @@ function PhotoPageContent() {
                   <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
                     Недавние (14 дней)
                   </div>
-                  {recentOrders.map((order) => (
+                  {recentOrders.map((order: any) => (
                     <button
                       key={order.id}
                       onClick={() => {

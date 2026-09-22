@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       take: 100,
     })
 
-    const loads = items.map((item) => ({
+    const loads = items.map((item: any) => ({
       id: item.id,
       atiLoadId: item.atiLoadId,
       from: item.routeFrom,

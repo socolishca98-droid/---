@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         message: "Догруз принят",
       })
     } else {
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.order.update({
           where: { id: orderId },
           data: {

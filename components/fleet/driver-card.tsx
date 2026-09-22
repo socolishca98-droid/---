@@ -91,7 +91,7 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
 
   const initials = driver.name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: any) => n[0])
     .join("")
     .slice(0, 2)
 

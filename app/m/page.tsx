@@ -559,7 +559,7 @@ export default function MobileHomePage() {
             },
           })
         } else {
-          const statusMeta = TRIP_STATUSES.find((s) => s.id === statusId)
+          const statusMeta = TRIP_STATUSES.find((s: any) => s.id === statusId)
           toast.success(`Статус: ${statusMeta?.label || statusId}`)
         }
 
@@ -633,8 +633,7 @@ export default function MobileHomePage() {
   const completeRoute = async () => {
     if (!activeOrder?.routeId || !driver?.id) return
 
-    const pendingCount = allRouteOrders.filter(
-      (o) => !["delivered", "cancelled", "rejected"].includes(o.status)
+    const pendingCount = allRouteOrders.filter((o: any) => !["delivered", "cancelled", "rejected"].includes(o.status)
     ).length
 
     const confirmMessage =
@@ -695,7 +694,7 @@ export default function MobileHomePage() {
 
       const data = await res.json()
       if (data.success) {
-        setProposedLoads((prev) => prev.filter((l) => l.id !== orderId))
+        setProposedLoads((prev) => prev.filter((l: any) => l.id !== orderId))
         toast.success(accept ? "Догруз принят" : "Догруз отклонён")
         await fetchData()
       } else {
@@ -743,7 +742,7 @@ export default function MobileHomePage() {
     return `${m} м`
   }
 
-  const currentTripStatus = TRIP_STATUSES.find((s) => s.id === shift?.status) || TRIP_STATUSES[0]
+  const currentTripStatus = TRIP_STATUSES.find((s: any) => s.id === shift?.status) || TRIP_STATUSES[0]
 
   // ✅ Показываем загрузку пока проверяется сессия
   if (isSessionLoading || isDataLoading) {
@@ -769,7 +768,7 @@ export default function MobileHomePage() {
   const routeProgress =
     allRouteOrders.length > 0
       ? Math.round(
-          (allRouteOrders.filter((o) => o.status === "delivered").length /
+          (allRouteOrders.filter((o: any) => o.status === "delivered").length /
             allRouteOrders.length) *
             100
         )

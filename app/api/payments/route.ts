@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     let overdueCount = 0
     let paidCount = 0
 
-    const formattedOrders = allOrders.map((o) => {
+    const formattedOrders = allOrders.map((o: any) => {
       const isPaid = Boolean(o.isPaid)
       const price = o.price || 0
       const isDeferred = o.paymentType === "deferred"
@@ -95,21 +95,19 @@ export async function GET(request: NextRequest) {
     // Фильтрация по табам
     let filtered = formattedOrders
     if (tab === "pending") {
-      filtered = formattedOrders.filter((o) => !o.isPaid)
+      filtered = formattedOrders.filter((o: any) => !o.isPaid)
     } else if (tab === "deferred") {
-      filtered = formattedOrders.filter(
-        (o) => !o.isPaid && o.paymentType === "deferred"
+      filtered = formattedOrders.filter((o: any) => !o.isPaid && o.paymentType === "deferred"
       )
     } else if (tab === "overdue") {
-      filtered = formattedOrders.filter((o) => o.isOverdue)
+      filtered = formattedOrders.filter((o: any) => o.isOverdue)
     } else if (tab === "paid") {
-      filtered = formattedOrders.filter((o) => o.isPaid)
+      filtered = formattedOrders.filter((o: any) => o.isPaid)
     }
 
     // Поиск по строке
     if (query) {
-      filtered = filtered.filter(
-        (o) =>
+      filtered = filtered.filter((o: any) =>
           o.clientName.toLowerCase().includes(query) ||
           o.routeFrom.toLowerCase().includes(query) ||
           o.routeTo.toLowerCase().includes(query) ||

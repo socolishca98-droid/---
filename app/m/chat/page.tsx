@@ -192,7 +192,7 @@ export default function DriverChatPage() {
   }
 
   // Группировка сообщений по дате
-  const groupedMessages = messages.reduce((acc, msg) => {
+  const groupedMessages = messages.reduce((acc: any, msg: any) => {
     const dateKey = new Date(msg.createdAt).toDateString()
     if (!acc[dateKey]) {
       acc[dateKey] = []
@@ -267,18 +267,18 @@ export default function DriverChatPage() {
             </p>
           </div>
         ) : (
-          Object.entries(groupedMessages).map(([dateKey, msgs]) => (
+          Object.entries(groupedMessages as any).map(([dateKey, msgs]: any) => (
             <div key={dateKey}>
               {/* Разделитель даты */}
               <div className="flex items-center justify-center my-4">
                 <span className="px-3 py-1 rounded-full bg-gray-800/50 text-xs text-gray-500">
-                  {formatDate(msgs[0].createdAt)}
+                  {formatDate((msgs as any)[0].createdAt)}
                 </span>
               </div>
 
               {/* Сообщения */}
               <div className="space-y-3">
-                {msgs.map((msg) => {
+                {(msgs as any).map((msg: any) => {
                   const isOwn = msg.senderId === driver.id
                   const isImportant = msg.isImportant || msg.type === "alert"
 

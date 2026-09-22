@@ -150,7 +150,7 @@ export default function RoutesPage() {
       const driverIds = new Set<string>()
       const vehicleIds = new Set<string>()
 
-      Object.values(routeMap).forEach((route) => {
+      Object.values(routeMap).forEach((route: any) => {
         if (route.driverId) driverIds.add(route.driverId)
         if (route.vehicleId) vehicleIds.add(route.vehicleId)
       })
@@ -203,8 +203,7 @@ export default function RoutesPage() {
           ? vehiclesMap[routeData.vehicleId]
           : null
 
-        const totalWeight = sortedOrders.reduce(
-          (sum, o) => sum + (o.weight || 0),
+        const totalWeight = sortedOrders.reduce((sum: any, o: any) => sum + (o.weight || 0),
           0
         )
         const vehicleCapacity = vehicle?.capacity || 0
@@ -217,24 +216,23 @@ export default function RoutesPage() {
           vehiclePlate: vehicle?.plate || "—",
           vehicleId: vehicle?.id || null,
           ordersCount: sortedOrders.length,
-          completedOrders: sortedOrders.filter((o) => o.status === "delivered")
+          completedOrders: sortedOrders.filter((o: any) => o.status === "delivered")
             .length,
-          totalDistance: sortedOrders.reduce(
-            (sum, o) => sum + (o.distance || 0),
+          totalDistance: sortedOrders.reduce((sum: any, o: any) => sum + (o.distance || 0),
             0
           ),
           totalWeight,
-          totalPrice: sortedOrders.reduce((sum, o) => sum + (o.price || 0), 0),
+          totalPrice: sortedOrders.reduce((sum: any, o: any) => sum + (o.price || 0), 0),
           availableCapacity,
           utilizationPercent:
             vehicleCapacity > 0
               ? Math.round((totalWeight / vehicleCapacity) * 100)
               : 0,
-          status: sortedOrders.some((o) =>
+          status: sortedOrders.some((o: any) =>
             ["in_transit", "loading", "unloading"].includes(o.status)
           )
             ? "in_progress"
-            : sortedOrders.every((o) => o.status === "delivered")
+            : sortedOrders.every((o: any) => o.status === "delivered")
               ? "completed"
               : "pending",
           orders: sortedOrders,
@@ -258,14 +256,13 @@ export default function RoutesPage() {
     }
   }, [user, fetchRoutes])
 
-  const filteredRoutes = routes.filter((route) => {
+  const filteredRoutes = routes.filter((route: any) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
     return (
       route.driverName.toLowerCase().includes(q) ||
       route.vehiclePlate.toLowerCase().includes(q) ||
-      route.orders.some(
-        (o) =>
+      route.orders.some((o: any) =>
           o.routeFrom?.toLowerCase().includes(q) ||
           o.routeTo?.toLowerCase().includes(q)
       )
@@ -274,14 +271,14 @@ export default function RoutesPage() {
 
   const stats = {
     totalRoutes: routes.length,
-    inProgress: routes.filter((r) => r.status === "in_progress").length,
-    pending: routes.filter((r) => r.status === "pending").length,
-    totalRevenue: routes.reduce((sum, r) => sum + r.totalPrice, 0),
-    totalCapacity: routes.reduce((sum, r) => sum + r.availableCapacity, 0),
+    inProgress: routes.filter((r: any) => r.status === "in_progress").length,
+    pending: routes.filter((r: any) => r.status === "pending").length,
+    totalRevenue: routes.reduce((sum: any, r: any) => sum + r.totalPrice, 0),
+    totalCapacity: routes.reduce((sum: any, r: any) => sum + r.availableCapacity, 0),
     avgUtilization:
       routes.length > 0
         ? Math.round(
-            routes.reduce((sum, r) => sum + r.utilizationPercent, 0) /
+            routes.reduce((sum: any, r: any) => sum + r.utilizationPercent, 0) /
               routes.length
           )
         : 0,
@@ -483,7 +480,7 @@ export default function RoutesPage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {filteredRoutes.map((route) => (
+              {filteredRoutes.map((route: any) => (
                 <ActiveRouteCard
                   key={route.id}
                   route={route}

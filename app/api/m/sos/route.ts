@@ -178,15 +178,15 @@ export async function GET(request: NextRequest) {
       take: Number.isFinite(limit) && limit > 0 ? limit : 50,
     })
 
-    const driverIds = [...new Set(alerts.map((a) => a.driverId))]
+    const driverIds = [...new Set(alerts.map((a: any) => a.driverId))]
     const drivers = await prisma.driver.findMany({
       where: { id: { in: driverIds } },
       select: { id: true, name: true, phone: true, vehiclePlate: true },
     })
 
-    const alertsWithDrivers = alerts.map((alert) => ({
+    const alertsWithDrivers = alerts.map((alert: any) => ({
       ...alert,
-      driver: drivers.find((d) => d.id === alert.driverId),
+      driver: drivers.find((d: any) => d.id === alert.driverId),
       typeLabel: SOS_LABELS[alert.type] || alert.type,
     }))
 

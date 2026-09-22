@@ -64,7 +64,7 @@ export async function POST(request: NextRequest,
         select: { capacity: true },
       })
 
-      const currentWeight = existingOrders.reduce((sum, o) => sum + (o.weight || 0), 0)
+      const currentWeight = existingOrders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0)
       const newTotalWeight = currentWeight + (weight || 0)
 
       if (vehicle && newTotalWeight > vehicle.capacity) {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest,
     let routeSequence = existingOrders.length + 1
 
     if (insertAfterOrderId) {
-      const insertAfterOrder = existingOrders.find((o) => o.id === insertAfterOrderId)
+      const insertAfterOrder = existingOrders.find((o: any) => o.id === insertAfterOrderId)
       if (insertAfterOrder?.routeSequence) {
         routeSequence = insertAfterOrder.routeSequence + 1
 
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest,
       }
     }
 
-    const newOrder = await prisma.$transaction(async (tx) => {
+    const newOrder = await prisma.$transaction(async (tx: any) => {
       const order = await tx.order.create({
         data: {
           source: atiCacheId ? "ATI" : "manual",

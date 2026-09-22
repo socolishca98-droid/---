@@ -129,7 +129,7 @@ export function PendingLoadCard({ load, onAccept, onReject }: PendingLoadCardPro
           ) : (
             <div className="space-y-2">
               <p className="text-sm text-gray-400">Укажите причину:</p>
-              {REJECTION_REASONS.map((reason) => (
+              {REJECTION_REASONS.map((reason: any) => (
                 <button
                   key={reason}
                   onClick={(e) => {

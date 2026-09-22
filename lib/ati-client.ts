@@ -41,7 +41,7 @@ const CITIES = [
   { id: 71, atiId: 71, name: "Калининград", region: "Калининградская область", priority: 0 },
 ]
 
-const HUB_IDS_PRIORITY_1 = CITIES.filter((c) => c.priority === 1).map((c) => c.atiId)
+const HUB_IDS_PRIORITY_1 = CITIES.filter((c: any) => c.priority === 1).map((c: any) => c.atiId)
 const ALL_HUB_IDS = HUB_IDS_PRIORITY_1
 
 type ScanMode = "fast" | "normal" | "deep"
@@ -660,7 +660,7 @@ export async function getAtiCache(params: any) {
 
   if (minPricePerKm) {
     const minPpk = Number(minPricePerKm) || 0
-    items = items.filter((item) => {
+    items = items.filter((item: any) => {
       const distance = item.distance || 0
       const price = item.price || 0
       if (!distance || !price) return false

@@ -212,7 +212,7 @@ export default function PaymentsPage() {
   }
 
   const now = new Date()
-  const overdueOrders = orders.filter((o) => o.isOverdue)
+  const overdueOrders = orders.filter((o: any) => o.isOverdue)
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -334,7 +334,7 @@ export default function PaymentsPage() {
                   </span>
                 </p>
                 <div className="space-y-2">
-                  {overdueOrders.slice(0, 3).map((order) => (
+                  {overdueOrders.slice(0, 3).map((order: any) => (
                     <div
                       key={order.id}
                       className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-card/80 border border-red-500/20 gap-3"
@@ -442,7 +442,7 @@ export default function PaymentsPage() {
                     </p>
                   </div>
                 ) : (
-                  orders.map((order) => {
+                  orders.map((order: any) => {
                     const pConfig =
                       paymentTypeConfig[order.paymentType] || paymentTypeConfig.bank_transfer
                     const PIcon = pConfig.icon

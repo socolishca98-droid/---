@@ -324,11 +324,11 @@ export default function DashboardMap() {
       const heartbeat =
         Math.sin(heartbeatPhase) > 0.7 ? 1 : Math.sin(heartbeatPhase + 0.3) > 0.8 ? 0.7 : 0
 
-      routesDataRef.current.forEach((route) => {
+      routesDataRef.current.forEach((route: any) => {
         if (!route.coordinates || route.coordinates.length < 2) return
 
         // Конвертируем координаты
-        const points = route.coordinates.map((coord) => {
+        const points = route.coordinates.map((coord: any) => {
           const point = map.latLngToContainerPoint([coord[0], coord[1]])
           return { x: point.x, y: point.y }
         })
@@ -475,16 +475,16 @@ export default function DashboardMap() {
     const map = mapRef.current
 
     // Удаляем старые маркеры
-    waypointMarkersRef.current.forEach((m) => m.remove())
+    waypointMarkersRef.current.forEach((m: any) => m.remove())
     waypointMarkersRef.current = []
 
     if (!showRoutes) return
 
-    routes.forEach((route) => {
+    routes.forEach((route: any) => {
       // Проверяем что waypoints существует
       if (!route.waypoints || !Array.isArray(route.waypoints)) return
 
-      route.waypoints.forEach((wp) => {
+      route.waypoints.forEach((wp: any) => {
         // Пропускаем водителя и невалидные позиции
         if (!wp.position || wp.type === 'driver') return
 
@@ -575,13 +575,13 @@ export default function DashboardMap() {
 
     // Удаляем маркеры водителей, которых больше нет
     currentMarkers.forEach((marker, id) => {
-      if (!drivers.find((d) => d.id === id)) {
+      if (!drivers.find((d: any) => d.id === id)) {
         marker.remove()
         currentMarkers.delete(id)
       }
     })
 
-    drivers.forEach((driver) => {
+    drivers.forEach((driver: any) => {
       if (!driver.latitude || !driver.longitude) return
 
       const pos: L.LatLngExpression = [driver.latitude, driver.longitude]
@@ -615,7 +615,7 @@ export default function DashboardMap() {
             <div class="popup-avatar" style="background: linear-gradient(135deg, ${statusInfo.color}, ${statusInfo.color}88)">
               ${driver.name
                 .split(' ')
-                .map((n) => n[0])
+                .map((n: any) => n[0])
                 .join('')
                 .slice(0, 2)}
             </div>
@@ -659,7 +659,7 @@ export default function DashboardMap() {
     // Центрирование при первой загрузке
     const allPoints: L.LatLngExpression[] = []
     if (base) allPoints.push(base.coordinates)
-    drivers.forEach((d) => {
+    drivers.forEach((d: any) => {
       if (d.latitude && d.longitude) allPoints.push([d.latitude, d.longitude])
     })
 
@@ -1082,7 +1082,7 @@ export default function DashboardMap() {
           {drivers.length === 0 ? (
             <div className="text-center py-16 text-gray-500">Нет водителей</div>
           ) : (
-            drivers.map((driver) => {
+            drivers.map((driver: any) => {
               const status = STATUS_CONFIG[driver.status] || STATUS_CONFIG.offline
               const isActive = ['driving', 'loading', 'in_transit', 'unloading'].includes(
                 driver.status
@@ -1121,7 +1121,7 @@ export default function DashboardMap() {
                       >
                         {driver.name
                           .split(' ')
-                          .map((n) => n[0])
+                          .map((n: any) => n[0])
                           .join('')
                           .slice(0, 2)}
                       </div>

@@ -102,15 +102,14 @@ async function recalcLiveEta(routeId: string) {
     return null
   }
 
-  const remainingOrders = orders.filter(
-    (o) => !COMPLETED_STATUSES.includes(o.status),
+  const remainingOrders = orders.filter((o: any) => !COMPLETED_STATUSES.includes(o.status),
   )
 
   const remainingDistance =
-    remainingOrders.reduce((sum, o) => sum + (o.distance || 0), 0) || 0
+    remainingOrders.reduce((sum: any, o: any) => sum + (o.distance || 0), 0) || 0
 
   const remainingWeight =
-    remainingOrders.reduce((sum, o) => sum + (o.weight || 0), 0) || 0
+    remainingOrders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0) || 0
 
   if (remainingDistance <= 0) {
     const now = new Date()

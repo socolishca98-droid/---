@@ -35,7 +35,7 @@ export function MobileHeader({ notificationCount = 0 }: MobileHeaderProps) {
   useEffect(() => {
     // subscribe возвращает функцию отписки (unsubscribe), а не объект
     const unsubscribe = uploadQueue.subscribe((queue) => {
-      setPendingUploads(queue.filter((q) => q.status !== "failed").length)
+      setPendingUploads(queue.filter((q: any) => q.status !== "failed").length)
     })
     return () => {
       // Вызываем функцию отписки

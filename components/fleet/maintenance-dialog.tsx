@@ -195,7 +195,7 @@ export function MaintenanceDialog({ vehicle, open, onOpenChange, onSuccess }: Ma
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MAINTENANCE_TYPES.map((t) => (
+                    {MAINTENANCE_TYPES.map((t: any) => (
                       <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>

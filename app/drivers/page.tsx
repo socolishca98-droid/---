@@ -154,7 +154,7 @@ export default function DriversPage() {
       if (res.ok && data.success) {
         toast.success(`Статус обновлен на: ${statusConfig[newStatus]?.label || newStatus}`)
         setDrivers((prev) =>
-          prev.map((d) => (d.id === driverId ? { ...d, status: newStatus } : d))
+          prev.map((d: any) => (d.id === driverId ? { ...d, status: newStatus } : d))
         )
       } else {
         toast.error(data.error || "Не удалось изменить статус")
@@ -209,7 +209,7 @@ export default function DriversPage() {
   }
 
   // Фильтрация
-  const filteredDrivers = drivers.filter((d) => {
+  const filteredDrivers = drivers.filter((d: any) => {
     const matchesSearch =
       d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.phone.includes(searchQuery) ||
@@ -221,11 +221,11 @@ export default function DriversPage() {
 
   // Агрегаты
   const totalCount = drivers.length
-  const availableCount = drivers.filter((d) => d.status === "available").length
-  const busyCount = drivers.filter((d) => d.status === "busy").length
+  const availableCount = drivers.filter((d: any) => d.status === "available").length
+  const busyCount = drivers.filter((d: any) => d.status === "busy").length
   const avgRating =
     totalCount > 0
-      ? (drivers.reduce((sum, d) => sum + (d.rating || 5), 0) / totalCount).toFixed(1)
+      ? (drivers.reduce((sum: any, d: any) => sum + (d.rating || 5), 0) / totalCount).toFixed(1)
       : "5.0"
 
   return (
@@ -359,7 +359,7 @@ export default function DriversPage() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredDrivers.map((driver) => {
+              {filteredDrivers.map((driver: any) => {
                 const status = statusConfig[driver.status] || statusConfig.offline
                 const initials = driver.name
                   .split(" ")

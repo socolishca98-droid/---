@@ -140,7 +140,7 @@ export default function UsersManagementPage() {
   }
 
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    return users.filter((u: any) => {
       if (activeTab !== "all" && u.status !== activeTab) {
         return false
       }
@@ -341,7 +341,7 @@ export default function UsersManagementPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredUsers.map((u) => {
+                      {filteredUsers.map((u: any) => {
                         const isActionLoading = actionLoadingId === u.id
                         const isSelf = currentUser.id === u.id
 

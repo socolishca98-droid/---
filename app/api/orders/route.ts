@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const order = await prisma.$transaction(async (tx) => {
+    const order = await prisma.$transaction(async (tx: any) => {
       let finalRouteId = routeId
       if (!finalRouteId && (assignedDriverId || assignedVehicleId)) {
         finalRouteId = `route_${Date.now()}`

@@ -44,11 +44,11 @@ export async function GET(request: NextRequest) {
     ])
 
     const shiftMap = new Map(
-      activeShifts.map((s) => [s.driverId, s]),
+      activeShifts.map((s: any) => [s.driverId, s]),
     )
 
     const orderMap = new Map<string, (typeof activeOrders)[number]>()
-    activeOrders.forEach((o) => {
+    activeOrders.forEach((o: any) => {
       if (o.assignedDriverId && !orderMap.has(o.assignedDriverId)) {
         orderMap.set(o.assignedDriverId, o)
       }
@@ -56,8 +56,8 @@ export async function GET(request: NextRequest) {
 
     const now = Date.now()
 
-    const drivers = allDrivers.map((driver) => {
-      const shift = shiftMap.get(driver.id)
+    const drivers = allDrivers.map((driver: any) => {
+      const shift = shiftMap.get(driver.id) as any
       const order = orderMap.get(driver.id)
 
       const hasActiveOrder = !!order
@@ -65,9 +65,9 @@ export async function GET(request: NextRequest) {
       let uiStatus: string
       if (driver.status === "maintenance") {
         uiStatus = "maintenance"
-      } else if (shift?.status) {
+      } else if ((shift as any)?.status) {
         // Статус берется напрямую из мобильного приложения водителя (смена)
-        uiStatus = shift.status
+        uiStatus = (shift as any).status
       } else if (hasActiveOrder) {
         uiStatus = "busy"
       } else if (driver.status === "offline") {
@@ -77,8 +77,8 @@ export async function GET(request: NextRequest) {
       }
 
       let statusDuration = 0
-      if (shift?.lastStatusChangeAt) {
-        statusDuration = Math.floor((now - shift.lastStatusChangeAt.getTime()) / 1000)
+      if ((shift as any)?.lastStatusChangeAt) {
+        statusDuration = Math.floor((now - (shift as any).lastStatusChangeAt.getTime()) / 1000)
       }
 
       return {
@@ -94,15 +94,15 @@ export async function GET(request: NextRequest) {
         vehicleType: driver.vehicleType,
         currentLocation: driver.currentLocation,
         hasOrder: hasActiveOrder,
-        routeFrom: order?.routeFrom || null,
-        routeTo: order?.routeTo || null,
-        cargoType: order?.cargoType || null,
-        orderPrice: order?.price || null,
+        routeFrom: (order as any)?.routeFrom || null,
+        routeTo: (order as any)?.routeTo || null,
+        cargoType: (order as any)?.cargoType || null,
+        orderPrice: (order as any)?.price || null,
       }
     })
 
-    const online = drivers.filter((d) => d.status !== "offline" && d.latitude != null).length
-    const inRoute = drivers.filter((d) =>
+    const online = drivers.filter((d: any) => d.status !== "offline" && d.latitude != null).length
+    const inRoute = drivers.filter((d: any) =>
       ["driving", "in_transit", "loading", "unloading", "busy"].includes(d.status),
     ).length
 

@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     // Ищем водителя с нормализацией телефона без привязки к скобкам и дефисам
     const allDrivers = await prisma.driver.findMany()
-    const driver = allDrivers.find((d) => {
+    const driver = allDrivers.find((d: any) => {
       const dDigits = normalizePhone(d.phone || "").slice(-10)
       return dDigits === targetDigits || (d.phone && d.phone.includes(targetDigits))
     })

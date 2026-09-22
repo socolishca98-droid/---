@@ -3,7 +3,7 @@
 const nextConfig = {
   output: 'standalone',
   typescript: {
-    ignoreBuildErrors: true, // P0: allow build despite implicit any - will be fixed incrementally, but must not block deploy
+    ignoreBuildErrors: false, // P1-1: strict - no implicit any allowed
   },
   images: {
     unoptimized: true,

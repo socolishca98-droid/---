@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     }
 
     const vehiclesWithDrivers = await Promise.all(
-      vehicles.map(async (v) => {
+      vehicles.map(async (v: any) => {
         const driver = await prisma.driver.findFirst({
           where: { vehicleId: v.id },
           select: {
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
 
     const filtered =
       statusFilter && statusFilter !== "all"
-        ? vehiclesWithDrivers.filter((v) => v.status === statusFilter)
+        ? vehiclesWithDrivers.filter((v: any) => v.status === statusFilter)
         : vehiclesWithDrivers
 
     return NextResponse.json({

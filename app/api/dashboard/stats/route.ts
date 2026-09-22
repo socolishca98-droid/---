@@ -45,14 +45,14 @@ export async function GET(request: NextRequest) {
     ])
 
     const totalVehicles = vehicles.length
-    const availableVehicles = vehicles.filter((v) => v.status === "available").length
-    const inUseVehicles = vehicles.filter((v) => v.status === "in_use" || v.status === "busy").length
-    const maintenanceVehicles = vehicles.filter((v) => v.status === "maintenance").length
+    const availableVehicles = vehicles.filter((v: any) => v.status === "available").length
+    const inUseVehicles = vehicles.filter((v: any) => v.status === "in_use" || v.status === "busy").length
+    const maintenanceVehicles = vehicles.filter((v: any) => v.status === "maintenance").length
 
     const totalDrivers = drivers.length
-    const busyDrivers = drivers.filter((d) => d.status === "busy" || d.status === "driving").length
-    const availableDrivers = drivers.filter((d) => d.status === "available").length
-    const onlineDrivers = drivers.filter((d) => d.status !== "offline").length
+    const busyDrivers = drivers.filter((d: any) => d.status === "busy" || d.status === "driving").length
+    const availableDrivers = drivers.filter((d: any) => d.status === "available").length
+    const onlineDrivers = drivers.filter((d: any) => d.status !== "offline").length
 
     const vehicleUtilization = totalVehicles > 0 ? Math.round((inUseVehicles / totalVehicles) * 100) : 0
 

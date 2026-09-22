@@ -44,7 +44,7 @@ export async function GET(_req: NextRequest) {
     ])
 
     const shiftByDriver = new Map(
-      activeShifts.map((s) => [s.driverId, s]),
+      activeShifts.map((s: any) => [s.driverId, s]),
     )
 
     const activeOrdersByDriver = new Map<string, typeof activeOrders>()
@@ -63,17 +63,17 @@ export async function GET(_req: NextRequest) {
 
     const now = Date.now()
 
-    const driversOut = drivers.map((d) => {
-      const shift = shiftByDriver.get(d.id)
+    const driversOut = drivers.map((d: any) => {
+      const shift = shiftByDriver.get(d.id) as any
       const driverOrders = activeOrdersByDriver.get(d.id) || []
       const hasActiveOrder = driverOrders.length > 0
 
       let uiStatus: string
       if (d.status === "maintenance") {
         uiStatus = "maintenance"
-      } else if (shift?.status) {
+      } else if ((shift as any)?.status) {
         // Статус из мобильного приложения водителя
-        uiStatus = shift.status
+        uiStatus = (shift as any).status
       } else if (hasActiveOrder) {
         uiStatus = "busy"
       } else if (d.status === "offline") {
@@ -83,29 +83,29 @@ export async function GET(_req: NextRequest) {
       }
 
       let statusDuration = 0
-      if (shift?.lastStatusChangeAt) {
+      if ((shift as any)?.lastStatusChangeAt) {
         statusDuration = Math.floor(
-          (now - shift.lastStatusChangeAt.getTime()) / 1000,
+          (now - (shift as any).lastStatusChangeAt.getTime()) / 1000,
         )
       }
 
-      const vehicle = vehicles.find((v) => v.id === d.vehicleId)
+      const vehicle = (vehicles as any).find((v: any) => v.id === d.vehicleId)
 
       return {
         ...d,
         status: uiStatus,
         rawStatus: d.status,
         hasActiveOrder,
-        shiftStatus: shift?.status ?? null,
+        shiftStatus: (shift as any)?.status ?? null,
         shiftId: shift?.id ?? null,
         statusDuration,
         vehicle: vehicle
-          ? { id: vehicle.id, plate: vehicle.plate, type: vehicle.type }
+          ? { id: (vehicle as any).id, plate: (vehicle as any).plate, type: (vehicle as any).type }
           : null,
       }
     })
 
-    const vehiclesOut = vehicles.map((v) => {
+    const vehiclesOut = vehicles.map((v: any) => {
       const vehicleOrders = activeOrdersByVehicle.get(v.id) || []
       const hasActiveOrder = vehicleOrders.length > 0
 
@@ -122,17 +122,17 @@ export async function GET(_req: NextRequest) {
       // иначе null
       let nextAvailableAt: string | null = null
       if (vehicleOrders.length > 0) {
-        const maxDeadline = vehicleOrders.reduce<Date | null>((max, o) => {
+        const maxDeadline = (vehicleOrders as any).reduce((max: Date | null, o: any) => {
           if (!o.deadline) return max
           if (!max) return o.deadline
           return o.deadline.getTime() > max.getTime() ? o.deadline : max
-        }, null)
+        }, null as Date | null)
         if (maxDeadline) {
           nextAvailableAt = maxDeadline.toISOString()
         }
       }
 
-      const driver = driversOut.find((d) => d.vehicleId === v.id)
+      const driver = driversOut.find((d: any) => d.vehicleId === v.id)
 
       return {
         ...v,
@@ -153,19 +153,19 @@ export async function GET(_req: NextRequest) {
 
     const vehicleStats = {
       total: vehiclesOut.length,
-      available: vehiclesOut.filter((v) => v.status === "available").length,
-      inUse: vehiclesOut.filter((v) => v.status === "in_use").length,
-      maintenance: vehiclesOut.filter((v) => v.status === "maintenance").length,
+      available: vehiclesOut.filter((v: any) => v.status === "available").length,
+      inUse: vehiclesOut.filter((v: any) => v.status === "in_use").length,
+      maintenance: vehiclesOut.filter((v: any) => v.status === "maintenance").length,
     }
 
     const driverStats = {
       total: driversOut.length,
-      available: driversOut.filter((d) => d.status === "available").length,
-      busy: driversOut.filter((d) =>
+      available: driversOut.filter((d: any) => d.status === "available").length,
+      busy: driversOut.filter((d: any) =>
         ["busy", "driving", "loading", "unloading"].includes(d.status),
       ).length,
-      maintenance: driversOut.filter((d) => d.status === "maintenance").length,
-      online: driversOut.filter((d) => d.status !== "offline").length,
+      maintenance: driversOut.filter((d: any) => d.status === "maintenance").length,
+      online: driversOut.filter((d: any) => d.status !== "offline").length,
     }
 
     const todayStart = new Date()

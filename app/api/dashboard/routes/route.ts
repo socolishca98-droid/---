@@ -74,7 +74,7 @@ async function getOSRMRoute(points: Point[]): Promise<{
   if (points.length < 2) return null
 
   try {
-    const coords = points.map((p) => `${p.lng},${p.lat}`).join(";")
+    const coords = points.map((p: any) => `${p.lng},${p.lat}`).join(";")
     const url = `${OSRM_URL}/${coords}?overview=full&geometries=geojson&steps=false`
 
     const res = await fetch(url, { 
@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Получаем водителей
-    const driverIds = [...new Set([...groups.values()].map((g) => g.driverId))]
+    const driverIds = [...new Set([...groups.values()].map((g: any) => g.driverId))]
     const drivers = await prisma.driver.findMany({
       where: {
         id: { in: driverIds },
@@ -265,7 +265,7 @@ export async function GET(request: NextRequest) {
     let colorIndex = 0
 
     for (const [routeKey, group] of groups.entries()) {
-      const driver = drivers.find((d) => d.id === group.driverId)
+      const driver = drivers.find((d: any) => d.id === group.driverId)
       if (!driver?.latitude || !driver?.longitude) continue
 
       const driverPos: Point = { lat: driver.latitude, lng: driver.longitude }
@@ -335,11 +335,11 @@ export async function GET(request: NextRequest) {
         durationMin = osrmRoute.duration
       } else {
         coordinates = generateSmoothCurve(points)
-        distanceKm = ordersSorted.reduce((sum, o) => sum + (o.distance || 0), 0)
+        distanceKm = ordersSorted.reduce((sum: any, o: any) => sum + (o.distance || 0), 0)
       }
 
-      const totalPrice = ordersSorted.reduce((sum, o) => sum + (o.price || 0), 0)
-      const mainStatus = ordersSorted.some((o) =>
+      const totalPrice = ordersSorted.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
+      const mainStatus = ordersSorted.some((o: any) =>
         ["in_transit", "loading", "unloading"].includes(o.status)
       )
         ? "in_transit"
@@ -362,7 +362,7 @@ export async function GET(request: NextRequest) {
         waypoints,
         // Цвет маршрута из премиальной палитры
         color: ROUTE_COLORS[colorIndex++ % ROUTE_COLORS.length],
-        orders: ordersSorted.map((o) => ({
+        orders: ordersSorted.map((o: any) => ({
           id: o.id,
           from: o.routeFrom,
           to: o.routeTo,

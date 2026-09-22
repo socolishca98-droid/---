@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
       // Возвращаем Map для быстрого доступа на клиенте
       const vehiclesMap: Record<string, typeof vehicles[0]> = {}
-      vehicles.forEach((vehicle) => {
+      vehicles.forEach((vehicle: any) => {
         vehiclesMap[vehicle.id] = vehicle
       })
 

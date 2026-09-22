@@ -21,11 +21,11 @@ export function DriversStatus({ drivers }: DriversStatusProps) {
         <CardTitle className="text-lg font-semibold">Водители</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {drivers.map((driver) => {
-          const status = statusConfig[driver.status]
+        {drivers.map((driver: any) => {
+          const status = (statusConfig as any)[driver.status] || (statusConfig as any).available
           const initials = driver.name
             .split(" ")
-            .map((n) => n[0])
+            .map((n: any) => n[0])
             .join("")
 
           return (
@@ -37,7 +37,7 @@ export function DriversStatus({ drivers }: DriversStatusProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm truncate">{driver.name}</span>
-                  <Badge variant="secondary" className={status.className}>
+                  <Badge variant="secondary" className={(status as any)?.className || ""}>
                     {status.label}
                   </Badge>
                 </div>

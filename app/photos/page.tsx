@@ -88,7 +88,7 @@ export default function PhotosPage() {
 
   // Обработка сохранения фото из PhotoUpload
   const handleUpload = async (uploads: any[]) => {
-    const completed = uploads.filter((u) => u.result)
+    const completed = uploads.filter((u: any) => u.result)
     if (!completed.length) return
 
     if (!user) {
@@ -141,8 +141,7 @@ export default function PhotosPage() {
   }
 
   // Последнее фото кузова после погрузки с оценкой заполнения
-  const latestCargoPhoto = photos.find(
-    (p) =>
+  const latestCargoPhoto = photos.find((p: any) =>
       (p.type as string) === "cargo_after" &&
       p.aiClassification?.cargoFillPercent !== undefined,
   )

@@ -15,7 +15,7 @@ interface DriverHeaderProps {
 export function DriverHeader({ driverName, notificationCount = 0 }: DriverHeaderProps) {
   const initials = driverName
     .split(" ")
-    .map((n) => n[0])
+    .map((n: any) => n[0])
     .join("")
 
   return (

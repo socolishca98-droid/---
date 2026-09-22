@@ -44,8 +44,7 @@ export async function POST(request: NextRequest,
     const assignedDriverId = orders[0].assignedDriverId
     const assignedVehicleId = orders[0].assignedVehicleId
 
-    const pendingOrders = orders.filter(
-      (o) => !["delivered", "cancelled", "rejected"].includes(o.status)
+    const pendingOrders = orders.filter((o: any) => !["delivered", "cancelled", "rejected"].includes(o.status)
     )
 
     if (pendingOrders.length > 0 && !force) {
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest,
         {
           success: false,
           error: "Не все точки маршрута завершены",
-          pendingOrders: pendingOrders.map((o) => ({
+          pendingOrders: pendingOrders.map((o: any) => ({
             id: o.id,
             from: o.routeFrom,
             to: o.routeTo,
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest,
       )
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // 1. Помечаем сам рейс завершённым
       await tx.route.updateMany({
         where: { id: routeId },
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest,
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
           where: {
-            id: { in: pendingOrders.map((o) => o.id) },
+            id: { in: pendingOrders.map((o: any) => o.id) },
           },
           data: {
             status: "delivered",
@@ -155,10 +154,10 @@ export async function POST(request: NextRequest,
 
     const stats = {
       ordersCount: orders.length,
-      totalDistance: orders.reduce((sum, o) => sum + (o.distance || 0), 0),
-      totalWeight: orders.reduce((sum, o) => sum + (o.weight || 0), 0),
-      totalRevenue: orders.reduce((sum, o) => sum + (o.price || 0), 0),
-      additionalLoads: orders.filter((o) => o.isAdditionalLoad).length,
+      totalDistance: orders.reduce((sum: any, o: any) => sum + (o.distance || 0), 0),
+      totalWeight: orders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0),
+      totalRevenue: orders.reduce((sum: any, o: any) => sum + (o.price || 0), 0),
+      additionalLoads: orders.filter((o: any) => o.isAdditionalLoad).length,
     }
 
     return NextResponse.json({

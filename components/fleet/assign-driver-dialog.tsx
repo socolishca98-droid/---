@@ -78,8 +78,7 @@ export function AssignDriverDialog({
     }
   }
 
-  const filtered = drivers.filter(
-    (d) =>
+  const filtered = drivers.filter((d: any) =>
       d.name.toLowerCase().includes(search.toLowerCase()) || d.phone.includes(search),
   )
 
@@ -112,7 +111,7 @@ export function AssignDriverDialog({
                 <p>Нет свободных водителей</p>
               </div>
             ) : (
-              filtered.map((driver) => (
+              filtered.map((driver: any) => (
                 <div
                   key={driver.id}
                   className="flex items-center justify-between p-3 border rounded-lg hover:bg-secondary/50 transition-colors"

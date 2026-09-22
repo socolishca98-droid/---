@@ -137,7 +137,7 @@ export function SosButton({ driverId, orderId }: Props) {
             </div>
 
             <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
-              {sosOptions.map((option) => (
+              {sosOptions.map((option: any) => (
                 <button
                   key={option.type}
                   onClick={() => sendSos(option.type, option.label)}

@@ -69,8 +69,8 @@ export function RouteList() {
     setLastOptimized(orderedOrderIds)
   }
 
-  const totalProfit = routes.reduce((sum, r) => sum + (r.estimatedProfit || 0), 0)
-  const totalDistance = routes.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
+  const totalProfit = routes.reduce((sum: any, r: any) => sum + (r.estimatedProfit || 0), 0)
+  const totalDistance = routes.reduce((sum: any, r: any) => sum + (r.totalDistance || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -114,7 +114,7 @@ export function RouteList() {
         <div className="lg:col-span-2 space-y-4">
           <h3 className="text-lg font-semibold">Предложенные маршруты</h3>
           <div className="grid gap-4">
-            {routes.map((route) => (
+            {routes.map((route: any) => (
               <RouteCard key={route.id} route={route} />
             ))}
           </div>
