@@ -21,6 +21,9 @@ datasource db {
 
 model AtiScanConfig {
   id               String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name             String    @default("default")
   cities           String    @default("[]")
   radius           Int       @default(200)
@@ -31,6 +34,8 @@ model AtiScanConfig {
   lastScanAt       DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
+  @@index([organizationId])
 }
 
 model AtiCache {
@@ -100,6 +105,9 @@ model GeoCache {
 /// Допустимые значения status: planned | active | in_transit | completed | cancelled
 model Route {
   id            String       @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Человекочитаемое название, например «Рейс: Ярославль — Иваново — СПб»
   name          String?
   status        String       @default("planned")
@@ -128,6 +136,7 @@ model Route {
   @@index([driverId])
   @@index([vehicleId])
   @@index([createdAt])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -136,6 +145,9 @@ model Route {
 
 model Order {
   id                String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   source            String
   sourceId          String?
   routeFrom         String
@@ -200,12 +212,16 @@ model Order {
   @@index([assignedDriverId, status])
   @@index([assignedVehicleId, status])
   @@index([proposedToDriver])
+  @@index([organizationId])
 }
 
 /// Водитель
 /// Допустимые значения status: available, busy, maintenance, offline
 model Driver {
   id              String            @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name            String
   /// Телефон — логин водителя в мобильном приложении, поэтому уникальный
   phone           String    @unique
@@ -244,24 +260,19 @@ model Driver {
   /// Учётная запись для входа в мобильное приложение (роль driver)
   user            User?
 
-  orders          Order[]
-  routes          Route[]
-  shifts          DriverShift[]
-  sosAlerts       SosAlert[]
-  photos          Photo[]
-  maintenanceLogs MaintenanceLog[]
-  stages          RouteStage[]
-  events          RouteEvent[]
-
   @@index([status])
   @@index([vehicleId])
+  @@index([organizationId])
 }
 
 /// Транспортное средство
 /// Допустимые значения status: available, in_use, maintenance
 model Vehicle {
   id                  String           @id @default(cuid())
-  plate               String           @unique
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plate               String
   type                String
   brand               String?
   model               String?
@@ -289,15 +300,14 @@ model Vehicle {
   stages              RouteStage[]
   events              RouteEvent[]
 
-  /// Закреплённый водитель — связь хранится на стороне Driver (Driver.vehicleId)
-  drivers             Driver[]
-  orders              Order[]
-  routes              Route[]
-  maintenanceLogs     MaintenanceLog[]
-  stages              RouteStage[]
-  events              RouteEvent[]
-
   @@index([status])
+  @@index([organizationId])
+
+  /// Госномер уникален внутри организации: одна и та же машина может быть
+  /// в двух разных автопарках под разными владельцами
+  @@unique([organizationId, plate])
+  @@index([plate])
+
 }
 
 // ============================================
@@ -306,6 +316,9 @@ model Vehicle {
 
 model DriverShift {
   id                      String       @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   driverId                String
   driver                  Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
   startedAt               DateTime     @default(now())
@@ -324,10 +337,14 @@ model DriverShift {
   @@index([driverId])
   @@index([status])
   @@index([startedAt])
+  @@index([organizationId])
 }
 
 model ShiftEvent {
   id        String      @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shiftId   String
   shift     DriverShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   type      String
@@ -339,6 +356,7 @@ model ShiftEvent {
 
   @@index([shiftId])
   @@index([type])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -347,6 +365,9 @@ model ShiftEvent {
 
 model SosAlert {
   id          String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   driverId    String
   driver      Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
@@ -366,6 +387,7 @@ model SosAlert {
 
   @@index([driverId])
   @@index([status])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -374,6 +396,9 @@ model SosAlert {
 
 model Notification {
   id        String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId    String
   userRole  String
   type      String
@@ -393,6 +418,7 @@ model Notification {
   @@index([isRead])
   @@index([priority])
   @@index([routeId])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -401,6 +427,9 @@ model Notification {
 
 model ChatMessage {
   id              String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   senderId        String
   senderRole      String
   senderName      String
@@ -418,6 +447,7 @@ model ChatMessage {
   @@index([recipientId])
   @@index([isImportant])
   @@index([createdAt])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -426,6 +456,9 @@ model ChatMessage {
 
 model Photo {
   id          String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   url         String
   type        String
   driverId    String
@@ -440,6 +473,7 @@ model Photo {
   @@index([driverId])
   @@index([orderId])
   @@index([type])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -448,6 +482,9 @@ model Photo {
 
 model MaintenanceLog {
   id          String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicleId   String
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   driverId    String?
@@ -467,15 +504,25 @@ model MaintenanceLog {
   @@index([vehicleId])
   @@index([driverId])
   @@index([status])
+  @@index([organizationId])
 }
 
 model FleetSettings {
-  id          String   @id @default("default")
+  /// Исторически запись была одна на всю базу (id = "default").
+  /// Теперь настройки свои у каждой организации.
+  id          String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parkName    String   @default("Наш Автопарк")
   baseAddress String?
   baseLat     Float?
   baseLng     Float?
   updatedAt   DateTime @updatedAt
+
+  @@index([organizationId])
+  @@unique([organizationId])
+
 }
 
 // ============================================
@@ -484,6 +531,9 @@ model FleetSettings {
 
 model RouteStage {
   id             String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId        String
   route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
@@ -507,10 +557,14 @@ model RouteStage {
   @@index([vehicleId])
   @@index([type])
   @@index([status])
+  @@index([organizationId])
 }
 
 model RouteEvent {
   id        String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId   String
   route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId   String?
@@ -533,6 +587,7 @@ model RouteEvent {
   @@index([vehicleId])
   @@index([type])
   @@index([createdAt])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -544,8 +599,74 @@ model RouteEvent {
 /// статусы: pending (ожидает одобрения) | active (доступ разрешён) | suspended (доступ закрыт)
 /// Для роли driver обязателен phone и связь с Driver, email может отсутствовать.
 /// Для ролей admin/logist обязателен email.
+// ============================================
+// ОРГАНИЗАЦИИ (МУЛЬТИТЕНАНТНОСТЬ)
+// ============================================
+
+/// Организация = компания-клиент (автопарк). Все бизнес-данные принадлежат
+/// ровно одной организации; пересечение данных между организациями запрещено.
+/// Общие для всех остаются только технические кэши: GeoCache, AtiCache, AtiSession.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  drivers         Driver[]
+  vehicles        Vehicle[]
+  orders          Order[]
+  routes          Route[]
+  routeStages     RouteStage[]
+  routeEvents     RouteEvent[]
+  photos          Photo[]
+  maintenanceLogs MaintenanceLog[]
+  chatMessages    ChatMessage[]
+  notifications   Notification[]
+  sosAlerts       SosAlert[]
+  driverShifts    DriverShift[]
+  shiftEvents     ShiftEvent[]
+  fleetSettings   FleetSettings[]
+  atiScanConfigs  AtiScanConfig[]
+  auditLogs       AuditLog[]
+  inviteCodes     InviteCode[]
+
+  @@index([name])
+}
+
+/// Инвайт-код: единственный способ присоединиться к существующей организации.
+/// Код многоразовый, со сроком действия и ролью, которую получит сотрудник.
+/// Создаёт и отзывает коды админ организации; заявки по коду он же одобряет.
+model InviteCode {
+  id             String   @id @default(cuid())
+  /// Значение, которое вводят при регистрации. Хранится открыто, но угадать его нельзя: 24 символа
+  code           String   @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Роль, которую получит сотрудник после одобрения: admin | logist
+  role           String   @default("logist")
+  /// Кто из админов создал код
+  createdById    String
+  /// null = бессрочный
+  expiresAt      DateTime?
+  /// null = без ограничения по числу использований
+  maxUses        Int?
+  usedCount      Int      @default(0)
+  /// Отзыв кода: после него регистрация по нему невозможна
+  revokedAt      DateTime?
+  revokedById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([code])
+  @@index([organizationId, revokedAt])
+}
+
 model User {
   id           String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Email — уникальный идентификатор входа для admin/logist
   email        String?  @unique
   /// Телефон — уникальный идентификатор входа для driver
@@ -587,6 +708,7 @@ model User {
   @@index([status])
   @@index([role])
   @@index([role, status])
+  @@index([organizationId])
 }
 
 /// Серверная сессия. id = jti подписанного токена в httpOnly-cookie.
@@ -613,6 +735,9 @@ model Session {
 /// Записывается через lib/audit.ts; читается через GET /api/admin/audit.
 model AuditLog {
   id          String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actorId     String
   actorEmail  String?
   /// approve | deactivate | activate | change_role | invite_create | invite_revoke | login | create | update | delete
@@ -629,4 +754,5 @@ model AuditLog {
   @@index([targetId])
   @@index([action])
   @@index([createdAt])
+  @@index([organizationId])
 }

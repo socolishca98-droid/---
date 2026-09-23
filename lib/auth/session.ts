@@ -35,12 +35,17 @@ export interface StaffIdentity {
   role: UserRole
   status: string
   mustChangePassword: boolean
+  /// Организация, к которой принадлежит сотрудник. Источник — база (сессия),
+  /// никогда не тело запроса. null только у записей, созданных до миграции.
+  organizationId: string | null
 }
 
 export interface DriverIdentity {
   id: string
   name: string
   phone: string
+  /// Организация-владелец карточки водителя
+  organizationId: string | null
   vehicleId: string | null
   vehicleType: string
   vehiclePlate: string
@@ -142,6 +147,7 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
       role: true,
       status: true,
       mustChangePassword: true,
+      organizationId: true,
     },
   })
   if (!user) return null
@@ -159,6 +165,7 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
       role: user.role as UserRole,
       status: user.status,
       mustChangePassword: user.mustChangePassword,
+      organizationId: user.organizationId ?? null,
     },
   }
 }
@@ -176,11 +183,13 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
       status: true,
       mustChangePassword: true,
       driverId: true,
+      organizationId: true,
       driver: {
         select: {
           id: true,
           name: true,
           phone: true,
+          organizationId: true,
           vehicleId: true,
           vehicleType: true,
           vehiclePlate: true,
@@ -207,7 +216,10 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
     sessionId: payload.jti,
     userId: user.id,
     mustChangePassword: user.mustChangePassword,
-    driver: user.driver,
+    driver: {
+      ...user.driver,
+      organizationId: user.driver.organizationId ?? user.organizationId ?? null,
+    },
   }
 }
 
