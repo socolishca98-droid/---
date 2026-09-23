@@ -73,6 +73,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     await logAudit({
+      organizationId: org.organizationId,
       actorId: org.userId,
       actorEmail: auth.value.user.email ?? null,
       action: "invite_revoke",

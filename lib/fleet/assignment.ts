@@ -77,7 +77,7 @@ export async function syncDriverVehicleCache(
     select: { plate: true, type: true },
   })
 
-  // Водитель проверен на принадлежность организации выше
+  // org-audit: ok — водитель найден выше через scoped(organizationId): чужая карточка не обновится
   await db.driver.update({
     where: { id: driverId },
     data: {
@@ -130,6 +130,7 @@ export async function linkDriverToVehicle(
   if (!driver) throw new Error("Водитель не найден")
 
   if (!vehicleId) {
+    // org-audit: ok — driverId проверен выше через scoped(organizationId)
     const updated = await db.driver.update({
       where: { id: driverId },
       data: { vehicleId: null, vehiclePlate: null, vehicleType: null },
@@ -162,6 +163,7 @@ export async function linkDriverToVehicle(
     })
   }
 
+  // org-audit: ok — driverId и vehicleId проверены выше через scoped(organizationId)
   const updated = await db.driver.update({
     where: { id: driverId },
     data: {

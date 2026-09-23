@@ -177,9 +177,13 @@ function checkAudit() {
     return
   }
 
-  let reports
+  let reports = []
+  let libReports = []
   try {
-    reports = JSON.parse(run.stdout)
+    const parsed = JSON.parse(run.stdout)
+    // Аудит отдаёт { routes, lib }: роуты app/**/route.ts и сервисный слой lib/**
+    reports = Array.isArray(parsed) ? parsed : parsed.routes || []
+    libReports = Array.isArray(parsed) ? [] : parsed.lib || []
   } catch (error) {
     check(section, "аудит отдаёт JSON", false, String(error).slice(0, 200))
     return
@@ -216,6 +220,40 @@ function checkAudit() {
     "организация берётся из сессии во всех роутах с бизнес-данными",
     noOrgContext.length === 0,
     noOrgContext.map((r) => r.path).join(", "),
+  )
+
+  const libViolations = libReports.filter((r) => (r.violations || []).length)
+  check(
+    section,
+    `сервисный слой lib/** проверен: модулей ${libReports.length}, нарушений нет`,
+    libViolations.length === 0,
+    libViolations.map((r) => `${r.path}: ${(r.violations || []).join("; ")}`).join(" | "),
+  )
+
+  const manuals = [...reports, ...libReports].flatMap((r) =>
+    (r.manuals || []).map((text) => `${r.path} · ${text}`),
+  )
+  check(
+    section,
+    `мест, проверенных вручную (org-audit: manual): ${manuals.length} — все с причиной`,
+    manuals.every((text) => text.includes("—")),
+    manuals.join(" | "),
+  )
+
+  const leaks = [...reports, ...libReports].flatMap((r) => r.leaks || [])
+  check(
+    section,
+    "organizationId нигде не берётся из тела/query/параметров запроса",
+    leaks.length === 0,
+    leaks.join("; "),
+  )
+
+  const spreads = [...reports, ...libReports].flatMap((r) => r.spreads || [])
+  check(
+    section,
+    "массового присваивания нет: тело запроса не идёт спредом в data",
+    spreads.length === 0,
+    spreads.join("; "),
   )
 }
 

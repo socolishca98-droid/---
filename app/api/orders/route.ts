@@ -116,6 +116,20 @@ export async function POST(request: NextRequest) {
         )
       }
     }
+    // Рейс из тела запроса тоже проверяется: заказ своей организации
+    // не должен ссылаться на рейс другой компании
+    if (routeId) {
+      const ownRoute = await prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
+        select: { id: true },
+      })
+      if (!ownRoute) {
+        return NextResponse.json(
+          { success: false, error: "Рейс не найден" },
+          { status: 404 },
+        )
+      }
+    }
 
     const order = await prisma.$transaction(async (tx: any) => {
       let finalRouteId = routeId

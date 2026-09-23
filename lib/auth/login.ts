@@ -89,6 +89,7 @@ export async function authenticateWithPassword(
     }
   }
 
+  // org-audit: manual — вход: учётка ищется по глобальному логину (email/телефон), организация ещё неизвестна
   const user = await prisma.user.findUnique({
     where: kind === "driver" ? { phone: normalized } : { email: normalized },
   })
@@ -120,6 +121,7 @@ export async function authenticateWithPassword(
     const failed = (user.failedLoginCount || 0) + 1
     const shouldLock = failed >= MAX_FAILED_LOGINS
 
+    // org-audit: manual — обновляется сама учётка входа (user.id найден выше), а не данные организации
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -174,6 +176,7 @@ export async function authenticateWithPassword(
     request,
   })
 
+  // org-audit: manual — обновляется сама учётка входа (user.id найден выше), а не данные организации
   await prisma.user.update({
     where: { id: user.id },
     data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null },

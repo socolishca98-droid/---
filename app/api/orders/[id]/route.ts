@@ -5,6 +5,62 @@ import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+/**
+ * Поля заказа, которые разрешено менять через PATCH /api/orders/[id].
+ *
+ * Список явный: раньше тело запроса раскладывалось как `...other` и целиком
+ * попадало в `order.update({ data })`. Так вместе с нужными полями можно было
+ * прислать `organizationId` и перенести свой заказ в чужую организацию
+ * (массовое присваивание). Всё, чего нет в списке, — 400 с понятным текстом.
+ */
+const EDITABLE_ORDER_FIELDS = [
+  "source",
+  "sourceId",
+  "routeFrom",
+  "routeTo",
+  "distance",
+  "weight",
+  "volume",
+  "cargoType",
+  "loadingType",
+  "requirements",
+  "price",
+  "priceNegotiable",
+  "clientName",
+  "clientContact",
+  "clientFirmId",
+  "deadline",
+  "priority",
+  "aiScore",
+  "aiReason",
+  "routeId",
+  "routeSequence",
+  "isAdditionalLoad",
+  "addedToRouteAt",
+  "proposedToDriver",
+  "proposedAt",
+  "acceptedAt",
+  "rejectedAt",
+  "rejectionReason",
+] as const
+
+/**
+ * Поля, которые через этот эндпоинт не меняются никогда: служебные
+ * (id, организация, метки времени) и платёжные — у них свой роут /api/payments.
+ */
+const FORBIDDEN_ORDER_FIELDS = [
+  "id",
+  "organizationId",
+  "createdAt",
+  "updatedAt",
+  "isPaid",
+  "paidAt",
+  "dueDate",
+  "paymentType",
+  "vatType",
+  "deferredDays",
+] as const
+
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 type RouteParams = {
@@ -80,6 +136,50 @@ export async function PATCH(request: NextRequest,
       [key: string]: unknown
     }
 
+    const forbiddenFields = Object.keys(other).filter((key) =>
+      (FORBIDDEN_ORDER_FIELDS as readonly string[]).includes(key),
+    )
+    if (forbiddenFields.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Эти поля нельзя менять через /api/orders: ${forbiddenFields.join(", ")}. Платёжные данные меняются в /api/payments`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const unknownFields = Object.keys(other).filter(
+      (key) => !(EDITABLE_ORDER_FIELDS as readonly string[]).includes(key),
+    )
+    if (unknownFields.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Неизвестные поля заказа: ${unknownFields.join(", ")}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const otherFields = other as Record<string, unknown>
+
+    // Рейс из тела запроса проверяем на принадлежность организации:
+    // иначе заказ своей организации оказался бы привязан к чужому рейсу
+    const nextRouteId = otherFields.routeId
+    if (typeof nextRouteId === "string" && nextRouteId) {
+      const ownRoute = await prisma.route.findFirst({
+        where: scopedWhere(__org.organizationId, { id: nextRouteId }),
+        select: { id: true },
+      })
+      if (!ownRoute) {
+        return NextResponse.json(
+          { success: false, error: "Рейс не найден" },
+          { status: 404 }
+        )
+      }
+    }
+
     const existing = await prisma.order.findFirst({
       where: scopedWhere(__org.organizationId, { id }),
       select: {
@@ -137,7 +237,7 @@ export async function PATCH(request: NextRequest,
           ...(status && { status }),
           ...(assignedDriverId !== undefined && { assignedDriverId }),
           ...(assignedVehicleId !== undefined && { assignedVehicleId }),
-          ...other,
+          ...otherFields,
         },
       })
 

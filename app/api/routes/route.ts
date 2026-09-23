@@ -283,8 +283,8 @@ export async function POST(request: NextRequest) {
       }
 
       const summary = summarizeRoute(createdOrders)
+      // org-audit: manual — рейс создан этой же транзакцией с organizationId вызывающего
       const finalRoute = await tx.route.update({
-        // org-audit: ok — рейс создан этой же транзакцией в организации вызывающего
         where: { id: route.id },
         data: {
           name: name?.trim() || buildRouteName(createdOrders) || null,

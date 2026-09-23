@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     if (normalizedPhone.length >= 10) {
       // Телефон — глобальный логин: учётка ищется по всей базе намеренно (нельзя завести второй вход на тот же номер)
-      // org-audit: ok — глобальная проверка уникальности логина, не данные организации
+      // org-audit: manual — телефон уникален во всей базе намеренно: это проверка логина, а не данные организации
       const existing = await prisma.user.findFirst({
         where: { OR: [{ phone: normalizedPhone }, { driverId: driver.id }] },
         select: { id: true },

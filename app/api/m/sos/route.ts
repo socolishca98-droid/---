@@ -56,6 +56,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // orderId приходит из тела запроса, поэтому проверяем его принадлежность
+    // организации водителя: чужой заказ — 404 (как в /api/m/photos).
+    // Иначе в записях организации А осталась бы ссылка на данные организации Б,
+    // и она всплыла бы в списке сигналов (/api/sos отдаёт строку сигнала целиком).
+    let linkedOrder: { id: string; routeId: string | null; assignedVehicleId: string | null } | null =
+      null
+    if (orderId) {
+      linkedOrder = await prisma.order.findFirst({
+        where: scopedWhere(org.organizationId, { id: orderId }),
+        select: { id: true, routeId: true, assignedVehicleId: true },
+      })
+      if (!linkedOrder) {
+        return NextResponse.json(
+          { success: false, error: "Заказ не найден" },
+          { status: 404 },
+        )
+      }
+    }
+
     // Создаём SOS алерт
     const sos = await prisma.sosAlert.create({
       data: {
@@ -65,7 +84,7 @@ export async function POST(request: NextRequest) {
         latitude,
         longitude,
         message: message || null,
-        orderId: orderId || null,
+        orderId: linkedOrder?.id ?? null,
         status: "active",
       },
     })
@@ -84,7 +103,7 @@ export async function POST(request: NextRequest) {
           message ? `. ${message}` : ""
         }`,
         driverId,
-        orderId: orderId || null,
+        orderId: linkedOrder?.id ?? null,
         sosId: sos.id,
         priority: "critical",
       },
@@ -107,22 +126,9 @@ export async function POST(request: NextRequest) {
 
     // Событие в таймлайне рейса (если SOS связан с заказом, у которого есть маршрут)
     try {
-      let routeId: string | null = null
-      let vehicleId: string | null = null
-
-      if (orderId) {
-        const order = await prisma.order.findFirst({
-          where: scopedWhere(org.organizationId, { id: orderId }),
-          select: {
-            routeId: true,
-            assignedVehicleId: true,
-          },
-        })
-        if (order?.routeId) {
-          routeId = order.routeId
-          vehicleId = order.assignedVehicleId ?? null
-        }
-      }
+      // Заказ уже проверен на принадлежность организации — берём его рейс и машину
+      const routeId = linkedOrder?.routeId ?? null
+      const vehicleId = linkedOrder?.assignedVehicleId ?? null
 
       if (routeId) {
         await logRouteEvent(prisma, {
@@ -130,7 +136,7 @@ export async function POST(request: NextRequest) {
           routeId,
           driverId,
           vehicleId,
-          orderId: orderId || null,
+          orderId: linkedOrder?.id ?? null,
           type: "sos",
           status: type,
           latitude,

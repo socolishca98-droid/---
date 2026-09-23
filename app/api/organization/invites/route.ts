@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
     })
 
     await logAudit({
+      organizationId: org.organizationId,
       actorId: org.userId,
       actorEmail: auth.value.user.email ?? null,
       action: "invite_create",

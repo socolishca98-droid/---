@@ -119,12 +119,22 @@ export async function POST(request: NextRequest) {
       recordDriverId = auth.value.driver.id
     } else {
       recordDriverId = (body as { driverId?: string }).driverId ?? null
-      if (!finalVehicleId && recordDriverId) {
-        const driver = await prisma.driver.findFirst({
+      // Исполнитель приходит из тела запроса, поэтому проверяем его принадлежность
+      // организации: иначе в записи ТО своей организации окажется ссылка на
+      // водителя другой компании (и она всплывёт в ответе GET).
+      if (recordDriverId) {
+        const ownDriver = await prisma.driver.findFirst({
           where: scopedWhere(org.organizationId, { id: recordDriverId }),
-          select: { vehicleId: true },
+          select: { id: true, vehicleId: true },
         })
-        finalVehicleId = driver?.vehicleId || undefined
+        if (!ownDriver) {
+          return NextResponse.json(
+            { success: false, error: "Водитель не найден" },
+            { status: 404 },
+          )
+        }
+        recordDriverId = ownDriver.id
+        if (!finalVehicleId) finalVehicleId = ownDriver.vehicleId || undefined
       }
     }
 

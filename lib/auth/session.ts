@@ -288,8 +288,10 @@ export async function canDriverAccessOrder(
   orderId: string,
 ): Promise<boolean> {
   if (session.kind === "staff") return true
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
+  // Заказ ищется в организации водителя: чужой заказ недоступен, даже если
+  // assignedDriverId случайно совпадёт с идентификатором своего водителя.
+  const order = await prisma.order.findFirst({
+    where: scopedByOrg(session.driver.organizationId, { id: orderId }),
     select: { assignedDriverId: true },
   })
   return Boolean(order && order.assignedDriverId === session.driver.id)

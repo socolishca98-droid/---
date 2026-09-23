@@ -72,6 +72,20 @@ export async function PATCH(request: NextRequest,
       )
     }
 
+    // Менять можно только машину своей организации: чужой id — 404,
+    // чтобы не подтверждать существование записи в другой компании.
+    const existing = await prisma.vehicle.findFirst({
+      where: scopedWhere(__org.organizationId, { id }),
+      select: { id: true },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: "Vehicle not found" },
+        { status: 404 }
+      )
+    }
+
     const body = await request.json().catch(() => ({}))
     const {
       plate,
@@ -183,6 +197,19 @@ export async function DELETE(_request: NextRequest,
       return NextResponse.json(
         { success: false, error: "Vehicle ID is required" },
         { status: 400 }
+      )
+    }
+
+    // Удаляем только машину своей организации: чужой id — 404
+    const existing = await prisma.vehicle.findFirst({
+      where: scopedWhere(__org.organizationId, { id }),
+      select: { id: true },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: "Vehicle not found" },
+        { status: 404 }
       )
     }
 

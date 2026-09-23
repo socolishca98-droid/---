@@ -65,6 +65,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
+  // Отдельная константа: внутри всплывающего (hoisted) помощника audit()
+  // сужение типа org не действует, а organizationId нужен именно там.
+  const organizationId = org.organizationId
 
   const { id } = await params
 
@@ -75,6 +78,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     metadata?: Record<string, unknown>,
   ) {
     await logAudit({
+      organizationId,
       actorId: actor.id,
       actorEmail: actor.email ?? null,
       action: logAction,

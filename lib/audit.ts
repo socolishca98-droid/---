@@ -13,6 +13,12 @@ export type AuditAction =
   | "delete"
 
 export interface AuditLogInput {
+  /**
+   * Организация, в которой произошло действие. Обязательна для экранов аудита:
+   * GET /api/admin/audit отдаёт записи только своей организации, поэтому запись
+   * без organizationId не увидит никто.
+   */
+  organizationId?: string | null
   actorId: string
   actorEmail?: string | null
   action: AuditAction | string
@@ -28,6 +34,7 @@ export async function logAudit(input: AuditLogInput): Promise<void> {
     const metadataStr = input.metadata ? JSON.stringify(input.metadata) : null
     await prisma.auditLog.create({
       data: {
+        organizationId: input.organizationId ?? null,
         actorId: input.actorId,
         actorEmail: input.actorEmail || null,
         action: input.action,
@@ -57,9 +64,11 @@ export async function getAuditLogs(params?: {
   if (params?.actorId) where.actorId = params.actorId
   if (params?.targetId) where.targetId = params.targetId
   if (params?.action) where.action = params.action
-  // Журнал смотрит админ своей организации: записи без организации не показываются никому, кроме нулевой
-  if (params?.organizationId) where.organizationId = params.organizationId
+  // Журнал смотрит админ своей организации: записи чужой организации не видны никому.
+  // organizationId = null — «нулевая» организация (данные до переноса).
+  where.organizationId = params?.organizationId ?? null
 
+  // org-audit: ok — where всегда содержит organizationId (см. строку выше)
   const logs = await prisma.auditLog.findMany({
     where,
     orderBy: { createdAt: "desc" },

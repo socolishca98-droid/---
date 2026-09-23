@@ -81,15 +81,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Ссылки на заказ, машину и этап приходят из тела запроса, поэтому проверяем
+    // их принадлежность организации водителя: иначе в событии своей организации
+    // окажутся id чужих записей, а таймлайн рейса (/api/routes/:id/events отдаёт
+    // строку события целиком) показал бы их логисту.
+    const [ownVehicle, ownStage, ownOrder] = await Promise.all([
+      vehicleId
+        ? prisma.vehicle.findFirst({
+            where: scopedWhere(org.organizationId, { id: vehicleId }),
+            select: { id: true },
+          })
+        : null,
+      stageId
+        ? prisma.routeStage.findFirst({
+            where: scopedWhere(org.organizationId, { id: stageId }),
+            select: { id: true },
+          })
+        : null,
+      orderId
+        ? prisma.order.findFirst({
+            where: scopedWhere(org.organizationId, { id: orderId }),
+            select: { id: true },
+          })
+        : null,
+    ])
+    if ((vehicleId && !ownVehicle) || (stageId && !ownStage) || (orderId && !ownOrder)) {
+      return NextResponse.json(
+        { success: false, error: "Запись не найдена" },
+        { status: 404 },
+      )
+    }
+
     // Пишем событие через единую точку записи: она же добирает строку Route,
     // если рейс «исторический» (routeId есть в заказах, а в таблице Route нет)
     await logRouteEvent(prisma, {
       organizationId: org.organizationId,
       routeId,
       driverId,
-      vehicleId: vehicleId || null,
-      stageId: stageId || null,
-      orderId: orderId || null,
+      vehicleId: ownVehicle?.id ?? null,
+      stageId: ownStage?.id ?? null,
+      orderId: ownOrder?.id ?? null,
       type,
       status: status || null,
       latitude: typeof latitude === "number" ? latitude : null,

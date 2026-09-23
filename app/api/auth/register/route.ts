@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
       })
 
       await logAudit({
+        organizationId: organization.id,
         actorId: user.id,
         actorEmail: user.email ?? null,
         action: bootstrap ? "bootstrap_admin" : "create_organization",
@@ -250,6 +251,7 @@ export async function POST(request: NextRequest) {
     await consumeInvite(invite.id)
 
     await logAudit({
+      organizationId: invite.organizationId,
       actorId: user.id,
       actorEmail: user.email ?? null,
       action: "register",

@@ -10,7 +10,7 @@
     "start": "next start -p 3000 -H 0.0.0.0",
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:unit && npm run test:vitest",
+    "test": "npm run test:unit && npm run test:vitest && npm run test:isolation",
     "test:build": "tsc -p tests/tsconfig.json",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -27,6 +27,7 @@
     "postinstall": "prisma generate || echo \"prisma generate failed - will retry on build\"",
     "test:unit": "npm run test:build && node --test \"tests/*.test.mjs\"",
     "test:vitest": "vitest run",
+    "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "test:watch": "vitest",
     "schema:postgres": "node scripts/make-postgres-schema.mjs"
   },
