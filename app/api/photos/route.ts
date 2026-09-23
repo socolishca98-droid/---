@@ -5,6 +5,7 @@
 // POST /api/photos          - сохранить новое фото с AI-метаданными (mock AI)
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -50,6 +51,8 @@ function mapPhoto(dbPhoto: any) {
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -66,7 +69,7 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type
 
     const photos = await prisma.photo.findMany({
-      where,
+      where: scopedWhere(__org.organizationId, where),
       orderBy: { createdAt: "desc" },
       take: Number.isFinite(limit) && limit > 0 ? limit : 100,
     })
@@ -91,6 +94,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -132,8 +137,34 @@ export async function POST(request: NextRequest) {
     const hasMeta =
       meta.aiClassification != null || meta.ocrData != null
 
+    // Фото привязывается к водителю своей организации: чужой driverId не пройдёт
+    const driver = await prisma.driver.findFirst({
+      where: scopedWhere(__org.organizationId, { id: driverId }),
+      select: { id: true },
+    })
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: "Водитель не найден" },
+        { status: 404 },
+      )
+    }
+
+    if (orderId) {
+      const order = await prisma.order.findFirst({
+        where: scopedWhere(__org.organizationId, { id: orderId }),
+        select: { id: true },
+      })
+      if (!order) {
+        return NextResponse.json(
+          { success: false, error: "Заказ не найден" },
+          { status: 404 },
+        )
+      }
+    }
+
     const dbPhoto = await prisma.photo.create({
       data: {
+        organizationId: __org.organizationId,
         url,
         type,
         driverId,

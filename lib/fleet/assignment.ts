@@ -17,6 +17,17 @@
 import { prisma } from "@/lib/prisma"
 
 /**
+ * Фильтр по организации для служебных запросов внутри этого модуля.
+ * organizationId = null/undefined — данные без организации (нулевая), фильтр не добавляется.
+ */
+function scoped<T extends Record<string, unknown>>(
+  organizationId: string | null | undefined,
+  where: T,
+): T {
+  return organizationId == null ? where : ({ ...where, organizationId } as T)
+}
+
+/**
  * Клиент БД или клиент транзакции: нужны только делегаты driver/vehicle.
  * Тип выводится из самого prisma-клиента, поэтому работает и внутри
  * $transaction, и снаружи.
@@ -45,26 +56,28 @@ const selectDriverLink = {
 export async function syncDriverVehicleCache(
   db: FleetDb,
   driverId: string,
+  organizationId?: string | null,
 ): Promise<void> {
-  const driver = await db.driver.findUnique({
-    where: { id: driverId },
+  const driver = await db.driver.findFirst({
+    where: scoped(organizationId, { id: driverId }),
     select: { id: true, vehicleId: true },
   })
   if (!driver) return
 
   if (!driver.vehicleId) {
-    await db.driver.update({
-      where: { id: driverId },
+    await db.driver.updateMany({
+      where: scoped(organizationId, { id: driverId }),
       data: { vehiclePlate: null, vehicleType: null },
     })
     return
   }
 
-  const vehicle = await db.vehicle.findUnique({
-    where: { id: driver.vehicleId },
+  const vehicle = await db.vehicle.findFirst({
+    where: scoped(organizationId, { id: driver.vehicleId }),
     select: { plate: true, type: true },
   })
 
+  // Водитель проверен на принадлежность организации выше
   await db.driver.update({
     where: { id: driverId },
     data: {
@@ -82,12 +95,13 @@ export async function findVehicleOccupant(
   db: FleetDb,
   vehicleId: string,
   exceptDriverId?: string | null,
+  organizationId?: string | null,
 ): Promise<{ id: string; name: string } | null> {
   const occupant = await db.driver.findFirst({
-    where: {
+    where: scoped(organizationId, {
       vehicleId,
       ...(exceptDriverId ? { id: { not: exceptDriverId } } : {}),
-    },
+    }),
     select: { id: true, name: true },
   })
   return occupant ? { id: occupant.id, name: occupant.name } : null
@@ -107,9 +121,10 @@ export async function linkDriverToVehicle(
   db: FleetDb,
   driverId: string,
   vehicleId: string | null,
+  organizationId?: string | null,
 ): Promise<AssignmentResult> {
-  const driver = await db.driver.findUnique({
-    where: { id: driverId },
+  const driver = await db.driver.findFirst({
+    where: scoped(organizationId, { id: driverId }),
     select: selectDriverLink,
   })
   if (!driver) throw new Error("Водитель не найден")
@@ -128,20 +143,21 @@ export async function linkDriverToVehicle(
     }
   }
 
-  const vehicle = await db.vehicle.findUnique({
-    where: { id: vehicleId },
+  // Машину из чужой организации назначить нельзя: она просто «не найдена»
+  const vehicle = await db.vehicle.findFirst({
+    where: scoped(organizationId, { id: vehicleId }),
     select: { id: true, plate: true, type: true },
   })
   if (!vehicle) throw new Error("Машина не найдена")
 
   // машина может быть закреплена только за одним водителем
   const previous = await db.driver.findMany({
-    where: { vehicleId, id: { not: driverId } },
+    where: scoped(organizationId, { vehicleId, id: { not: driverId } }),
     select: { id: true },
   })
   for (const p of previous) {
-    await db.driver.update({
-      where: { id: p.id },
+    await db.driver.updateMany({
+      where: scoped(organizationId, { id: p.id }),
       data: { vehicleId: null, vehiclePlate: null, vehicleType: null },
     })
   }
@@ -170,15 +186,19 @@ export async function linkDriverToVehicle(
  * Driver.vehicleId, но кэш vehiclePlate/vehicleType без этой функции
  * останется устаревшим.
  */
-export async function unlinkVehicle(db: FleetDb, vehicleId: string): Promise<number> {
+export async function unlinkVehicle(
+  db: FleetDb,
+  vehicleId: string,
+  organizationId?: string | null,
+): Promise<number> {
   const drivers = await db.driver.findMany({
-    where: { vehicleId },
+    where: scoped(organizationId, { vehicleId }),
     select: { id: true },
   })
 
   for (const driver of drivers) {
-    await db.driver.update({
-      where: { id: driver.id },
+    await db.driver.updateMany({
+      where: scoped(organizationId, { id: driver.id }),
       data: { vehicleId: null, vehiclePlate: null, vehicleType: null },
     })
   }
@@ -190,16 +210,20 @@ export async function unlinkVehicle(db: FleetDb, vehicleId: string): Promise<num
  * Синхронизирует кэш номеров/типов у всех водителей, закреплённых за
  * перечисленными машинами. Вызывается после изменения данных машины.
  */
-export async function refreshVehicleCache(db: FleetDb, vehicleIds: string[]): Promise<void> {
+export async function refreshVehicleCache(
+  db: FleetDb,
+  vehicleIds: string[],
+  organizationId?: string | null,
+): Promise<void> {
   const ids = [...new Set(vehicleIds.filter(Boolean))]
   if (ids.length === 0) return
 
   const drivers = await db.driver.findMany({
-    where: { vehicleId: { in: ids } },
+    where: scoped(organizationId, { vehicleId: { in: ids } }),
     select: { id: true },
   })
 
   for (const driver of drivers) {
-    await syncDriverVehicleCache(db, driver.id)
+    await syncDriverVehicleCache(db, driver.id, organizationId)
   }
 }

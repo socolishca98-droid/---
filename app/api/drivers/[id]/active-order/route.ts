@@ -1,6 +1,7 @@
 // app/api/drivers/[id]/active-order/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -14,6 +15,8 @@ export async function GET(_request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(_request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -27,12 +30,24 @@ export async function GET(_request: NextRequest,
       )
     }
 
+    // Водитель должен быть из организации вызывающего: чужой id даёт 404
+    const driver = await prisma.driver.findFirst({
+      where: scopedWhere(__org.organizationId, { id: driverId }),
+      select: { id: true },
+    })
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: "Водитель не найден" },
+        { status: 404 }
+      )
+    }
+
     // Получаем первый активный заказ
     const activeOrder = await prisma.order.findFirst({
-      where: {
+      where: scopedWhere(__org.organizationId, {
         assignedDriverId: driverId,
         status: { in: [...ACTIVE_ORDER_STATUSES] },
-      },
+      }),
       orderBy: [
         { routeSequence: "asc" },
         { createdAt: "asc" },
@@ -52,9 +67,9 @@ export async function GET(_request: NextRequest,
 
     if (activeOrder.routeId) {
       allRouteOrders = await prisma.order.findMany({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           routeId: activeOrder.routeId,
-        },
+        }),
         orderBy: [
           { routeSequence: "asc" },
           { createdAt: "asc" },

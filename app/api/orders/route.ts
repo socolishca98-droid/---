@@ -2,12 +2,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { createOrderSchema, zodErrorResponse } from "@/lib/validators"
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireStaffAuth(request)
     if (auth.error) return auth.error
+    const org = requireStaffOrganization(auth.user)
+    if (!org.ok) return org.response
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
@@ -16,6 +19,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 200)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
 
+    // Фильтры из query; организация добавляется отдельно в каждом запросе —
+    // её нельзя ни снять, ни подменить параметром.
     const where: any = {}
     if (status) {
       if (status.includes(",")) {
@@ -29,12 +34,12 @@ export async function GET(request: NextRequest) {
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
-        where,
+        where: scopedWhere(org.organizationId, where),
         orderBy: [{ routeSequence: "asc" }, { createdAt: "desc" }],
         take: limit,
         skip: offset,
       }),
-      prisma.order.count({ where }),
+      prisma.order.count({ where: scopedWhere(org.organizationId, where) }),
     ])
 
     return NextResponse.json({
@@ -55,6 +60,8 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireStaffAuth(request)
     if (auth.error) return auth.error
+    const org = requireStaffOrganization(auth.user)
+    if (!org.ok) return org.response
 
     const rawBody = await request.json().catch(() => null)
     if (!rawBody) {
@@ -84,6 +91,32 @@ export async function POST(request: NextRequest) {
       routeId,
     } = parsed.data
 
+    // Назначить можно только своего водителя и свою машину
+    if (assignedDriverId) {
+      const driver = await prisma.driver.findFirst({
+        where: scopedWhere(org.organizationId, { id: assignedDriverId }),
+        select: { id: true },
+      })
+      if (!driver) {
+        return NextResponse.json(
+          { success: false, error: "Водитель не найден" },
+          { status: 404 },
+        )
+      }
+    }
+    if (assignedVehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
+        select: { id: true },
+      })
+      if (!vehicle) {
+        return NextResponse.json(
+          { success: false, error: "Машина не найдена" },
+          { status: 404 },
+        )
+      }
+    }
+
     const order = await prisma.$transaction(async (tx: any) => {
       let finalRouteId = routeId
       if (!finalRouteId && (assignedDriverId || assignedVehicleId)) {
@@ -91,6 +124,7 @@ export async function POST(request: NextRequest) {
         await tx.route.create({
           data: {
             id: finalRouteId,
+            organizationId: org.organizationId,
             name: `Рейс: ${routeFrom} — ${routeTo}`,
             status: "active",
             driverId: assignedDriverId || null,
@@ -104,6 +138,7 @@ export async function POST(request: NextRequest) {
 
       const created = await tx.order.create({
         data: {
+          organizationId: org.organizationId,
           source,
           sourceId,
           routeFrom,
@@ -124,10 +159,16 @@ export async function POST(request: NextRequest) {
       })
 
       if (assignedDriverId) {
-        await tx.driver.updateMany({ where: { id: assignedDriverId }, data: { status: "busy" } })
+        await tx.driver.updateMany({
+          where: scopedWhere(org.organizationId, { id: assignedDriverId }),
+          data: { status: "busy" },
+        })
       }
       if (assignedVehicleId) {
-        await tx.vehicle.updateMany({ where: { id: assignedVehicleId }, data: { status: "in_use" } })
+        await tx.vehicle.updateMany({
+          where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
+          data: { status: "in_use" },
+        })
       }
 
       return created

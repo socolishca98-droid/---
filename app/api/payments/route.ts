@@ -2,11 +2,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireStaff(request)
     if (!auth.ok) return auth.response
+    const org = requireOrganization(auth.value)
+    if (!org.ok) return org.response
 
     const { searchParams } = new URL(request.url)
     const tab = searchParams.get("tab") || "all" // all | pending | deferred | overdue | paid
@@ -16,9 +19,9 @@ export async function GET(request: NextRequest) {
 
     // Загружаем все заказы с ценой
     const allOrders = await prisma.order.findMany({
-      where: {
+      where: scopedWhere(org.organizationId, {
         price: { not: null },
-      },
+      }),
       include: {
         driver: {
           select: { id: true, name: true, phone: true },
@@ -142,6 +145,8 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireStaff(request)
     if (!auth.ok) return auth.response
+    const org = requireOrganization(auth.value)
+    if (!org.ok) return org.response
 
     const body = await request.json()
     const { orderId, isPaid, paymentType, vatType, deferredDays, dueDate, price } = body
@@ -153,8 +158,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const existing = await prisma.order.findUnique({
-      where: { id: orderId },
+    const existing = await prisma.order.findFirst({
+      where: scopedWhere(org.organizationId, { id: orderId }),
     })
 
     if (!existing) {
@@ -185,6 +190,7 @@ export async function PATCH(request: NextRequest) {
     if (dueDate) updateData.dueDate = new Date(dueDate)
     if (typeof price === "number") updateData.price = price
 
+    // org-audit: ok — заказ найден выше внутри организации вызывающего
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: updateData,
@@ -208,6 +214,8 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireStaff(request)
     if (!auth.ok) return auth.response
+    const org = requireOrganization(auth.value)
+    if (!org.ok) return org.response
 
     const body = await request.json()
     const { orderId } = body
@@ -219,8 +227,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: scopedWhere(org.organizationId, { id: orderId }),
     })
 
     if (!order) {

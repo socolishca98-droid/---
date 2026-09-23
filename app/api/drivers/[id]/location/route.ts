@@ -1,6 +1,7 @@
 // app/api/drivers/[id]/location/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma" // ✅ Используем синглтон
 
@@ -11,6 +12,8 @@ type RouteParams = {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -44,8 +47,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const updatedDriver = await prisma.driver.update({
-      where: { id },
+    // updateMany с фильтром организации: чужого водителя просто не обновит
+    const updated = await prisma.driver.updateMany({
+      where: scopedWhere(__org.organizationId, { id }),
       data: {
         latitude: lat,
         longitude: lng,
@@ -53,13 +57,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     })
 
+    if (updated.count === 0) {
+      return NextResponse.json(
+        { success: false, message: "Водитель не найден" },
+        { status: 404 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
       driver: {
-        id: updatedDriver.id,
-        latitude: updatedDriver.latitude,
-        longitude: updatedDriver.longitude,
-        lastGpsUpdate: updatedDriver.lastGpsUpdate,
+        id,
+        latitude: lat,
+        longitude: lng,
+        lastGpsUpdate: new Date(),
       },
     })
   } catch (error) {

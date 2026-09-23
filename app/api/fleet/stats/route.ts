@@ -1,6 +1,7 @@
 // app/api/fleet/stats/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -9,12 +10,14 @@ const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"
 export async function GET(_request: NextRequest) {
   const __auth = await requireStaffAuth(_request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
     const [vehicles, drivers] = await Promise.all([
-      prisma.vehicle.findMany(),
-      prisma.driver.findMany(),
+      prisma.vehicle.findMany({ where: scopedWhere(__org.organizationId) }),
+      prisma.driver.findMany({ where: scopedWhere(__org.organizationId) }),
     ])
 
     const vehicleStats = {
@@ -36,12 +39,15 @@ export async function GET(_request: NextRequest) {
 
     const [activeOrdersCount, completedToday, totalOrders] = await Promise.all([
       prisma.order.count({
-        where: { status: { in: ACTIVE_ORDER_STATUSES as any } },
+        where: scopedWhere(__org.organizationId, { status: { in: ACTIVE_ORDER_STATUSES as any } }),
       }),
       prisma.order.count({
-        where: { status: "delivered", updatedAt: { gte: todayStart } },
+        where: scopedWhere(__org.organizationId, {
+          status: "delivered",
+          updatedAt: { gte: todayStart },
+        }),
       }),
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(__org.organizationId) }),
     ])
 
     return NextResponse.json({

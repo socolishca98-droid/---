@@ -1,11 +1,14 @@
 // app/api/dashboard/stats/route.ts
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -22,27 +25,42 @@ export async function GET(request: NextRequest) {
       activeRoutes,
       completedRoutes,
     ] = await Promise.all([
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(__org.organizationId) }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: { in: ["active", "in_transit", "loading", "unloading", "assigned"] },
-        },
+        }),
       }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: "delivered",
           updatedAt: { gte: today },
-        },
+        }),
       }),
       prisma.order.aggregate({
         _sum: { price: true },
-        where: { status: { in: ["delivered", "in_transit", "active"] } },
+        where: scopedWhere(__org.organizationId, {
+          status: { in: ["delivered", "in_transit", "active"] },
+        }),
       }),
-      prisma.vehicle.findMany({ select: { status: true } }),
-      prisma.driver.findMany({ select: { status: true, latitude: true, longitude: true } }),
-      prisma.route.count({ where: { status: { in: ["active", "in_progress", "in_transit"] } } }),
-      prisma.route.count({ where: { status: "completed" } }),
+      prisma.vehicle.findMany({
+        where: scopedWhere(__org.organizationId),
+        select: { status: true },
+      }),
+      prisma.driver.findMany({
+        where: scopedWhere(__org.organizationId),
+        select: { status: true, latitude: true, longitude: true },
+      }),
+      prisma.route.count({
+        where: scopedWhere(__org.organizationId, {
+          status: { in: ["active", "in_progress", "in_transit"] },
+        }),
+      }),
+      prisma.route.count({
+        where: scopedWhere(__org.organizationId, { status: "completed" }),
+      }),
     ])
+
 
     const totalVehicles = vehicles.length
     const availableVehicles = vehicles.filter((v: any) => v.status === "available").length

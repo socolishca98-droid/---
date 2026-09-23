@@ -1,6 +1,7 @@
 // app/api/fleet/drivers/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -9,6 +10,8 @@ const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -17,11 +20,12 @@ export async function GET(request: NextRequest) {
 
     const [drivers, vehicles, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({
+        where: scopedWhere(__org.organizationId),
         orderBy: { name: "asc" },
       }),
-      prisma.vehicle.findMany(),
+      prisma.vehicle.findMany({ where: scopedWhere(__org.organizationId) }),
       prisma.driverShift.findMany({
-        where: { endedAt: null },
+        where: scopedWhere(__org.organizationId, { endedAt: null }),
         select: {
           id: true,
           driverId: true,
@@ -30,10 +34,10 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.order.findMany({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
           assignedDriverId: { not: null },
-        },
+        }),
         select: {
           id: true,
           assignedDriverId: true,

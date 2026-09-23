@@ -1,6 +1,7 @@
 // app/api/chat/route.ts - P1-6 zod
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { chatMessageSchema, zodErrorResponse } from "@/lib/validators"
@@ -34,6 +35,8 @@ function detectImportance(text: string): { isImportant: boolean; reason: string 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request)
   if (__auth.error) return __auth.error
+  const __org = requireStaffOrganization(__auth.user)
+  if (!__org.ok) return __org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -44,7 +47,8 @@ export async function GET(request: NextRequest) {
       where.OR = [{ senderId: driverId }, { recipientId: driverId }]
     }
     const messages = await prisma.chatMessage.findMany({
-      where,
+      // чужие переписки недоступны: организация всегда из сессии
+      where: scopedWhere(__org.organizationId, where),
       orderBy: { createdAt: 'asc' },
       take: limit
     })
@@ -55,9 +59,11 @@ export async function GET(request: NextRequest) {
 }
 
 const chatPostSchema = z.object({
-  senderId: z.string().min(1),
-  senderRole: z.string().min(1),
-  senderName: z.string().min(1).max(100),
+  // senderId/senderRole/senderName из тела запроса игнорируются:
+  // отправитель берётся из сессии (см. POST)
+  senderId: z.string().min(1).optional(),
+  senderRole: z.string().min(1).optional(),
+  senderName: z.string().min(1).max(100).optional(),
   content: z.string().trim().min(1).max(2000),
   type: z.string().optional().default("text"),
   attachmentUrl: z.string().url().optional().or(z.literal("")).or(z.null()),
@@ -68,6 +74,8 @@ const chatPostSchema = z.object({
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request)
   if (__auth.error) return __auth.error
+  const __org = requireStaffOrganization(__auth.user)
+  if (!__org.ok) return __org.response
 
   try {
     const rawBody = await request.json().catch(() => null)
@@ -79,8 +87,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
     }
 
-    const { senderId, senderRole, senderName, content, type = 'text', attachmentUrl } = parsed.data
+    const { content, type = 'text', attachmentUrl } = parsed.data
     const recipientId = (parsed.data as any).recipientId || (parsed.data as any).driverId || null
+
+    // Отправитель — всегда из проверенной сессии: подписать сообщение чужим
+    // именем нельзя, даже если тело запроса утверждает обратное.
+    const senderId = __org.userId
+    const senderRole = __org.role
+    const senderName = __auth.user.name
+
+    // Получатель-водитель должен быть из той же организации
+    if (recipientId) {
+      const recipient = await prisma.driver.findFirst({
+        where: scopedWhere(__org.organizationId, { id: recipientId }),
+        select: { id: true },
+      })
+      if (!recipient) {
+        return NextResponse.json(
+          { success: false, error: "Получатель не найден" },
+          { status: 404 },
+        )
+      }
+    }
 
     const { isImportant, reason } = type === 'alert'
       ? { isImportant: true, reason: 'отмечено как важное' }
@@ -88,6 +116,7 @@ export async function POST(request: NextRequest) {
 
     const message = await prisma.chatMessage.create({
       data: {
+        organizationId: __org.organizationId,
         senderId,
         senderRole,
         senderName,
@@ -113,6 +142,8 @@ const patchSchema = z.object({
 export async function PATCH(request: NextRequest) {
   const __auth = await requireStaffAuth(request)
   if (__auth.error) return __auth.error
+  const __org = requireStaffOrganization(__auth.user)
+  if (!__org.ok) return __org.response
 
   try {
     const rawBody = await request.json().catch(() => null)
@@ -127,7 +158,8 @@ export async function PATCH(request: NextRequest) {
     const { messageIds } = parsed.data
 
     await prisma.chatMessage.updateMany({
-      where: { id: { in: messageIds } },
+      // отметить прочитанными можно только сообщения своей организации
+      where: scopedWhere(__org.organizationId, { id: { in: messageIds } }),
       data: { isRead: true, readAt: new Date() }
     })
 

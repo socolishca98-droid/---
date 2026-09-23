@@ -442,3 +442,84 @@ npm run verify:task2         # смоук схемы рейса против dev
 организации» + присоединение по инвайт-коду с одобрением, фильтрация по организации в каждом
 API-роуте с пофайловым отчётом. До подтверждения изоляции данные между организациями
 задачи из нового списка не начинаются.
+
+## §14 Задача «Организации» — ход работ (обновлено 2026-09-23)
+
+Ветка `arena/01a0c0e1-repo`, HEAD `c6a9458`. Задача разбита на 4 фазы; фазы 1–2 закоммичены и запушены,
+фаза 3 в работе (не закоммичена), фаза 4 не начата.
+
+### Фаза 1/4 — схема мультитенантности (коммит `023bc7e`)
+- Модель `Organization` (`id`, `name`, `nameKey`, `createdAt`).
+- `organizationId String?` во всех бизнес-таблицах: `User, Driver, Vehicle, Order, Route, RouteStage,
+  RouteEvent, Photo, MaintenanceLog, ChatMessage, Notification, SosAlert, DriverShift, ShiftEvent,
+  FleetSettings, AtiScanConfig, AuditLog`. `GeoCache` и `AtiCache` — общие, без организации.
+- `Vehicle`: `@@unique([organizationId, plate])` вместо глобальной уникальности номера.
+- Перенос существующих данных в организацию «ИП Фролов Иван Александрович» (подтверждено пользователем).
+- `lib/org.ts`: `requireOrganization` + `requireStaffOrganization` / `requireDriverOrganization`,
+  `scopedWhere(organizationId, where)`, `belongsToOrganization`, `notFoundInOrganization`.
+
+### Фаза 2/4 — регистрация и панель админа организации (коммит `c6a9458`)
+- Сценарий A: первый пользователь создаёт организацию (вводит название) → роль `admin`, статус `active`.
+- Сценарий B: присоединение по инвайт-коду `XXXX-XXXX-XXXX` (многоразовый, со сроком, с ролью `admin|logist`,
+  с лимитом и отзывом) → статус `pending` → одобрение/отказ только админом своей организации.
+- Уникальность названия через `Organization.nameKey` (lowercase+trim+collapse) → 409; работает и в SQLite.
+- `organizationId` всегда берётся из проверенной сессии, никогда из тела запроса.
+- Экран `/organization` + API `/api/organization/*`: коды, заявки, сотрудники.
+- Сессия (`publicSessionView`) отдаёт `organization: {id, name} | null`; видно в `lib/auth-context.tsx` и header.
+
+### Фаза 3/4 — изоляция данных в каждом API-роуте (В РАБОТЕ, не закоммичена)
+Инструмент: `scripts/audit-org-isolation.mjs` — проходит по всем 64 `route.ts`, проверяет наличие гарда,
+контекста организации и фильтра `organizationId` в каждом вызове `prisma.<model>` и `tx.<model>`.
+Запуск: `npm run audit:orgs` (или `node scripts/audit-org-isolation.mjs`, `--json` для машинного вывода).
+Скрипт проверки двух организаций — `npm run verify:orgs` → `scripts/verify-organizations.mjs` (фаза 4/4, ещё не написан).
+
+Прогресс: было 38 файлов с нарушениями → осталось **20**. `tsc` — 0 реальных ошибок (в песочнице остаются
+только `TS7006` из-за несгенерированного Prisma-клиента).
+
+Готово (аудит ✓, фильтры по организации во всех запросах):
+`chat`, `dashboard/routes`, `dashboard/stats`, `drivers/route`, `drivers/[id]`, `drivers/[id]/active-order`,
+`drivers/[id]/location`, `drivers/locations`, `fleet/drivers`, `fleet/settings` (настройки per-org, синглтон
+`id:"default"` убран), `fleet/stats`, `orders`, `orders/[id]` (включая DELETE-транзакцию), `payments`,
+`photos` (плюс проверка, что `driverId`/`orderId` из тела — свои), `sos`, `vehicles`, `vehicles/[id]`,
+`admin/audit` (журнал по организации, `getAuditLogs({organizationId})`), `ati/*`, `traffic/*`,
+`routes/calculate-eta` — гард организации.
+Общая библиотека `lib/fleet/assignment.ts` (`linkDriverToVehicle`, `findVehicleOccupant`, `unlinkVehicle`,
+`refreshVehicleCache`, `syncDriverVehicleCache`) принимает `organizationId` и не даёт связать водителя
+с машиной из чужой организации.
+
+**Осталось 20 файлов** (гард организации + фильтры; список даёт сам аудит):
+- штаб: `auth/users/route.ts`, `auth/users/[id]/route.ts`, `fleet/route.ts`, `fleet/assign/route.ts`,
+  `fleet/vehicles/route.ts`, `routes/route.ts`, `routes/[routeId]/route.ts`,
+  `routes/[routeId]/{complete,add-load,events}/route.ts`;
+- водительские `/api/m/*`: `location`, `maintenance`, `me`, `orders`, `photos`, `route/accept-load`,
+  `shift`, `sos`, `vehicle`; плюс `app/m/route/events/route.ts`.
+
+### Фаза 4/4 — проверка и отчёт (не начата)
+1. `scripts/verify-organizations.mjs`: две тестовые организации, логист из одной не видит заказы/водителей/
+   машины другой (пункт 9 задачи).
+2. Пофайловый список всех проверенных роутов для пользователя (пункт 6).
+3. Финальный прогон: `npm run typecheck`, `npm run test`, `node scripts/verify-security.mjs`,
+   `node scripts/audit-org-isolation.mjs` — 0 нарушений; убраться: снять неиспользуемый импорт `scopedWhere`
+   из файлов без prisma-вызовов (`ati/{cache,cities,debug,geo,import,scan}`, `traffic/*`).
+4. Коммит фазы 3 и фазы 4, пуш в `arena/01a0c0e1-repo`.
+
+### Особенности песочницы (важно при продолжении)
+- `node_modules` между ходами **не сохраняется**: перед проверками — `npm install --ignore-scripts`;
+  Prisma-движки и клиент не скачиваются (egress только npm+github), поэтому `npx prisma` не работает,
+  а `tsc` даёт песочничные `TS7006`/ошибки в `lib/prisma.ts` — реальные ошибки типов фильтруются так:
+  `npx tsc --noEmit 2>&1 | grep -E "error TS" | grep -vE "TS7006|lib/prisma.ts"`.
+- Локальный `vitest` после такой установки может отсутствовать — тесты `__tests__/**` проверяются
+  у пользователя (`npm run test`), в песочнице доступен `node --test "tests/*.test.mjs"` после
+  `npm run test:build`.
+- Если HEAD снова окажется на базовом коммите `main` при живых правках в рабочем дереве — выравнивать
+  только `git reset origin/arena/01a0c0e1-repo` (mixed, рабочее дерево не трогает), **никогда не `--hard`**.
+
+### Правила правки, которые нельзя нарушать (проверено на ошибках)
+- Аудит смотрит **литеральный текст вызова**: предпостроенный `where` с `organizationId` не засчитывается —
+  нужно писать `scopedWhere(orgId, {...})` прямо внутри вызова.
+- Освобождение от проверки — только маркер `// org-audit: ok — причина` **вплотную** к вызову (±2 строки),
+  иначе аудит его не увидит.
+- Транзакции: регэксп по `prisma.` не видит моделей внутри `prisma.$transaction(async tx => …)` —
+  в аудиторе есть отдельный скан по `tx.<model>`; `$queryRaw/$executeRaw` разбираются вручную.
+- После массовых правок через скрипт обязательны: `grep -c __org <file>`, `grep '=== "x"'` и полный `tsc`
+  (несовпадение стиля `;` или имени переменной гарда — `auth` вместо `__auth` — молча оставляет файл неправленым).

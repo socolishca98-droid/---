@@ -2,6 +2,7 @@
 // Расчёт ETA: POST /api/routes/calculate-eta
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { calculateETA, formatDuration, formatDistance } from "@/lib/eta/service"
 import type { ETARequest } from "@/lib/eta/types"
@@ -9,6 +10,8 @@ import type { ETARequest } from "@/lib/eta/types"
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -70,6 +73,8 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   return NextResponse.json({

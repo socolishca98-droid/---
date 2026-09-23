@@ -21,6 +21,8 @@
     "db:migrate-orgs": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/migrate-organizations.ts",
     "verify:security": "node scripts/verify-security.mjs",
     "verify:task2": "node scripts/verify-task2.mjs",
+    "verify:orgs": "node scripts/verify-organizations.mjs",
+    "audit:orgs": "node scripts/audit-org-isolation.mjs",
     "build:safe": "prisma generate --schema=./prisma/schema.prisma || echo \"prisma generate skipped (offline)\"; next build",
     "postinstall": "prisma generate || echo \"prisma generate failed - will retry on build\"",
     "test:unit": "npm run test:build && node --test \"tests/*.test.mjs\"",

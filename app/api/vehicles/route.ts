@@ -1,6 +1,7 @@
 // app/api/vehicles/route.ts - P1-6 zod
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createVehicleSchema, zodErrorResponse } from "@/lib/validators"
@@ -8,6 +9,8 @@ import { createVehicleSchema, zodErrorResponse } from "@/lib/validators"
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request)
   if (__auth.error) return __auth.error
+  const __org = requireStaffOrganization(__auth.user)
+  if (!__org.ok) return __org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -25,7 +28,9 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         )
       }
-      const vehicles = await prisma.vehicle.findMany({ where: { id: { in: ids } } })
+      const vehicles = await prisma.vehicle.findMany({
+        where: scopedWhere(__org.organizationId, { id: { in: ids } }),
+      })
       const vehiclesMap: Record<string, typeof vehicles[0]> = {}
       vehicles.forEach((vehicle: any) => {
         vehiclesMap[vehicle.id] = vehicle
@@ -39,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
 
     const vehicles = await prisma.vehicle.findMany({
-      where,
+      where: scopedWhere(__org.organizationId, where),
       orderBy: [{ status: "asc" }, { plate: "asc" }],
     })
 
@@ -54,6 +59,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request)
   if (__auth.error) return __auth.error
+  const __org = requireStaffOrganization(__auth.user)
+  if (!__org.ok) return __org.response
 
   try {
     const rawBody = await request.json().catch(() => null)
@@ -72,6 +79,7 @@ export async function POST(request: NextRequest) {
 
     const vehicle = await prisma.vehicle.create({
       data: {
+        organizationId: __org.organizationId,
         plate,
         type,
         brand: brand || null,

@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { normalizePhone } from "@/lib/auth/constants"
 import { generateTemporaryPassword, hashPassword } from "@/lib/auth/password"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
@@ -15,6 +16,8 @@ const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] 
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || undefined
@@ -36,7 +39,7 @@ export async function GET(request: NextRequest) {
       }
 
       const drivers = await prisma.driver.findMany({
-        where: { id: { in: ids } },
+        where: scopedWhere(org.organizationId, { id: { in: ids } }),
       })
 
       // Возвращаем Map для быстрого доступа на клиенте
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     const drivers = await prisma.driver.findMany({
-      where,
+      where: scopedWhere(org.organizationId, where),
       orderBy: { name: "asc" },
     })
 
@@ -78,6 +81,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
   try {
     const body = await request.json().catch(() => ({}))
     const {
@@ -105,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     const driver = await prisma.driver.create({
       data: {
+        organizationId: org.organizationId,
         name,
         phone,
         status: "available",
@@ -118,7 +124,7 @@ export async function POST(request: NextRequest) {
     // Машина закрепляется единым путём: Driver.vehicleId + кэш номера/типа
     // из данных самой машины (vehicleType/vehiclePlate из запроса игнорируются).
     if (vehicleId) {
-      await linkDriverToVehicle(prisma, driver.id, vehicleId)
+      await linkDriverToVehicle(prisma, driver.id, vehicleId, org.organizationId)
     }
 
     // Учётка для входа в приложение водителя: одна система доступа на всех.
@@ -128,6 +134,8 @@ export async function POST(request: NextRequest) {
     let warning: string | undefined
 
     if (normalizedPhone.length >= 10) {
+      // Телефон — глобальный логин: учётка ищется по всей базе намеренно (нельзя завести второй вход на тот же номер)
+      // org-audit: ok — глобальная проверка уникальности логина, не данные организации
       const existing = await prisma.user.findFirst({
         where: { OR: [{ phone: normalizedPhone }, { driverId: driver.id }] },
         select: { id: true },
@@ -144,6 +152,7 @@ export async function POST(request: NextRequest) {
         try {
           await prisma.user.create({
             data: {
+              organizationId: org.organizationId,
               phone: normalizedPhone,
               name,
               passwordHash: hash,

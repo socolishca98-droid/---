@@ -1,6 +1,7 @@
 // app/api/dashboard/routes/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -137,12 +138,15 @@ function generateSmoothCurve(points: Point[]): [number, number][] {
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
     // ========== ЛОГИКА БАЗЫ ==========
+    // Настройки базы — свои у каждой организации (раньше была одна на всю БД, id = "default")
     const settings = await prisma.fleetSettings.findFirst({
-      where: { id: "default" },
+      where: scopedWhere(__org.organizationId),
     })
 
     let base: {
@@ -198,10 +202,10 @@ export async function GET(request: NextRequest) {
 
     // ========== ПОЛУЧЕНИЕ ЗАКАЗОВ ==========
     const activeOrders = await prisma.order.findMany({
-      where: {
+      where: scopedWhere(__org.organizationId, {
         status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
         assignedDriverId: { not: null },
-      },
+      }),
       orderBy: { createdAt: "asc" },
     })
 
@@ -236,11 +240,11 @@ export async function GET(request: NextRequest) {
     // Получаем водителей
     const driverIds = [...new Set([...groups.values()].map((g: any) => g.driverId))]
     const drivers = await prisma.driver.findMany({
-      where: {
+      where: scopedWhere(__org.organizationId, {
         id: { in: driverIds },
         latitude: { not: null },
         longitude: { not: null },
-      },
+      }),
       select: {
         id: true,
         name: true,

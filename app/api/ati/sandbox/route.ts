@@ -1,5 +1,6 @@
 // app/api/ati/sandbox/route.ts
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -7,6 +8,8 @@ import { prisma } from "@/lib/prisma"
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -43,6 +46,8 @@ export async function GET(request: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const __auth = await requireStaffAuth(req);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {

@@ -1,6 +1,7 @@
 // app/api/vehicles/[id]/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -16,6 +17,8 @@ export async function GET(_request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(_request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -28,8 +31,8 @@ export async function GET(_request: NextRequest,
       )
     }
 
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id },
+    const vehicle = await prisma.vehicle.findFirst({
+      where: scopedWhere(__org.organizationId, { id }),
     })
 
     if (!vehicle) {
@@ -55,6 +58,8 @@ export async function PATCH(request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -145,6 +150,7 @@ export async function PATCH(request: NextRequest,
           : "[]"
     }
 
+    // org-audit: ok — машина найдена выше внутри организации вызывающего
     const vehicle = await prisma.vehicle.update({
       where: { id },
       data,
@@ -166,6 +172,8 @@ export async function DELETE(_request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(_request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -180,12 +188,12 @@ export async function DELETE(_request: NextRequest,
 
     // Отвязываем водителя
     await prisma.driver.updateMany({
-      where: { vehicleId: id },
+      where: scopedWhere(__org.organizationId, { vehicleId: id }),
       data: { vehicleId: null },
     })
 
-    await prisma.vehicle.delete({
-      where: { id },
+    await prisma.vehicle.deleteMany({
+      where: scopedWhere(__org.organizationId, { id }),
     })
 
     return NextResponse.json({ success: true })

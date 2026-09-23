@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getStaffSession } from "@/lib/api-auth"
 import { getAuditLogs } from "@/lib/audit"
+import { requireOrganization } from "@/lib/org"
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,12 +23,16 @@ export async function GET(req: NextRequest) {
     const actorId = searchParams.get("actorId") || undefined
     const targetId = searchParams.get("targetId") || undefined
 
+    const org = requireOrganization(sessionUser)
+    if (!org.ok) return org.response
+
     const logs = await getAuditLogs({
       limit: isNaN(limit) ? 100 : limit,
       offset: isNaN(offset) ? 0 : offset,
       action,
       actorId,
       targetId,
+      organizationId: org.organizationId,
     })
 
     return NextResponse.json({ success: true, logs })

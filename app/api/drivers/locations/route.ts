@@ -1,6 +1,7 @@
 // app/api/drivers/locations/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -9,15 +10,18 @@ const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
     const [allDrivers, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({
+        where: scopedWhere(__org.organizationId),
         orderBy: { name: "asc" },
       }),
       prisma.driverShift.findMany({
-        where: { endedAt: null },
+        where: scopedWhere(__org.organizationId, { endedAt: null }),
         select: {
           id: true,
           driverId: true,
@@ -27,10 +31,10 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.order.findMany({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
           assignedDriverId: { not: null },
-        },
+        }),
         select: {
           id: true,
           status: true,
@@ -111,21 +115,21 @@ export async function GET(request: NextRequest) {
 
     const [completedToday, newToday, totalOrders, activeOrdersCount] = await Promise.all([
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: "delivered",
           updatedAt: { gte: todayStart },
-        },
+        }),
       }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           createdAt: { gte: todayStart },
-        },
+        }),
       }),
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(__org.organizationId) }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
-        },
+        }),
       }),
     ])
 

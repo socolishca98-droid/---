@@ -21,7 +21,13 @@
 
 import { NextResponse } from "next/server"
 
-import type { AnySession, DriverSession, StaffSession } from "@/lib/auth/session"
+import type {
+  AnySession,
+  DriverIdentity,
+  DriverSession,
+  StaffIdentity,
+  StaffSession,
+} from "@/lib/auth/session"
 
 /** Кто выполняет запрос и к какой организации он относится. */
 export interface OrgContext {
@@ -65,6 +71,51 @@ function forbidden(message: string): NextResponse {
 }
 
 /**
+ * Организация сотрудника по его идентичности.
+ *
+ * Удобно в роутах, которые пользуются адаптером lib/api-auth.ts:
+ *   const __auth = await requireStaffAuth(request)
+ *   if (__auth.error) return __auth.error
+ *   const __org = requireStaffOrganization(__auth.user)
+ *   if (!__org.ok) return __org.response
+ */
+export function requireStaffOrganization(user: StaffIdentity): OrgGuard {
+  if (!user.organizationId) {
+    return {
+      ok: false,
+      response: forbidden(
+        "Учётная запись не привязана к организации. Запустите перенос данных: npm run db:migrate-orgs",
+      ),
+    }
+  }
+  return {
+    ok: true,
+    organizationId: user.organizationId,
+    kind: "staff",
+    userId: user.id,
+    role: user.role,
+    isAdmin: user.role === "admin",
+    driverId: null,
+  }
+}
+
+/** Организация водителя по его карточке (для адаптера requireDriverAuth). */
+export function requireDriverOrganization(driver: DriverIdentity, userId: string): OrgGuard {
+  if (!driver.organizationId) {
+    return { ok: false, response: forbidden("Карточка водителя не привязана к организации") }
+  }
+  return {
+    ok: true,
+    organizationId: driver.organizationId,
+    kind: "driver",
+    userId,
+    role: "driver",
+    isAdmin: false,
+    driverId: driver.id,
+  }
+}
+
+/**
  * Организация из сессии либо отказ 403.
  *
  * 403 (а не 500) возвращается, когда учётная запись существует, но не
@@ -72,6 +123,14 @@ function forbidden(message: string): NextResponse {
  * (`npm run db:migrate-orgs`) либо запись создали в обход регистрации.
  */
 export function requireOrganization(session: AnySession): OrgGuard {
+  if (session.kind === "driver") {
+    return requireDriverOrganization(session.driver, session.userId)
+  }
+  return requireStaffOrganization(session.user)
+}
+
+/** @deprecated используйте requireStaffOrganization / requireDriverOrganization */
+function requireOrganizationLegacy(session: AnySession): OrgGuard {
   const organizationId = organizationIdOf(session)
 
   if (session.kind === "staff") {

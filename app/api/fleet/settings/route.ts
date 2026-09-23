@@ -1,23 +1,27 @@
 // app/api/fleet/settings/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
-    let settings = await prisma.fleetSettings.findUnique({
-      where: { id: "default" },
+    // Настройки автопарка свои у каждой организации (раньше была одна на всю базу)
+    let settings = await prisma.fleetSettings.findFirst({
+      where: scopedWhere(__org.organizationId),
     })
 
     if (!settings) {
       settings = await prisma.fleetSettings.create({
         data: {
-          id: "default",
+          organizationId: __org.organizationId,
           parkName: "Наш автопарк",
           baseAddress: null,
           baseLat: null,
@@ -41,6 +45,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -64,9 +70,10 @@ export async function POST(request: NextRequest) {
     if (baseLng !== undefined) data.baseLng = baseLng
 
     const settings = await prisma.fleetSettings.upsert({
-      where: { id: "default" },
+      // organizationId — уникальный ключ настроек организации (@@unique в схеме)
+      where: { organizationId: __org.organizationId },
       create: {
-        id: "default",
+        organizationId: __org.organizationId,
         parkName: parkName || "Наш автопарк",
         baseAddress: baseAddress || null,
         baseLat: baseLat ?? null,

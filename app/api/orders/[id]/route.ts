@@ -1,6 +1,7 @@
 // app/api/orders/[id]/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
@@ -15,6 +16,8 @@ export async function GET(_request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(_request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -27,8 +30,9 @@ export async function GET(_request: NextRequest,
       )
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id },
+    // чужой заказ не отличим от несуществующего: ищем внутри своей организации
+    const order = await prisma.order.findFirst({
+      where: scopedWhere(__org.organizationId, { id }),
     })
 
     if (!order) {
@@ -54,6 +58,8 @@ export async function PATCH(request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -74,8 +80,8 @@ export async function PATCH(request: NextRequest,
       [key: string]: unknown
     }
 
-    const existing = await prisma.order.findUnique({
-      where: { id },
+    const existing = await prisma.order.findFirst({
+      where: scopedWhere(__org.organizationId, { id }),
       select: {
         id: true,
         status: true,
@@ -91,6 +97,32 @@ export async function PATCH(request: NextRequest,
       )
     }
 
+    // Назначить заказу можно только своего водителя и свою машину
+    if (assignedDriverId) {
+      const driver = await prisma.driver.findFirst({
+        where: scopedWhere(__org.organizationId, { id: assignedDriverId }),
+        select: { id: true },
+      })
+      if (!driver) {
+        return NextResponse.json(
+          { success: false, error: "Водитель не найден" },
+          { status: 404 }
+        )
+      }
+    }
+    if (assignedVehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: scopedWhere(__org.organizationId, { id: assignedVehicleId }),
+        select: { id: true },
+      })
+      if (!vehicle) {
+        return NextResponse.json(
+          { success: false, error: "Машина не найдена" },
+          { status: 404 }
+        )
+      }
+    }
+
     const wasActive = ACTIVE_ORDER_STATUSES.includes(existing.status as typeof ACTIVE_ORDER_STATUSES[number])
     const willBeActive = status 
       ? ACTIVE_ORDER_STATUSES.includes(status as typeof ACTIVE_ORDER_STATUSES[number]) 
@@ -98,6 +130,7 @@ export async function PATCH(request: NextRequest,
     const isCompleting = status === "delivered" || status === "cancelled" || status === "rejected"
 
     const updatedOrder = await prisma.$transaction(async (tx: any) => {
+      // org-audit: ok — id заказа проверен на принадлежность организации выше
       const order = await tx.order.update({
         where: { id },
         data: {
@@ -115,15 +148,15 @@ export async function PATCH(request: NextRequest,
       if (wasActive && isCompleting) {
         if (driverId) {
           const otherActive = await tx.order.count({
-            where: {
+            where: scopedWhere(__org.organizationId, {
               assignedDriverId: driverId,
               status: { in: [...ACTIVE_ORDER_STATUSES] },
               id: { not: order.id },
-            },
+            }),
           })
           if (otherActive === 0) {
-            await tx.driver.update({
-              where: { id: driverId },
+            await tx.driver.updateMany({
+              where: scopedWhere(__org.organizationId, { id: driverId }),
               data: { status: "available" },
             })
           }
@@ -131,15 +164,15 @@ export async function PATCH(request: NextRequest,
 
         if (vehicleId) {
           const otherActive = await tx.order.count({
-            where: {
+            where: scopedWhere(__org.organizationId, {
               assignedVehicleId: vehicleId,
               status: { in: [...ACTIVE_ORDER_STATUSES] },
               id: { not: order.id },
-            },
+            }),
           })
           if (otherActive === 0) {
-            await tx.vehicle.update({
-              where: { id: vehicleId },
+            await tx.vehicle.updateMany({
+              where: scopedWhere(__org.organizationId, { id: vehicleId }),
               data: { status: "available" },
             })
           }
@@ -149,14 +182,14 @@ export async function PATCH(request: NextRequest,
       // Если заказ стал активным – проставляем busy/in_use
       if (!wasActive && willBeActive) {
         if (driverId) {
-          await tx.driver.update({
-            where: { id: driverId },
+          await tx.driver.updateMany({
+            where: scopedWhere(__org.organizationId, { id: driverId }),
             data: { status: "busy" },
           })
         }
         if (vehicleId) {
-          await tx.vehicle.update({
-            where: { id: vehicleId },
+          await tx.vehicle.updateMany({
+            where: scopedWhere(__org.organizationId, { id: vehicleId }),
             data: { status: "in_use" },
           })
         }
@@ -181,6 +214,8 @@ export async function DELETE(_request: NextRequest,
   { params }: RouteParams) {
   const __auth = await requireStaffAuth(_request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {
@@ -193,8 +228,8 @@ export async function DELETE(_request: NextRequest,
       )
     }
 
-    const existing = await prisma.order.findUnique({
-      where: { id },
+    const existing = await prisma.order.findFirst({
+      where: scopedWhere(__org.organizationId, { id }),
       select: {
         id: true,
         status: true,
@@ -213,19 +248,20 @@ export async function DELETE(_request: NextRequest,
     const wasActive = ACTIVE_ORDER_STATUSES.includes(existing.status as typeof ACTIVE_ORDER_STATUSES[number])
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.order.delete({ where: { id } })
+      // deleteMany с фильтром организации: чужой заказ удалить нельзя
+      await tx.order.deleteMany({ where: scopedWhere(__org.organizationId, { id }) })
 
       if (wasActive) {
         if (existing.assignedDriverId) {
           const otherActive = await tx.order.count({
-            where: {
+            where: scopedWhere(__org.organizationId, {
               assignedDriverId: existing.assignedDriverId,
               status: { in: [...ACTIVE_ORDER_STATUSES] },
-            },
+            }),
           })
           if (otherActive === 0) {
-            await tx.driver.update({
-              where: { id: existing.assignedDriverId },
+            await tx.driver.updateMany({
+              where: scopedWhere(__org.organizationId, { id: existing.assignedDriverId }),
               data: { status: "available" },
             })
           }
@@ -233,14 +269,14 @@ export async function DELETE(_request: NextRequest,
 
         if (existing.assignedVehicleId) {
           const otherActive = await tx.order.count({
-            where: {
+            where: scopedWhere(__org.organizationId, {
               assignedVehicleId: existing.assignedVehicleId,
               status: { in: [...ACTIVE_ORDER_STATUSES] },
-            },
+            }),
           })
           if (otherActive === 0) {
-            await tx.vehicle.update({
-              where: { id: existing.assignedVehicleId },
+            await tx.vehicle.updateMany({
+              where: scopedWhere(__org.organizationId, { id: existing.assignedVehicleId }),
               data: { status: "available" },
             })
           }

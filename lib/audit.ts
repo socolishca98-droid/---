@@ -50,12 +50,15 @@ export async function getAuditLogs(params?: {
   actorId?: string
   targetId?: string
   action?: string
+  organizationId?: string
 }) {
   const limit = Math.min(params?.limit || 100, 500)
   const where: any = {}
   if (params?.actorId) where.actorId = params.actorId
   if (params?.targetId) where.targetId = params.targetId
   if (params?.action) where.action = params.action
+  // Журнал смотрит админ своей организации: записи без организации не показываются никому, кроме нулевой
+  if (params?.organizationId) where.organizationId = params.organizationId
 
   const logs = await prisma.auditLog.findMany({
     where,

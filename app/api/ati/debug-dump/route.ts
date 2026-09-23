@@ -1,5 +1,6 @@
 // app/api/ati/debug-dump/route.ts
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { safeJsonParse } from "@/lib/safe-json"
@@ -7,6 +8,8 @@ import { safeJsonParse } from "@/lib/safe-json"
 export async function GET(req: NextRequest) {
   const __auth = await requireStaffAuth(req);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   const url = new URL(req.url)

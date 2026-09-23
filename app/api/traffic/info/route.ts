@@ -1,6 +1,7 @@
 // app/api/traffic/info/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { MOSCOW_ROAD_GEOMETRIES } from "@/lib/traffic-roads-data"
 
@@ -32,6 +33,8 @@ export interface TrafficIncident {
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
 
 
   try {

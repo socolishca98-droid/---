@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 import { SOS_STATUSES, sosLabel, type SosStatus } from "@/lib/sos-labels"
 
@@ -24,6 +25,8 @@ const MAX_PAGE_SIZE = 200
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const { searchParams } = request.nextUrl
   const statusParam = searchParams.get("status") || "active"
@@ -41,18 +44,18 @@ export async function GET(request: NextRequest) {
 
     const [alerts, total] = await Promise.all([
       prisma.sosAlert.findMany({
-        where,
+        where: scopedWhere(org.organizationId, where),
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.sosAlert.count({ where }),
+      prisma.sosAlert.count({ where: scopedWhere(org.organizationId, where) }),
     ])
 
     const driverIds = [...new Set(alerts.map((alert: any) => alert.driverId) as string[])]
     const drivers = driverIds.length
       ? await prisma.driver.findMany({
-          where: { id: { in: driverIds } },
+          where: scopedWhere(org.organizationId, { id: { in: driverIds } }),
           select: { id: true, name: true, phone: true, vehiclePlate: true },
         })
       : []
@@ -84,6 +87,8 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const actorId = auth.value.user.id
 
@@ -122,8 +127,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const existing = await prisma.sosAlert.findUnique({
-      where: { id: sosId },
+    const existing = await prisma.sosAlert.findFirst({
+      where: scopedWhere(org.organizationId, { id: sosId }),
       select: { id: true, driverId: true, type: true, status: true },
     })
     if (!existing) {
@@ -147,6 +152,7 @@ export async function PATCH(request: NextRequest) {
       updateData.resolution = resolution
     }
 
+    // org-audit: ok — сигнал найден выше внутри организации вызывающего
     const updated = await prisma.sosAlert.update({
       where: { id: sosId },
       data: updateData,
@@ -155,6 +161,7 @@ export async function PATCH(request: NextRequest) {
     // Уведомление водителю о том, что сигнал обработан
     await prisma.notification.create({
       data: {
+        organizationId: org.organizationId,
         userId: existing.driverId,
         userRole: "driver",
         type: "sos_status",
