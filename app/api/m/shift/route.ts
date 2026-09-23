@@ -4,15 +4,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
-async function getActiveOrderForDriver(driverId: string) {
+async function getActiveOrderForDriver(driverId: string, organizationId: string) {
   return prisma.order.findFirst({
-    where: {
+    where: scopedWhere(organizationId, {
       assignedDriverId: driverId,
       status: { in: ACTIVE_ORDER_STATUSES as any },
-    },
+    }),
     orderBy: { createdAt: "asc" },
   })
 }
@@ -23,6 +24,8 @@ async function getActiveOrderForDriver(driverId: string) {
 export async function GET(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const driverId = auth.value.driver.id
 
@@ -30,13 +33,13 @@ export async function GET(request: NextRequest) {
 
     const [shift, activeOrder] = await Promise.all([
       prisma.driverShift.findFirst({
-        where: {
+        where: scopedWhere(org.organizationId, {
           driverId,
           endedAt: null,
-        },
+        }),
         orderBy: { startedAt: "desc" },
       }),
-      getActiveOrderForDriver(driverId),
+      getActiveOrderForDriver(driverId, org.organizationId),
     ])
 
     return NextResponse.json({
@@ -61,13 +64,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const driverId = auth.value.driver.id
 
   try {
 
-    const driver = await prisma.driver.findUnique({
-      where: { id: driverId },
+    const driver = await prisma.driver.findFirst({
+      where: scopedWhere(org.organizationId, { id: driverId }),
     })
 
     if (!driver) {
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     // Проверяем, что нет уже активной смены
     const existingShift = await prisma.driverShift.findFirst({
-      where: { driverId, endedAt: null },
+      where: scopedWhere(org.organizationId, { driverId, endedAt: null }),
       orderBy: { startedAt: "desc" },
     })
 
@@ -91,13 +96,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const activeOrder = await getActiveOrderForDriver(driverId)
+    const activeOrder = await getActiveOrderForDriver(driverId, org.organizationId)
 
     const { shift } = await prisma.$transaction(async (tx) => {
       const shiftStatus = activeOrder ? "driving" : "waiting"
 
       const newShift = await tx.driverShift.create({
         data: {
+          organizationId: org.organizationId,
           driverId,
           status: shiftStatus,
           startedAt: new Date(),
@@ -110,8 +116,8 @@ export async function POST(request: NextRequest) {
       //   busy       — есть активный заказ
       //   available  — нет заказа
       if (driver.status !== "maintenance") {
-        await tx.driver.update({
-          where: { id: driverId },
+        await tx.driver.updateMany({
+          where: scopedWhere(org.organizationId, { id: driverId }),
           data: {
             status: activeOrder ? "busy" : "available",
           },
@@ -141,6 +147,8 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const driverId = auth.value.driver.id
 
@@ -158,7 +166,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const shift = await prisma.driverShift.findFirst({
-      where: { driverId, endedAt: null },
+      where: scopedWhere(org.organizationId, { driverId, endedAt: null }),
       orderBy: { startedAt: "desc" },
     })
 
@@ -184,12 +192,16 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const updated = await prisma.driverShift.update({
-      where: { id: shift.id },
+    await prisma.driverShift.updateMany({
+      where: scopedWhere(org.organizationId, { id: shift.id }),
       data: {
         status,
         lastStatusChangeAt: new Date(),
       },
+    })
+
+    const updated = await prisma.driverShift.findFirstOrThrow({
+      where: scopedWhere(org.organizationId, { id: shift.id }),
     })
 
     return NextResponse.json({
@@ -211,13 +223,15 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const driverId = auth.value.driver.id
 
   try {
 
     const shift = await prisma.driverShift.findFirst({
-      where: { driverId, endedAt: null },
+      where: scopedWhere(org.organizationId, { driverId, endedAt: null }),
       orderBy: { startedAt: "desc" },
     })
 
@@ -229,8 +243,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.driverShift.update({
-        where: { id: shift.id },
+      await tx.driverShift.updateMany({
+        where: scopedWhere(org.organizationId, { id: shift.id }),
         data: {
           endedAt: new Date(),
           lastStatusChangeAt: new Date(),
@@ -238,16 +252,16 @@ export async function DELETE(request: NextRequest) {
       })
 
       const activeOrdersCount = await tx.order.count({
-        where: {
+        where: scopedWhere(org.organizationId, {
           assignedDriverId: driverId,
           status: { in: ACTIVE_ORDER_STATUSES as any },
-        },
+        }),
       })
 
       const newStatus = activeOrdersCount > 0 ? "busy" : "available"
 
-      await tx.driver.update({
-        where: { id: driverId },
+      await tx.driver.updateMany({
+        where: scopedWhere(org.organizationId, { id: driverId }),
         data: {
           status: newStatus,
         },

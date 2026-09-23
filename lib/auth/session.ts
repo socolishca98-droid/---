@@ -296,6 +296,18 @@ export async function canDriverAccessOrder(
 }
 
 /** Рейс принадлежит водителю? (рейс — это группа заказов с общим routeId) */
+/**
+ * Фильтр по организации для внутренних проверок доступа.
+ * Локальная копия lib/org.scopedWhere: lib/org импортирует этот модуль,
+ * поэтому обратный импорт создал бы цикл.
+ */
+function scopedByOrg<T extends Record<string, unknown>>(
+  organizationId: string | null | undefined,
+  where: T,
+): T {
+  return organizationId == null ? where : ({ ...where, organizationId } as T)
+}
+
 export async function canDriverAccessRoute(
   session: AnySession,
   routeId: string,
@@ -304,18 +316,23 @@ export async function canDriverAccessRoute(
 
   // Рейс — настоящая запись в таблице Route: водитель своего рейса
   // определяется по Route.driverId (источник правды с задачи 2).
-  const route = await prisma.route.findUnique({
-    where: { id: routeId },
+  // Рейс и заказы ищем только в организации водителя: чужой рейс недоступен,
+  // даже если driverId случайно совпадёт.
+  const organizationId = session.driver.organizationId
+  const route = await prisma.route.findFirst({
+    where: scopedByOrg(organizationId, { id: routeId }),
     select: { driverId: true },
   })
   if (route?.driverId) return route.driverId === session.driver.id
 
   // Рейса в таблице нет (исторический routeId) или водитель не назначен —
   // проверяем по заказам, как раньше.
-  const total = await prisma.order.count({ where: { routeId } })
+  const total = await prisma.order.count({
+    where: scopedByOrg(organizationId, { routeId }),
+  })
   if (total === 0) return false
   const own = await prisma.order.count({
-    where: { routeId, assignedDriverId: session.driver.id },
+    where: scopedByOrg(organizationId, { routeId, assignedDriverId: session.driver.id }),
   })
   return own === total
 }

@@ -1,5 +1,5 @@
 import { requireStaffAuth } from "@/lib/api-auth"
-import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import {requireStaffOrganization} from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {

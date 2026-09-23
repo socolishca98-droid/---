@@ -7,11 +7,14 @@ import { prisma } from "@/lib/prisma"
 
 import { SOS_LABELS } from "@/lib/sos-labels"
 import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 // POST - отправить SOS сигнал
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   // Автор сигнала — водитель из проверенной сессии
   const driverId = auth.value.driver.id
@@ -36,8 +39,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Данные водителя — из карточки, привязанной к сессии
-    const driver = await prisma.driver.findUnique({
-      where: { id: driverId },
+    const driver = await prisma.driver.findFirst({
+      where: scopedWhere(org.organizationId, { id: driverId }),
       select: {
         name: true,
         phone: true,
@@ -56,6 +59,7 @@ export async function POST(request: NextRequest) {
     // Создаём SOS алерт
     const sos = await prisma.sosAlert.create({
       data: {
+        organizationId: org.organizationId,
         driverId,
         type,
         latitude,
@@ -71,6 +75,7 @@ export async function POST(request: NextRequest) {
 
     await prisma.notification.create({
       data: {
+        organizationId: org.organizationId,
         userId: "all_logists",
         userRole: "logist",
         type: "sos_alert",
@@ -88,6 +93,7 @@ export async function POST(request: NextRequest) {
     // Добавляем сообщение в чат как системное уведомление
     await prisma.chatMessage.create({
       data: {
+        organizationId: org.organizationId,
         senderId: driverId,
         senderRole: "driver",
         senderName: driver.name,
@@ -105,8 +111,8 @@ export async function POST(request: NextRequest) {
       let vehicleId: string | null = null
 
       if (orderId) {
-        const order = await prisma.order.findUnique({
-          where: { id: orderId },
+        const order = await prisma.order.findFirst({
+          where: scopedWhere(org.organizationId, { id: orderId }),
           select: {
             routeId: true,
             assignedVehicleId: true,
@@ -120,6 +126,7 @@ export async function POST(request: NextRequest) {
 
       if (routeId) {
         await logRouteEvent(prisma, {
+          organizationId: org.organizationId,
           routeId,
           driverId,
           vehicleId,

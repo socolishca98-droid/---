@@ -7,6 +7,7 @@
 // (status, name, итоги, времена) всегда соответствовали заказам рейса.
 
 import { prisma } from "@/lib/prisma"
+import { scopedWhere } from "@/lib/org"
 
 import {
   buildRouteName,
@@ -52,19 +53,32 @@ export type RouteWithOrders = {
 
 type RouteOrderRow = Awaited<ReturnType<typeof prisma.order.findMany>>[number]
 
-/** Заказы рейса в порядке точек маршрута. */
-export function listRouteOrders(client: RoutesDb, routeId: string) {
-  return client.order.findMany({ where: { routeId }, orderBy: routeOrdersOrderBy })
+/** Заказы рейса в порядке точек маршрута (только своей организации). */
+export function listRouteOrders(
+  client: RoutesDb,
+  routeId: string,
+  organizationId: string | null,
+) {
+  return client.order.findMany({
+    where: scopedWhere(organizationId, { routeId }),
+    orderBy: routeOrdersOrderBy,
+  })
 }
 
 /** Рейс с заказами, водителем и машиной одним запросом. */
 export async function getRouteWithOrders(
   client: RoutesDb,
   routeId: string,
+  organizationId: string | null,
 ): Promise<RouteWithOrders | null> {
-  const route = await client.route.findUnique({
-    where: { id: routeId },
-    include: { orders: { orderBy: routeOrdersOrderBy } },
+  const route = await client.route.findFirst({
+    where: scopedWhere(organizationId, { id: routeId }),
+    include: {
+      orders: {
+        where: scopedWhere(organizationId, {}),
+        orderBy: routeOrdersOrderBy,
+      },
+    },
   })
   return route as unknown as RouteWithOrders | null
 }
@@ -77,10 +91,11 @@ export async function getRouteWithOrders(
 export async function recalcRoute(
   client: RoutesDb,
   routeId: string,
+  organizationId: string | null,
 ): Promise<RouteSummary & { status: RouteStatus; name: string }> {
-  const orders = await listRouteOrders(client, routeId)
-  const route = await client.route.findUnique({
-    where: { id: routeId },
+  const orders = await listRouteOrders(client, routeId, organizationId)
+  const route = await client.route.findFirst({
+    where: scopedWhere(organizationId, { id: routeId }),
     select: { id: true, startedAt: true, completedAt: true, status: true },
   })
   if (!route) throw new Error("Рейс не найден")
@@ -97,8 +112,8 @@ export async function recalcRoute(
         )
   const name = buildRouteName(orders)
 
-  await client.route.update({
-    where: { id: routeId },
+  await client.route.updateMany({
+    where: scopedWhere(organizationId, { id: routeId }),
     data: {
       status,
       name: name || null,
@@ -128,12 +143,13 @@ export async function changeRouteStatus(
   client: RoutesDb,
   routeId: string,
   change: RouteStatusChange,
+  organizationId: string | null,
 ): Promise<{ ok: true; status: RouteStatus } | { ok: false; error: string }> {
   const next = normalizeRouteStatus(change.status)
   if (!next) return { ok: false, error: "Неизвестный статус рейса" }
 
-  const route = await client.route.findUnique({
-    where: { id: routeId },
+  const route = await client.route.findFirst({
+    where: scopedWhere(organizationId, { id: routeId }),
     select: { id: true, status: true, driverId: true, vehicleId: true, startedAt: true, completedAt: true },
   })
   if (!route) return { ok: false, error: "Рейс не найден" }
@@ -164,13 +180,14 @@ export async function changeRouteStatus(
   if (change.startedAt !== undefined && next !== "cancelled") data.startedAt = change.startedAt
   if (change.completedAt !== undefined && next !== "cancelled") data.completedAt = change.completedAt
 
-  await client.route.update({ where: { id: routeId }, data })
+  await client.route.updateMany({ where: scopedWhere(organizationId, { id: routeId }), data })
 
   // событие в таймлайн — только если у рейса есть водитель
   // (RouteEvent.driverId обязательное поле)
   if (route.driverId) {
     await client.routeEvent.create({
       data: {
+        organizationId,
         routeId,
         driverId: route.driverId,
         vehicleId: route.vehicleId,
@@ -198,6 +215,7 @@ export async function changeRouteStatus(
 export async function ensureRouteRow(
   client: RoutesDb,
   input: {
+    organizationId: string | null
     routeId?: string | null
     driverId?: string | null
     vehicleId?: string | null
@@ -206,17 +224,20 @@ export async function ensureRouteRow(
     notes?: string | null
   },
 ): Promise<{ id: string; created: boolean }> {
+  const organizationId = input.organizationId
   // быстрый путь: рейс уже есть — ничего не делаем (важно для точек GPS,
   // которые пишутся часто)
   if (input.routeId) {
-    const existing = await client.route.findUnique({
-      where: { id: input.routeId },
+    const existing = await client.route.findFirst({
+      where: scopedWhere(organizationId, { id: input.routeId }),
       select: { id: true },
     })
     if (existing) return { id: existing.id, created: false }
   }
 
-  const orders = input.routeId ? await listRouteOrders(client, input.routeId) : []
+  const orders = input.routeId
+    ? await listRouteOrders(client, input.routeId, organizationId)
+    : []
 
   const driverId = input.driverId ?? orders[0]?.assignedDriverId ?? null
   const vehicleId = input.vehicleId ?? orders[0]?.assignedVehicleId ?? null
@@ -226,6 +247,7 @@ export async function ensureRouteRow(
 
   const created = await client.route.create({
     data: {
+      organizationId,
       ...(input.routeId ? { id: input.routeId } : {}),
       name: input.name || buildRouteName(orders) || null,
       status,
@@ -243,6 +265,8 @@ export async function ensureRouteRow(
 }
 
 export type RouteEventInput = {
+  /** Организация вызывающего: событие и рейс создаются только в её границах */
+  organizationId: string | null
   routeId: string
   driverId: string
   vehicleId?: string | null
@@ -268,6 +292,7 @@ export type RouteEventInput = {
  */
 export async function logRouteEvent(client: RoutesDb, input: RouteEventInput): Promise<void> {
   await ensureRouteRow(client, {
+    organizationId: input.organizationId,
     routeId: input.routeId,
     driverId: input.driverId,
     vehicleId: input.vehicleId ?? null,
@@ -275,6 +300,7 @@ export async function logRouteEvent(client: RoutesDb, input: RouteEventInput): P
 
   await client.routeEvent.create({
     data: {
+      organizationId: input.organizationId,
       routeId: input.routeId,
       driverId: input.driverId,
       vehicleId: input.vehicleId ?? null,

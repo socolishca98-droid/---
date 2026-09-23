@@ -2,7 +2,7 @@
 // Расчёт ETA: POST /api/routes/calculate-eta
 
 import { requireStaffAuth } from "@/lib/api-auth"
-import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import {requireStaffOrganization} from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { calculateETA, formatDuration, formatDistance } from "@/lib/eta/service"
 import type { ETARequest } from "@/lib/eta/types"

@@ -4,12 +4,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { forbidden, requireAnySession } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 // GET — текущее активное ТО
 // Доступ: водитель (только своя машина) и логист (любая машина) —
 // эндпоинт используют и мобильное приложение, и экран автопарка.
 export async function GET(request: NextRequest) {
   const auth = await requireAnySession(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -27,8 +30,8 @@ export async function GET(request: NextRequest) {
       // Логист может запросить ТО по водителю
       const driverId = searchParams.get("driverId")
       if (driverId) {
-        const driver = await prisma.driver.findUnique({
-          where: { id: driverId },
+        const driver = await prisma.driver.findFirst({
+          where: scopedWhere(org.organizationId, { id: driverId }),
           select: { vehicleId: true },
         })
         targetVehicleId = driver?.vehicleId || null
@@ -43,10 +46,10 @@ export async function GET(request: NextRequest) {
     }
 
     const maintenance = await prisma.maintenanceLog.findFirst({
-      where: {
+      where: scopedWhere(org.organizationId, {
         vehicleId: targetVehicleId,
         status: { in: ["in_progress", "planned"] },
-      },
+      }),
       orderBy: { startedAt: "desc" },
     })
 
@@ -67,6 +70,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAnySession(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const body = await request.json()
@@ -115,8 +120,8 @@ export async function POST(request: NextRequest) {
     } else {
       recordDriverId = (body as { driverId?: string }).driverId ?? null
       if (!finalVehicleId && recordDriverId) {
-        const driver = await prisma.driver.findUnique({
-          where: { id: recordDriverId },
+        const driver = await prisma.driver.findFirst({
+          where: scopedWhere(org.organizationId, { id: recordDriverId }),
           select: { vehicleId: true },
         })
         finalVehicleId = driver?.vehicleId || undefined
@@ -132,8 +137,21 @@ export async function POST(request: NextRequest) {
 
     const startDate = plannedDate ? new Date(plannedDate) : new Date()
 
+    // ТО создаётся только на машину своей организации
+    const ownVehicle = await prisma.vehicle.findFirst({
+      where: scopedWhere(org.organizationId, { id: finalVehicleId }),
+      select: { id: true },
+    })
+    if (!ownVehicle) {
+      return NextResponse.json(
+        { success: false, error: "Автомобиль не найден" },
+        { status: 404 }
+      )
+    }
+
     const maintenance = await prisma.maintenanceLog.create({
       data: {
+        organizationId: org.organizationId,
         vehicleId: finalVehicleId,
         driverId: recordDriverId, // может быть null
         type,
@@ -150,15 +168,15 @@ export async function POST(request: NextRequest) {
     // Если статус "in_progress" — обновляем статус машины и водителей
     if (status === "in_progress") {
       // Обновляем машину
-      await prisma.vehicle.update({
-        where: { id: finalVehicleId },
+      await prisma.vehicle.updateMany({
+        where: scopedWhere(org.organizationId, { id: finalVehicleId }),
         data: { status: "maintenance" },
       })
 
       // Обновляем всех водителей, привязанных к этой машине
       // (Убрали лишний запрос findUnique с include, который вызывал ошибку)
       await prisma.driver.updateMany({
-        where: { vehicleId: finalVehicleId },
+        where: scopedWhere(org.organizationId, { vehicleId: finalVehicleId }),
         data: { status: "maintenance" },
       })
     }
@@ -180,6 +198,8 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const auth = await requireAnySession(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const body = await request.json()
@@ -196,8 +216,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const existing = await prisma.maintenanceLog.findUnique({
-      where: { id: maintenanceId },
+    const existing = await prisma.maintenanceLog.findFirst({
+      where: scopedWhere(org.organizationId, { id: maintenanceId }),
       select: { id: true, vehicleId: true },
     })
 
@@ -212,18 +232,22 @@ export async function PATCH(request: NextRequest) {
       return forbidden("Завершать можно только ТО своей машины")
     }
 
-    const maintenance = await prisma.maintenanceLog.update({
-      where: { id: maintenanceId },
+    await prisma.maintenanceLog.updateMany({
+      where: scopedWhere(org.organizationId, { id: maintenanceId }),
       data: {
         status: "completed",
         completedAt: new Date(),
-        cost: cost ?? undefined,
+        ...(cost == null ? {} : { cost }),
       },
     })
 
+    const maintenance = await prisma.maintenanceLog.findFirstOrThrow({
+      where: scopedWhere(org.organizationId, { id: maintenanceId }),
+    })
+
     // Машина снова свободна
-    await prisma.vehicle.update({
-      where: { id: maintenance.vehicleId },
+    await prisma.vehicle.updateMany({
+      where: scopedWhere(org.organizationId, { id: maintenance.vehicleId }),
       data: {
         status: "available",
         lastMaintenanceDate: new Date(),
@@ -232,7 +256,7 @@ export async function PATCH(request: NextRequest) {
 
     // Водители снова свободны
     await prisma.driver.updateMany({
-      where: { vehicleId: maintenance.vehicleId },
+      where: scopedWhere(org.organizationId, { vehicleId: maintenance.vehicleId }),
       data: { status: "available" },
     })
 

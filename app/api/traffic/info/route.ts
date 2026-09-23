@@ -1,7 +1,7 @@
 // app/api/traffic/info/route.ts
 
 import { requireStaffAuth } from "@/lib/api-auth"
-import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import {requireStaffOrganization} from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { MOSCOW_ROAD_GEOMETRIES } from "@/lib/traffic-roads-data"
 

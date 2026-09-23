@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 import {
   ROUTE_STATUSES,
@@ -63,6 +64,8 @@ const MAX_PAGE_SIZE = 200
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -97,13 +100,16 @@ export async function GET(request: NextRequest) {
     }
 
     const [total, rows] = await Promise.all([
-      prisma.route.count({ where }),
+      prisma.route.count({ where: scopedWhere(org.organizationId, where) }),
       prisma.route.findMany({
-        where,
+        where: scopedWhere(org.organizationId, where),
         include: {
           driver: { select: { id: true, name: true, phone: true, status: true, vehiclePlate: true } },
           vehicle: { select: { id: true, plate: true, type: true, capacity: true, status: true } },
-          orders: { orderBy: routeOrdersOrderBy },
+          orders: {
+            where: scopedWhere(org.organizationId, {}),
+            orderBy: routeOrdersOrderBy,
+          },
         },
         orderBy: [{ createdAt: "desc" }],
         take: limit,
@@ -145,6 +151,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const body = (await request.json().catch(() => null)) as CreateRouteBody | null
@@ -163,8 +171,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "orders[] is required" }, { status: 400 })
     }
 
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id: vehicleId },
+    const vehicle = await prisma.vehicle.findFirst({
+      where: scopedWhere(org.organizationId, { id: vehicleId }),
       select: { id: true, plate: true, type: true, capacity: true, status: true },
     })
     if (!vehicle) {
@@ -172,8 +180,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (driverId) {
-      const driver = await prisma.driver.findUnique({
-        where: { id: driverId },
+      const driver = await prisma.driver.findFirst({
+        where: scopedWhere(org.organizationId, { id: driverId }),
         select: { id: true, name: true },
       })
       if (!driver) {
@@ -181,7 +189,7 @@ export async function POST(request: NextRequest) {
       }
 
       // машина может быть закреплена только за одним водителем
-      const occupant = await findVehicleOccupant(prisma, vehicleId, driverId)
+      const occupant = await findVehicleOccupant(prisma, vehicleId, driverId, org.organizationId)
       if (occupant) {
         return NextResponse.json(
           {
@@ -208,6 +216,7 @@ export async function POST(request: NextRequest) {
     const created = await prisma.$transaction(async (tx) => {
       const route = await tx.route.create({
         data: {
+          organizationId: org.organizationId,
           name: name?.trim() || null,
           status: "planned",
           driverId: driverId || null,
@@ -220,6 +229,7 @@ export async function POST(request: NextRequest) {
         orders.map((o, idx) =>
           tx.order.create({
             data: {
+              organizationId: org.organizationId,
               source: o.atiCacheId ? "ATI" : "manual",
               sourceId: o.atiCacheId || null,
               routeFrom: o.routeFrom,
@@ -251,11 +261,17 @@ export async function POST(request: NextRequest) {
 
       // связь «водитель ↔ машина» пишется ровно один раз и только здесь
       if (driverId) {
-        await linkDriverToVehicle(tx, driverId, vehicle.id)
-        await tx.driver.updateMany({ where: { id: driverId }, data: { status: "busy" } })
+        await linkDriverToVehicle(tx, driverId, vehicle.id, org.organizationId)
+        await tx.driver.updateMany({
+          where: scopedWhere(org.organizationId, { id: driverId }),
+          data: { status: "busy" },
+        })
       }
 
-      await tx.vehicle.updateMany({ where: { id: vehicle.id }, data: { status: "in_use" } })
+      await tx.vehicle.updateMany({
+        where: scopedWhere(org.organizationId, { id: vehicle.id }),
+        data: { status: "in_use" },
+      })
 
       // заказы, пришедшие из кэша ATI, помечаем импортированными
       const atiCacheIds = orders.map((o) => o.atiCacheId).filter(Boolean) as string[]
@@ -268,6 +284,7 @@ export async function POST(request: NextRequest) {
 
       const summary = summarizeRoute(createdOrders)
       const finalRoute = await tx.route.update({
+        // org-audit: ok — рейс создан этой же транзакцией в организации вызывающего
         where: { id: route.id },
         data: {
           name: name?.trim() || buildRouteName(createdOrders) || null,

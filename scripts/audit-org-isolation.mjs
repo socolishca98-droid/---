@@ -2,8 +2,9 @@
 //
 // Статический аудит изоляции данных по организациям.
 //
-//   npm run audit:orgs            — отчёт по всем API-роутам
-//   npm run audit:orgs -- --json  — то же в JSON (для скриптов)
+//   npm run audit:orgs                — отчёт по всем API-роутам
+//   npm run audit:orgs -- --json      — то же в JSON (для скриптов)
+//   npm run audit:orgs -- --markdown  — пофайловая таблица (для отчёта пользователю)
 //
 // Что проверяется в каждом app/**/route.ts:
 //   1. есть ли guard авторизации (requireStaff / requireDriver / requireAnySession
@@ -28,6 +29,7 @@ import { join, relative } from "node:path"
 const ROOT = process.cwd()
 const ARGS = process.argv.slice(2)
 const AS_JSON = ARGS.includes("--json")
+const AS_MARKDOWN = ARGS.includes("--markdown")
 
 /** Бизнес-таблицы: у каждой записи есть organizationId. */
 const ORG_MODELS = new Set([
@@ -200,6 +202,8 @@ function analyze(file) {
     hasCronSecret,
     prismaCalls: calls.length,
     orgModels: calls.filter((c) => ORG_MODELS.has(c.model)).length,
+    // какие бизнес-модели трогает роут (для пофайлового отчёта)
+    models: [...new Set(calls.filter((c) => ORG_MODELS.has(c.model)).map((c) => c.model))],
     // В освобождённых роутах (вход, регистрация, смена своего пароля) запросы
     // намеренно глобальные: организация там ещё неизвестна или не применима.
     violations: exempt ? [] : violations,
@@ -217,6 +221,31 @@ const problems = reports.filter(
 
 if (AS_JSON) {
   console.log(JSON.stringify(reports, null, 2))
+  process.exit(problems.length > 0 ? 1 : 0)
+}
+
+if (AS_MARKDOWN) {
+  const rows = reports.map((r) => {
+    const verdict = r.exempt
+      ? "общий (организация не применяется)"
+      : r.hasCronSecret && !r.orgModels
+        ? "служебный (cron-секрет)"
+        : r.violations.length > 0
+          ? `**НАРУШЕНИЯ: ${r.violations.length}**`
+          : "изолирован"
+    return [
+      "`" + r.path + "`",
+      r.handlers.length ? r.handlers.join(", ") : "—",
+      r.guard ? "`" + r.guard.replace(/\($/, "") + "`" : "—",
+      r.exempt ? "—" : r.hasOrgContext ? "да" : "нет",
+      String(r.orgModels),
+      r.models.length ? r.models.map((m) => "`" + m + "`").join(", ") : "—",
+      verdict,
+    ]
+  })
+  console.log("| Файл | Методы | Гард доступа | Организация из сессии | Бизнес-запросов | Модели | Статус |")
+  console.log("|---|---|---|---|---|---|---|")
+  for (const row of rows) console.log("| " + row.join(" | ") + " |")
   process.exit(problems.length > 0 ? 1 : 0)
 }
 

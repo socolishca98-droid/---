@@ -1,6 +1,6 @@
 // app/api/ati/geo/route.ts
 import { requireStaffAuth } from "@/lib/api-auth"
-import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import {requireStaffOrganization} from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { getCitiesList } from "@/lib/ati-client"
 

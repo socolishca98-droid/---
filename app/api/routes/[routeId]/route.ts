@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 import {
   ROUTE_STATUSES,
@@ -76,6 +77,8 @@ function buildCapacity(vehicleCapacity: number, usedWeight: number) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { routeId } = await params
@@ -86,32 +89,40 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    let route = await prisma.route.findUnique({
-      where: { id: routeId },
+    let route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
       include: {
         driver: true,
         vehicle: true,
-        orders: { orderBy: routeOrdersOrderBy },
+        orders: {
+          where: scopedWhere(org.organizationId, {}),
+          orderBy: routeOrdersOrderBy,
+        },
       },
     })
 
     // Исторический routeId: заказы есть, строки Route нет — добираем её,
     // чтобы старый рейс продолжал открываться после перехода на модель Route.
     if (!route) {
-      const legacyOrders = await prisma.order.count({ where: { routeId } })
+      const legacyOrders = await prisma.order.count({
+        where: scopedWhere(org.organizationId, { routeId }),
+      })
       if (legacyOrders === 0) {
         return NextResponse.json(
           { success: false, error: "Маршрут не найден" },
           { status: 404 },
         )
       }
-      await ensureRouteRow(prisma, { routeId })
-      route = await prisma.route.findUnique({
-        where: { id: routeId },
+      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
+      route = await prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
         include: {
           driver: true,
           vehicle: true,
-          orders: { orderBy: routeOrdersOrderBy },
+          orders: {
+            where: scopedWhere(org.organizationId, {}),
+            orderBy: routeOrdersOrderBy,
+          },
         },
       })
     }
@@ -148,6 +159,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { routeId } = await params
@@ -179,8 +192,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const route = await prisma.route.findUnique({
-      where: { id: routeId },
+    const route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
       select: { id: true, status: true, driverId: true, vehicleId: true },
     })
     if (!route) {
@@ -223,7 +236,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       const existing = await prisma.order.findMany({
-        where: { routeId, id: { in: ids } },
+        where: scopedWhere(org.organizationId, { routeId, id: { in: ids } }),
         select: { id: true },
       })
       if (existing.length !== ids.length) {
@@ -236,7 +249,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       await prisma.$transaction(
         normalized.map(({ orderId, sequence }) =>
           prisma.order.updateMany({
-            where: { id: orderId, routeId },
+            where: scopedWhere(org.organizationId, { id: orderId, routeId }),
             data: { routeSequence: sequence },
           }),
         ),
@@ -249,8 +262,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       const nextVehicleId = vehicleId === undefined ? route.vehicleId : vehicleId
 
       if (nextDriverId) {
-        const driver = await prisma.driver.findUnique({
-          where: { id: nextDriverId },
+        const driver = await prisma.driver.findFirst({
+          where: scopedWhere(org.organizationId, { id: nextDriverId }),
           select: { id: true, name: true },
         })
         if (!driver) {
@@ -262,8 +275,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       if (nextVehicleId) {
-        const vehicle = await prisma.vehicle.findUnique({
-          where: { id: nextVehicleId },
+        const vehicle = await prisma.vehicle.findFirst({
+          where: scopedWhere(org.organizationId, { id: nextVehicleId }),
           select: { id: true, plate: true },
         })
         if (!vehicle) {
@@ -273,7 +286,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           )
         }
 
-        const occupant = await findVehicleOccupant(prisma, nextVehicleId, nextDriverId)
+        const occupant = await findVehicleOccupant(
+          prisma,
+          nextVehicleId,
+          nextDriverId,
+          org.organizationId,
+        )
         if (occupant) {
           return NextResponse.json(
             {
@@ -286,14 +304,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       await prisma.$transaction(async (tx) => {
-        await tx.route.update({
-          where: { id: routeId },
+        await tx.route.updateMany({
+          where: scopedWhere(org.organizationId, { id: routeId }),
           data: { driverId: nextDriverId, vehicleId: nextVehicleId },
         })
 
         // заказы рейса едут с тем же водителем и машиной
         await tx.order.updateMany({
-          where: { routeId },
+          where: scopedWhere(org.organizationId, { routeId }),
           data: {
             assignedDriverId: nextDriverId,
             assignedVehicleId: nextVehicleId,
@@ -302,7 +320,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
         // единственная запись связи «водитель ↔ машина»
         if (nextDriverId) {
-          await linkDriverToVehicle(tx, nextDriverId, nextVehicleId)
+          await linkDriverToVehicle(tx, nextDriverId, nextVehicleId, org.organizationId)
         }
       })
     }
@@ -325,14 +343,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         actorName: auth.value.kind === "staff" ? auth.value.user.name : undefined,
         startedAt: parseDate(body.startedAt),
         completedAt: parseDate(body.completedAt),
-      })
+      }, org.organizationId)
 
       if (!result.ok) {
         return NextResponse.json({ success: false, error: result.error }, { status: 409 })
       }
     } else if (body.startedAt !== undefined || body.completedAt !== undefined) {
-      await prisma.route.update({
-        where: { id: routeId },
+      await prisma.route.updateMany({
+        where: scopedWhere(org.organizationId, { id: routeId }),
         data: {
           ...(body.startedAt !== undefined ? { startedAt: parseDate(body.startedAt) } : {}),
           ...(body.completedAt !== undefined ? { completedAt: parseDate(body.completedAt) } : {}),
@@ -342,8 +360,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // ---------- 4. имя и заметки ----------
     if (name !== undefined || notes !== undefined) {
-      await prisma.route.update({
-        where: { id: routeId },
+      await prisma.route.updateMany({
+        where: scopedWhere(org.organizationId, { id: routeId }),
         data: {
           ...(name !== undefined ? { name: name?.trim() ? name.trim() : null } : {}),
           ...(notes !== undefined ? { notes: notes?.trim() ? notes.trim() : null } : {}),
@@ -352,9 +370,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // ---------- 5. пересчёт итогов ----------
-    const summary = await recalcRoute(prisma, routeId)
+    const summary = await recalcRoute(prisma, routeId, org.organizationId)
 
-    const updated = await getRouteWithOrders(prisma, routeId)
+    const updated = await getRouteWithOrders(prisma, routeId, org.organizationId)
     if (!updated) {
       return NextResponse.json({ success: false, error: "Маршрут не найден" }, { status: 404 })
     }
@@ -388,6 +406,8 @@ function parseDate(value: unknown): Date | null | undefined {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { routeId } = await params
@@ -398,63 +418,65 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const route = await prisma.route.findUnique({
-      where: { id: routeId },
+    const route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
       select: { id: true, status: true, driverId: true, vehicleId: true },
     })
 
     if (!route) {
-      const ordersCount = await prisma.order.count({ where: { routeId } })
+      const ordersCount = await prisma.order.count({
+        where: scopedWhere(org.organizationId, { routeId }),
+      })
       if (ordersCount === 0) {
         return NextResponse.json(
           { success: false, error: "Маршрут не найден" },
           { status: 404 },
         )
       }
-      await ensureRouteRow(prisma, { routeId })
+      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
     }
 
     const cancelled = await changeRouteStatus(prisma, routeId, {
       status: "cancelled",
       reason: "Отмена рейса диспетчером",
       actorName: auth.value.kind === "staff" ? auth.value.user.name : undefined,
-    })
+    }, org.organizationId)
 
     if (!cancelled.ok) {
       return NextResponse.json({ success: false, error: cancelled.error }, { status: 409 })
     }
 
     const orders = await prisma.order.findMany({
-      where: { routeId },
+      where: scopedWhere(org.organizationId, { routeId }),
       select: { id: true, status: true },
     })
 
     await prisma.$transaction(async (tx) => {
       // закрываем только незавершённые точки: доставленные остаются доставленными
       await tx.order.updateMany({
-        where: {
+        where: scopedWhere(org.organizationId, {
           routeId,
           status: { notIn: ["delivered", "cancelled", "rejected"] },
-        },
+        }),
         data: { status: "cancelled", updatedAt: new Date() },
       })
 
-      const current = await tx.route.findUnique({
-        where: { id: routeId },
+      const current = await tx.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
         select: { driverId: true, vehicleId: true },
       })
 
       if (current?.driverId) {
         const otherActive = await tx.order.count({
-          where: {
+          where: scopedWhere(org.organizationId, {
             assignedDriverId: current.driverId,
             routeId: { not: routeId },
             status: { in: [...OCCUPYING_ORDER_STATUSES] },
-          },
+          }),
         })
         if (otherActive === 0) {
-          await tx.driver.update({
-            where: { id: current.driverId },
+          await tx.driver.updateMany({
+            where: scopedWhere(org.organizationId, { id: current.driverId }),
             data: { status: "available" },
           })
         }
@@ -462,22 +484,22 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
       if (current?.vehicleId) {
         const otherActive = await tx.order.count({
-          where: {
+          where: scopedWhere(org.organizationId, {
             assignedVehicleId: current.vehicleId,
             routeId: { not: routeId },
             status: { in: [...OCCUPYING_ORDER_STATUSES] },
-          },
+          }),
         })
         if (otherActive === 0) {
-          await tx.vehicle.update({
-            where: { id: current.vehicleId },
+          await tx.vehicle.updateMany({
+            where: scopedWhere(org.organizationId, { id: current.vehicleId }),
             data: { status: "available" },
           })
         }
       }
     })
 
-    await recalcRoute(prisma, routeId)
+    await recalcRoute(prisma, routeId, org.organizationId)
 
     return NextResponse.json({
       success: true,

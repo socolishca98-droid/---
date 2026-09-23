@@ -129,46 +129,6 @@ export function requireOrganization(session: AnySession): OrgGuard {
   return requireStaffOrganization(session.user)
 }
 
-/** @deprecated используйте requireStaffOrganization / requireDriverOrganization */
-function requireOrganizationLegacy(session: AnySession): OrgGuard {
-  const organizationId = organizationIdOf(session)
-
-  if (session.kind === "staff") {
-    if (!organizationId) {
-      return {
-        ok: false,
-        response: forbidden(
-          "Учётная запись не привязана к организации. Запустите перенос данных: npm run db:migrate-orgs",
-        ),
-      }
-    }
-    return {
-      ok: true,
-      organizationId,
-      kind: "staff",
-      userId: session.user.id,
-      role: session.user.role,
-      isAdmin: session.user.role === "admin",
-      driverId: null,
-    }
-  }
-
-  if (!organizationId) {
-    return {
-      ok: false,
-      response: forbidden("Карточка водителя не привязана к организации"),
-    }
-  }
-  return {
-    ok: true,
-    organizationId,
-    kind: "driver",
-    userId: session.userId,
-    role: "driver",
-    isAdmin: false,
-    driverId: session.driver.id,
-  }
-}
 
 /**
  * Фильтр Prisma: условия запроса + обязательная привязка к организации.
@@ -177,17 +137,20 @@ function requireOrganizationLegacy(session: AnySession): OrgGuard {
  * попытку передать organizationId извне.
  */
 export function scopedWhere<T extends Record<string, unknown>>(
-  organizationId: string,
+  organizationId: string | null | undefined,
   where?: T,
-): T & { organizationId: string } {
-  return { ...(where || ({} as T)), organizationId }
+): T {
+  const base = { ...(where || ({} as T)) }
+  // null/undefined — данные без организации («нулевая»): фильтр не добавляется,
+  // иначе записи с organizationId = null стали бы невидимы всем
+  return organizationId == null ? base : ({ ...base, organizationId } as T)
 }
 
 /** Тот же фильтр для строки организации из guard'а. */
 export function scopedWhereFor<T extends Record<string, unknown>>(
   org: OrgContext,
   where?: T,
-): T & { organizationId: string } {
+): T {
   return scopedWhere(org.organizationId, where)
 }
 

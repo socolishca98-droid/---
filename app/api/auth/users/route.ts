@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
+      // org-audit: ok — where построен через scopedWhere(organizationId) выше
       prisma.user.count({ where }),
       prisma.user.count({ where: scopedWhere(org.organizationId, { status: "pending" }) }),
     ])

@@ -4,11 +4,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   // Водитель отвечает только за себя: driverId из сессии, а не из тела запроса
   const driverId = auth.value.driver.id
@@ -28,8 +31,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: scopedWhere(org.organizationId, { id: orderId }),
     })
 
     if (!order) {
@@ -54,8 +57,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (accept) {
-      await prisma.order.update({
-        where: { id: orderId },
+      await prisma.order.updateMany({
+        where: scopedWhere(org.organizationId, { id: orderId }),
         data: {
           status: "confirmed",
           proposedToDriver: false,
@@ -67,6 +70,7 @@ export async function POST(request: NextRequest) {
       try {
         if (order.routeId) {
           await logRouteEvent(prisma, {
+            organizationId: org.organizationId,
             routeId: order.routeId,
             driverId,
             vehicleId: order.assignedVehicleId || null,
@@ -85,8 +89,8 @@ export async function POST(request: NextRequest) {
       })
     } else {
       await prisma.$transaction(async (tx) => {
-        await tx.order.update({
-          where: { id: orderId },
+        await tx.order.updateMany({
+          where: scopedWhere(org.organizationId, { id: orderId }),
           data: {
             status: "rejected",
             proposedToDriver: false,
@@ -97,6 +101,7 @@ export async function POST(request: NextRequest) {
 
         await tx.notification.create({
           data: {
+            organizationId: org.organizationId,
             userId: "logist",
             userRole: "logist",
             type: "load_rejected",
@@ -113,6 +118,7 @@ export async function POST(request: NextRequest) {
       try {
         if (order.routeId) {
           await logRouteEvent(prisma, {
+            organizationId: org.organizationId,
             routeId: order.routeId,
             driverId,
             vehicleId: order.assignedVehicleId || null,

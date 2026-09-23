@@ -5,22 +5,27 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
   try {
     const [drivers, vehicles, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({
+        where: scopedWhere(org.organizationId, {}),
         orderBy: { name: "asc" },
       }),
       prisma.vehicle.findMany({
+        where: scopedWhere(org.organizationId, {}),
         orderBy: [{ status: "asc" }, { plate: "asc" }],
       }),
       prisma.driverShift.findMany({
-        where: { endedAt: null },
+        where: scopedWhere(org.organizationId, { endedAt: null }),
         select: {
           id: true,
           driverId: true,
@@ -29,9 +34,9 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.order.findMany({
-        where: {
+        where: scopedWhere(org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
-        },
+        }),
         select: {
           id: true,
           status: true,
@@ -191,12 +196,12 @@ export async function GET(request: NextRequest) {
 
     const [activeOrdersCount, completedToday, totalOrders] = await Promise.all([
       prisma.order.count({
-        where: { status: { in: ACTIVE_ORDER_STATUSES as any } },
+        where: scopedWhere(org.organizationId, { status: { in: ACTIVE_ORDER_STATUSES as any } }),
       }),
       prisma.order.count({
-        where: { status: "delivered", updatedAt: { gte: todayStart } },
+        where: scopedWhere(org.organizationId, { status: "delivered", updatedAt: { gte: todayStart } }),
       }),
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(org.organizationId, {}) }),
     ])
 
     return NextResponse.json({

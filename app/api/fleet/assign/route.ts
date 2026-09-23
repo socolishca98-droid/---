@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import {
   findVehicleOccupant,
   linkDriverToVehicle,
@@ -22,6 +23,8 @@ import {
 export async function POST(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const body = await request.json().catch(() => ({}))
@@ -38,9 +41,12 @@ export async function POST(request: NextRequest) {
     }
 
     const [driver, vehicle] = await Promise.all([
-      prisma.driver.findUnique({ where: { id: driverId }, select: { id: true, name: true } }),
-      prisma.vehicle.findUnique({
-        where: { id: vehicleId },
+      prisma.driver.findFirst({
+        where: scopedWhere(org.organizationId, { id: driverId }),
+        select: { id: true, name: true },
+      }),
+      prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: vehicleId }),
         select: { id: true, plate: true, type: true },
       }),
     ])
@@ -59,7 +65,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const occupant = await findVehicleOccupant(prisma, vehicleId, driverId)
+    const occupant = await findVehicleOccupant(prisma, vehicleId, driverId, org.organizationId)
     if (occupant) {
       return NextResponse.json(
         {
@@ -71,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     const assignment = await prisma.$transaction((tx) =>
-      linkDriverToVehicle(tx, driverId, vehicleId),
+      linkDriverToVehicle(tx, driverId, vehicleId, org.organizationId),
     )
 
     return NextResponse.json({ success: true, assignment })
@@ -85,6 +91,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -101,9 +109,9 @@ export async function DELETE(request: NextRequest) {
     const result = await prisma.$transaction(async (tx) => {
       if (driverId) {
         // снимаем машину с водителя: обнуляется и кэш номера/типа
-        return linkDriverToVehicle(tx, driverId, null)
+        return linkDriverToVehicle(tx, driverId, null, org.organizationId)
       }
-      const unlinked = await unlinkVehicle(tx, vehicleId as string)
+      const unlinked = await unlinkVehicle(tx, vehicleId as string, org.organizationId)
       return { vehicleId: vehicleId as string, unlinkedDrivers: unlinked }
     })
 

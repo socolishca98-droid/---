@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 
 const ACTIVE_ORDER_STATUSES = [
@@ -13,12 +14,12 @@ const ACTIVE_ORDER_STATUSES = [
   "unloading",
 ] as const
 
-async function getActiveOrderForDriver(driverId: string) {
+async function getActiveOrderForDriver(driverId: string, organizationId: string) {
   return prisma.order.findFirst({
-    where: {
+    where: scopedWhere(organizationId, {
       assignedDriverId: driverId,
       status: { in: ACTIVE_ORDER_STATUSES as any },
-    },
+    }),
     orderBy: { createdAt: "asc" },
   })
 }
@@ -26,6 +27,8 @@ async function getActiveOrderForDriver(driverId: string) {
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   // Водитель отправляет только свою позицию: driverId из тела запроса больше не принимается
   const driverId = auth.value.driver.id
@@ -46,8 +49,9 @@ export async function POST(request: NextRequest) {
 
     // Карточка водителя гарантированно существует — её проверила сессия
 
-    const updated = await prisma.driver.update({
-      where: { id: driverId },
+    // updateMany с фильтром организации: чужую карточку водителя не изменить
+    await prisma.driver.updateMany({
+      where: scopedWhere(org.organizationId, { id: driverId }),
       data: {
         latitude: lat,
         longitude: lng,
@@ -55,12 +59,17 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const updated = await prisma.driver.findFirstOrThrow({
+      where: scopedWhere(org.organizationId, { id: driverId }),
+    })
+
     // Пишем событие локации в таймлайн (если есть активный маршрут)
     // Опционально можно писать не каждую точку, а раз в N минут/метров
     try {
-      const activeOrder = await getActiveOrderForDriver(driverId)
+      const activeOrder = await getActiveOrderForDriver(driverId, org.organizationId)
       if (activeOrder?.routeId) {
         await logRouteEvent(prisma, {
+          organizationId: org.organizationId,
           routeId: activeOrder.routeId,
           driverId,
           vehicleId: updated.vehicleId || null,

@@ -159,6 +159,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 },
         )
       }
+      // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
       const updated = await prisma.user.update({
         where: { id },
         data: { status: "active", approvedById: actor.id, approvedAt: new Date() },
@@ -184,6 +185,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       const inviteCodeId = target.inviteCodeId ?? null
       // Заявка удаляется вместе с её сессиями; использование кода возвращаем,
       // чтобы код не «сгорал» из-за отклонённого человека.
+      // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
       await prisma.user.delete({ where: { id } })
       if (inviteCodeId) {
         await releaseInvite(inviteCodeId).catch((error) => {
@@ -222,6 +224,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       const reason = String(body.reason ?? "").trim() || "Доступ закрыт логистом"
       const revoked = await revokeAllSessions(target.id, "suspended")
+      // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
       const updated = await prisma.user.update({
         where: { id },
         data: {
@@ -253,6 +256,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 },
         )
       }
+      // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
       const updated = await prisma.user.update({
         where: { id },
         data: {
@@ -305,6 +309,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         )
       }
 
+      // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
       const updated = await prisma.user.update({
         where: { id },
         data: { role },
@@ -335,6 +340,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       const { hash, salt } = await hashPassword(password)
       const revoked = await revokeAllSessions(target.id, "password_reset")
+      // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
       await prisma.user.update({
         where: { id },
         data: {
@@ -360,6 +366,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // --- Снятие блокировки входа -------------------------------------------
+    // org-audit: ok — цель проверена на принадлежность организации выше (findFirst + scopedWhere)
     const updated = await prisma.user.update({
       where: { id },
       data: { failedLoginCount: 0, lockedUntil: null },

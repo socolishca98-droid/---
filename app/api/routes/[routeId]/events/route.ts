@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { canDriverAccessRoute, forbidden, requireAnySession } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 type RouteParams = {
   params: Promise<{ routeId: string }>
 }
@@ -17,6 +18,8 @@ export async function GET(
 ) {
   const auth = await requireAnySession(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { routeId } = await params
@@ -34,7 +37,7 @@ export async function GET(
     }
 
     const events = await prisma.routeEvent.findMany({
-      where: { routeId },
+      where: scopedWhere(org.organizationId, { routeId }),
       orderBy: { createdAt: "asc" },
       take: 200,
     })

@@ -11,6 +11,7 @@ import {
   forbidden,
   requireAnySession,
 } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
 import {
   changeRouteStatus,
@@ -27,6 +28,8 @@ type RouteParams = {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const auth = await requireAnySession(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { routeId } = await params
@@ -45,13 +48,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json().catch(() => ({}))
     const { force = false } = body as { force?: boolean }
 
-    let route = await prisma.route.findUnique({
-      where: { id: routeId },
-      include: { orders: { orderBy: routeOrdersOrderBy } },
+    let route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
+      include: {
+        orders: {
+          where: scopedWhere(org.organizationId, {}),
+          orderBy: routeOrdersOrderBy,
+        },
+      },
     })
 
     if (!route) {
-      const legacyOrders = await prisma.order.count({ where: { routeId } })
+      const legacyOrders = await prisma.order.count({
+        where: scopedWhere(org.organizationId, { routeId }),
+      })
       if (legacyOrders === 0) {
         return NextResponse.json(
           { success: false, error: "Маршрут не найден" },
@@ -59,10 +69,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         )
       }
       // исторический routeId без строки Route — добираем запись
-      await ensureRouteRow(prisma, { routeId })
-      route = await prisma.route.findUnique({
-        where: { id: routeId },
-        include: { orders: { orderBy: routeOrdersOrderBy } },
+      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
+      route = await prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
+        include: {
+          orders: {
+            where: scopedWhere(org.organizationId, {}),
+            orderBy: routeOrdersOrderBy,
+          },
+        },
       })
     }
 
@@ -102,7 +117,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await prisma.$transaction(async (tx) => {
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
-          where: { id: { in: pendingOrders.map((o) => o.id) } },
+          where: scopedWhere(org.organizationId, { id: { in: pendingOrders.map((o) => o.id) } }),
           data: { status: "delivered", updatedAt: now },
         })
       }
@@ -113,35 +128,36 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         completedAt: now,
         reason: force && pendingOrders.length > 0 ? "Завершён принудительно" : "Рейс завершён",
         actorName: auth.value.kind === "driver" ? auth.value.driver.name : auth.value.user.name,
-      })
+      }, org.organizationId)
       if (!transition.ok) throw new Error(transition.error)
 
       // пересчёт итогов рейса по заказам
-      const summary = await recalcRoute(tx, routeId)
+      const summary = await recalcRoute(tx, routeId, org.organizationId)
 
       if (assignedDriverId) {
         const otherActiveOrders = await tx.order.count({
-          where: {
+          where: scopedWhere(org.organizationId, {
             assignedDriverId,
             routeId: { not: routeId },
             status: { in: [...OCCUPYING_ORDER_STATUSES] },
-          },
+          }),
         })
 
         if (otherActiveOrders === 0) {
-          await tx.driver.update({
-            where: { id: assignedDriverId },
+          await tx.driver.updateMany({
+            where: scopedWhere(org.organizationId, { id: assignedDriverId }),
             data: { status: "available" },
           })
         }
 
         await tx.driverShift.updateMany({
-          where: { driverId: assignedDriverId, endedAt: null },
+          where: scopedWhere(org.organizationId, { driverId: assignedDriverId, endedAt: null }),
           data: { endedAt: now, status: "completed" },
         })
 
         await tx.notification.create({
           data: {
+            organizationId: org.organizationId,
             userId: assignedDriverId,
             userRole: "driver",
             type: "route_completed",
@@ -152,33 +168,35 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           },
         })
 
-        await tx.driver.update({
-          where: { id: assignedDriverId },
+        await tx.driver.updateMany({
+          where: scopedWhere(org.organizationId, { id: assignedDriverId }),
           data: { ordersCompleted: { increment: summary.deliveredOrders } },
         })
       }
 
       if (assignedVehicleId) {
         const otherActiveOrders = await tx.order.count({
-          where: {
+          where: scopedWhere(org.organizationId, {
             assignedVehicleId,
             routeId: { not: routeId },
             status: { in: [...OCCUPYING_ORDER_STATUSES] },
-          },
+          }),
         })
 
         if (otherActiveOrders === 0) {
-          await tx.vehicle.update({
-            where: { id: assignedVehicleId },
+          await tx.vehicle.updateMany({
+            where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
             data: { status: "available" },
           })
         }
       }
     })
 
-    const updated = await prisma.route.findUnique({ where: { id: routeId } })
+    const updated = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
+    })
     const finalOrders = (await prisma.order.findMany({
-      where: { routeId },
+      where: scopedWhere(org.organizationId, { routeId }),
       orderBy: routeOrdersOrderBy,
     })) as (RouteOrderLike & { id: string })[]
 

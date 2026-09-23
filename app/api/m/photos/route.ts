@@ -4,11 +4,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { forbidden, requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 // Получить фото водителя (только свои)
 export async function GET(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const driverId = auth.value.driver.id
 
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type
 
     const photos = await prisma.photo.findMany({
-      where,
+      where: scopedWhere(org.organizationId, where),
       orderBy: { createdAt: "desc" },
       take: 50,
     })
@@ -47,6 +50,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const driverId = auth.value.driver.id
 
@@ -83,8 +88,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Фото можно привязать только к заказу своей организации
+    if (orderId) {
+      const ownOrder = await prisma.order.findFirst({
+        where: scopedWhere(org.organizationId, { id: orderId }),
+        select: { id: true },
+      })
+      if (!ownOrder) {
+        return NextResponse.json(
+          { success: false, error: "Заказ не найден" },
+          { status: 404 },
+        )
+      }
+    }
+
     const photo = await prisma.photo.create({
       data: {
+        organizationId: org.organizationId,
         driverId,
         orderId: orderId || null,
         type,
@@ -99,8 +119,8 @@ export async function POST(request: NextRequest) {
       let vehicleId: string | null = null
 
       if (orderId) {
-        const order = await prisma.order.findUnique({
-          where: { id: orderId },
+        const order = await prisma.order.findFirst({
+          where: scopedWhere(org.organizationId, { id: orderId }),
           select: {
             routeId: true,
             assignedVehicleId: true,
@@ -114,6 +134,7 @@ export async function POST(request: NextRequest) {
 
       if (routeId) {
         await logRouteEvent(prisma, {
+          organizationId: org.organizationId,
           routeId,
           driverId,
           vehicleId,
@@ -130,6 +151,7 @@ export async function POST(request: NextRequest) {
     // Создаём уведомление для логиста
     await prisma.notification.create({
       data: {
+        organizationId: org.organizationId,
         userId: "logist",
         userRole: "logist",
         type: "new_photo",
@@ -161,6 +183,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -173,8 +197,8 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const photo = await prisma.photo.findUnique({
-      where: { id },
+    const photo = await prisma.photo.findFirst({
+      where: scopedWhere(org.organizationId, { id }),
       select: { id: true, driverId: true },
     })
 
@@ -189,8 +213,8 @@ export async function DELETE(request: NextRequest) {
       return forbidden("Можно удалять только свои фото")
     }
 
-    await prisma.photo.delete({
-      where: { id },
+    await prisma.photo.deleteMany({
+      where: scopedWhere(org.organizationId, { id }),
     })
 
     return NextResponse.json({ success: true })

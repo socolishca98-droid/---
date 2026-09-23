@@ -467,41 +467,60 @@ API-роуте с пофайловым отчётом. До подтвержде
 - Экран `/organization` + API `/api/organization/*`: коды, заявки, сотрудники.
 - Сессия (`publicSessionView`) отдаёт `organization: {id, name} | null`; видно в `lib/auth-context.tsx` и header.
 
-### Фаза 3/4 — изоляция данных в каждом API-роуте (В РАБОТЕ, не закоммичена)
-Инструмент: `scripts/audit-org-isolation.mjs` — проходит по всем 64 `route.ts`, проверяет наличие гарда,
-контекста организации и фильтра `organizationId` в каждом вызове `prisma.<model>` и `tx.<model>`.
-Запуск: `npm run audit:orgs` (или `node scripts/audit-org-isolation.mjs`, `--json` для машинного вывода).
-Скрипт проверки двух организаций — `npm run verify:orgs` → `scripts/verify-organizations.mjs` (фаза 4/4, ещё не написан).
+### Фаза 3/4 — изоляция данных в каждом API-роуте (ГОТОВО)
+Инструмент: `scripts/audit-org-isolation.mjs` (`npm run audit:orgs`, флаги `--json` и
+`--markdown`) — проходит по всем 64 `route.ts`, проверяет гард доступа, контекст организации
+и фильтр `organizationId` в каждом вызове `prisma.<model>` и `tx.<model>`.
 
-Прогресс: было 38 файлов с нарушениями → осталось **20**. `tsc` — 0 реальных ошибок (в песочнице остаются
-только `TS7006` из-за несгенерированного Prisma-клиента).
+**Результат: 0 нарушений во всех 64 роут-файлах** (было 38 файлов с нарушениями).
+`node_modules/.bin/tsc --noEmit` — 0 реальных ошибок типов (в песочнице остаются 36 `TS7006`
+и одна ошибка `lib/prisma.ts` из-за несгенерированного Prisma-клиента).
+Тесты: `node --test "tests/*.test.mjs"` — 57/57, `vitest` — 48/48.
 
-Готово (аудит ✓, фильтры по организации во всех запросах):
-`chat`, `dashboard/routes`, `dashboard/stats`, `drivers/route`, `drivers/[id]`, `drivers/[id]/active-order`,
-`drivers/[id]/location`, `drivers/locations`, `fleet/drivers`, `fleet/settings` (настройки per-org, синглтон
-`id:"default"` убран), `fleet/stats`, `orders`, `orders/[id]` (включая DELETE-транзакцию), `payments`,
-`photos` (плюс проверка, что `driverId`/`orderId` из тела — свои), `sos`, `vehicles`, `vehicles/[id]`,
-`admin/audit` (журнал по организации, `getAuditLogs({organizationId})`), `ati/*`, `traffic/*`,
-`routes/calculate-eta` — гард организации.
-Общая библиотека `lib/fleet/assignment.ts` (`linkDriverToVehicle`, `findVehicleOccupant`, `unlinkVehicle`,
-`refreshVehicleCache`, `syncDriverVehicleCache`) принимает `organizationId` и не даёт связать водителя
-с машиной из чужой организации.
+Что сделано, кроме фильтров в роутах:
+- `lib/routes/service.ts` — все функции принимают `organizationId`: `listRouteOrders`,
+  `getRouteWithOrders`, `recalcRoute`, `changeRouteStatus`, `ensureRouteRow`,
+  `logRouteEvent` (`RouteEventInput.organizationId` — обязательное поле).
+- `lib/fleet/assignment.ts` — `linkDriverToVehicle`, `findVehicleOccupant`, `unlinkVehicle`,
+  `refreshVehicleCache`, `syncDriverVehicleCache` принимают `organizationId`: назначить машину
+  из чужой организации нельзя.
+- `canDriverAccessRoute` (`lib/auth/session.ts`) проверяет рейс и заказы в организации водителя
+  (локальный `scopedByOrg`, чтобы не создавать цикл импортов session ↔ org).
+- `lib/org.scopedWhere` принимает `string | null`: `null` — данные без организации («нулевая»),
+  фильтр не добавляется.
+- `getAuditLogs({ organizationId })` — журнал аудита отдаётся только по своей организации.
+- Удалён мёртвый `requireOrganizationLegacy`; убран неиспользуемый импорт `scopedWhere`
+  из 11 роутов без бизнес-запросов (`ati/*`, `traffic/*`, `routes/calculate-eta`).
+- Строгая типизация параметров сыграла как страховка: пока вызовы не передавали организацию,
+  компилятор выдавал `TS2554/TS2345` — так были найдены все пропущенные места.
 
-**Осталось 20 файлов** (гард организации + фильтры; список даёт сам аудит):
-- штаб: `auth/users/route.ts`, `auth/users/[id]/route.ts`, `fleet/route.ts`, `fleet/assign/route.ts`,
-  `fleet/vehicles/route.ts`, `routes/route.ts`, `routes/[routeId]/route.ts`,
-  `routes/[routeId]/{complete,add-load,events}/route.ts`;
-- водительские `/api/m/*`: `location`, `maintenance`, `me`, `orders`, `photos`, `route/accept-load`,
-  `shift`, `sos`, `vehicle`; плюс `app/m/route/events/route.ts`.
+### Фаза 4/4 — проверка и отчёт (ГОТОВО)
+- `scripts/verify-organizations.mjs` (`npm run verify:orgs`): четыре уровня проверки —
+  схема (organizationId во всех бизнес-моделях, `@@unique([organizationId, plate])`,
+  GeoCache/AtiCache без организации), аудит роутов (запускает аудитор и требует 0 нарушений),
+  база данных (создаёт организации «Тест-Изоляция А/Б», полный набор данных в каждой и
+  проверяет, что логист А не видит/не меняет/не удаляет данные Б; удаление каскадом,
+  флаг `--keep` оставляет), HTTP (флаг `--base-url`): регистрация двух организаций, вход,
+  создание водителя/машины/заказа в Б и проверка, что А их не видит и получает 404 на
+  точечные запросы, PATCH/DELETE чужих записей и на назначение чужого водителя.
+  В песочнице пройдены статические уровни (50/50); уровни «База данных» и «HTTP» требуют
+  сгенерированного Prisma-клиента и выполняются локально.
+- `docs/organization-isolation-report.md` — пофайловый отчёт по всем 64 роутам
+  (генерируется `npm run audit:orgs -- --markdown`): файл, методы, гард, организация из сессии,
+  число бизнес-запросов, затронутые модели, статус; отдельно — общие таблицы и роуты,
+  освобождённые от фильтрации (вход/регистрация/health/docs/cron).
 
-### Фаза 4/4 — проверка и отчёт (не начата)
-1. `scripts/verify-organizations.mjs`: две тестовые организации, логист из одной не видит заказы/водителей/
-   машины другой (пункт 9 задачи).
-2. Пофайловый список всех проверенных роутов для пользователя (пункт 6).
-3. Финальный прогон: `npm run typecheck`, `npm run test`, `node scripts/verify-security.mjs`,
-   `node scripts/audit-org-isolation.mjs` — 0 нарушений; убраться: снять неиспользуемый импорт `scopedWhere`
-   из файлов без prisma-вызовов (`ati/{cache,cities,debug,geo,import,scan}`, `traffic/*`).
-4. Коммит фазы 3 и фазы 4, пуш в `arena/01a0c0e1-repo`.
+### Что запустить локально для проверки задачи «Организации»
+```bash
+npm install
+npx prisma generate
+npx prisma db push            # применить organizationId и @@unique([organizationId, plate])
+npm run db:migrate-orgs       # перенести существующие данные в «ИП Фролов Иван Александрович»
+npm run audit:orgs            # 0 нарушений
+npm run verify:orgs           # схема + аудит + изоляция на двух тестовых организациях
+npm run dev                   # затем: npm run verify:orgs -- --base-url http://localhost:3000
+npm run test                  # node:test + vitest
+```
 
 ### Особенности песочницы (важно при продолжении)
 - `node_modules` между ходами **не сохраняется**: перед проверками — `npm install --ignore-scripts`;
@@ -513,6 +532,11 @@ API-роуте с пофайловым отчётом. До подтвержде
   `npm run test:build`.
 - Если HEAD снова окажется на базовом коммите `main` при живых правках в рабочем дереве — выравнивать
   только `git reset origin/arena/01a0c0e1-repo` (mixed, рабочее дерево не трогает), **никогда не `--hard`**.
+- **`npx tsc` в песочнице — НЕ TypeScript** (подставной пакет «This is not the tsc command you are
+  looking for», exit 1 без единой строчки `error TS`). Проверка типов — только
+  `node_modules/.bin/tsc --noEmit` после `npm install --ignore-scripts`.
+- Движки Prisma не скачиваются (`binaries.prisma.sh` вне allowlist) → `npx prisma generate/db push`
+  и всё, что требует живой базы, выполняется у пользователя.
 
 ### Правила правки, которые нельзя нарушать (проверено на ошибках)
 - Аудит смотрит **литеральный текст вызова**: предпостроенный `where` с `organizationId` не засчитывается —

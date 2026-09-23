@@ -10,11 +10,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/routes/model"
 
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   try {
     const { searchParams } = new URL(request.url)
@@ -29,9 +32,10 @@ export async function GET(request: NextRequest) {
 
     const [vehicles, activeOrders] = await Promise.all([
       prisma.vehicle.findMany({
-        where,
+        where: scopedWhere(org.organizationId, where),
         include: {
           drivers: {
+            where: scopedWhere(org.organizationId, {}),
             select: { id: true, name: true, phone: true, status: true },
           },
         },
@@ -39,10 +43,10 @@ export async function GET(request: NextRequest) {
         take: 100,
       }),
       prisma.order.findMany({
-        where: {
+        where: scopedWhere(org.organizationId, {
           status: { in: [...OCCUPYING_ORDER_STATUSES] },
           assignedVehicleId: { not: null },
-        },
+        }),
         select: { id: true, assignedVehicleId: true },
       }),
     ])

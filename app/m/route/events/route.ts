@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 import {
   calculateAllCoefficients,
@@ -20,6 +21,8 @@ const COMPLETED_STATUSES = ["delivered", "cancelled", "rejected"]
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   // Автор события — всегда водитель из сессии, поле driverId из тела не принимается
   const driverId = auth.value.driver.id
@@ -60,9 +63,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Рейс должен принадлежать организации водителя: иначе событие ушло бы в чужой таймлайн.
+    // «Исторический» routeId (строки Route ещё нет) проверяем по заказам своей организации.
+    const [ownRoute, ownOrders] = await Promise.all([
+      prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
+        select: { id: true },
+      }),
+      prisma.order.count({
+        where: scopedWhere(org.organizationId, { routeId }),
+      }),
+    ])
+    if (!ownRoute && ownOrders === 0) {
+      return NextResponse.json(
+        { success: false, error: "Рейс не найден" },
+        { status: 404 },
+      )
+    }
+
     // Пишем событие через единую точку записи: она же добирает строку Route,
     // если рейс «исторический» (routeId есть в заказах, а в таблице Route нет)
     await logRouteEvent(prisma, {
+      organizationId: org.organizationId,
       routeId,
       driverId,
       vehicleId: vehicleId || null,
@@ -77,12 +99,12 @@ export async function POST(request: NextRequest) {
     })
 
     const event = await prisma.routeEvent.findFirst({
-      where: { routeId, driverId, type },
+      where: scopedWhere(org.organizationId, { routeId, driverId, type }),
       orderBy: { createdAt: "desc" },
     })
 
     // Пересчёт Live ETA (упрощённый, без OSRM, по остаточному расстоянию)
-    const etaInfo = await recalcLiveEta(routeId)
+    const etaInfo = await recalcLiveEta(routeId, org.organizationId)
 
     return NextResponse.json({
       success: true,
@@ -100,10 +122,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function recalcLiveEta(routeId: string) {
+async function recalcLiveEta(routeId: string, organizationId: string) {
   // Берём все заказы по маршруту
   const orders = await prisma.order.findMany({
-    where: { routeId },
+    where: scopedWhere(organizationId, { routeId }),
     orderBy: [
       { routeSequence: "asc" },
       { createdAt: "asc" },

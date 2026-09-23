@@ -4,10 +4,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 export async function GET(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   // Водитель видит только свои заказы: driverId из сессии, query-параметр игнорируется
   const driverId = auth.value.driver.id
@@ -28,12 +31,12 @@ export async function GET(request: NextRequest) {
     const historyStatuses = ['delivered', 'cancelled']
 
     const orders = await prisma.order.findMany({
-      where: {
+      where: scopedWhere(org.organizationId, {
         assignedDriverId: driverId,
         status: {
           in: status === 'history' ? historyStatuses : activeStatuses,
         },
-      },
+      }),
       orderBy: {
         createdAt: status === 'history' ? 'desc' : 'asc',
       },
@@ -42,10 +45,10 @@ export async function GET(request: NextRequest) {
 
     // Статистика для водителя
     const stats = await prisma.order.aggregate({
-      where: {
+      where: scopedWhere(org.organizationId, {
         assignedDriverId: driverId,
         status: 'delivered',
-      },
+      }),
       _count: true,
       _sum: {
         price: true,

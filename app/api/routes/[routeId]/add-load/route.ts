@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
 import { ensureRouteRow, recalcRoute } from "@/lib/routes/service"
 
@@ -17,6 +18,8 @@ export async function POST(
 ) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
   try {
     const { routeId } = await params
 
@@ -43,16 +46,16 @@ export async function POST(
       insertAfterOrderId,
     } = body
 
-    const route = await prisma.route.findUnique({
-      where: { id: routeId },
+    const route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
       select: { id: true, status: true, driverId: true, vehicleId: true },
     })
 
     const existingOrders = (await prisma.order.findMany({
-      where: {
+      where: scopedWhere(org.organizationId, {
         routeId,
         status: { in: [...OCCUPYING_ORDER_STATUSES] },
-      },
+      }),
       orderBy: { routeSequence: "asc" },
     })) as (RouteOrderLike & {
       id: string
@@ -77,15 +80,15 @@ export async function POST(
 
     // исторический routeId без строки Route — добираем запись
     if (!route) {
-      await ensureRouteRow(prisma, { routeId })
+      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
     }
 
     const driverId = route?.driverId ?? existingOrders[0]?.assignedDriverId ?? null
     const vehicleId = route?.vehicleId ?? existingOrders[0]?.assignedVehicleId ?? null
 
     if (vehicleId) {
-      const vehicle = await prisma.vehicle.findUnique({
-        where: { id: vehicleId },
+      const vehicle = await prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: vehicleId }),
         select: { capacity: true },
       })
 
@@ -117,10 +120,10 @@ export async function POST(
         routeSequence = insertAfterOrder.routeSequence + 1
 
         await prisma.order.updateMany({
-          where: {
+          where: scopedWhere(org.organizationId, {
             routeId,
             routeSequence: { gte: routeSequence },
-          },
+          }),
           data: {
             routeSequence: { increment: 1 },
           },
@@ -131,6 +134,7 @@ export async function POST(
     const newOrder = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
+          organizationId: org.organizationId,
           source: atiCacheId ? "ATI" : "manual",
           sourceId: atiCacheId || null,
           routeId,
@@ -166,6 +170,7 @@ export async function POST(
       if (driverId) {
         await tx.notification.create({
           data: {
+            organizationId: org.organizationId,
             userId: driverId,
             userRole: "driver",
             type: proposeToDriver ? "load_proposal" : "load_added",
@@ -182,7 +187,7 @@ export async function POST(
     })
 
     // итоги и имя рейса пересчитываются по его заказам
-    const summary = await recalcRoute(prisma, routeId)
+    const summary = await recalcRoute(prisma, routeId, org.organizationId)
 
     return NextResponse.json({
       success: true,
