@@ -24,8 +24,8 @@ const expenseBreakdown = [
 ]
 
 export function FinancialOverview() {
-  const totalRevenue = revenueData.reduce((sum, d) => sum + d.revenue, 0)
-  const totalExpenses = revenueData.reduce((sum, d) => sum + d.expenses, 0)
+  const totalRevenue = revenueData.reduce((sum: any, d: any) => sum + d.revenue, 0)
+  const totalExpenses = revenueData.reduce((sum: any, d: any) => sum + d.expenses, 0)
   const totalProfit = totalRevenue - totalExpenses
   const profitMargin = Math.round((totalProfit / totalRevenue) * 100)
 

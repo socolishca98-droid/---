@@ -4,10 +4,9 @@
 // GET  /api/photos          - список фото (опциональные фильтры)
 // POST /api/photos          - сохранить новое фото с AI-метаданными (mock AI)
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-
-import { requireStaff } from "@/lib/auth/session"
 
 type MetaPayload = {
   aiClassification?: any
@@ -49,8 +48,10 @@ function mapPhoto(dbPhoto: any) {
 
 // GET /api/photos?driverId=&orderId=&type=&limit=
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { searchParams } = new URL(request.url)
     const driverId = searchParams.get("driverId")
@@ -88,8 +89,10 @@ export async function GET(request: NextRequest) {
 // POST /api/photos
 // body: { url, type, driverId, orderId?, description?, aiClassification?, ocrData? }
 export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = (await request.json().catch(() => null)) as
       | {

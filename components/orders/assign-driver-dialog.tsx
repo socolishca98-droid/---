@@ -53,7 +53,7 @@ export function AssignDriverDialog({ open, onOpenChange, onAssign }: AssignDrive
               <SelectValue placeholder="Выберите водителя" />
             </SelectTrigger>
             <SelectContent>
-              {drivers.map((d) => (
+              {drivers.map((d: any) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name} ({d.vehiclePlate || 'Без авто'})
                 </SelectItem>

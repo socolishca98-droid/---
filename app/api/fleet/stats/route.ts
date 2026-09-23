@@ -1,15 +1,16 @@
 // app/api/fleet/stats/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-import { requireStaff } from "@/lib/auth/session"
-
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
-export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function GET(_request: NextRequest) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const [vehicles, drivers] = await Promise.all([
       prisma.vehicle.findMany(),
@@ -18,16 +19,16 @@ export async function GET(request: NextRequest) {
 
     const vehicleStats = {
       total: vehicles.length,
-      available: vehicles.filter((v) => v.status === "available").length,
-      inUse: vehicles.filter((v) => v.status === "in_use").length,
-      maintenance: vehicles.filter((v) => v.status === "maintenance").length,
+      available: vehicles.filter((v: any) => v.status === "available").length,
+      inUse: vehicles.filter((v: any) => v.status === "in_use").length,
+      maintenance: vehicles.filter((v: any) => v.status === "maintenance").length,
     }
 
     const driverStats = {
       total: drivers.length,
-      available: drivers.filter((d) => d.status === "available").length,
-      busy: drivers.filter((d) => d.status === "busy").length,
-      maintenance: drivers.filter((d) => d.status === "maintenance").length,
+      available: drivers.filter((d: any) => d.status === "available").length,
+      busy: drivers.filter((d: any) => d.status === "busy").length,
+      maintenance: drivers.filter((d: any) => d.status === "maintenance").length,
     }
 
     const todayStart = new Date()

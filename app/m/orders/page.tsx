@@ -13,7 +13,11 @@ import {
   Package,
   RefreshCw,
 } from "lucide-react"
-import { useDriverSession } from "@/hooks/use-driver-session"
+
+interface DriverSession {
+  id: string
+  name: string
+}
 
 interface Order {
   id: string
@@ -31,13 +35,28 @@ type Tab = "active" | "history"
 export default function DriverOrdersPage() {
   const router = useRouter()
 
-  // Сессия водителя — с сервера (httpOnly-cookie)
-  const { driver } = useDriverSession()
+  const [driver, setDriver] = useState<DriverSession | null>(null)
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [historyOrders, setHistoryOrders] = useState<Order[]>([])
   const [tab, setTab] = useState<Tab>("active")
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+    try {
+      const parsed = JSON.parse(saved) as DriverSession
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
 
   const fetchOrders = useCallback(async (showRefresh = false) => {
     if (!driver?.id) return
@@ -47,9 +66,8 @@ export default function DriverOrdersPage() {
 
     try {
       const [activeRes, historyRes] = await Promise.all([
-        // driverId не передаём: сервер берёт его из сессии водителя
-        fetch("/api/m/orders?status=active"),
-        fetch("/api/m/orders?status=history"),
+        fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
+        fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
       ])
 
       const activeData = await activeRes.json()
@@ -197,7 +215,7 @@ export default function DriverOrdersPage() {
             </p>
           </div>
         ) : (
-          orders.map((order) => {
+          orders.map((order: any) => {
             const statusInfo = getStatusInfo(order.status)
             const StatusIcon = statusInfo.icon
 

@@ -5,6 +5,7 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { Loader2 } from "lucide-react"
@@ -24,11 +25,12 @@ const DashboardMap = dynamic(
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
   const router = useRouter()
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace("/login")
+      router.push("/")
     }
   }, [user, authLoading, router])
 
@@ -43,7 +45,10 @@ export default function DashboardPage() {
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-[#09090b]">
       <Sidebar />
-      <div className="flex-1 pl-64 h-full flex flex-col">
+      <div
+        className="flex-1 h-full flex flex-col transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <div className="flex-1 relative">
           <DashboardMap />

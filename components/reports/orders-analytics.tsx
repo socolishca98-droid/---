@@ -40,7 +40,7 @@ const topRoutes = [
 ]
 
 export function OrdersAnalytics() {
-  const totalOrders = ordersByStatus.reduce((sum, s) => sum + s.value, 0)
+  const totalOrders = ordersByStatus.reduce((sum: any, s: any) => sum + s.value, 0)
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -66,7 +66,7 @@ export function OrdersAnalytics() {
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {ordersByStatus.map((entry, index) => (
+                    {ordersByStatus.map((entry: any, index: any) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -74,7 +74,7 @@ export function OrdersAnalytics() {
               </ResponsiveContainer>
             </div>
             <div className="flex-1 space-y-3">
-              {ordersByStatus.map((status) => (
+              {ordersByStatus.map((status: any) => (
                 <div key={status.name} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: status.color }} />
@@ -155,7 +155,7 @@ export function OrdersAnalytics() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {topRoutes.map((route, index) => (
+            {topRoutes.map((route: any, index: any) => (
               <div key={route.route} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/50">
                 <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center font-bold text-primary">
                   {index + 1}

@@ -23,8 +23,10 @@ export function useRouteAnimation({
   map,
   routes,
   enabled,
+  trafficByRouteId,
 }: UseRouteAnimationOptions): void {
   const routesRef = useRef<RouteData[]>(routes)
+  const trafficRef = useRef<Record<string, TrafficRouteInfo> | undefined>(trafficByRouteId)
   const frameRef = useRef<number>(0)
   const timeRef = useRef<number>(0)
   const lastTimeRef = useRef<number>(0)
@@ -32,6 +34,10 @@ export function useRouteAnimation({
   useEffect(() => {
     routesRef.current = routes
   }, [routes])
+
+  useEffect(() => {
+    trafficRef.current = trafficByRouteId
+  }, [trafficByRouteId])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -77,58 +83,55 @@ export function useRouteAnimation({
       for (const route of routesRef.current) {
         if (!route.coordinates || route.coordinates.length < 2) continue
 
-        const points = route.coordinates.map((c) => {
+        const points = route.coordinates.map((c: any) => {
           const p = map.latLngToContainerPoint([c[0], c[1]])
           return { x: p.x, y: p.y }
         })
 
         const bounds = map.getBounds()
-        if (!route.coordinates.some((c) => bounds.contains([c[0], c[1]]))) continue
+        if (!route.coordinates.some((c: any) => bounds.contains([c[0], c[1]]))) continue
 
         const start = points[0]
         const end = points[points.length - 1]
 
         // ═══════════════════════════════════════════════════
-        // СЛОЙ 1: Свечение (glow)
+        // СЛОЙ 1: Деликатное мягкое свечение (glow)
         // ═══════════════════════════════════════════════════
         ctx.beginPath()
         ctx.moveTo(points[0].x, points[0].y)
         for (let i = 1; i < points.length; i++) {
           ctx.lineTo(points[i].x, points[i].y)
         }
-        ctx.strokeStyle = "rgba(255, 107, 53, 0.2)"
-        ctx.lineWidth = 16
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.15)"
+        ctx.lineWidth = 12
         ctx.lineCap = "round"
         ctx.lineJoin = "round"
         ctx.stroke()
 
         // ═══════════════════════════════════════════════════
-        // СЛОЙ 2: Основная линия с движущимся градиентом
+        // СЛОЙ 2: Основная линия с движущимся импульсом
         // ═══════════════════════════════════════════════════
         const gradient = ctx.createLinearGradient(start.x, start.y, end.x, end.y)
         
         // Движущийся яркий участок
         const pos = t
-        const fadeWidth = 0.25
+        const fadeWidth = 0.22
 
-        // До яркого участка — тёмный
-        gradient.addColorStop(0, "rgba(255, 107, 53, 0.35)")
+        // Базовый цвет нити — мягкий сапфирово-лазурный
+        gradient.addColorStop(0, "rgba(56, 189, 248, 0.35)")
         
-        // Плавный переход к яркому
         if (pos > fadeWidth) {
-          gradient.addColorStop(Math.max(0, pos - fadeWidth), "rgba(255, 107, 53, 0.35)")
+          gradient.addColorStop(Math.max(0, pos - fadeWidth), "rgba(56, 189, 248, 0.35)")
         }
         
-        // Яркий участок (движущийся)
-        gradient.addColorStop(Math.min(1, pos), "rgba(255, 140, 80, 1)")
+        // Яркий световой импульс
+        gradient.addColorStop(Math.min(1, pos), "rgba(186, 230, 253, 0.95)")
         
-        // Плавный переход после яркого
         if (pos + fadeWidth < 1) {
-          gradient.addColorStop(Math.min(1, pos + fadeWidth), "rgba(255, 107, 53, 0.9)")
+          gradient.addColorStop(Math.min(1, pos + fadeWidth), "rgba(56, 189, 248, 0.7)")
         }
         
-        // После — средняя яркость
-        gradient.addColorStop(1, "rgba(255, 107, 53, 0.5)")
+        gradient.addColorStop(1, "rgba(56, 189, 248, 0.4)")
 
         ctx.beginPath()
         ctx.moveTo(points[0].x, points[0].y)
@@ -136,36 +139,36 @@ export function useRouteAnimation({
           ctx.lineTo(points[i].x, points[i].y)
         }
         ctx.strokeStyle = gradient
-        ctx.lineWidth = 5
+        ctx.lineWidth = 3.5
         ctx.lineCap = "round"
         ctx.lineJoin = "round"
         ctx.stroke()
 
         // ═══════════════════════════════════════════════════
-        // СЛОЙ 3: Светлая сердцевина
+        // СЛОЙ 3: Светлая тонкая сердцевина
         // ═══════════════════════════════════════════════════
         ctx.beginPath()
         ctx.moveTo(points[0].x, points[0].y)
         for (let i = 1; i < points.length; i++) {
           ctx.lineTo(points[i].x, points[i].y)
         }
-        ctx.strokeStyle = "rgba(255, 200, 150, 0.25)"
-        ctx.lineWidth = 2
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)"
+        ctx.lineWidth = 1.2
         ctx.lineCap = "round"
         ctx.lineJoin = "round"
         ctx.stroke()
 
         // ═══════════════════════════════════════════════════
-        // СЛОЙ 4: Точка старта
+        // СЛОЙ 4: Точка старта (депо / отправление)
         // ═══════════════════════════════════════════════════
         ctx.beginPath()
-        ctx.arc(start.x, start.y, 7, 0, Math.PI * 2)
-        ctx.fillStyle = "#FF6B35"
+        ctx.arc(start.x, start.y, 6, 0, Math.PI * 2)
+        ctx.fillStyle = "#38bdf8"
         ctx.fill()
         
         ctx.beginPath()
-        ctx.arc(start.x, start.y, 3, 0, Math.PI * 2)
-        ctx.fillStyle = "#fff"
+        ctx.arc(start.x, start.y, 2.5, 0, Math.PI * 2)
+        ctx.fillStyle = "#ffffff"
         ctx.fill()
       }
 

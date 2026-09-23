@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { ChatList } from "@/components/chat/chat-list"
@@ -28,6 +29,7 @@ interface Driver {
 
 export default function ChatPage() {
   const { user, isLoading: authLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
   const router = useRouter()
   
   const [drivers, setDrivers] = useState<Driver[]>([])
@@ -70,7 +72,11 @@ export default function ChatPage() {
   // Начальная загрузка
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace("/login")
+      router.push("/")
+      return
+    }
+    if (!authLoading && user?.role === "driver") {
+      router.push("/m")
       return
     }
     
@@ -101,9 +107,10 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // senderId / senderRole / senderName не передаём:
-        // сервер берёт отправителя из проверенной сессии
         body: JSON.stringify({
+          senderId: user.id,
+          senderRole: 'logist',
+          senderName: user.name,
           recipientId: selectedDriverId,
           content,
           type
@@ -129,9 +136,9 @@ export default function ChatPage() {
     )
   }
 
-  const selectedDriver = drivers.find((d) => d.id === selectedDriverId)
+  const selectedDriver = drivers.find((d: any) => d.id === selectedDriverId)
   const driverMessages = selectedDriverId
-    ? messages.filter((m) => m.senderId === selectedDriverId || m.recipientId === selectedDriverId)
+    ? messages.filter((m: any) => m.senderId === selectedDriverId || m.recipientId === selectedDriverId)
     : []
   
   // Количество непрочитанных важных
@@ -140,7 +147,10 @@ export default function ChatPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="pl-64">
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <main className="p-6">
           <div className="mb-6 flex items-center justify-between">
@@ -199,7 +209,7 @@ export default function ChatPage() {
                           <AvatarFallback>
                             {selectedDriver.name
                               .split(" ")
-                              .map((n) => n[0])
+                              .map((n: any) => n[0])
                               .join("")}
                           </AvatarFallback>
                         </Avatar>

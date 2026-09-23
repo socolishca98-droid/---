@@ -1,12 +1,14 @@
 // app/api/ati/sandbox/route.ts
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-import { requireStaff } from "@/lib/auth/session"
 // GET — грузы в песочнице (status = "imported")
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const items = await prisma.atiCache.findMany({
       where: { status: "imported" },
@@ -14,7 +16,7 @@ export async function GET(request: NextRequest) {
       take: 100,
     })
 
-    const loads = items.map((item) => ({
+    const loads = items.map((item: any) => ({
       id: item.id,
       atiLoadId: item.atiLoadId,
       from: item.routeFrom,
@@ -38,11 +40,13 @@ export async function GET(request: NextRequest) {
 }
 
 // DELETE — вернуть груз обратно в базу (status = "new")
-export async function DELETE(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function DELETE(req: NextRequest) {
+  const __auth = await requireStaffAuth(req);
+  if (__auth.error) return __auth.error;
+
+
   try {
-    const body = await request.json().catch(() => ({}))
+    const body = await req.json().catch(() => ({}))
     const { id } = body as { id?: string }
 
     if (!id) {

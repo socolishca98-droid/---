@@ -89,7 +89,7 @@ export function AIReportGenerator() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {reportTypes.map((type) => (
+                {reportTypes.map((type: any) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}
                   </SelectItem>
@@ -105,7 +105,7 @@ export function AIReportGenerator() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {periods.map((p) => (
+                {periods.map((p: any) => (
                   <SelectItem key={p.value} value={p.value}>
                     {p.label}
                   </SelectItem>

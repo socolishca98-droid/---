@@ -117,7 +117,7 @@ export function CargoAnalysisCard({
 
             {showSuggestions && (
               <div className="space-y-3">
-                {suggestions.map((suggestion) => (
+                {suggestions.map((suggestion: any) => (
                   <div key={suggestion.id} className="p-4 rounded-lg bg-background border border-border">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 space-y-2">

@@ -1,15 +1,16 @@
 // app/api/routes/calculate-eta/route.ts
 // Расчёт ETA: POST /api/routes/calculate-eta
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { calculateETA, formatDuration, formatDistance } from "@/lib/eta/service"
 import type { ETARequest } from "@/lib/eta/types"
 
-import { requireStaff } from "@/lib/auth/session"
-
 export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json()
 
@@ -67,8 +68,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   return NextResponse.json({
     service: "ETA Calculator",
     status: "ok",

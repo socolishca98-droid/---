@@ -158,7 +158,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
     setApplyingOptimizer(true)
     try {
-      const orderSequence = orderedOrderIds.map((orderId, idx) => ({
+      const orderSequence = orderedOrderIds.map((orderId: any, idx: any) => ({
         orderId,
         sequence: startSeq + idx,
       }))

@@ -42,8 +42,17 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    const shiftByDriver = new Map(
-      activeShifts.map((s) => [s.driverId, s]),
+    type ActiveShift = {
+      id: string
+      driverId: string
+      status: string
+      lastStatusChangeAt: Date | null
+    }
+
+    const shiftByDriver = new Map<string, ActiveShift>(
+      (activeShifts as ActiveShift[])
+        .filter((s) => Boolean(s.driverId))
+        .map((s) => [s.driverId, s]),
     )
 
     const activeOrdersByDriver = new Map<string, typeof activeOrders>()

@@ -19,7 +19,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 pb-[env(safe-area-inset-bottom)]">
       <div className="mx-3 mb-2 rounded-2xl bg-[#0a0a0c]/95 border border-gray-800/80 shadow-2xl backdrop-blur-xl">
         <div className="flex h-16 items-stretch">
-          {ITEMS.map((item) => {
+          {ITEMS.map((item: any) => {
             const isActive =
               pathname === item.href ||
               (item.href !== "/m" && pathname.startsWith(item.href))

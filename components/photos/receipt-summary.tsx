@@ -20,18 +20,15 @@ export function ReceiptSummary({ photos }: ReceiptSummaryProps) {
   // Приведение к any, т.к. ocrData нет в типе Photo
   const safePhotos = photos as any[]
 
-  const receipts = safePhotos.filter(
-    (p) => p.type === "receipt" && p.ocrData?.amount,
+  const receipts = safePhotos.filter((p: any) => p.type === "receipt" && p.ocrData?.amount,
   )
 
-  const totalAmount = receipts.reduce(
-    (sum, r) => sum + (r.ocrData?.amount || 0),
+  const totalAmount = receipts.reduce((sum: any, r: any) => sum + (r.ocrData?.amount || 0),
     0,
   )
 
   // Group by purpose
-  const byPurpose = receipts.reduce(
-    (acc, receipt) => {
+  const byPurpose = receipts.reduce((acc: any, receipt: any) => {
       const purpose = receipt.ocrData?.purpose || "Прочее"
       if (!acc[purpose]) {
         acc[purpose] = { count: 0, amount: 0 }
@@ -85,7 +82,7 @@ export function ReceiptSummary({ photos }: ReceiptSummaryProps) {
           <div className="text-sm font-medium text-muted-foreground">
             По категориям
           </div>
-          {Object.entries(byPurpose).map((entry) => {
+          {Object.entries(byPurpose).map((entry: any) => {
             const purpose = entry[0]
             const data = entry[1] as { count: number; amount: number } // Явное приведение внутри map
 

@@ -73,13 +73,13 @@ export function OrderFilters({ onFilterChange }: OrderFiltersProps) {
         setActiveFilters([...activeFilters, key])
       }
     } else if (key !== "search" && key !== "sortBy") {
-      setActiveFilters(activeFilters.filter((f) => f !== key))
+      setActiveFilters(activeFilters.filter((f: any) => f !== key))
     }
   }
 
   const clearFilter = (key: keyof FilterState) => {
     updateFilter(key, key === "sortBy" ? "aiScore" : "all")
-    setActiveFilters(activeFilters.filter((f) => f !== key))
+    setActiveFilters(activeFilters.filter((f: any) => f !== key))
   }
 
   const clearAllFilters = () => {
@@ -115,7 +115,7 @@ export function OrderFilters({ onFilterChange }: OrderFiltersProps) {
             <SelectValue placeholder="Приоритет" />
           </SelectTrigger>
           <SelectContent>
-            {priorities.map((p) => (
+            {priorities.map((p: any) => (
               <SelectItem key={p.value} value={p.value}>
                 <div className="flex items-center gap-2">
                   {p.icon && <p.icon className="h-4 w-4" />}
@@ -132,7 +132,7 @@ export function OrderFilters({ onFilterChange }: OrderFiltersProps) {
             <SelectValue placeholder="Статус" />
           </SelectTrigger>
           <SelectContent>
-            {statuses.map((s) => (
+            {statuses.map((s: any) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
               </SelectItem>
@@ -146,7 +146,7 @@ export function OrderFilters({ onFilterChange }: OrderFiltersProps) {
             <SelectValue placeholder="Источник" />
           </SelectTrigger>
           <SelectContent>
-            {sources.map((s) => (
+            {sources.map((s: any) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
               </SelectItem>
@@ -160,7 +160,7 @@ export function OrderFilters({ onFilterChange }: OrderFiltersProps) {
             <SelectValue placeholder="Сортировка" />
           </SelectTrigger>
           <SelectContent>
-            {sortOptions.map((s) => (
+            {sortOptions.map((s: any) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
               </SelectItem>
@@ -173,15 +173,15 @@ export function OrderFilters({ onFilterChange }: OrderFiltersProps) {
       {activeFilters.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-muted-foreground">Активные фильтры:</span>
-          {activeFilters.map((key) => {
+          {activeFilters.map((key: any) => {
             const filterKey = key as keyof FilterState
             let label = ""
             if (filterKey === "priority") {
-              label = priorities.find((p) => p.value === filters.priority)?.label || ""
+              label = priorities.find((p: any) => p.value === filters.priority)?.label || ""
             } else if (filterKey === "status") {
-              label = statuses.find((s) => s.value === filters.status)?.label || ""
+              label = statuses.find((s: any) => s.value === filters.status)?.label || ""
             } else if (filterKey === "source") {
-              label = sources.find((s) => s.value === filters.source)?.label || ""
+              label = sources.find((s: any) => s.value === filters.source)?.label || ""
             }
             return (
               <Badge key={key} variant="secondary" className="gap-1 pr-1">

@@ -70,10 +70,10 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
   const safePhotos = photos as any[]
 
   const filteredPhotos =
-    filter === "all" ? safePhotos : safePhotos.filter((p) => p.type === filter)
+    filter === "all" ? safePhotos : safePhotos.filter((p: any) => p.type === filter)
 
   const currentIndex = selectedPhoto
-    ? filteredPhotos.findIndex((p) => p.id === selectedPhoto.id)
+    ? filteredPhotos.findIndex((p: any) => p.id === selectedPhoto.id)
     : -1
 
   const navigatePhoto = (direction: "prev" | "next") => {
@@ -86,8 +86,7 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
   }
 
   // Group photos by type
-  const photosByType = safePhotos.reduce(
-    (acc, photo) => {
+  const photosByType = safePhotos.reduce((acc: any, photo: any) => {
       const type = photo.type || "other"
       if (!acc[type]) acc[type] = []
       acc[type].push(photo)
@@ -108,7 +107,7 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
               Галерея фотографий
             </CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
-              {Object.entries(photosByType).map((entry) => {
+              {Object.entries(photosByType).map((entry: any) => {
                 const type = entry[0]
                 const typePhotos = entry[1] as any[] // Явное приведение внутри map
                 
@@ -137,7 +136,7 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filteredPhotos.map((photo) => {
+              {filteredPhotos.map((photo: any) => {
                 const config =
                   photoTypeConfig[photo.type] || photoTypeConfig.other
                 const TypeIcon = config.icon

@@ -46,6 +46,8 @@ const PUBLIC_PATHS = new Set<string>([
   "/api/auth/register",
   "/api/auth/logout",
   "/api/auth/session",
+  // выдача CSRF-токена нужна до входа (клиентский CsrfProvider дёргает его при старте)
+  "/api/auth/csrf",
   "/api/health",
 ])
 

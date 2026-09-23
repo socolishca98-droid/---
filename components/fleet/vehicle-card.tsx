@@ -378,7 +378,7 @@ export function VehicleCard({
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Особенности</p>
             <div className="flex flex-wrap gap-2">
-              {features.map((feature, idx) => (
+              {features.map((feature: any, idx: any) => (
                 <Badge key={idx} variant="secondary" className="text-xs">
                   {feature}
                 </Badge>

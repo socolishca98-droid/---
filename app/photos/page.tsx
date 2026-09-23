@@ -3,48 +3,70 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { PhotoUpload } from "@/components/photos/photo-upload"
 import { PhotoGallery } from "@/components/photos/photo-gallery"
 import { ReceiptSummary } from "@/components/photos/receipt-summary"
 import { CargoAnalysisCard } from "@/components/photos/cargo-analysis-card"
-import { mockRoutes, mockDogrizSuggestions } from "@/lib/mock-data"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 export default function PhotosPage() {
   const { user, isLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
   const router = useRouter()
 
   // Используем any[], чтобы не воевать с расширенными полями (aiClassification, ocrData, uploadedAt)
   const [photos, setPhotos] = useState<any[]>([])
   const [loadingPhotos, setLoadingPhotos] = useState(false)
+  const [activeRoute, setActiveRoute] = useState<any | null>(null)
 
-  // Авторизация: доступ есть только у сотрудника (логист/администратор).
-  // Водителей на штабные страницы не пускает middleware.
+  // Авторизация / роль
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace("/login")
+      router.push("/")
+    }
+    if (!isLoading && user?.role === "driver") {
+      router.push("/m")
     }
   }, [user, isLoading, router])
 
-  // Загрузка фото из бэкенда
+  // Загрузка фото и активных рейсов из бэкенда
   useEffect(() => {
     if (!user || isLoading) return
 
     const load = async () => {
       setLoadingPhotos(true)
       try {
-        const res = await fetch("/api/photos")
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`)
+        const [photosRes, ordersRes] = await Promise.all([
+          fetch("/api/photos"),
+          fetch("/api/orders?status=in_transit,assigned&limit=10"),
+        ])
+
+        if (photosRes.ok) {
+          const data = await photosRes.json()
+          if (data.success && Array.isArray(data.photos)) {
+            setPhotos(data.photos)
+          }
         }
-        const data = await res.json()
-        if (data.success && Array.isArray(data.photos)) {
-          setPhotos(data.photos)
-        } else {
-          console.error("[PhotosPage] Invalid photos payload", data)
+
+        if (ordersRes.ok) {
+          const ordersData = await ordersRes.json()
+          if (ordersData.success && Array.isArray(ordersData.orders) && ordersData.orders.length > 0) {
+            const first = ordersData.orders[0]
+            setActiveRoute({
+              id: first.routeId || first.id,
+              name: `${first.routeFrom} → ${first.routeTo}`,
+              origin: first.routeFrom,
+              destination: first.routeTo,
+              status: "active",
+              cargo: first.cargo,
+              vehiclePlate: first.vehicle?.plate || "Транспорт назначен",
+              driverName: first.driver?.name || "Водитель в рейсе",
+            })
+          }
         }
       } catch (error) {
         console.error("[PhotosPage] load error:", error)
@@ -66,7 +88,7 @@ export default function PhotosPage() {
 
   // Обработка сохранения фото из PhotoUpload
   const handleUpload = async (uploads: any[]) => {
-    const completed = uploads.filter((u) => u.result)
+    const completed = uploads.filter((u: any) => u.result)
     if (!completed.length) return
 
     if (!user) {
@@ -119,24 +141,20 @@ export default function PhotosPage() {
   }
 
   // Последнее фото кузова после погрузки с оценкой заполнения
-  const latestCargoPhoto = photos.find(
-    (p) =>
+  const latestCargoPhoto = photos.find((p: any) =>
       (p.type as string) === "cargo_after" &&
       p.aiClassification?.cargoFillPercent !== undefined,
   )
 
-  // Пока маршрут и догрузы берём из mock-data (можно позже перевести на реальные данные)
-  const activeRoute = (mockRoutes as any[]).find(
-    (r) => r.status === "active",
-  )
-  const pendingSuggestions = (mockDogrizSuggestions as any[]).filter(
-    (s) => s.status === "pending",
-  )
+  const pendingSuggestions: any[] = []
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="pl-64">
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <main className="p-6 space-y-6">
           {/* Заголовок */}

@@ -19,7 +19,6 @@ import {
   Check,
 } from "lucide-react"
 import { toast } from "sonner"
-import { useDriverSession } from "@/hooks/use-driver-session"
 
 // Этот экспорт всё равно оставим для надёжности
 export const dynamic = "force-dynamic"
@@ -39,6 +38,11 @@ type PhotoContext =
   | "damage"
   | "document"
   | "generic"
+
+interface DriverSession {
+  id: string
+  name: string
+}
 
 interface Order {
   id: string
@@ -124,8 +128,7 @@ function PhotoPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Сессия водителя — с сервера (httpOnly-cookie)
-  const { driver } = useDriverSession()
+  const [driver, setDriver] = useState<DriverSession | null>(null)
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -138,6 +141,21 @@ function PhotoPageContent() {
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
 
   useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as DriverSession
+        if (!parsed?.id) throw new Error("Invalid session")
+        setDriver(parsed)
+      } catch {
+        router.push("/m/login")
+      }
+    } else {
+      router.push("/m/login")
+    }
+  }, [router])
+
+  useEffect(() => {
     const ctxRaw = searchParams?.get("context") ?? "generic"
     const ctx = ctxRaw as PhotoContext
     setSelectedCategory(mapContextToCategory(ctx))
@@ -148,9 +166,8 @@ function PhotoPageContent() {
 
     try {
       const [activeRes, historyRes] = await Promise.all([
-        // driverId не передаём: сервер берёт его из сессии водителя
-        fetch("/api/m/orders?status=active"),
-        fetch("/api/m/orders?status=history"),
+        fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
+        fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
       ])
 
       const activeData = await activeRes.json()
@@ -168,7 +185,7 @@ function PhotoPageContent() {
         const allHistory = historyData.orders as Order[]
         const now = new Date()
         const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
-        recent = allHistory.filter((o) => {
+        recent = allHistory.filter((o: any) => {
           if (!o.createdAt) return false
           return new Date(o.createdAt) >= twoWeeksAgo
         })
@@ -274,7 +291,7 @@ function PhotoPageContent() {
       })
       const data = await res.json()
       if (data.success) {
-        setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+        setPhotos((prev) => prev.filter((p: any) => p.id !== photoId))
         setPreviewPhoto(null)
         toast.success("Фото удалено")
       } else {
@@ -287,7 +304,7 @@ function PhotoPageContent() {
   }
 
   const getCategoryInfo = (type: string) => {
-    return CATEGORIES.find((c) => c.id === type) || CATEGORIES[0]
+    return CATEGORIES.find((c: any) => c.id === type) || CATEGORIES[0]
   }
 
   if (!driver) {
@@ -356,7 +373,7 @@ function PhotoPageContent() {
             Тип фото
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {CATEGORIES.map((cat) => {
+            {CATEGORIES.map((cat: any) => {
               const isSelected = selectedCategory === cat.id
               return (
                 <button
@@ -442,7 +459,7 @@ function PhotoPageContent() {
               Загруженные фото
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {photos.map((photo) => {
+              {photos.map((photo: any) => {
                 const catInfo = getCategoryInfo(photo.type)
                 return (
                   <button
@@ -520,7 +537,7 @@ function PhotoPageContent() {
                   <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
                     Активные рейсы
                   </div>
-                  {activeOrders.map((order) => (
+                  {activeOrders.map((order: any) => (
                     <button
                       key={order.id}
                       onClick={() => {
@@ -545,7 +562,7 @@ function PhotoPageContent() {
                   <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
                     Недавние (14 дней)
                   </div>
-                  {recentOrders.map((order) => (
+                  {recentOrders.map((order: any) => (
                     <button
                       key={order.id}
                       onClick={() => {

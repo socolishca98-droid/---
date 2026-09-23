@@ -64,19 +64,31 @@ export function useMapData(): UseMapDataReturn {
 
   const [trafficByRouteId, setTrafficByRouteId] = useState<Record<string, TrafficRouteInfo>>({})
   const lastTrafficFetchAtRef = useRef<number>(0)
+  const isMountedRef = useRef(true)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const fetchTrafficBatch = useCallback(async (routesList: RouteData[]) => {
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
+  const fetchTrafficBatch = useCallback(async (routesList: RouteData[], signal?: AbortSignal) => {
     const now = Date.now()
     if (now - lastTrafficFetchAtRef.current < TRAFFIC_CLIENT_MIN_INTERVAL_MS) return
     lastTrafficFetchAtRef.current = now
 
     const payloadRoutes = routesList
-      .filter((r) => Array.isArray(r.coordinates) && r.coordinates.length >= 2)
-      .map((r) => ({
+      .filter((r: any) => Array.isArray(r.coordinates) && r.coordinates.length >= 2)
+      .map((r: any) => ({
         routeId: r.id,
         coordinates: downsampleCoordinates(r.coordinates, TRAFFIC_MAX_POINTS).filter(isLatLng),
       }))
-      .filter((r) => r.routeId && r.coordinates.length >= 2)
+      .filter((r: any) => r.routeId && r.coordinates.length >= 2)
 
     if (payloadRoutes.length === 0) return
 
@@ -85,58 +97,122 @@ export function useMapData(): UseMapDataReturn {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ routes: payloadRoutes }),
+        signal: signal || AbortSignal.timeout(10000),
       })
 
-      const data = (await res.json()) as TrafficBatchResponse
-      if (data?.success && data.trafficByRouteId) {
+      if (!res.ok) return
+
+      const data = (await res.json().catch(() => null)) as TrafficBatchResponse | null
+      if (isMountedRef.current && data?.success && data.trafficByRouteId) {
         setTrafficByRouteId((prev) => ({ ...prev, ...data.trafficByRouteId! }))
       }
-    } catch (error) {
-      console.error("[useMapData] Failed to fetch traffic:", error)
+    } catch (error: any) {
+      if (error?.name === "AbortError") return
+      console.warn("[useMapData] Traffic batch update notice:", error?.message || error)
     }
   }, [])
 
   const fetchData = useCallback(async () => {
+    if (!isMountedRef.current) return
     setIsLoading(true)
+
+    // Прерываем предыдущий активный запрос при новом вызове
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    // Таймаут безопасности 12 секунд
+    const timeoutId = setTimeout(() => {
+      try {
+        controller.abort()
+      } catch {
+        // ignore
+      }
+    }, 12000)
+
     try {
-      const [driversRes, routesRes] = await Promise.all([
-        fetch("/api/drivers/locations"),
-        fetch("/api/dashboard/routes"),
+      const [driversSettled, routesSettled] = await Promise.allSettled([
+        fetch("/api/drivers/locations", {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        }).then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        }),
+        fetch("/api/dashboard/routes", {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        }).then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        }),
       ])
 
-      const driversData = await driversRes.json()
-      const routesData = await routesRes.json()
+      clearTimeout(timeoutId)
 
-      if (driversData.success) {
-        setDrivers(driversData.drivers || [])
-        setStats(driversData.stats || DEFAULT_STATS)
+      if (!isMountedRef.current) return
+
+      // Обработка данных водителей
+      if (driversSettled.status === "fulfilled" && driversSettled.value?.success) {
+        const dData = driversSettled.value
+        setDrivers(dData.drivers || [])
+        setStats(dData.stats || DEFAULT_STATS)
+      } else if (driversSettled.status === "rejected") {
+        const reason = driversSettled.reason
+        if (reason?.name !== "AbortError") {
+          console.warn("[useMapData] Drivers sync notice:", reason?.message || reason)
+        }
       }
 
-      if (routesData.success) {
-        const routesList: RouteData[] = routesData.routes || []
+      // Обработка маршрутов
+      if (routesSettled.status === "fulfilled" && routesSettled.value?.success) {
+        const rData = routesSettled.value
+        const routesList: RouteData[] = rData.routes || []
         setRoutes(routesList)
-        setBase(routesData.base || null)
-        setBaseWarning(routesData.warning || null)
+        setBase(rData.base || null)
+        setBaseWarning(rData.warning || null)
 
-        const totalKm = routesList.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
+        const totalKm = routesList.reduce((sum: any, r: any) => sum + (r.totalDistance || 0), 0)
         setTotalActiveKm(totalKm)
 
-        // не блокируем основной UI — трафик отдельно и редко
-        void fetchTrafficBatch(routesList)
+        // не блокируем основной UI — трафик отдельно
+        void fetchTrafficBatch(routesList, controller.signal)
+      } else if (routesSettled.status === "rejected") {
+        const reason = routesSettled.reason
+        if (reason?.name !== "AbortError") {
+          console.warn("[useMapData] Routes sync notice:", reason?.message || reason)
+        }
       }
 
       setLastUpdate(new Date())
-    } catch (error) {
-      console.error("[useMapData] Failed to fetch:", error)
+    } catch (error: any) {
+      if (error?.name !== "AbortError") {
+        console.warn("[useMapData] Background fetch note:", error?.message || error)
+      }
     } finally {
-      setIsLoading(false)
+      clearTimeout(timeoutId)
+      if (isMountedRef.current) {
+        setIsLoading(false)
+      }
     }
   }, [fetchTrafficBatch])
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 15000)
-    return () => clearInterval(interval)
+    const interval = setInterval(() => {
+      // опрашиваем только если страница видима
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return
+      }
+      fetchData()
+    }, 15000)
+    return () => {
+      clearInterval(interval)
+    }
   }, [fetchData])
 
   return {

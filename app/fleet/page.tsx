@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { useFleet } from "@/hooks/use-fleet"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
@@ -28,21 +29,12 @@ import {
   MapPin,
   Settings,
   PieChart,
-  Copy,
-  KeyRound,
 } from "lucide-react"
 import { toast } from "sonner"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 
 export default function FleetPage() {
   const { user, isLoading: authLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
   const router = useRouter()
 
   const {
@@ -66,33 +58,15 @@ export default function FleetPage() {
   const [maintenanceVehicle, setMaintenanceVehicle] = useState<any>(null)
   const [assignVehicle, setAssignVehicle] = useState<any>(null) // Для привязки водителя
   const [showSettings, setShowSettings] = useState(false) // Настройки базы
-  // Временный пароль нового водителя (показывается один раз)
-  const [newDriverCredentials, setNewDriverCredentials] = useState<{
-    name: string
-    phone: string
-    temporaryPassword: string
-  } | null>(null)
 
   const [availableVehicles, setAvailableVehicles] = useState<any[]>([])
   const [fleetSettings, setFleetSettings] = useState<any>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace("/login")
+      router.push("/")
     }
   }, [user, authLoading, router])
-
-  // Временный пароль нового водителя показывается один раз — даём скопировать
-  const copyTemporaryPassword = async () => {
-    if (!newDriverCredentials) return
-    try {
-      await navigator.clipboard.writeText(newDriverCredentials.temporaryPassword)
-      toast.success("Пароль скопирован")
-    } catch (error) {
-      console.error("[fleet] не удалось скопировать пароль:", error)
-      toast.error("Скопировать не удалось — перепишите пароль вручную")
-    }
-  }
 
   const loadSettings = () => {
     fetch("/api/fleet/settings")
@@ -116,8 +90,7 @@ export default function FleetPage() {
   const filteredVehicles = useMemo(() => {
     if (!searchQuery) return vehicles
     const q = searchQuery.toLowerCase()
-    return vehicles.filter(
-      (v) =>
+    return vehicles.filter((v: any) =>
         v.plate?.toLowerCase().includes(q) ||
         v.type?.toLowerCase().includes(q) ||
         v.brand?.toLowerCase().includes(q),
@@ -127,7 +100,7 @@ export default function FleetPage() {
   const filteredDrivers = useMemo(() => {
     if (!searchQuery) return drivers
     const q = searchQuery.toLowerCase()
-    return drivers.filter((d) => d.name?.toLowerCase().includes(q) || d.phone?.includes(q))
+    return drivers.filter((d: any) => d.name?.toLowerCase().includes(q) || d.phone?.includes(q))
   }, [drivers, searchQuery])
 
   // Helpers
@@ -173,7 +146,10 @@ export default function FleetPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="pl-64">
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <main className="p-6 space-y-6">
           {/* Инфо-панель */}
@@ -282,8 +258,8 @@ export default function FleetPage() {
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredVehicles.map((vehicle) => {
-                    const driver = drivers.find((d) => d.vehicleId === vehicle.id) ?? null
+                  {filteredVehicles.map((vehicle: any) => {
+                    const driver = drivers.find((d: any) => d.vehicleId === vehicle.id) ?? null
 
                     const vehicleWithDriver = {
                       ...vehicle,
@@ -313,8 +289,8 @@ export default function FleetPage() {
 
             <TabsContent value="drivers" className="mt-0">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredDrivers.map((driver) => {
-                  const vehicle = vehicles.find((v) => v.id === driver.vehicleId)
+                {filteredDrivers.map((driver: any) => {
+                  const vehicle = vehicles.find((v: any) => v.id === driver.vehicleId)
                   return (
                     <DriverCard
                       key={driver.id}
@@ -345,21 +321,9 @@ export default function FleetPage() {
         open={showAddDriver}
         onOpenChange={setShowAddDriver}
         onSubmit={async (data) => {
-          const result: any = await addDriver(data)
+          await addDriver(data)
           setShowAddDriver(false)
-
-          if (result?.warning) toast.warning("Водитель добавлен", { description: result.warning })
-
-          if (result?.credentials?.temporaryPassword) {
-            // Временный пароль показываем один раз — сохранить его больше негде
-            setNewDriverCredentials({
-              name: data.name,
-              phone: result.credentials.phone,
-              temporaryPassword: result.credentials.temporaryPassword,
-            })
-          } else if (!result?.warning) {
-            toast.success("Водитель добавлен")
-          }
+          toast.success("Водитель добавлен")
         }}
         availableVehicles={availableVehicles}
       />
@@ -393,54 +357,6 @@ export default function FleetPage() {
           setAssignVehicle(null)
         }}
       />
-
-      {/* Учётка нового водителя: временный пароль показываем один раз */}
-      <Dialog
-        open={Boolean(newDriverCredentials)}
-        onOpenChange={(open) => !open && setNewDriverCredentials(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="h-5 w-5 text-primary" />
-              Доступ для водителя
-            </DialogTitle>
-            <DialogDescription>
-              Учётка создана. Передайте водителю телефон и временный пароль: при первом
-              входе в приложение система потребует его сменить. Пароль показывается один раз.
-            </DialogDescription>
-          </DialogHeader>
-
-          {newDriverCredentials && (
-            <div className="space-y-3 rounded-lg border border-border bg-secondary/40 p-4">
-              <div>
-                <div className="text-xs text-muted-foreground">Водитель</div>
-                <div className="font-medium">{newDriverCredentials.name}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Телефон (логин)</div>
-                <div className="font-medium">{newDriverCredentials.phone}</div>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs text-muted-foreground">Временный пароль</div>
-                  <div className="font-mono text-base break-all">
-                    {newDriverCredentials.temporaryPassword}
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => void copyTemporaryPassword()}>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Копировать
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button onClick={() => setNewDriverCredentials(null)}>Понятно</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

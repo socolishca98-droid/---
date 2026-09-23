@@ -149,9 +149,37 @@ class Jar {
   }
 }
 
+const CSRF_COOKIE = "loginex_csrf"
+const CSRF_HEADER = "x-csrf-token"
+
+/** Proxy требует CSRF-токен для изменяющих запросов к /api/* (кроме мобильного контура). */
+function needsCsrf(route, method) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase())) return false
+  if (!route.startsWith("/api/")) return false
+  if (route.startsWith("/api/m/")) return false
+  if (route === "/api/auth/csrf") return false
+  return true
+}
+
+async function ensureCsrf(jar) {
+  if (jar.has(CSRF_COOKIE)) return
+  const res = await fetch(`${BASE}/api/auth/csrf`, {
+    headers: jar.header() ? { Cookie: jar.header() } : {},
+  })
+  jar.absorb(res)
+}
+
 async function req(route, { method = "GET", jar = null, body = null, redirect = "manual" } = {}) {
   const headers = { Accept: "application/json, text/plain, */*" }
   if (body !== null) headers["Content-Type"] = "application/json"
+
+  // CSRF: токен берём из той же cookie-банки, что и отправляем (double-submit)
+  if (needsCsrf(route, method)) {
+    jar = jar || new Jar("csrf")
+    await ensureCsrf(jar)
+    headers[CSRF_HEADER] = jar.cookies.get(CSRF_COOKIE) || ""
+  }
+
   if (jar && jar.header()) headers.Cookie = jar.header()
 
   let res
@@ -294,6 +322,22 @@ await check("поддельный токен в cookie не принимаетс
   })
   assert(res.status === 401, `ожидали 401, получили ${res.status}`)
   return "HTTP 401"
+})
+
+await check("изменяющий запрос без CSRF-токена отклоняется (403)", async () => {
+  const jar = new Jar("no-csrf")
+  await ensureCsrf(jar)
+  assert(jar.has(CSRF_COOKIE), "сервер не выдал CSRF-cookie на GET /api/auth/csrf")
+  const res = await fetch(`${BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Cookie: jar.header() },
+    redirect: "manual",
+    body: JSON.stringify({ email: "csrf@example.com", password: "Whatever123" }),
+  })
+  assert(res.status === 403, `ожидали 403, получили ${res.status}`)
+  const data = await res.json().catch(() => ({}))
+  assert(data.code === "csrf_failed", `ожидали code=csrf_failed, получили ${JSON.stringify(data)}`)
+  return "HTTP 403 csrf_failed"
 })
 
 await check("driverId в query без сессии ничего не открывает", async () => {

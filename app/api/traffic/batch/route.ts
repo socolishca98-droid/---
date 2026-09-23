@@ -1,10 +1,9 @@
 // app/api/traffic/batch/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { getRouteTraffic } from "@/lib/traffic/service"
 import type { LatLng, TrafficBatchResponse, TrafficRouteInfo } from "@/lib/traffic/types"
-
-import { requireStaff } from "@/lib/auth/session"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -24,14 +23,16 @@ function isLatLng(x: unknown): x is LatLng {
   )
 }
 
-export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function POST(req: NextRequest) {
+  const __auth = await requireStaffAuth(req);
+  if (__auth.error) return __auth.error;
+
+
   try {
-    const url = new URL(request.url)
+    const url = new URL(req.url)
     const debug = url.searchParams.get("debug") === "1"
 
-    const body = (await request.json().catch(() => ({}))) as BatchBody
+    const body = (await req.json().catch(() => ({}))) as BatchBody
     const routes = Array.isArray(body.routes) ? body.routes : []
 
     if (routes.length === 0) {

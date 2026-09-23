@@ -1,13 +1,14 @@
 // app/api/fleet/settings/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-import { requireStaff } from "@/lib/auth/session"
-
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     let settings = await prisma.fleetSettings.findUnique({
       where: { id: "default" },
@@ -38,8 +39,10 @@ export async function GET(request: NextRequest) {
 // POST /api/fleet/settings
 // body: { parkName?: string; baseAddress?: string; baseLat?: number | null; baseLng?: number | null }
 export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json().catch(() => ({}))
     const {

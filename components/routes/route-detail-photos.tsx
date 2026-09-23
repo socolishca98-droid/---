@@ -20,7 +20,7 @@ const typeConfig = {
 
 export function RouteDetailPhotos({ route, photos }: RouteDetailPhotosProps) {
   // Filter photos for this route
-  const routePhotos = photos.filter((p) => p.routeId === route.id)
+  const routePhotos = (photos as any).filter((p: any) => p.routeId === route.id)
 
   if (routePhotos.length === 0) {
     return (
@@ -39,8 +39,7 @@ export function RouteDetailPhotos({ route, photos }: RouteDetailPhotosProps) {
   }
 
   // Group by type
-  const photosByType = routePhotos.reduce(
-    (acc, photo) => {
+  const photosByType = routePhotos.reduce((acc: any, photo: any) => {
       const type = photo.type
       if (!acc[type]) acc[type] = []
       acc[type].push(photo)
@@ -69,11 +68,11 @@ export function RouteDetailPhotos({ route, photos }: RouteDetailPhotosProps) {
                 </div>
                 <span className="text-sm font-medium">{config.label}</span>
                 <Badge variant="outline" className="text-xs">
-                  {typePhotos.length}
+                  {(typePhotos as any).length}
                 </Badge>
               </div>
               <div className="grid grid-cols-4 gap-2">
-                {typePhotos.map((photo) => (
+                {(typePhotos as any).map((photo: any) => (
                   <div
                     key={photo.id}
                     className="aspect-square rounded-lg overflow-hidden bg-secondary cursor-pointer hover:ring-2 hover:ring-primary transition-all"

@@ -1,3 +1,9 @@
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { FinancialOverview } from "@/components/reports/financial-overview"
@@ -5,13 +11,34 @@ import { DriverPerformance } from "@/components/reports/driver-performance"
 import { OrdersAnalytics } from "@/components/reports/orders-analytics"
 import { AIReportGenerator } from "@/components/reports/ai-report-generator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BarChart3, Users, Package, Bot } from "lucide-react"
+import { BarChart3, Users, Package, Bot, Loader2 } from "lucide-react"
 
 export default function ReportsPage() {
+  const { user, isLoading } = useAuth()
+  const { isCollapsed } = useSidebar()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push("/")
+    }
+  }, [user, isLoading, router])
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="pl-64">
+      <div
+        className="transition-all duration-300 ease-in-out"
+        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+      >
         <Header />
         <main className="p-6 space-y-6">
           {/* Page Title */}

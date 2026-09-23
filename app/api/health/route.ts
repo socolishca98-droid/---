@@ -1,21 +1,14 @@
-/**
- * GET /api/health — публичная проверка доступности сервиса.
- *
- * Не раскрывает данных: только статус, имя продукта и время.
- * Удобно для мониторинга и для быстрой диагностики «сервер жив?»
- * без авторизации.
- */
-
+// app/api/health/route.ts - P2-5 health check for Docker
 import { NextResponse } from "next/server"
-import { PRODUCT_NAME } from "@/lib/auth/constants"
 
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   return NextResponse.json({
-    success: true,
     status: "ok",
-    product: PRODUCT_NAME,
-    time: new Date().toISOString(),
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: process.env.npm_package_version || "1.0.0",
+    env: process.env.NODE_ENV,
   })
 }

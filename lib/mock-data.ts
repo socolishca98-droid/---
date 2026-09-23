@@ -571,7 +571,7 @@ export const mockDogrizSuggestions: any[] = [
     suggestedOrderId: "7",
     currentFillPercent: 65,
     availableCapacity: 7000, // kg available
-    suggestedOrder: mockOrders.find((o) => o.id === "7")!,
+    suggestedOrder: mockOrders.find((o: any) => o.id === "7")!,
     aiReason:
       "Маршрут Новосибирск-Омск проходит через направление на Барнаул. Кузов загружен на 65%, свободно 7т. Заказ на 3т электроники идеально вписывается. Дополнительный доход: 25 000 руб.",
     status: "pending",

@@ -11,6 +11,13 @@ import { authenticateWithPassword } from "@/lib/auth/login"
 import { sessionCookie } from "@/lib/auth/session"
 
 import { STAFF_ROLES } from "@/lib/auth/constants"
+import {
+  buildRateLimitHeaders,
+  checkRateLimit,
+  getClientIp,
+  recordFailure,
+  resetRateLimit,
+} from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
 
@@ -25,9 +32,23 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const identifier = String(body.email ?? "")
+  const rateLimitKey = `auth-login:${getClientIp(request)}:${identifier.toLowerCase()}`
+  const rateLimit = checkRateLimit(rateLimitKey)
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Слишком много неудачных попыток (входа). Повторите через 15 минут",
+        code: "rate_limited",
+      },
+      { status: 429, headers: buildRateLimitHeaders(rateLimit) },
+    )
+  }
+
   try {
     const result = await authenticateWithPassword({
-      identifier: String(body.email ?? ""),
+      identifier,
       password: String(body.password ?? ""),
       expectedRoles: STAFF_ROLES,
       kind: "staff",
@@ -35,11 +56,17 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.ok) {
+      const afterFailure = recordFailure(rateLimitKey)
       return NextResponse.json(
         { success: false, error: result.error, code: result.code },
-        { status: result.status },
+        {
+          status: afterFailure.allowed ? result.status : 429,
+          headers: buildRateLimitHeaders(afterFailure),
+        },
       )
     }
+
+    resetRateLimit(rateLimitKey)
 
     const response = NextResponse.json({
       success: true,

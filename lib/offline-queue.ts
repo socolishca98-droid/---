@@ -32,7 +32,7 @@ class UploadQueue {
   }
 
   private notify() {
-    this.listeners.forEach((listener) => listener([...this.queue]))
+    this.listeners.forEach((listener: any) => listener([...this.queue]))
   }
 
   add(item: Omit<QueueItem, "id" | "status" | "createdAt">) {
@@ -50,7 +50,7 @@ class UploadQueue {
   async processQueue() {
     if (!navigator.onLine) return
 
-    const pending = this.queue.filter((item) => item.status === "pending")
+    const pending = this.queue.filter((item: any) => item.status === "pending")
 
     for (const item of pending) {
       try {
@@ -83,7 +83,7 @@ class UploadQueue {
   }
 
   private updateStatus(id: string, status: QueueItem["status"], error?: string) {
-    const item = this.queue.find((i) => i.id === id)
+    const item = this.queue.find((i: any) => i.id === id)
     if (item) {
       item.status = status
       if (error) item.error = error
@@ -92,7 +92,7 @@ class UploadQueue {
   }
 
   private remove(id: string) {
-    this.queue = this.queue.filter((item) => item.id !== id)
+    this.queue = this.queue.filter((item: any) => item.id !== id)
     this.save()
   }
 

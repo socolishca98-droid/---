@@ -1,5 +1,10 @@
 /**
- * Middleware защиты всех страниц и /api/*.
+ * Proxy (Next.js 16+; бывший middleware.ts) — первый контур защиты всех
+ * страниц и /api/*.
+ *
+ * Дополнительно к проверке сессии: CSRF (double-submit cookie) для всех
+ * изменяющих запросов к /api/* — защита от межсайтовой подделки, которую
+ * обеспечивает клиентский CsrfProvider (components/csrf-provider.tsx).
  *
  * Что делает:
  *  1. Классифицирует путь (lib/auth/access.ts): публичный / штабной / водительский /
@@ -27,6 +32,7 @@ import {
 } from "@/lib/auth/constants"
 import { acceptsDriver, acceptsStaff, classifyRoute } from "@/lib/auth/access"
 import { AuthSecretError, verifySessionToken, type SessionTokenPayload } from "@/lib/auth/token"
+import { verifyCsrf } from "@/lib/csrf"
 
 export const config = {
   // Всё, кроме статики Next.js и файлов с расширениями
@@ -64,8 +70,44 @@ function withIdentity(
   return NextResponse.next({ request: { headers } })
 }
 
-export async function middleware(request: NextRequest) {
+/** Нужна ли CSRF-проверка для этого запроса. */
+function shouldCheckCsrf(request: NextRequest): boolean {
+  const method = request.method.toUpperCase()
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false
+
+  const { pathname } = request.nextUrl
+  if (!pathname.startsWith("/api/")) return false
+  // мобильное приложение ходит с Bearer-токеном, а не с cookie
+  if (pathname.startsWith("/api/m/")) return false
+  if (pathname === "/api/auth/csrf") return false
+  // сервер-серверное взаимодействие по секрету (cron ATI)
+  if (pathname.startsWith("/api/ati/cron")) return false
+  // API-клиенты с Bearer-токеном не подвержены CSRF (нет cookie)
+  const authorization = request.headers.get("authorization")
+  if (authorization?.startsWith("Bearer ")) return false
+
+  return true
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
+
+  // CSRF — до проверки авторизации: защищает и вход с регистрацией
+  if (shouldCheckCsrf(request)) {
+    const csrf = verifyCsrf(request)
+    if (!csrf.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Сессия устарела: не прошёл CSRF-токен. Обновите страницу и повторите.",
+          code: "csrf_failed",
+          reason: csrf.reason,
+        },
+        { status: 403 },
+      )
+    }
+  }
+
   const access = classifyRoute(pathname)
 
   let staffPayload: SessionTokenPayload | null = null

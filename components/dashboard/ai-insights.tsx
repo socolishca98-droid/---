@@ -41,7 +41,7 @@ export function AIInsights() {
         <CardTitle className="text-lg font-semibold">ИИ-аналитика</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {insights.map((insight, index) => (
+        {insights.map((insight: any, index: any) => (
           <div key={index} className="flex gap-3 p-3 rounded-lg bg-secondary/50">
             <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${priorityColors[insight.priority as keyof typeof priorityColors]}`}>
               <insight.icon className="h-4 w-4" />

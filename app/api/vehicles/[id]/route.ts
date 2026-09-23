@@ -1,10 +1,8 @@
 // app/api/vehicles/[id]/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-
-import { requireStaff } from "@/lib/auth/session"
-import { refreshVehicleCache, unlinkVehicle } from "@/lib/fleet/assignment"
 
 const ALLOWED_VEHICLE_STATUSES = ["available", "in_use", "maintenance"] as const
 type VehicleStatus = typeof ALLOWED_VEHICLE_STATUSES[number]
@@ -14,12 +12,12 @@ type RouteParams = {
 }
 
 // GET /api/vehicles/[id]
-export async function GET(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function GET(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { id } = await params
 
@@ -53,12 +51,12 @@ export async function GET(
 }
 
 // PATCH /api/vehicles/[id]
-export async function PATCH(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function PATCH(request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { id } = await params
 
@@ -152,9 +150,6 @@ export async function PATCH(
       data,
     })
 
-    // у закреплённого водителя обновляем кэш номера/типа машины
-    await refreshVehicleCache(prisma, [id])
-
     return NextResponse.json({ success: true, vehicle })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Vehicle PATCH error"
@@ -167,12 +162,12 @@ export async function PATCH(
 }
 
 // DELETE /api/vehicles/[id]
-export async function DELETE(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function DELETE(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { id } = await params
 
@@ -183,9 +178,11 @@ export async function DELETE(
       )
     }
 
-    // Отвязываем водителя: обнуляем Driver.vehicleId и его кэш
-    // (vehiclePlate/vehicleType), иначе у водителя останется «призрачный» номер.
-    await unlinkVehicle(prisma, id)
+    // Отвязываем водителя
+    await prisma.driver.updateMany({
+      where: { vehicleId: id },
+      data: { vehicleId: null },
+    })
 
     await prisma.vehicle.delete({
       where: { id },

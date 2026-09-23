@@ -1,12 +1,13 @@
 // app/api/ati/cache/route.ts
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { getAtiCache, getAtiStats } from "@/lib/ati-client"
 
-import { requireStaff } from "@/lib/auth/session"
-
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const { searchParams } = new URL(request.url)
 

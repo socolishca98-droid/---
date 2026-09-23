@@ -20,7 +20,21 @@ import {
   Award,
   Wrench,
 } from "lucide-react"
-import { useDriverSession } from "@/hooks/use-driver-session"
+
+interface DriverProfile {
+  id: string
+  name: string
+  phone: string
+  vehicleType?: string
+  vehiclePlate?: string
+  status: string
+  rating: number
+  ordersCompleted: number
+  licenseNumber?: string
+  licenseExpiry?: string
+  medicalExpiry?: string
+  hiredAt?: string
+}
 
 interface DriverStats {
   totalOrders: number
@@ -30,114 +44,70 @@ interface DriverStats {
 
 export default function MobileProfilePage() {
   const router = useRouter()
-
-  // Профиль водителя берётся из серверной сессии (httpOnly-cookie),
-  // а не из localStorage: там больше ничего не хранится
-  const {
-    driver,
-    isLoading: isSessionLoading,
-    mustChangePassword,
-    logout,
-  } = useDriverSession()
-
+  const [driver, setDriver] = useState<DriverProfile | null>(null)
   const [stats, setStats] = useState<DriverStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Смена пароля
-  const [isPasswordOpen, setIsPasswordOpen] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [repeatPassword, setRepeatPassword] = useState("")
-  const [passwordError, setPasswordError] = useState("")
-  const [passwordOk, setPasswordOk] = useState("")
-  const [isChangingPassword, setIsChangingPassword] = useState(false)
-
-  // /m/profile?changePassword=1 — попадаем сюда после входа с временным паролем
+  // Загрузка профиля
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get("changePassword") === "1") setIsPasswordOpen(true)
-  }, [])
-
-  // Статистика по завершённым рейсам
-  useEffect(() => {
-    if (!driver?.id) return
-    let cancelled = false
-
-    const loadStats = async () => {
-      try {
-        // driverId не передаём: сервер берёт его из сессии водителя
-        const ordersRes = await fetch("/api/m/orders?status=history")
-        const ordersData = await ordersRes.json()
-
-        if (!cancelled && ordersData.success) {
-          setStats({
-            totalOrders: ordersData.stats?.completedOrders || 0,
-            totalEarnings: ordersData.stats?.totalEarnings || 0,
-            totalDistance: ordersData.stats?.totalDistance || 0,
-          })
-        }
-      } catch (error) {
-        console.error("Не удалось загрузить статистику:", error)
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    void loadStats()
-    return () => {
-      cancelled = true
-    }
-  }, [driver?.id])
-
-  const handleLogout = async () => {
-    if (confirm("Выйти из аккаунта?")) {
-      // Серверный выход: сессия отзывается в БД, cookie удаляется, редирект на /m/login
-      await logout()
-    }
-  }
-
-  const handleChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setPasswordError("")
-    setPasswordOk("")
-
-    if (newPassword !== repeatPassword) {
-      setPasswordError("Пароли не совпадают")
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
       return
     }
 
-    setIsChangingPassword(true)
     try {
-      const res = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      })
-      const data = await res.json().catch(() => ({}))
+      const session = JSON.parse(saved) as { id: string }
+      if (!session?.id) throw new Error("Invalid session")
+      fetchProfile(session.id)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
 
-      if (!res.ok || !data?.success) {
-        setPasswordError(data?.error || "Не удалось сменить пароль")
-        return
+  const fetchProfile = async (driverId: string) => {
+    try {
+      const driverRes = await fetch(`/api/drivers/${driverId}`)
+      const driverData = await driverRes.json()
+
+      if (driverData.success && driverData.driver) {
+        setDriver(driverData.driver)
+        localStorage.setItem("driver_session", JSON.stringify(driverData.driver))
       }
 
-      setCurrentPassword("")
-      setNewPassword("")
-      setRepeatPassword("")
-      setIsPasswordOpen(false)
-      setPasswordOk("Пароль изменён. На других устройствах потребуется войти заново")
-    } catch {
-      setPasswordError("Ошибка соединения. Попробуйте ещё раз")
+      const ordersRes = await fetch(
+        `/api/m/orders?driverId=${driverId}&status=history`
+      )
+      const ordersData = await ordersRes.json()
+
+      if (ordersData.success) {
+        setStats({
+          totalOrders: ordersData.stats?.completedOrders || 0,
+          totalEarnings: ordersData.stats?.totalEarnings || 0,
+          totalDistance: ordersData.stats?.totalDistance || 0,
+        })
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile:", error)
     } finally {
-      setIsChangingPassword(false)
+      setIsLoading(false)
     }
   }
 
-  const formatDate = (dateString?: string | null) => {
+  const handleLogout = () => {
+    if (confirm("Выйти из аккаунта?")) {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }
+
+  const formatDate = (dateString?: string) => {
     if (!dateString) return "—"
     return new Date(dateString).toLocaleDateString("ru-RU")
   }
 
-  const isExpiringSoon = (dateString?: string | null) => {
+  const isExpiringSoon = (dateString?: string) => {
     if (!dateString) return false
     const date = new Date(dateString)
     const now = new Date()
@@ -145,12 +115,12 @@ export default function MobileProfilePage() {
     return diffDays < 30 && diffDays > 0
   }
 
-  const isExpired = (dateString?: string | null) => {
+  const isExpired = (dateString?: string) => {
     if (!dateString) return false
     return new Date(dateString) < new Date()
   }
 
-  if (isLoading || isSessionLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
@@ -168,7 +138,7 @@ export default function MobileProfilePage() {
 
   const initials = driver.name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: any) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase()
@@ -383,94 +353,6 @@ export default function MobileProfilePage() {
             </div>
           </div>
         )}
-
-        {/* Пароль */}
-        <div className="bg-[#151518] border border-gray-800 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
-                <Shield className="h-5 w-5 text-emerald-400" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium">Пароль</p>
-                <p className="text-xs text-gray-500">
-                  {mustChangePassword
-                    ? "Нужно сменить временный пароль"
-                    : "Смените, если пароль мог попасть к другим"}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsPasswordOpen((prev) => !prev)}
-              className="text-sm text-orange-400 hover:text-orange-300 flex-shrink-0"
-            >
-              {isPasswordOpen ? "Скрыть" : "Сменить"}
-            </button>
-          </div>
-
-          {passwordOk && (
-            <p className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
-              {passwordOk}
-            </p>
-          )}
-
-          {isPasswordOpen && (
-            <form onSubmit={handleChangePassword} className="space-y-3 pt-1">
-              {mustChangePassword && (
-                <p className="text-sm text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3">
-                  Логист выдал вам временный пароль. Придумайте свой — до смены пароля
-                  часть действий может быть недоступна.
-                </p>
-              )}
-
-              <input
-                type="password"
-                autoComplete="current-password"
-                placeholder="Текущий пароль"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-                className="w-full px-4 py-3 bg-[#0f0f12] border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
-                required
-              />
-              <input
-                type="password"
-                autoComplete="new-password"
-                placeholder="Новый пароль (минимум 8 символов)"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                minLength={8}
-                className="w-full px-4 py-3 bg-[#0f0f12] border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
-                required
-              />
-              <input
-                type="password"
-                autoComplete="new-password"
-                placeholder="Повторите новый пароль"
-                value={repeatPassword}
-                onChange={(event) => setRepeatPassword(event.target.value)}
-                minLength={8}
-                className="w-full px-4 py-3 bg-[#0f0f12] border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 transition-colors"
-                required
-              />
-
-              {passwordError && (
-                <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl p-3">
-                  {passwordError}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={isChangingPassword || !currentPassword || !newPassword}
-                className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 rounded-xl font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-              >
-                {isChangingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
-                Сохранить новый пароль
-              </button>
-            </form>
-          )}
-        </div>
 
         {/* Кнопка: ТО / ремонт */}
         <button

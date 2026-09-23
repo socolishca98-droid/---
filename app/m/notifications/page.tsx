@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -15,12 +15,32 @@ import {
 } from "lucide-react"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { toast } from "sonner"
-import { useDriverSession } from "@/hooks/use-driver-session"
+
+interface DriverSession {
+  id: string
+  name: string
+}
 
 export default function DriverNotificationsPage() {
   const router = useRouter()
-  // Сессия водителя — с сервера (httpOnly-cookie)
-  const { driver } = useDriverSession()
+  const [driver, setDriver] = useState<DriverSession | null>(null)
+
+  useEffect(() => {
+    const saved = localStorage.getItem("driver_session")
+    if (!saved) {
+      router.push("/m/login")
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as DriverSession
+      if (!parsed?.id) throw new Error("Invalid session")
+      setDriver(parsed)
+    } catch {
+      localStorage.removeItem("driver_session")
+      router.push("/m/login")
+    }
+  }, [router])
 
   const {
     notifications,
@@ -43,7 +63,7 @@ export default function DriverNotificationsPage() {
   )
 
   const handleNotificationPress = (id: string) => {
-    const n = notifications.find((x) => x.id === id)
+    const n = notifications.find((x: any) => x.id === id)
     if (!n) return
 
     markAsRead(id)
@@ -170,7 +190,7 @@ export default function DriverNotificationsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {sortedNotifications.map((n) => {
+            {sortedNotifications.map((n: any) => {
               const isUnread = !n.isRead
 
               return (

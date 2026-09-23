@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import type { DriverLocation } from "../types"
-import { STATUS_CONFIG, ACTIVE_STATUSES } from "../constants"
+import { STATUS_CONFIG, ACTIVE_STATUSES, formatDuration } from "../constants"
 
 interface DriverMarkersProps {
   /** ✅ ИСПРАВЛЕНО: теперь это L.Map | null */
@@ -29,13 +29,13 @@ export function DriverMarkers({
 
     // Удаляем маркеры водителей, которых больше нет
     currentMarkers.forEach((marker, id) => {
-      if (!drivers.find((d) => d.id === id)) {
+      if (!drivers.find((d: any) => d.id === id)) {
         marker.remove()
         currentMarkers.delete(id)
       }
     })
 
-    drivers.forEach((driver) => {
+    drivers.forEach((driver: any) => {
       if (!driver.latitude || !driver.longitude) return
 
       const pos: L.LatLngExpression = [driver.latitude, driver.longitude]
@@ -69,7 +69,7 @@ export function DriverMarkers({
             <div class="popup-avatar" style="background: linear-gradient(135deg, ${statusInfo.color}, ${statusInfo.color}88)">
               ${driver.name
                 .split(" ")
-                .map((n) => n[0])
+                .map((n: any) => n[0])
                 .join("")
                 .slice(0, 2)}
             </div>
@@ -80,7 +80,7 @@ export function DriverMarkers({
           </div>
           <div class="popup-status" style="background: ${statusInfo.bg}; border-color: ${statusInfo.color}40">
             <span class="popup-status-dot" style="background: ${statusInfo.color}"></span>
-            <span style="color: ${statusInfo.color}">${statusInfo.label}</span>
+            <span style="color: ${statusInfo.color}">${statusInfo.label}${driver.statusDuration && driver.statusDuration > 0 ? ` (${formatDuration(driver.statusDuration)})` : ""}</span>
           </div>
           ${
             driver.routeFrom
@@ -113,7 +113,7 @@ export function DriverMarkers({
 
     // ✅ Cleanup при размонтировании
     return () => {
-      currentMarkers.forEach((marker) => marker.remove())
+      currentMarkers.forEach((marker: any) => marker.remove())
       currentMarkers.clear()
     }
   }, [map, drivers, onSelectDriver]) // ✅ map теперь корректная зависимость

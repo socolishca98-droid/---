@@ -148,7 +148,7 @@ function orderOrdersGreedy(orders: RouteOptimizerOrder[], variant: VariantId): s
   }
 
   while (remaining.length > 0) {
-    const matches = remaining.filter((o) => normalizeCity(o.routeFrom) === current)
+    const matches = remaining.filter((o: any) => normalizeCity(o.routeFrom) === current)
     const pool = matches.length > 0 ? matches : remaining
 
     let best = pool[0]
@@ -165,24 +165,23 @@ function orderOrdersGreedy(orders: RouteOptimizerOrder[], variant: VariantId): s
 
     result.push(best.id)
     current = normalizeCity(best.routeTo)
-    remaining.splice(remaining.findIndex((x) => x.id === best.id), 1)
+    remaining.splice(remaining.findIndex((x: any) => x.id === best.id), 1)
   }
 
   return result
 }
 
 function buildVariants(selected: RouteOptimizerOrder[]): OptimizerVariant[] {
-  const idsKey = selected.map((o) => o.id).sort().join("|")
+  const idsKey = selected.map((o: any) => o.id).sort().join("|")
   const baseHash = stableHash(idsKey)
 
-  const distanceKm = selected.reduce((sum, o) => sum + (o.distance || 0), 0)
-  const totalPrice = selected.reduce(
-    (sum, o) => sum + (typeof o.price === "number" ? o.price : 0),
+  const distanceKm = selected.reduce((sum: any, o: any) => sum + (o.distance || 0), 0)
+  const totalPrice = selected.reduce((sum: any, o: any) => sum + (typeof o.price === "number" ? o.price : 0),
     0,
   )
 
   const deadlines = selected
-    .map((o) => parseDeadline(o.deadline))
+    .map((o: any) => parseDeadline(o.deadline))
     .filter((d): d is Date => Boolean(d))
     .sort((a, b) => a.getTime() - b.getTime())
 
@@ -299,7 +298,7 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
   const availableOrders = useMemo(() => {
     // Для реальных рейсов: исключаем финальные/неактуальные
     const excluded = new Set(["delivered", "cancelled", "rejected"])
-    return orders.filter((o) => {
+    return orders.filter((o: any) => {
       const s = String(o.status || "").toLowerCase()
       if (!s) return true
       return !excluded.has(s)
@@ -308,13 +307,13 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
 
   const selectedOrderObjects = useMemo(() => {
     const set = new Set(selectedOrders)
-    return availableOrders.filter((o) => set.has(o.id))
+    return availableOrders.filter((o: any) => set.has(o.id))
   }, [availableOrders, selectedOrders])
 
   const toggleOrder = (orderId: string) => {
     setVariants(null)
     setSelectedOrders((prev) =>
-      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId],
+      prev.includes(orderId) ? prev.filter((id: any) => id !== orderId) : [...prev, orderId],
     )
   }
 
@@ -347,7 +346,7 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
         </p>
 
         <div className="space-y-2 max-h-[280px] overflow-y-auto pr-2">
-          {availableOrders.map((order) => (
+          {availableOrders.map((order: any) => (
             <div
               key={order.id}
               className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
@@ -417,7 +416,7 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
 
         {variants && (
           <div className="space-y-3 pt-2">
-            {variants.map((v) => (
+            {variants.map((v: any) => (
               <div
                 key={v.id}
                 className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3"
@@ -476,7 +475,7 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
                 </div>
 
                 <div className="space-y-1">
-                  {v.why.map((line, idx) => (
+                  {v.why.map((line: any, idx: any) => (
                     <div key={idx} className="text-xs text-muted-foreground flex gap-2">
                       <span className="mt-[6px] h-1 w-1 rounded-full bg-muted-foreground/50 flex-shrink-0" />
                       <span className="min-w-0">{line}</span>

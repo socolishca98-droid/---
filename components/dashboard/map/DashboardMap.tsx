@@ -14,10 +14,12 @@ import { useRouteAnimation } from "./hooks/useRouteAnimation"
 import { BaseMarker } from "./layers/BaseMarker"
 import { WaypointMarkers } from "./layers/WaypointMarkers"
 import { DriverMarkers } from "./layers/DriverMarkers"
+import { TrafficLayer, type TrafficLevelInfo } from "./layers/TrafficLayer"
 
 // Panels
 import { DriversPanel } from "./panels/DriversPanel"
 import { StatsOverlay } from "./panels/StatsOverlay"
+import { TrafficPlanningPanel } from "./panels/TrafficPlanningPanel"
 
 // Styles & Constants
 import { mapStyles } from "./styles"
@@ -33,7 +35,15 @@ export default function DashboardMap() {
   const [showRoutes, setShowRoutes] = useState(true)
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null)
 
-  const { map, canvasRef, flyTo, fitBounds } = useMapInstance({
+  // Яндекс.Пробки состояние
+  const [showTraffic, setShowTraffic] = useState(true)
+  const [showTrafficEvents, setShowTrafficEvents] = useState(true)
+  const [trafficCongestionsOnly, setTrafficCongestionsOnly] = useState(false)
+  const [trafficOpacity, setTrafficOpacity] = useState(0.85)
+  const [isTrafficPanelOpen, setIsTrafficPanelOpen] = useState(false)
+  const [trafficInfo, setTrafficInfo] = useState<TrafficLevelInfo | null>(null)
+
+  const { map, canvasRef, flyTo, fitBounds, theme, setTheme } = useMapInstance({
     containerRef: mapContainerRef,
   })
 
@@ -52,7 +62,7 @@ export default function DashboardMap() {
 
   // Подготавливаем данные для анимации, добавляя цвета
   const animationRoutes = useMemo(() => {
-    return routes.map((route, index) => ({
+    return routes.map((route: any, index: any) => ({
       ...route,
       color: (route as any).color || ROUTE_COLORS[index % ROUTE_COLORS.length]
     }))
@@ -77,14 +87,14 @@ export default function DashboardMap() {
       allPoints.push(base.coordinates)
     }
     
-    drivers.forEach((d) => {
+    drivers.forEach((d: any) => {
       if (d.latitude && d.longitude) {
         allPoints.push([d.latitude, d.longitude])
       }
     })
     
-    routes.forEach((r) => {
-      r.waypoints?.forEach((wp) => {
+    routes.forEach((r: any) => {
+      r.waypoints?.forEach((wp: any) => {
         if (wp.position) {
           allPoints.push(wp.position)
         }
@@ -104,6 +114,13 @@ export default function DashboardMap() {
   const handleFlyToDriver = useCallback(
     (lat: number, lng: number) => {
       flyTo([lat, lng], 15)
+    },
+    [flyTo],
+  )
+
+  const handleFocusLocation = useCallback(
+    (coords: [number, number], zoom = 13) => {
+      flyTo(coords, zoom)
     },
     [flyTo],
   )
@@ -136,6 +153,16 @@ export default function DashboardMap() {
 
       {map && (
         <>
+          {/* Слой пробок строго по маршрутам (только сильные заторы, перекрытия и ДТП) */}
+          <TrafficLayer
+            map={map}
+            routes={animationRoutes}
+            trafficByRouteId={trafficByRouteId}
+            enabled={showTraffic}
+            showEvents={showTrafficEvents}
+            opacity={trafficOpacity}
+            onTrafficInfoChange={setTrafficInfo}
+          />
           <BaseMarker map={map} base={base} />
           <WaypointMarkers map={map} routes={animationRoutes} enabled={showRoutes} />
           <DriverMarkers
@@ -161,6 +188,32 @@ export default function DashboardMap() {
         lastUpdate={lastUpdate}
         onRefresh={refresh}
         onFlyToBase={handleFlyToBase}
+        onResetView={handleResetView}
+        mapTheme={theme}
+        onChangeTheme={setTheme}
+        showTraffic={showTraffic}
+        isTrafficPanelOpen={isTrafficPanelOpen}
+        onToggleTrafficPanel={() => setIsTrafficPanelOpen(!isTrafficPanelOpen)}
+        trafficLevel={trafficInfo?.level}
+        trafficInfo={trafficInfo}
+      />
+
+      {/* Панель планирования с учетом Яндекс.Пробок */}
+      <TrafficPlanningPanel
+        isOpen={isTrafficPanelOpen}
+        onClose={() => setIsTrafficPanelOpen(false)}
+        showTraffic={showTraffic}
+        onToggleTraffic={() => setShowTraffic(!showTraffic)}
+        showEvents={showTrafficEvents}
+        onToggleEvents={() => setShowTrafficEvents(!showTrafficEvents)}
+        congestionsOnly={trafficCongestionsOnly}
+        onToggleCongestionsOnly={() => setTrafficCongestionsOnly(!trafficCongestionsOnly)}
+        opacity={trafficOpacity}
+        onChangeOpacity={setTrafficOpacity}
+        trafficInfo={trafficInfo}
+        onRefreshTraffic={refresh}
+        activeRoutesCount={routes.length}
+        onFocusLocation={handleFocusLocation}
       />
 
       <DriversPanel
@@ -172,14 +225,6 @@ export default function DashboardMap() {
         onSelectDriver={handleSelectDriver}
         onFlyToDriver={handleFlyToDriver}
       />
-      
-      {/* Кнопка сброса вида */}
-      <button 
-        onClick={handleResetView}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-[#121217]/80 backdrop-blur border border-[#2a2a35] text-gray-400 hover:text-white hover:border-[#3a3a45] px-4 py-2 rounded-full text-xs font-medium transition-all"
-      >
-        Сбросить вид
-      </button>
     </div>
   )
 }

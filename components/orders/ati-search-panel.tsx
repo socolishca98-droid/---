@@ -174,7 +174,7 @@ function GeoSelect({
 
       {isOpen && options.length > 0 && (
         <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-          {options.map((geo) => (
+          {options.map((geo: any) => (
             <div
               key={geo.id}
               className="px-3 py-2.5 hover:bg-accent cursor-pointer text-sm transition-colors"
@@ -461,12 +461,12 @@ export function AtiSearchPanel() {
         })
 
         // Убираем груз из списков "новых"
-        setSearchResults((prev) => prev.filter((l) => l.id !== load.id))
+        setSearchResults((prev) => prev.filter((l: any) => l.id !== load.id))
         setDbData((prev) =>
           prev
             ? {
                 ...prev,
-                items: prev.items.filter((l) => l.id !== load.id),
+                items: prev.items.filter((l: any) => l.id !== load.id),
                 total: Math.max(0, prev.total - 1),
               }
             : null,
@@ -631,7 +631,7 @@ export function AtiSearchPanel() {
 
           <div className="space-y-3">
             {searchResults.length > 0 ? (
-              searchResults.map((load) => (
+              searchResults.map((load: any) => (
                 <LoadCard
                   key={load.id}
                   load={load}
@@ -840,14 +840,14 @@ export function AtiSearchPanel() {
 
           {loading ? (
             <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: 5 }).map((_: any, i: any) => (
                 <Skeleton key={i} className="h-32 w-full" />
               ))}
             </div>
           ) : dbData?.items.length ? (
             <>
               <div className="space-y-3">
-                {dbData.items.map((load) => (
+                {dbData.items.map((load: any) => (
                   <LoadCard
                     key={load.id}
                     load={load}

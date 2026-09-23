@@ -1,21 +1,20 @@
 // app/api/drivers/[id]/active-order/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-import { forbidden, isSelfOrStaff, requireAnySession } from "@/lib/auth/session"
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 type RouteParams = {
   params: Promise<{ id: string }>
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireAnySession(request)
-  if (!auth.ok) return auth.response
+export async function GET(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
 
   try {
     // ✅ Next.js 15+ требует await для params
@@ -26,11 +25,6 @@ export async function GET(
         { success: false, error: "Driver ID is required" },
         { status: 400 }
       )
-    }
-
-    // Водитель видит только свой активный заказ
-    if (!isSelfOrStaff(auth.value, driverId)) {
-      return forbidden("Недостаточно прав для просмотра этого водителя")
     }
 
     // Получаем первый активный заказ

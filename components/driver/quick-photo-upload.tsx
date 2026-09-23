@@ -25,7 +25,7 @@ export function QuickPhotoUpload({ onUpload }: QuickPhotoUploadProps) {
   ]
 
   const handleFiles = async (files: FileList) => {
-    const newUploads = Array.from(files).map((file) => ({
+    const newUploads = Array.from(files).map((file: any) => ({
       file,
       preview: URL.createObjectURL(file),
       uploading: true,
@@ -36,7 +36,7 @@ export function QuickPhotoUpload({ onUpload }: QuickPhotoUploadProps) {
     // Simulate upload
     for (let i = 0; i < newUploads.length; i++) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      setUploads((prev) => prev.map((u, idx) => (idx === uploads.length + i ? { ...u, uploading: false } : u)))
+      setUploads((prev) => prev.map((u: any, idx: any) => (idx === uploads.length + i ? { ...u, uploading: false } : u)))
     }
 
     onUpload(Array.from(files), selectedCategory)
@@ -57,7 +57,7 @@ export function QuickPhotoUpload({ onUpload }: QuickPhotoUploadProps) {
       <CardContent className="space-y-4">
         {/* Category Selection */}
         <div className="grid grid-cols-3 gap-2">
-          {categories.map((cat) => (
+          {categories.map((cat: any) => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
@@ -122,7 +122,7 @@ export function QuickPhotoUpload({ onUpload }: QuickPhotoUploadProps) {
         {/* Uploads Preview */}
         {uploads.length > 0 && (
           <div className="grid grid-cols-3 gap-2">
-            {uploads.map((upload, index) => (
+            {uploads.map((upload: any, index: any) => (
               <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-muted">
                 <img
                   src={upload.preview || "/placeholder.svg"}

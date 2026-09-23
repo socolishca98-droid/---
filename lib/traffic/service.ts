@@ -1,13 +1,8 @@
 // lib/traffic/service.ts
 
-export type LatLng = [number, number]
+import type { LatLng, TrafficSegment, TrafficIncidentType } from "@/lib/traffic/types"
 
-export type TrafficSegment = {
-  startT: number
-  endT: number
-  severity: number
-  delayMin?: number
-}
+export type { LatLng, TrafficSegment, TrafficIncidentType }
 
 export type TrafficRouteResult = {
   routeId: string
@@ -60,30 +55,57 @@ function buildMockTrafficSegments(routeId: string, nowMs: number): TrafficSegmen
   const seed = stableHash(`${routeId}|${timeBucket}`)
   const rnd = seededRand(seed)
 
-  const segmentCount = 4 + Math.floor(rnd() * 4)
+  // 1-2 критических участка на маршруте (только сильные пробки, ДТП или перекрытия)
+  const segmentCount = 1 + Math.floor(rnd() * 2)
   const segments: TrafficSegment[] = []
 
+  const roadNames = [
+    "Трасса М-10 «Россия» (Тверская обл.)",
+    "Трасса М-7 «Волга» (Владимирская обл.)",
+    "Трасса М-4 «Дон» (Тульская обл.)",
+    "Трасса М-8 «Холмогоры» (Ярославская обл.)",
+    "ЦКАД (Московская обл.)",
+    "Трасса М-11 «Нева» (Новгородская обл.)",
+    "Трасса М-5 «Урал» (Рязанская обл.)",
+  ]
+
   for (let i = 0; i < segmentCount; i++) {
-    const startT = clamp(rnd() * 0.88, 0.02, 0.95)
-    const len = clamp(0.05 + rnd() * 0.12, 0.05, 0.22)
-    const endT = clamp(startT + len, 0.05, 0.98)
+    const startT = clamp(0.12 + (i * 0.4) + rnd() * 0.15, 0.08, 0.78)
+    const len = clamp(0.06 + rnd() * 0.1, 0.04, 0.16)
+    const endT = clamp(startT + len, 0.12, 0.94)
 
-    const raw = rnd()
-    const severity =
-      raw < 0.55 ? rnd() * 0.35 : raw < 0.85 ? 0.35 + rnd() * 0.35 : 0.7 + rnd() * 0.3
+    const eventRoll = rnd()
+    let type: "jam" | "accident" | "closure" = "jam"
+    let severity = 0.75 + rnd() * 0.2
+    let delayMin = Math.round(10 + rnd() * 15)
+    let description = "Плотный затор, скорость потока < 15 км/ч"
 
-    const delayMin = Math.round(2 + severity * (6 + rnd() * 10))
-    segments.push({ startT, endT, severity: clamp(severity, 0, 1), delayMin })
+    if (eventRoll > 0.65) {
+      type = "accident"
+      severity = 0.88
+      delayMin = Math.round(14 + rnd() * 18)
+      description = "ДТП с перекрытием 2 правых полос"
+    } else if (eventRoll < 0.22) {
+      type = "closure"
+      severity = 1.0
+      delayMin = Math.round(20 + rnd() * 25)
+      description = "Дорожные работы: участок перекрыт, ограничение движения"
+    }
+
+    const roadName = roadNames[Math.floor(rnd() * roadNames.length)]
+
+    segments.push({
+      startT,
+      endT,
+      severity,
+      delayMin,
+      type,
+      description,
+      roadName,
+    })
   }
 
-  return segments
-    .map((s) => ({
-      ...s,
-      startT: clamp(Math.min(s.startT, s.endT), 0, 1),
-      endT: clamp(Math.max(s.startT, s.endT), 0, 1),
-    }))
-    .filter((s) => s.endT - s.startT >= 0.02)
-    .sort((a, b) => a.startT - b.startT)
+  return segments.sort((a, b) => a.startT - b.startT)
 }
 
 function pickWaypoints(coords: LatLng[], count: number): LatLng[] {

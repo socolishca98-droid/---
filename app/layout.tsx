@@ -1,16 +1,14 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
-import { Toaster as SonnerToaster } from "@/components/ui/sonner"
+import { Toaster as SonnerToaster } from "sonner"
 import { AuthProvider } from "@/lib/auth-context"
 import { SidebarProvider } from "@/lib/sidebar-context"
-import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { CsrfProvider } from "@/components/csrf-provider"
 
 export const metadata: Metadata = {
-  title: `${PRODUCT_NAME} — система управления грузоперевозками`,
-  description:
-    "Заказы, маршруты, автопарк и водители в одном контуре: от заявки до отчёта по рейсу",
-  applicationName: PRODUCT_NAME,
+  title: "Loginex TMS — Система управления грузоперевозками",
+  description: "Loginex TMS: управление грузоперевозками, мониторинг автопарка, координация рейсов и мобильное приложение водителя",
 }
 
 export default function RootLayout({
@@ -21,16 +19,13 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans antialiased">
-        <AuthProvider>
-          <SidebarProvider>
-            {children}
-          </SidebarProvider>
-        </AuthProvider>
-        {/* Два тостера подключены исторически: часть страниц использует sonner,
-            часть — radix-useToast. Задача 3 сведёт их к одной системе,
-            пока работают оба, чтобы сообщения не терялись. */}
+        <CsrfProvider>
+          <AuthProvider>
+            <SidebarProvider>{children}</SidebarProvider>
+          </AuthProvider>
+        </CsrfProvider>
         <Toaster />
-        <SonnerToaster position="top-right" richColors />
+        <SonnerToaster richColors position="top-right" />
       </body>
     </html>
   )

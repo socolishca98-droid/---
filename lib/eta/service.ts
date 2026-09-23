@@ -84,7 +84,7 @@ export async function calculateETA(
       calculatedAt: new Date(),
       validUntil: new Date(Date.now() + CACHE_TTL),
       routeDetails: {
-        legs: route.legs.map((leg, index) => ({
+        legs: route.legs.map((leg: any, index: any) => ({
           from: osrmResponse.waypoints[index]?.name || `Точка ${index + 1}`,
           to: osrmResponse.waypoints[index + 1]?.name || `Точка ${index + 2}`,
           distance: leg.distance,

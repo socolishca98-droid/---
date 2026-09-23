@@ -1,9 +1,9 @@
 // app/api/orders/[id]/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-import { canDriverAccessOrder, forbidden, requireAnySession, requireStaff } from "@/lib/auth/session"
 const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
 
 type RouteParams = {
@@ -11,12 +11,11 @@ type RouteParams = {
 }
 
 // GET /api/orders/[id]
-export async function GET(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireAnySession(request)
-  if (!auth.ok) return auth.response
+export async function GET(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
 
   try {
     const { id } = await params
@@ -26,11 +25,6 @@ export async function GET(
         { success: false, error: "Order ID is required" },
         { status: 400 }
       )
-    }
-
-    // Водитель читает только свой заказ
-    if (!(await canDriverAccessOrder(auth.value, id))) {
-      return forbidden("Заказ назначен другому водителю")
     }
 
     const order = await prisma.order.findUnique({
@@ -56,12 +50,11 @@ export async function GET(
 }
 
 // PATCH /api/orders/[id]
-export async function PATCH(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireAnySession(request)
-  if (!auth.ok) return auth.response
+export async function PATCH(request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
 
   try {
     const { id } = await params
@@ -73,27 +66,12 @@ export async function PATCH(
       )
     }
 
-    // Водитель меняет только свой заказ
-    if (!(await canDriverAccessOrder(auth.value, id))) {
-      return forbidden("Заказ назначен другому водителю")
-    }
-
     const body = await request.json()
     const { status, assignedDriverId, assignedVehicleId, ...other } = body as {
       status?: string
       assignedDriverId?: string | null
       assignedVehicleId?: string | null
       [key: string]: unknown
-    }
-
-    // Назначение водителя и машины — решение логиста, водителю доступен только статус
-    if (auth.value.kind === "driver") {
-      const extraFields = Object.keys(body).filter((key) => key !== "status")
-      if (extraFields.length > 0) {
-        return forbidden(
-          `Водителю доступно изменение только статуса заказа (лишние поля: ${extraFields.join(", ")})`
-        )
-      }
     }
 
     const existing = await prisma.order.findUnique({
@@ -119,7 +97,7 @@ export async function PATCH(
       : wasActive
     const isCompleting = status === "delivered" || status === "cancelled" || status === "rejected"
 
-    const updatedOrder = await prisma.$transaction(async (tx) => {
+    const updatedOrder = await prisma.$transaction(async (tx: any) => {
       const order = await tx.order.update({
         where: { id },
         data: {
@@ -199,12 +177,11 @@ export async function PATCH(
 }
 
 // DELETE /api/orders/[id]
-export async function DELETE(
-  request: NextRequest,
-  { params }: RouteParams
-) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+export async function DELETE(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+
 
   try {
     const { id } = await params
@@ -235,7 +212,7 @@ export async function DELETE(
 
     const wasActive = ACTIVE_ORDER_STATUSES.includes(existing.status as typeof ACTIVE_ORDER_STATUSES[number])
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.order.delete({ where: { id } })
 
       if (wasActive) {

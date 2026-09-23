@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { X, Route, Truck } from "lucide-react"
+import { useSidebar } from "@/lib/sidebar-context"
 
 interface TripBuilderBarProps {
   selectedCount: number
@@ -11,12 +12,17 @@ interface TripBuilderBarProps {
 }
 
 export function TripBuilderBar({ selectedCount, selectedOrders, onClear, onCreateTrip }: TripBuilderBarProps) {
+  const { isCollapsed } = useSidebar()
+
   // Суммируем вес и цену
-  const totalWeight = selectedOrders.reduce((sum, o) => sum + (o.weight || 0), 0) / 1000
-  const totalRevenue = selectedOrders.reduce((sum, o) => sum + (o.price || 0), 0)
+  const totalWeight = selectedOrders.reduce((sum: any, o: any) => sum + (o.weight || 0), 0) / 1000
+  const totalRevenue = selectedOrders.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
   
   return (
-    <div className="fixed bottom-6 left-64 right-6 z-50 animate-in slide-in-from-bottom-10">
+    <div
+      className="fixed bottom-6 right-6 z-50 transition-all duration-300 ease-in-out animate-in slide-in-from-bottom-10"
+      style={{ left: isCollapsed ? "96px" : "272px" }}
+    >
       <div className="bg-[#121217] border border-orange-500/30 shadow-2xl rounded-2xl p-4 flex items-center justify-between">
         
         <div className="flex items-center gap-6">
@@ -38,7 +44,7 @@ export function TripBuilderBar({ selectedCount, selectedOrders, onClear, onCreat
           <div className="hidden lg:flex items-center gap-2 text-xs text-gray-400">
             <Route className="h-4 w-4 text-orange-500" />
             <span className="text-gray-500 font-mono uppercase">Маршрут:</span>
-            {selectedOrders.map((o, i) => (
+            {selectedOrders.map((o: any, i: any) => (
               <span key={o.id} className="flex items-center">
                 {i > 0 && <span className="mx-1 text-gray-600">→</span>}
                 <span className="text-white">{o.routeFrom.split(',')[0]}</span>

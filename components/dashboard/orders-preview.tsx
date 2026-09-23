@@ -100,7 +100,7 @@ export function OrdersPreview({ orders }: OrdersPreviewProps) {
         </Link>
       </CardHeader>
       <CardContent className="space-y-3">
-        {sortedOrders.map((order) => {
+        {sortedOrders.map((order: any) => {
           // Fallback, если приоритет не найден в конфиге
           const priorityKey = (order.priority as keyof typeof priorityConfig) || "needs_clarification"
           const priority = priorityConfig[priorityKey]

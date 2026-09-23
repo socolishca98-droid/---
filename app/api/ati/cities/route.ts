@@ -1,12 +1,12 @@
-import { NextRequest } from "next/server"
-import { requireStaff } from "@/lib/auth/session"
-
-import { NextResponse } from 'next/server'
+import { requireStaffAuth } from "@/lib/api-auth"
+import { NextRequest, NextResponse } from "next/server"
 import { getCitiesList } from '@/lib/ati-client'
 
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   const cities = getCitiesList()
   return NextResponse.json(cities)
 }

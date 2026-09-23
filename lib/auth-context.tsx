@@ -24,7 +24,8 @@ export interface SessionUser {
   id: string
   name: string
   email: string | null
-  role: "admin" | "logist"
+  /** role водителя в общей таблице User существует, но штабной контекст его не использует */
+  role: "admin" | "logist" | "driver"
   mustChangePassword: boolean
 }
 

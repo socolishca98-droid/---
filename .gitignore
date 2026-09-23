@@ -51,3 +51,7 @@ Thumbs.db
 
 # снимок связей «машина → водитель» для миграции задачи 2 (временный артефакт)
 prisma/.task2-vehicle-links.json
+
+# генерируется из prisma/schema.prisma (npm run schema:postgres)
+prisma/schema.postgres.prisma
+prisma/schema.sqlite.prisma

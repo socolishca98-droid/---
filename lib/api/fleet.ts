@@ -282,7 +282,7 @@ function parseVehicle(v: any): Vehicle {
 
 // ✅ ИСПРАВЛЕНО: парсинг массива (строка 197)
 function parseVehicles(vehicles: any[]): Vehicle[] {
-  return vehicles.map((v) => ({
+  return vehicles.map((v: any) => ({
     ...v,
     features: safeJsonParse<string[]>(v.features, []),
     lastMaintenanceDate: v.lastMaintenanceDate ? new Date(v.lastMaintenanceDate) : null,

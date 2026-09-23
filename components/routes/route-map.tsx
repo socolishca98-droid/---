@@ -57,7 +57,7 @@ export function RouteMap({ waypoints, className }: RouteMapProps) {
     const padding = 60
     const pointSpacing = (width - padding * 2) / Math.max(waypoints.length - 1, 1)
 
-    const points = waypoints.map((wp, i) => ({
+    const points = waypoints.map((wp: any, i: any) => ({
       x: padding + i * pointSpacing,
       y: height / 2 + Math.sin(i * 0.8) * 40,
       ...wp,
@@ -84,7 +84,7 @@ export function RouteMap({ waypoints, className }: RouteMapProps) {
     ctx.stroke()
 
     // Draw points
-    points.forEach((point) => {
+    points.forEach((point: any) => {
       // Outer circle
       ctx.beginPath()
       ctx.arc(point.x, point.y, 12, 0, Math.PI * 2)

@@ -1,4 +1,5 @@
-// prisma/schema.prisma
+// prisma/schema.prisma - Default SQLite for dev, see schema.postgres.prisma for production
+// P2-1: To use PostgreSQL, copy schema.postgres.prisma over schema.prisma or set DATABASE_PROVIDER=postgresql and use that file
 
 generator client {
   provider = "prisma-client-js"
@@ -8,6 +9,11 @@ datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
+
+// ============================================
+// СИСТЕМА ПОЛЬЗОВАТЕЛЕЙ И АВТОРИЗАЦИЯ
+// ============================================
+
 
 // ============================================
 // ATI.SU ИНТЕГРАЦИЯ
@@ -156,6 +162,7 @@ model Order {
   priority          String    @default("needs_clarification")
   aiScore           Int       @default(50)
   aiReason          String?
+
   assignedDriverId  String?
   driver            Driver?   @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
 
@@ -167,17 +174,17 @@ model Order {
   route             Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
 
   // Догруз
-  isAdditionalLoad Boolean   @default(false)
-  addedToRouteAt   DateTime?
-  proposedToDriver Boolean   @default(false)
-  proposedAt       DateTime?
-  acceptedAt       DateTime?
-  rejectedAt       DateTime?
-  rejectionReason  String?
-  routeSequence    Int?
+  isAdditionalLoad  Boolean   @default(false)
+  addedToRouteAt    DateTime?
+  proposedToDriver  Boolean   @default(false)
+  proposedAt        DateTime?
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  rejectionReason   String?
+  routeSequence     Int?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   /// Фото, сигналы SOS и точки маршрута, относящиеся к заказу
   photos     Photo[]
@@ -198,7 +205,7 @@ model Order {
 /// Водитель
 /// Допустимые значения status: available, busy, maintenance, offline
 model Driver {
-  id              String    @id @default(cuid())
+  id              String            @id @default(cuid())
   name            String
   /// Телефон — логин водителя в мобильном приложении, поэтому уникальный
   phone           String    @unique
@@ -215,15 +222,24 @@ model Driver {
   longitude       Float?
   lastGpsUpdate   DateTime?
   /// Статус водителя: available | busy | maintenance | offline
-  status          String    @default("available")
-  ordersCompleted Int       @default(0)
-  rating          Float     @default(5.0)
+  status          String            @default("available")
+  ordersCompleted Int               @default(0)
+  rating          Float             @default(5.0)
   licenseNumber   String?
   licenseExpiry   DateTime?
   medicalExpiry   DateTime?
   hiredAt         DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  orders          Order[]
+  routes          Route[]
+  shifts          DriverShift[]
+  sosAlerts       SosAlert[]
+  photos          Photo[]
+  maintenanceLogs MaintenanceLog[]
+  stages          RouteStage[]
+  events          RouteEvent[]
 
   /// Учётная запись для входа в мобильное приложение (роль driver)
   user            User?
@@ -244,8 +260,8 @@ model Driver {
 /// Транспортное средство
 /// Допустимые значения status: available, in_use, maintenance
 model Vehicle {
-  id                  String    @id @default(cuid())
-  plate               String    @unique
+  id                  String           @id @default(cuid())
+  plate               String           @unique
   type                String
   brand               String?
   model               String?
@@ -257,14 +273,21 @@ model Vehicle {
   height              Float?
   features            String    @default("[]")
   /// Статус ТС: available | in_use | maintenance
-  status              String    @default("available")
+  status              String           @default("available")
   lastMaintenanceDate DateTime?
   nextMaintenanceDate DateTime?
   mileage             Int?
   insuranceExpiry     DateTime?
   inspectionExpiry    DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  drivers             Driver[]
+  orders              Order[]
+  routes              Route[]
+  maintenanceLogs     MaintenanceLog[]
+  stages              RouteStage[]
+  events              RouteEvent[]
 
   /// Закреплённый водитель — связь хранится на стороне Driver (Driver.vehicleId)
   drivers             Driver[]
@@ -460,7 +483,7 @@ model FleetSettings {
 // ============================================
 
 model RouteStage {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   routeId        String
   route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
@@ -470,14 +493,14 @@ model RouteStage {
   vehicleId      String?
   vehicle        Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   type           String   // loading | driving | unloading | rest | other
-  status         String   @default("planned") // planned | active | completed | cancelled
+  status         String    @default("planned") // planned | active | completed | cancelled
   sequence       Int?
   plannedStartAt DateTime?
   plannedEndAt   DateTime?
   startedAt      DateTime?
   endedAt        DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([routeId])
   @@index([driverId])
@@ -584,4 +607,26 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+/// Журнал административных действий (кто, что, над кем, с какого IP).
+/// Записывается через lib/audit.ts; читается через GET /api/admin/audit.
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  actorEmail  String?
+  /// approve | deactivate | activate | change_role | invite_create | invite_revoke | login | create | update | delete
+  action      String
+  targetId    String?
+  targetType  String   @default("user")
+  targetEmail String?
+  /// JSON с деталями (старая/новая роль, причина и т.п.)
+  metadata    String?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([createdAt])
 }

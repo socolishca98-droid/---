@@ -15,6 +15,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { hashPassword, validatePasswordStrength } from "@/lib/auth/password"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
 
@@ -83,6 +85,17 @@ export async function POST(request: NextRequest) {
         approvedAt: bootstrap ? new Date() : null,
       },
       select: { id: true, email: true, name: true, role: true, status: true },
+    })
+
+    await logAudit({
+      actorId: user.id,
+      actorEmail: user.email ?? null,
+      action: bootstrap ? "bootstrap_admin" : "register",
+      targetId: user.id,
+      targetType: "user",
+      targetEmail: user.email ?? null,
+      metadata: { role: user.role, status: user.status, bootstrap },
+      ip: getClientIp(request),
     })
 
     if (bootstrap) {

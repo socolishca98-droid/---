@@ -1,12 +1,13 @@
 // app/api/ati/scan/route.ts
+import { requireStaffAuth } from "@/lib/api-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { scanAtiLoads } from "@/lib/ati-client"
 
-import { requireStaff } from "@/lib/auth/session"
-
 export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+
+
   try {
     const body = await request.json().catch(() => ({}))
     const result = await scanAtiLoads(body)

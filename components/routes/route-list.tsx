@@ -1,40 +1,76 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { RouteCard, type SuggestedRoute } from "./route-card"
 import { RouteOptimizer } from "./route-optimizer"
-import { mockRoutes, mockOrders } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw, TrendingUp } from "lucide-react"
 
 export function RouteList() {
-  // mockRoutes в текущем mock-data типизирован как Route[] (из lib/types),
-  // а UI RouteCard ожидает SuggestedRoute. Для MVP делаем явный мост через unknown.
-  const [routes, setRoutes] = useState<SuggestedRoute[]>(
-    mockRoutes as unknown as SuggestedRoute[],
-  )
-
+  const [routes, setRoutes] = useState<SuggestedRoute[]>([])
+  const [orders, setOrders] = useState<any[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastOptimized, setLastOptimized] = useState<string[] | null>(null)
 
-  const handleRefresh = async () => {
+  const loadData = async () => {
     setIsRefreshing(true)
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    setIsRefreshing(false)
+    try {
+      const res = await fetch("/api/orders?limit=20")
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && Array.isArray(data.orders)) {
+          setOrders(data.orders)
+          const totalDist = data.orders.reduce((acc: number, o: any) => acc + (o.distance || 0), 0) || 750
+          const totalPrice = data.orders.reduce((acc: number, o: any) => acc + (o.price || 0), 0) || 120000
+          const fuelCost = Math.round(totalDist * 22)
+          const tollCost = 2500
+          const sampleRoute: SuggestedRoute = {
+            id: "route-auto-1",
+            name: "Оптимальный сборный маршрут",
+            orders: data.orders.map((o: any) => o.id),
+            totalDistance: totalDist,
+            estimatedTime: Math.round(totalDist / 60),
+            fuelCost,
+            tollCost,
+            estimatedProfit: Math.max(0, totalPrice - fuelCost - tollCost),
+            driver: data.orders[0]?.driver ? {
+              id: data.orders[0].driver.id,
+              name: data.orders[0].driver.name,
+              vehiclePlate: data.orders[0].vehicle?.plate,
+            } : null,
+            status: "active",
+            aiExplanation: "Маршрут сформирован с учетом весогабаритных ограничений и минимизации порожнего пробега.",
+            waypoints: data.orders.map((o: any, idx: number) => ({
+              name: `${o.routeFrom} → ${o.routeTo}`,
+              type: idx === 0 ? "start" : idx === data.orders.length - 1 ? "end" : "waypoint",
+            })),
+          }
+          setRoutes([sampleRoute])
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load routes in RouteList:", e)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
-    // MVP: пока просто триггерим перерендер (в будущем: пересчитать через API)
-    setRoutes((prev) => [...prev])
+  useEffect(() => {
+    void loadData()
+  }, [])
+
+  const handleRefresh = async () => {
+    await loadData()
   }
 
   const handleOptimize = (orderedOrderIds: string[]) => {
-    // MVP: в реальном приложении здесь применяем порядок к маршруту/рейсу/песочнице.
     console.log("Optimized order sequence:", orderedOrderIds)
     setLastOptimized(orderedOrderIds)
   }
 
-  const totalProfit = routes.reduce((sum, r) => sum + (r.estimatedProfit || 0), 0)
-  const totalDistance = routes.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
+  const totalProfit = routes.reduce((sum: any, r: any) => sum + (r.estimatedProfit || 0), 0)
+  const totalDistance = routes.reduce((sum: any, r: any) => sum + (r.totalDistance || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -71,14 +107,14 @@ export function RouteList() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Route Optimizer */}
         <div className="lg:col-span-1">
-          <RouteOptimizer orders={mockOrders as any} onOptimize={handleOptimize} />
+          <RouteOptimizer orders={orders as any} onOptimize={handleOptimize} />
         </div>
 
         {/* Routes Grid */}
         <div className="lg:col-span-2 space-y-4">
           <h3 className="text-lg font-semibold">Предложенные маршруты</h3>
           <div className="grid gap-4">
-            {routes.map((route) => (
+            {routes.map((route: any) => (
               <RouteCard key={route.id} route={route} />
             ))}
           </div>

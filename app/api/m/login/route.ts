@@ -14,6 +14,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { authenticateWithPassword } from "@/lib/auth/login"
 import { sessionCookie } from "@/lib/auth/session"
+import {
+  buildRateLimitHeaders,
+  checkRateLimit,
+  getClientIp,
+  recordFailure,
+  resetRateLimit,
+} from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
 
@@ -28,9 +35,23 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  const identifier = String(body.phone ?? "")
+  const rateLimitKey = `m-login:${getClientIp(request)}:${identifier.replace(/\D/g, "")}`
+  const rateLimit = checkRateLimit(rateLimitKey)
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Слишком много неудачных попыток входа. Повторите через 15 минут",
+        code: "rate_limited",
+      },
+      { status: 429, headers: buildRateLimitHeaders(rateLimit) },
+    )
+  }
+
   try {
     const result = await authenticateWithPassword({
-      identifier: String(body.phone ?? ""),
+      identifier,
       password: String(body.password ?? ""),
       expectedRoles: ["driver"],
       kind: "driver",
@@ -38,11 +59,17 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.ok) {
+      const afterFailure = recordFailure(rateLimitKey)
       return NextResponse.json(
         { success: false, error: result.error, code: result.code },
-        { status: result.status },
+        {
+          status: afterFailure.allowed ? result.status : 429,
+          headers: buildRateLimitHeaders(afterFailure),
+        },
       )
     }
+
+    resetRateLimit(rateLimitKey)
 
     if (!result.driverId) {
       return NextResponse.json(

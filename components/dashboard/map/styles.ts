@@ -2,12 +2,26 @@
 
 export const mapStyles = `
   /* ============================================
-     TMS MAP — CLEAN & COMPACT
+     PREMIUM LOGISTICS TMS MAP SYSTEM
+     Sophisticated Dark Glassmorphic Theme
      ============================================ */
 
-  /* === ТОЧКИ ЗАГРУЗКИ/ВЫГРУЗКИ (компактные) === */
+  /* === LEAFLET BASE CONTAINER === */
+  .leaflet-container {
+    background-color: #0d0f14 !important;
+    font-family: inherit;
+    outline: none;
+  }
+
+  /* === ТОЧКИ ЗАГРУЗКИ / ВЫГРУЗКИ (Минималистичные неоновые жетоны) === */
   .wp-container {
-    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .wp-container:hover {
+    transform: scale(1.15);
+    z-index: 9999 !important;
   }
 
   .wp {
@@ -18,79 +32,89 @@ export const mapStyles = `
 
   .wp-dot {
     position: relative;
-    width: 32px;
-    height: 32px;
-    background: #18181b;
-    border: 2.5px solid var(--c);
+    width: 28px;
+    height: 28px;
+    background: #111319;
+    border: 2px solid var(--c);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 800;
     color: var(--c);
-    transition: all 0.15s ease;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 6px rgba(0, 0, 0, 0.8);
+    transition: all 0.2s ease;
     cursor: pointer;
   }
 
   .wp-dot:hover {
-    transform: scale(1.15);
-    box-shadow: 0 0 12px var(--c);
+    box-shadow: 0 0 16px var(--c);
   }
 
   .wp-num {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 700;
+    letter-spacing: -0.5px;
   }
 
   .wp-arrow {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 14px;
-    height: 14px;
+    bottom: -3px;
+    right: -3px;
+    width: 13px;
+    height: 13px;
     background: var(--c);
+    border: 1.5px solid #111319;
     border-radius: 50%;
-    font-size: 9px;
+    font-size: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-weight: 700;
+    font-weight: 800;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
   }
 
-  /* Popup точки */
+  /* === ПОПАПЫ ТОЧЕК МАРШРУТА (Glass Card) === */
   .wp-popup-wrap .leaflet-popup-content-wrapper {
-    background: #18181b;
-    border-radius: 12px;
-    padding: 0;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    background: rgba(18, 20, 28, 0.95) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px !important;
+    padding: 0 !important;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1) !important;
     overflow: hidden;
   }
 
   .wp-popup-wrap .leaflet-popup-content {
-    margin: 0;
+    margin: 0 !important;
   }
 
   .wp-popup-wrap .leaflet-popup-tip {
-    background: #18181b;
+    background: rgba(18, 20, 28, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
   }
 
   .wp-popup {
-    min-width: 180px;
+    min-width: 220px;
+    max-width: 280px;
   }
 
   .wp-popup-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 2px solid;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.02);
   }
 
   .wp-popup-type {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
   }
 
   .wp-popup-num {
@@ -100,39 +124,44 @@ export const mapStyles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     color: #fff;
   }
 
   .wp-popup-addr {
-    padding: 12px 14px;
-    font-size: 13px;
-    color: #a1a1aa;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #d1d5db;
     line-height: 1.5;
-    border-bottom: 1px solid #27272a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .wp-popup-info {
-    padding: 8px 14px;
-    font-size: 12px;
-    color: #71717a;
-    border-bottom: 1px solid #27272a;
+    padding: 10px 16px;
+    font-size: 11px;
+    color: #9ca3af;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .wp-popup-info:last-child {
     border-bottom: none;
   }
 
-  /* === БАЗА === */
+  /* === БАЗА / ШТАБ (High-Tech Pulse Beacon) === */
   .base-marker {
-    filter: drop-shadow(0 0 16px rgba(255, 107, 53, 0.4));
+    filter: drop-shadow(0 0 20px rgba(249, 115, 22, 0.45));
+    transition: transform 0.2s ease;
+  }
+
+  .base-marker:hover {
+    transform: scale(1.1);
   }
 
   .base-container {
     position: relative;
-    width: 56px;
-    height: 56px;
+    width: 60px;
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -141,64 +170,68 @@ export const mapStyles = `
   .base-pulse-1,
   .base-pulse-2 {
     position: absolute;
-    width: 40px;
-    height: 40px;
-    border: 2px solid #FF6B35;
+    width: 44px;
+    height: 44px;
+    border: 1.5px solid #f97316;
     border-radius: 50%;
-    animation: basePulse 2.5s ease-out infinite;
+    animation: basePulseGlow 3s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
   }
 
   .base-pulse-2 {
-    animation-delay: 1.25s;
+    animation-delay: 1.5s;
   }
 
-  @keyframes basePulse {
-    0% { opacity: 0.6; transform: scale(0.9); }
-    100% { opacity: 0; transform: scale(1.8); }
+  @keyframes basePulseGlow {
+    0% { opacity: 0.8; transform: scale(0.8); }
+    100% { opacity: 0; transform: scale(2.2); }
   }
 
   .base-core {
     position: relative;
     z-index: 10;
-    width: 40px;
-    height: 40px;
-    background: #18181b;
-    border: 2.5px solid #FF6B35;
+    width: 42px;
+    height: 42px;
+    background: #12141c;
+    border: 2px solid #f97316;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
+    box-shadow: 0 0 24px rgba(249, 115, 22, 0.35), inset 0 0 12px rgba(249, 115, 22, 0.15);
   }
 
   .base-core svg {
-    width: 18px;
-    height: 18px;
-    stroke: #FF6B35;
+    width: 20px;
+    height: 20px;
+    stroke: #f97316;
   }
 
   .base-label {
     position: absolute;
-    bottom: -2px;
+    bottom: -6px;
     left: 50%;
     transform: translateX(-50%);
-    background: #18181b;
-    border: 1.5px solid #FF6B35;
+    background: rgba(18, 20, 28, 0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(249, 115, 22, 0.5);
     padding: 3px 10px;
-    border-radius: 8px;
+    border-radius: 9999px;
     font-size: 10px;
-    font-weight: 600;
-    color: #FF6B35;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #fb923c;
     white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   }
 
-  /* === ВОДИТЕЛИ === */
+  /* === ВОДИТЕЛИ (Телематические метки) === */
   .driver-marker {
-    transition: transform 0.15s ease;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .driver-marker:hover {
-    transform: scale(1.1);
+    transform: scale(1.15);
+    z-index: 9999 !important;
   }
 
   .driver-container {
@@ -213,29 +246,30 @@ export const mapStyles = `
   .driver-pulse {
     position: absolute;
     top: 2px;
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
-    animation: driverPulse 1.8s ease-out infinite;
+    animation: driverPulseAnim 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
   }
 
-  @keyframes driverPulse {
-    0% { opacity: 0.5; transform: scale(1); }
-    100% { opacity: 0; transform: scale(1.5); }
+  @keyframes driverPulseAnim {
+    0% { opacity: 0.6; transform: scale(0.9); }
+    100% { opacity: 0; transform: scale(1.8); }
   }
 
   .driver-core {
     position: relative;
     z-index: 10;
-    width: 40px;
-    height: 40px;
-    background: #18181b;
-    border: 2.5px solid;
+    width: 38px;
+    height: 38px;
+    background: #111319;
+    border: 2px solid;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.2s;
   }
 
   .driver-core svg {
@@ -246,24 +280,27 @@ export const mapStyles = `
   .driver-pointer {
     width: 0;
     height: 0;
-    border-left: 6px solid transparent;
-    border-right: 6px solid transparent;
-    border-top: 7px solid;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid;
     margin-top: -1px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
   }
 
   /* === POPUP ВОДИТЕЛЯ === */
   .custom-popup .leaflet-popup-content-wrapper {
-    background: #18181b;
-    border: 1px solid #27272a;
-    border-radius: 14px;
-    padding: 0;
+    background: rgba(18, 20, 28, 0.95) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px !important;
+    padding: 0 !important;
     overflow: hidden;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.8) !important;
   }
 
   .custom-popup .leaflet-popup-content {
-    margin: 0;
+    margin: 0 !important;
   }
 
   .custom-popup .leaflet-popup-tip-container {
@@ -271,102 +308,110 @@ export const mapStyles = `
   }
 
   .popup-content {
-    padding: 14px;
-    min-width: 200px;
+    padding: 16px;
+    min-width: 220px;
   }
 
   .popup-header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 12px;
   }
 
   .popup-avatar {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 12px;
+    font-weight: 800;
     color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
   .popup-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: #fafafa;
+    font-size: 13px;
+    font-weight: 700;
+    color: #f3f4f6;
   }
 
   .popup-vehicle {
     font-size: 11px;
-    color: #71717a;
+    color: #9ca3af;
     margin-top: 2px;
   }
 
   .popup-status {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    border-radius: 16px;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 9999px;
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    letter-spacing: 0.3px;
+    margin-bottom: 12px;
+    border: 1px solid transparent;
   }
 
   .popup-status-dot {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
   }
 
   .popup-route {
-    background: #0f0f11;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 10px;
-    padding: 10px;
+    padding: 10px 12px;
   }
 
   .popup-route-from,
   .popup-route-to {
     font-size: 11px;
-    color: #d4d4d8;
+    color: #d1d5db;
     line-height: 1.4;
   }
 
   .popup-route-arrow {
     text-align: center;
-    color: #52525b;
+    color: #6b7280;
     font-size: 11px;
-    padding: 4px 0;
+    padding: 2px 0;
   }
 
-  /* === ZOOM === */
+  /* === LEAFLET ZOOM CONTROLS (Floating Glass) === */
   .leaflet-control-zoom {
-    border: none !important;
-    border-radius: 10px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 14px !important;
     overflow: hidden;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(16px);
+    margin-right: 16px !important;
+    margin-bottom: 24px !important;
   }
 
   .leaflet-control-zoom a {
-    background: #18181b !important;
-    color: #a1a1aa !important;
+    background: rgba(18, 20, 28, 0.9) !important;
+    color: #9ca3af !important;
     border: none !important;
-    border-bottom: 1px solid #27272a !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
     width: 36px !important;
     height: 36px !important;
     line-height: 36px !important;
     font-size: 16px !important;
-    transition: all 0.1s ease;
+    font-weight: 300 !important;
+    transition: all 0.15s ease;
   }
 
   .leaflet-control-zoom a:hover {
-    background: #27272a !important;
-    color: #FF6B35 !important;
+    background: rgba(30, 34, 48, 0.95) !important;
+    color: #f97316 !important;
   }
 
   .leaflet-control-zoom a:last-child {
@@ -375,15 +420,100 @@ export const mapStyles = `
 
   /* === SCROLLBAR === */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 5px;
+    width: 4px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: #0f0f11;
+    background: transparent;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #3f3f46;
-    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* === TRAFFIC TOOLTIP & INCIDENTS === */
+  .leaflet-tooltip.traffic-leaflet-tooltip {
+    background: rgba(14, 16, 23, 0.96) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 12px !important;
+    color: #f3f4f6 !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7) !important;
+    padding: 6px 10px !important;
+  }
+
+  .leaflet-tooltip.traffic-leaflet-tooltip::before {
+    display: none !important;
+  }
+
+  .traffic-tooltip {
+    background: rgba(15, 17, 23, 0.96);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px 12px;
+    color: #f3f4f6;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+    pointer-events: none;
+  }
+
+  .leaflet-div-icon.traffic-incident-div-icon {
+    background: transparent !important;
+    border: none !important;
+  }
+
+  .traffic-incident-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .traffic-incident-marker:hover {
+    transform: scale(1.25);
+  }
+
+  .traffic-incident-beacon {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    animation: trafficBeaconPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+    opacity: 0.75;
+  }
+
+  @keyframes trafficBeaconPulse {
+    75%, 100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+
+  .leaflet-popup-content-wrapper.traffic-popup {
+    background: rgba(18, 20, 28, 0.96) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: #fff !important;
+    border-radius: 16px !important;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75) !important;
+  }
+
+  .traffic-popup .leaflet-popup-content {
+    margin: 14px 16px !important;
+    line-height: 1.4 !important;
+  }
+
+  .traffic-popup .leaflet-popup-tip {
+    background: rgba(18, 20, 28, 0.96) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
   }
 `

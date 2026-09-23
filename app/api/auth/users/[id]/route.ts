@@ -26,6 +26,8 @@ import {
 import { revokeAllSessions } from "@/lib/auth/session"
 
 import { USER_ROLES, type UserRole } from "@/lib/auth/constants"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
 
@@ -57,6 +59,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const actor = auth.value.user
   const { id } = await params
+
+  /** Каждое административное действие пишется в AuditLog (GET /api/admin/audit). */
+  async function audit(
+    logAction: string,
+    target: { id: string; name?: string | null; email?: string | null },
+    metadata?: Record<string, unknown>,
+  ) {
+    await logAudit({
+      actorId: actor.id,
+      actorEmail: actor.email ?? null,
+      action: logAction,
+      targetId: target.id,
+      targetType: "user",
+      targetEmail: target.email ?? null,
+      metadata: metadata ? { ...metadata, targetName: target.name ?? null } : null,
+      ip: getClientIp(request),
+    })
+  }
 
   if (!id) {
     return NextResponse.json(
@@ -120,6 +140,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         data: { status: "active", approvedById: actor.id, approvedAt: new Date() },
         select: { id: true, name: true, email: true, role: true, status: true },
       })
+      await audit("approve", updated, { role: updated.role })
       return NextResponse.json({
         success: true,
         message: `Доступ разрешён: ${updated.name}`,
@@ -161,6 +182,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         },
         select: { id: true, name: true, status: true, suspendReason: true },
       })
+      await audit("deactivate", { ...updated, email: target.email }, {
+        reason,
+        revokedSessions: revoked,
+      })
       return NextResponse.json({
         success: true,
         message: `Доступ закрыт: ${updated.name}. Завершено сессий: ${revoked}`,
@@ -190,6 +215,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         },
         select: { id: true, name: true, status: true },
       })
+      await audit("activate", { ...updated, email: target.email })
       return NextResponse.json({
         success: true,
         message: `Доступ восстановлен: ${updated.name}`,
@@ -233,6 +259,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         data: { role },
         select: { id: true, name: true, role: true },
       })
+      await audit("change_role", { ...updated, email: target.email }, {
+        oldRole: target.role,
+        newRole: role,
+      })
       return NextResponse.json({
         success: true,
         message: `Роль изменена: ${updated.name} → ${role}`,
@@ -265,6 +295,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         },
       })
 
+      await audit("reset_password", target, {
+        generated: !provided,
+        revokedSessions: revoked,
+      })
+
       return NextResponse.json({
         success: true,
         message: `Пароль сброшен: ${target.name}. Пользователь обязан сменить его при входе`,
@@ -279,6 +314,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       data: { failedLoginCount: 0, lockedUntil: null },
       select: { id: true, name: true, status: true },
     })
+    await audit("unlock", { ...updated, email: target.email })
     return NextResponse.json({
       success: true,
       message: `Блокировка входа снята: ${updated.name}`,

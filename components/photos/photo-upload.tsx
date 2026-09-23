@@ -36,7 +36,7 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
 
   const handleFiles = useCallback(
     async (files: FileList) => {
-      const newUploads: PhotoUpload[] = Array.from(files).map((file) => ({
+      const newUploads: PhotoUpload[] = Array.from(files).map((file: any) => ({
         file,
         preview: URL.createObjectURL(file),
         status: "pending" as const,
@@ -48,7 +48,7 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
         const index = uploads.length + i
 
         setUploads((prev) =>
-          prev.map((u, idx) => (idx === index ? { ...u, status: "analyzing" } : u)),
+          prev.map((u: any, idx: any) => (idx === index ? { ...u, status: "analyzing" } : u)),
         )
 
         await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000))
@@ -58,7 +58,7 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
         const isReceipt = detectedType === "receipt" || detectedType === "waybill"
 
         setUploads((prev) =>
-          prev.map((u, idx) =>
+          prev.map((u: any, idx: any) =>
             idx === index
               ? {
                   ...u,
@@ -120,7 +120,7 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
   }
 
   const handleSave = () => {
-    const completedUploads = uploads.filter((u) => u.status === "done")
+    const completedUploads = uploads.filter((u: any) => u.status === "done")
     onUpload(completedUploads)
     setUploads([])
   }
@@ -163,7 +163,7 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
 
         {uploads.length > 0 && (
           <div className="space-y-3">
-            {uploads.map((upload, index) => (
+            {uploads.map((upload: any, index: any) => (
               <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
                 <div className="h-16 w-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                   <img
@@ -226,10 +226,10 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
               </div>
             ))}
 
-            {uploads.some((u) => u.status === "done") && (
+            {uploads.some((u: any) => u.status === "done") && (
               <Button className="w-full bg-primary text-primary-foreground" onClick={handleSave}>
                 <Check className="h-4 w-4 mr-2" />
-                Сохранить {uploads.filter((u) => u.status === "done").length} фото
+                Сохранить {uploads.filter((u: any) => u.status === "done").length} фото
               </Button>
             )}
           </div>
