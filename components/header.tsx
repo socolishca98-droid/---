@@ -37,7 +37,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
+import { Building2, KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
 import { toast } from "sonner"
 
 const ROLE_LABELS: Record<string, string> = {
@@ -145,6 +145,7 @@ export function Header() {
                 <span className="text-sm font-medium">{user.name}</span>
                 <span className="text-xs text-muted-foreground">
                   {ROLE_LABELS[user.role] || user.role}
+                  {user.organization?.name ? ` · ${user.organization.name}` : ""}
                 </span>
               </div>
             </Button>
@@ -155,8 +156,20 @@ export function Header() {
               <span className="text-xs font-normal text-muted-foreground">
                 {user.email || "—"}
               </span>
+              {user.organization?.name && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {user.organization.name}
+                </span>
+              )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+
+            <DropdownMenuItem asChild>
+              <Link href="/organization" className="flex items-center gap-2 cursor-pointer">
+                <Building2 className="h-4 w-4" />
+                Организация
+              </Link>
+            </DropdownMenuItem>
 
             <DropdownMenuItem asChild>
               <Link href="/users" className="flex items-center gap-2 cursor-pointer">

@@ -100,10 +100,13 @@ export async function verifyPassword(
   return timingSafeEqual(expected, actual)
 }
 
-export interface PasswordStrengthResult {
-  ok: boolean
-  error?: string
-}
+/**
+ * Дискриминированное объединение: если ok === false, сообщение об ошибке
+ * гарантированно есть (иначе вызывающему коду приходилось бы писать ?? «...»).
+ */
+export type PasswordStrengthResult =
+  | { ok: true; error?: undefined }
+  | { ok: false; error: string }
 
 /** Минимальные требования к паролю. Без «оценок сложности» — только проверяемые правила. */
 export function validatePasswordStrength(password: string): PasswordStrengthResult {

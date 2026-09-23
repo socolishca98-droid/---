@@ -368,7 +368,7 @@ export default function UsersPage() {
                           <Select
                             value={row.role}
                             onValueChange={(value) => void handleRoleChange(row, value)}
-                            disabled={busy || isSelf}
+                            disabled={busy || isSelf || !isAdmin}
                           >
                             <SelectTrigger className="w-40 h-8">
                               <SelectValue />
@@ -410,7 +410,7 @@ export default function UsersPage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
-                                disabled={busy}
+                                disabled={busy || !isAdmin}
                                 onClick={() => void handleApprove(row)}
                               >
                                 {busy ? (
@@ -424,7 +424,7 @@ export default function UsersPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="text-destructive hover:text-destructive"
-                                disabled={busy}
+                                disabled={busy || !isAdmin}
                                 onClick={() => {
                                   setSuspendReason("Заявка отклонена")
                                   setSuspendTarget(row)
@@ -440,7 +440,7 @@ export default function UsersPage() {
                               size="sm"
                               variant="ghost"
                               className="text-destructive hover:text-destructive"
-                              disabled={busy}
+                              disabled={busy || !isAdmin}
                               onClick={() => {
                                 setSuspendReason("")
                                 setSuspendTarget(row)
@@ -455,7 +455,7 @@ export default function UsersPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busy}
+                              disabled={busy || !isAdmin}
                               onClick={() => void handleRestore(row)}
                             >
                               <ShieldCheck className="h-4 w-4 mr-1.5" />
@@ -467,7 +467,7 @@ export default function UsersPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={busy}
+                              disabled={busy || !isAdmin}
                               onClick={() => void handleUnlock(row)}
                             >
                               Снять блокировку
@@ -477,7 +477,7 @@ export default function UsersPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            disabled={busy}
+                            disabled={busy || !isAdmin}
                             onClick={() => {
                               setTemporaryPassword(null)
                               setResetTarget(row)
@@ -555,7 +555,7 @@ export default function UsersPage() {
             <Button
               variant="destructive"
               onClick={() => void handleSuspend()}
-              disabled={busyUserId === suspendTarget?.id}
+              disabled={busyUserId === suspendTarget?.id || !isAdmin}
             >
               {busyUserId === suspendTarget?.id && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -595,7 +595,7 @@ export default function UsersPage() {
             {!temporaryPassword && (
               <Button
                 onClick={() => void handleResetPassword()}
-                disabled={busyUserId === resetTarget?.id}
+                disabled={busyUserId === resetTarget?.id || !isAdmin}
               >
                 {busyUserId === resetTarget?.id && (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

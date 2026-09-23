@@ -38,6 +38,8 @@ export interface StaffIdentity {
   /// Организация, к которой принадлежит сотрудник. Источник — база (сессия),
   /// никогда не тело запроса. null только у записей, созданных до миграции.
   organizationId: string | null
+  /// Название организации — для показа в интерфейсе
+  organizationName: string | null
 }
 
 export interface DriverIdentity {
@@ -46,6 +48,8 @@ export interface DriverIdentity {
   phone: string
   /// Организация-владелец карточки водителя
   organizationId: string | null
+  /// Название организации — для показа в интерфейсе
+  organizationName: string | null
   vehicleId: string | null
   vehicleType: string
   vehiclePlate: string
@@ -148,6 +152,7 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
       status: true,
       mustChangePassword: true,
       organizationId: true,
+      organization: { select: { name: true } },
     },
   })
   if (!user) return null
@@ -166,6 +171,7 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
       status: user.status,
       mustChangePassword: user.mustChangePassword,
       organizationId: user.organizationId ?? null,
+      organizationName: user.organization?.name ?? null,
     },
   }
 }
@@ -184,12 +190,14 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
       mustChangePassword: true,
       driverId: true,
       organizationId: true,
+      organization: { select: { name: true } },
       driver: {
         select: {
           id: true,
           name: true,
           phone: true,
           organizationId: true,
+          organization: { select: { name: true } },
           vehicleId: true,
           vehicleType: true,
           vehiclePlate: true,
@@ -219,6 +227,8 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
     driver: {
       ...user.driver,
       organizationId: user.driver.organizationId ?? user.organizationId ?? null,
+      organizationName:
+        user.driver.organization?.name ?? user.organization?.name ?? null,
     },
   }
 }
@@ -489,6 +499,9 @@ export function publicSessionView(session: AnySession) {
         role: session.user.role,
         mustChangePassword: session.user.mustChangePassword,
       },
+      organization: session.user.organizationId
+        ? { id: session.user.organizationId, name: session.user.organizationName }
+        : null,
     }
   }
   return {
@@ -501,5 +514,8 @@ export function publicSessionView(session: AnySession) {
       mustChangePassword: session.mustChangePassword,
     },
     driver: session.driver,
+    organization: session.driver.organizationId
+      ? { id: session.driver.organizationId, name: session.driver.organizationName }
+      : null,
   }
 }

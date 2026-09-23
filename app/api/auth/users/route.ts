@@ -1,14 +1,16 @@
 /**
- * GET /api/auth/users — список учётных записей для страницы /users
+ * GET /api/auth/users — список учётных записей СВОЕЙ организации для страницы /users
  * (одобрение регистраций, закрытие и восстановление доступа).
  *
- * Доступ: admin, logist.
+ * Доступ: admin, logist. Список всегда ограничен организацией из сессии —
+ * filter по organizationId нельзя ни снять, ни подменить параметром запроса.
  * Пагинация настоящая (page/pageSize + total), а не «take: 50 и молча обрезать».
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
 
 import { USER_ROLES, USER_STATUSES, type UserRole, type UserStatus } from "@/lib/auth/constants"
 
@@ -20,6 +22,9 @@ const MAX_PAGE_SIZE = 200
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
+
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
   const { searchParams } = request.nextUrl
   const statusParam = searchParams.get("status") || "all"
@@ -36,7 +41,7 @@ export async function GET(request: NextRequest) {
     : null
   const role = USER_ROLES.includes(roleParam as UserRole) ? (roleParam as UserRole) : null
 
-  const where = {
+  const where = scopedWhere(org.organizationId, {
     ...(status ? { status } : {}),
     ...(role ? { role } : {}),
     ...(query
@@ -48,7 +53,7 @@ export async function GET(request: NextRequest) {
           ],
         }
       : {}),
-  }
+  })
 
   try {
     const [users, total, pendingCount] = await Promise.all([
@@ -75,7 +80,9 @@ export async function GET(request: NextRequest) {
           failedLoginCount: true,
           lockedUntil: true,
           driverId: true,
+          organizationId: true,
           driver: { select: { id: true, name: true, vehiclePlate: true, status: true } },
+          inviteCode: { select: { id: true, code: true, role: true, createdById: true } },
           sessions: {
             where: { revokedAt: null, expiresAt: { gt: new Date() } },
             select: { id: true },
@@ -83,7 +90,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.user.count({ where }),
-      prisma.user.count({ where: { status: "pending" } }),
+      prisma.user.count({ where: scopedWhere(org.organizationId, { status: "pending" }) }),
     ])
 
     return NextResponse.json({
@@ -107,6 +114,8 @@ export async function GET(request: NextRequest) {
         isLocked: Boolean(user.lockedUntil && user.lockedUntil.getTime() > Date.now()),
         driverId: user.driverId,
         driver: user.driver,
+        organizationId: user.organizationId,
+        inviteCode: user.inviteCode,
         activeSessions: Array.isArray(user.sessions) ? user.sessions.length : 0,
       })),
       pagination: {

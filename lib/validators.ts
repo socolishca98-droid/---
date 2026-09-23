@@ -27,15 +27,82 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password required").max(128),
 })
 
-export const registerSchema = z.object({
-  email: z.string().min(1).email().max(254).trim().toLowerCase(),
-  password: z.string().min(8, "Password min 8").max(128),
-  name: z.string().trim().max(100).optional().or(z.literal("")),
-})
+/**
+ * Регистрация сотрудника. Ровно один из двух сценариев:
+ *   organizationName — создать свою организацию и стать её администратором;
+ *   inviteCode       — присоединиться к существующей организации.
+ * Организация и роль НИКОГДА не берутся из тела запроса напрямую:
+ * при присоединении их источником является код приглашения.
+ */
+export const registerSchema = z
+  .object({
+    name: z
+      .string({ required_error: "Укажите имя и фамилию" })
+      .trim()
+      .min(2, "Укажите имя и фамилию (от 2 до 80 символов)")
+      .max(80, "Укажите имя и фамилию (от 2 до 80 символов)"),
+    email: z
+      .string({ required_error: "Укажите email" })
+      .trim()
+      .toLowerCase()
+      .min(1, "Укажите email")
+      .max(254, "Email слишком длинный")
+      .email("Некорректный email"),
+    password: z
+      .string({ required_error: "Укажите пароль" })
+      .min(8, "Пароль: не короче 8 символов")
+      .max(128, "Пароль: не длиннее 128 символов"),
+    // Название приводим к каноническому виду (один пробел, без краёв) —
+    // так же, как lib/organizations.normalizeOrganizationName
+    organizationName: z
+      .string()
+      .max(120, "Название организации: не длиннее 120 символов")
+      .transform((value) => value.replace(/\s+/g, " ").trim())
+      .optional()
+      .or(z.literal("")),
+    inviteCode: z
+      .string()
+      .trim()
+      .max(20, "Код приглашения слишком длинный")
+      .optional()
+      .or(z.literal("")),
+  })
+  .superRefine((value, ctx) => {
+    const hasOrganization = (value.organizationName ?? "").trim().length > 0
+    const hasInvite = (value.inviteCode ?? "").trim().length > 0
 
+    if (hasOrganization && hasInvite) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["organizationName"],
+        message: "Выберите один сценарий: создать свою организацию или присоединиться по коду",
+      })
+    }
+    if (!hasOrganization && !hasInvite) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["inviteCode"],
+        message: "Укажите название своей организации или код приглашения от администратора",
+      })
+    }
+  })
+
+export type RegisterInput = z.infer<typeof registerSchema>
+
+/**
+ * Вход водителя в мобильное приложение: телефон + пароль.
+ * Организация не передаётся — она берётся из карточки водителя на сервере.
+ */
 export const driverLoginSchema = z.object({
-  phone: z.string().min(5, "Phone required").max(30),
-  organization: z.string().min(1, "Organization required").max(100),
+  phone: z
+    .string({ required_error: "Укажите телефон" })
+    .trim()
+    .min(5, "Укажите телефон")
+    .max(30, "Телефон слишком длинный"),
+  password: z
+    .string({ required_error: "Укажите пароль" })
+    .min(1, "Укажите пароль")
+    .max(128, "Пароль слишком длинный"),
 })
 
 // -------------------- Drivers --------------------
@@ -278,3 +345,32 @@ export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promis
     }
   }
 }
+
+// -------------------- Organizations --------------------
+/**
+ * Создание инвайт-кода. Роль и срок задаёт админ своей организации;
+ * организация в теле запроса не принимается — она берётся из сессии.
+ */
+export const createInviteSchema = z.object({
+  role: z
+    .enum(["admin", "logist"], { errorMap: () => ({ message: "Роль: admin или logist" }) })
+    .default("logist"),
+  /** null/не задано = бессрочный код */
+  expiresInDays: z
+    .number({ invalid_type_error: "Срок действия — число дней" })
+    .int("Срок действия — целое число дней")
+    .min(1, "Минимум 1 день")
+    .max(365, "Максимум 365 дней")
+    .nullable()
+    .optional(),
+  /** null/не задано = многоразовый без лимита */
+  maxUses: z
+    .number({ invalid_type_error: "Лимит использований — число" })
+    .int("Лимит использований — целое число")
+    .min(1, "Минимум 1 использование")
+    .max(1000, "Максимум 1000 использований")
+    .nullable()
+    .optional(),
+})
+
+export type CreateInviteInput = z.infer<typeof createInviteSchema>

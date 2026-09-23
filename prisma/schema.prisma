@@ -609,6 +609,10 @@ model RouteEvent {
 model Organization {
   id        String   @id @default(cuid())
   name      String
+  /// Название, приведённое к нижнему регистру и без лишних пробелов.
+  /// Нужно, чтобы «ООО Ромашка» и «ооо ромашка » не стали двумя компаниями:
+  /// SQLite не поддерживает регистронезависимое сравнение в Prisma.
+  nameKey   String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -657,6 +661,9 @@ model InviteCode {
   revokedById    String?
   createdAt      DateTime @default(now())
 
+  /// Кто зарегистрировался по этому коду
+  users          User[]
+
   @@index([organizationId])
   @@index([code])
   @@index([organizationId, revokedAt])
@@ -682,6 +689,10 @@ model User {
   /// Ссылка на карточку водителя (только для role = "driver")
   driverId     String?  @unique
   driver       Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  /// Инвайт-код, по которому человек присоединился к организации (если был)
+  inviteCodeId String?
+  inviteCode   InviteCode? @relation(fields: [inviteCodeId], references: [id], onDelete: SetNull)
 
   /// Кто одобрил регистрацию
   approvedById String?
@@ -709,6 +720,8 @@ model User {
   @@index([role])
   @@index([role, status])
   @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([inviteCodeId])
 }
 
 /// Серверная сессия. id = jti подписанного токена в httpOnly-cookie.

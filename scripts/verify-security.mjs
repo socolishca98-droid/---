@@ -259,6 +259,11 @@ if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
 const admin = new Jar("admin")
 const testEmail = `verify-${Date.now().toString(36)}@loginex.local`
 const testPassword = tempPassword()
+
+// Присоединиться к организации можно только по коду приглашения, поэтому
+// скрипт сначала создаёт код от имени админа, а потом регистрирует по нему.
+let testInviteId = ""
+let testInviteCode = ""
 const newPassword = tempPassword()
 let testUserId = null
 
@@ -415,10 +420,30 @@ await check("водительский API сотруднику недоступ�
 // ── 4. Регистрация → одобрение → закрытие доступа → восстановление ───────
 group("4. Заявка на доступ и управление им (/users)")
 
-await check("саморегистрация создаёт заявку в статусе pending", async () => {
+await check("админ создаёт инвайт-код своей организации", async () => {
+  const res = await req("/api/organization/invites", {
+    method: "POST",
+    jar: admin,
+    body: { role: "logist", expiresInDays: 1, maxUses: 3 },
+  })
+  assert(res.status === 200, `ожидали 200, получили ${res.status}: ${JSON.stringify(res.data)}`)
+  assert(res.data?.success === true, JSON.stringify(res.data))
+  assert(res.data.invite?.code, "в ответе нет кода приглашения")
+  testInviteId = res.data.invite.id
+  testInviteCode = res.data.invite.code
+  return `${testInviteCode} · роль ${res.data.invite.role} · лимит ${res.data.invite.maxUses}`
+})
+
+await check("саморегистрация по коду создаёт заявку в статусе pending", async () => {
+  assert(testInviteCode, "нет кода приглашения — предыдущая проверка не прошла")
   const res = await req("/api/auth/register", {
     method: "POST",
-    body: { name: "Проверочный Сотрудник", email: testEmail, password: testPassword },
+    body: {
+      name: "Проверочный Сотрудник",
+      email: testEmail,
+      password: testPassword,
+      inviteCode: testInviteCode,
+    },
   })
   assert(res.status === 200 || res.status === 201, `ожидали 200/201, получили ${res.status}`)
   assert(res.data?.success === true, JSON.stringify(res.data))
@@ -879,6 +904,16 @@ if (KEEP_USER) {
     return `${testEmail} — доступ закрыт, запись осталась в базе`
   })
 }
+
+await check("инвайт-код проверки отозван", async () => {
+  if (!testInviteId) return "код не создавался — отзывать нечего"
+  const res = await req(`/api/organization/invites/${testInviteId}`, {
+    method: "DELETE",
+    jar: admin,
+  })
+  assert(res.status === 200, `не удалось отозвать код: ${res.status}`)
+  return `${testInviteCode} — отозван`
+})
 
 await check("администратор выходит", async () => {
   const res = await req("/api/auth/logout", { method: "POST", jar: admin })

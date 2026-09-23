@@ -27,6 +27,7 @@
 import "dotenv/config"
 
 import { prisma } from "../lib/prisma"
+import { normalizeOrganizationName } from "../lib/organizations"
 
 const args = process.argv.slice(2)
 const CHECK_ONLY = args.includes("--check")
@@ -93,11 +94,17 @@ interface Row {
 }
 
 async function ensureOrganization(): Promise<{ id: string; name: string; created: boolean }> {
+  const nameKey = normalizeOrganizationName(ORG_NAME)
+
   const existing = await prisma.organization.findFirst({
-    where: { name: ORG_NAME },
+    where: { OR: [{ nameKey }, { name: ORG_NAME }] },
     orderBy: { createdAt: "asc" },
   })
   if (existing) {
+    // nameKey появился позже самой организации — заполняем, если пусто
+    if (!existing.nameKey && !CHECK_ONLY) {
+      await prisma.organization.update({ where: { id: existing.id }, data: { nameKey } })
+    }
     return { id: existing.id, name: existing.name, created: false }
   }
 
@@ -105,8 +112,24 @@ async function ensureOrganization(): Promise<{ id: string; name: string; created
     return { id: "(будет создана)", name: ORG_NAME, created: true }
   }
 
-  const created = await prisma.organization.create({ data: { name: ORG_NAME } })
+  const created = await prisma.organization.create({ data: { name: ORG_NAME, nameKey } })
   return { id: created.id, name: created.name, created: true }
+}
+
+/** nameKey должен быть у всех организаций, иначе проверка дублей не сработает. */
+async function backfillNameKeys(): Promise<number> {
+  if (CHECK_ONLY) return 0
+  const organizations = await prisma.organization.findMany({
+    where: { nameKey: null },
+    select: { id: true, name: true },
+  })
+  for (const organization of organizations) {
+    await prisma.organization.update({
+      where: { id: organization.id },
+      data: { nameKey: normalizeOrganizationName(organization.name) },
+    })
+  }
+  return organizations.length
 }
 
 /** Все организации в базе — нужно, если пользователь уже завёл вторую. */
@@ -279,6 +302,10 @@ async function main(): Promise<number> {
   }
 
   const org = await ensureOrganization()
+  const nameKeysFilled = await backfillNameKeys()
+  if (nameKeysFilled > 0) {
+    log(`Заполнено nameKey у организаций: ${nameKeysFilled}`)
+  }
   log("")
   log(
     org.created

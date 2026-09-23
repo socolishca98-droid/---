@@ -27,6 +27,8 @@ export interface SessionUser {
   /** role водителя в общей таблице User существует, но штабной контекст его не использует */
   role: "admin" | "logist" | "driver"
   mustChangePassword: boolean
+  /** Организация пользователя. Приходит с сервера из сессии, не из клиента. */
+  organization: { id: string; name: string | null } | null
 }
 
 export interface LoginResult {
@@ -65,6 +67,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.session.user.email ?? null,
           role: data.session.user.role,
           mustChangePassword: Boolean(data.session.user.mustChangePassword),
+          organization: data.session.organization
+            ? {
+                id: data.session.organization.id,
+                name: data.session.organization.name ?? null,
+              }
+            : null,
         })
       } else {
         setUser(null)
@@ -101,14 +109,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: data.user.email ?? null,
           role: data.user.role,
           mustChangePassword: Boolean(data.user.mustChangePassword),
+          // ответ входа организацию не содержит — дочитываем из сессии
+          organization: null,
         })
+        void refresh()
         return { ok: true, mustChangePassword: Boolean(data.user.mustChangePassword) }
       } catch (error) {
         console.error("[auth] ошибка входа:", error)
         return { ok: false, error: "Ошибка соединения. Попробуйте ещё раз" }
       }
     },
-    [],
+    [refresh],
   )
 
   const logout = useCallback(async () => {

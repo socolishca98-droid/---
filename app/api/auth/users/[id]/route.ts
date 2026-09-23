@@ -17,6 +17,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { releaseInvite } from "@/lib/invites"
 
 import {
   generateTemporaryPassword,
@@ -35,6 +37,7 @@ type RouteParams = { params: Promise<{ id: string }> }
 
 const ACTIONS = [
   "approve",
+  "reject",
   "suspend",
   "restore",
   "setRole",
@@ -43,13 +46,14 @@ const ACTIONS = [
 ] as const
 type Action = (typeof ACTIONS)[number]
 
-async function countActiveAdmins(excludeUserId?: string): Promise<number> {
+/** Администраторы СВОЕЙ организации: «последний админ» считается по компании. */
+async function countActiveAdmins(organizationId: string, excludeUserId?: string): Promise<number> {
   return prisma.user.count({
-    where: {
+    where: scopedWhere(organizationId, {
       role: "admin",
       status: "active",
       ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
-    },
+    }),
   })
 }
 
@@ -58,6 +62,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   if (!auth.ok) return auth.response
 
   const actor = auth.value.user
+
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   const { id } = await params
 
   /** Каждое административное действие пишется в AuditLog (GET /api/admin/audit). */
@@ -106,9 +114,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
   }
 
+  // Любое изменение доступа — только администратор организации.
+  // Логист видит список сотрудников, но доступом не управляет.
+  if (!org.isAdmin) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Управлять доступом сотрудников может только администратор организации",
+        code: "forbidden",
+      },
+      { status: 403 },
+    )
+  }
+
   try {
-    const target = await prisma.user.findUnique({
-      where: { id },
+    // Запись ищется внутри своей организации: чужой id даёт 404, а не 403,
+    // чтобы не подтверждать существование учётной записи в другой компании.
+    const target = await prisma.user.findFirst({
+      where: scopedWhere(org.organizationId, { id }),
       select: {
         id: true,
         name: true,
@@ -117,6 +140,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         role: true,
         status: true,
         driverId: true,
+        inviteCodeId: true,
       },
     })
 
@@ -148,6 +172,33 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       })
     }
 
+    // --- Отклонение заявки -------------------------------------------------
+    if (action === "reject") {
+      if (target.status !== "pending") {
+        return NextResponse.json(
+          { success: false, error: "Отклонить можно только заявку в статусе «ожидает одобрения»" },
+          { status: 400 },
+        )
+      }
+
+      const inviteCodeId = target.inviteCodeId ?? null
+      // Заявка удаляется вместе с её сессиями; использование кода возвращаем,
+      // чтобы код не «сгорал» из-за отклонённого человека.
+      await prisma.user.delete({ where: { id } })
+      if (inviteCodeId) {
+        await releaseInvite(inviteCodeId).catch((error) => {
+          console.error("[auth/users] releaseInvite error:", error)
+        })
+      }
+
+      await audit("reject", target, { inviteCodeId })
+
+      return NextResponse.json({
+        success: true,
+        message: `Заявка отклонена: ${target.name}`,
+      })
+    }
+
     // --- Закрытие доступа (увольнение) -----------------------------------
     if (action === "suspend") {
       if (target.id === actor.id) {
@@ -162,7 +213,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 },
         )
       }
-      if (target.role === "admin" && (await countActiveAdmins(target.id)) === 0) {
+      if (target.role === "admin" && (await countActiveAdmins(org.organizationId, target.id)) === 0) {
         return NextResponse.json(
           { success: false, error: "Это единственный активный администратор — доступ закрыть нельзя" },
           { status: 400 },
@@ -247,7 +298,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 },
         )
       }
-      if (target.role === "admin" && role !== "admin" && (await countActiveAdmins(target.id)) === 0) {
+      if (target.role === "admin" && role !== "admin" && (await countActiveAdmins(org.organizationId, target.id)) === 0) {
         return NextResponse.json(
           { success: false, error: "Это единственный активный администратор — понизить роль нельзя" },
           { status: 400 },

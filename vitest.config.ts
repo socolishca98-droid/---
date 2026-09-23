@@ -13,8 +13,13 @@ export default defineConfig({
     exclude: ["node_modules", ".next", "dist", ".test-build", "tests"],
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./"),
-    },
+    alias: [
+      // unit-тесты идут с заглушкой Prisma-клиента: не нужен prisma generate и dev.db
+      {
+        find: /^@\/lib\/prisma$/,
+        replacement: path.resolve(__dirname, "__tests__/__mocks__/prisma.ts"),
+      },
+      { find: /^@\/(.*)$/, replacement: path.resolve(__dirname, "./") + "/$1" },
+    ],
   },
 })

@@ -20,6 +20,7 @@ import {
   LogOut,
   CreditCard,
   Users,
+  Building2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +35,7 @@ const navigation = [
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
   { name: "Сотрудники", href: "/users", icon: Users },
+  { name: "Организация", href: "/organization", icon: Building2 },
 ]
 
 export function Sidebar() {
