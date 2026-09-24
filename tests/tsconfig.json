@@ -29,6 +29,7 @@
     "../lib/orders/stages.ts",
     "../lib/routes/optimizer.ts",
     "../lib/fleet/insights.ts",
+    "../lib/payments/summary.ts",
     "../lib/clients/normalize.ts",
     "../lib/clients/stats.ts",
     "../lib/clients/import.ts",
