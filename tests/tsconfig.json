@@ -30,6 +30,8 @@
     "../lib/routes/optimizer.ts",
     "../lib/fleet/insights.ts",
     "../lib/payments/summary.ts",
+    "../lib/ocr/parse.ts",
+    "../lib/trips/history.ts",
     "../lib/clients/normalize.ts",
     "../lib/clients/stats.ts",
     "../lib/clients/import.ts",
