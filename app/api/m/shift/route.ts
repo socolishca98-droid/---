@@ -5,8 +5,11 @@ import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
 
 async function getActiveOrderForDriver(driverId: string, organizationId: string) {
   return prisma.order.findFirst({

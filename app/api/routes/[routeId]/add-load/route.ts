@@ -137,6 +137,8 @@ export async function POST(
           organizationId: org.organizationId,
           source: atiCacheId ? "ATI" : "manual",
           sourceId: atiCacheId || null,
+          // связь со строкой накопленной базы ATI (Order.atiCacheId)
+          atiCacheId: atiCacheId || null,
           routeId,
           routeFrom,
           routeTo,
@@ -146,7 +148,9 @@ export async function POST(
           price: price || 0,
           clientName,
           clientContact: clientContact || "",
-          status: proposeToDriver ? "proposed" : "confirmed",
+          // догруз сразу в рейсе; предложение водителю — отдельный флаг proposedToDriver
+          // (канон этапов заказа — lib/orders/stages.ts)
+          status: "in_route",
           isAdditionalLoad: true,
           addedToRouteAt: new Date(),
           proposedToDriver: proposeToDriver,
@@ -158,14 +162,8 @@ export async function POST(
         },
       })
 
-      if (atiCacheId) {
-        await tx.atiCache
-          .update({
-            where: { id: atiCacheId },
-            data: { status: "imported" },
-          })
-          .catch(() => {})
-      }
+      // Общая таблица AtiCache намеренно не меняется: это накопленная база всей
+      // платформы, пометка «imported» спрятала бы груз от других организаций.
 
       if (driverId) {
         await tx.notification.create({

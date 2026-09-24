@@ -18,6 +18,7 @@
     "db:sql:routes": "prisma db execute --file prisma/sql/2026-09-22-route-model.sql --schema prisma/schema.prisma",
     "seed:auth": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/seed-auth.ts",
     "db:migrate-task2": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/migrate-task2.ts",
+    "db:migrate-order-stages": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/migrate-order-stages.ts",
     "db:migrate-orgs": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/migrate-organizations.ts",
     "verify:security": "node scripts/verify-security.mjs",
     "verify:task2": "node scripts/verify-task2.mjs",

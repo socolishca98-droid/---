@@ -15,9 +15,14 @@ interface TaskCardProps {
   onUploadPhoto?: () => void
 }
 
-const statusConfig = {
+// Канон этапов заказа — lib/orders/stages.ts: водителю приходят задачи
+// в статусах assigned / control / delivered; прежние значения оставлены псевдонимами
+const statusConfig: Record<string, { label: string; className: string; action: string | null }> = {
   confirmed: { label: "Назначен", className: "bg-primary/20 text-primary", action: "Принять" },
+  assigned: { label: "Назначен", className: "bg-primary/20 text-primary", action: "Принять" },
+  in_route: { label: "В рейсе", className: "bg-chart-2/20 text-chart-2", action: "Принять" },
   in_transit: { label: "В пути", className: "bg-warning/20 text-warning", action: "Завершить" },
+  control: { label: "На контроле", className: "bg-warning/20 text-warning", action: "Завершить" },
   delivered: { label: "Доставлен", className: "bg-success/20 text-success", action: null },
 }
 

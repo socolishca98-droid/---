@@ -15,14 +15,27 @@ interface TaskCardMobileProps {
   onCall?: () => void
 }
 
-const statusConfig = {
+// Канон этапов заказа — lib/orders/stages.ts; прежние значения оставлены псевдонимами
+const statusConfig: Record<string, { label: string; color: string }> = {
   new: { label: "Новый", color: "bg-blue-500" },
+  search: { label: "Поиск", color: "bg-blue-500" },
   processing: { label: "В обработке", color: "bg-amber-500" },
+  negotiation: { label: "Согласование", color: "bg-amber-500" },
   confirmed: { label: "Подтверждён", color: "bg-green-500" },
+  agreed: { label: "Согласован", color: "bg-green-500" },
+  in_route: { label: "В рейсе", color: "bg-primary" },
+  documents: { label: "Документы", color: "bg-violet-500" },
+  assigned: { label: "Назначен", color: "bg-green-500" },
   in_transit: { label: "В пути", color: "bg-primary" },
+  control: { label: "На контроле", color: "bg-primary" },
   delivered: { label: "Доставлен", color: "bg-zinc-500" },
   cancelled: { label: "Отменён", color: "bg-red-500" },
+  rejected: { label: "Отклонён", color: "bg-red-500" },
+  expired: { label: "Просрочен", color: "bg-zinc-500" },
 }
+
+/** Статусы, при которых у водителя есть активная задача. */
+const ACTIVE_TASK_STATUSES = ["assigned", "in_route", "control", "confirmed", "in_transit"]
 
 const loadingTypeLabels: Record<string, string> = {
   bulk: "Валом",
@@ -34,8 +47,8 @@ const loadingTypeLabels: Record<string, string> = {
 }
 
 export function TaskCardMobile({ order, onAccept, onStart, onComplete, onNavigate, onCall }: TaskCardMobileProps) {
-  const status = statusConfig[order.status]
-  const isActive = order.status === "confirmed" || order.status === "in_transit"
+  const status = statusConfig[order.status] ?? statusConfig.assigned
+  const isActive = ACTIVE_TASK_STATUSES.includes(order.status)
 
   return (
     <Card className={isActive ? "border-primary" : undefined}>

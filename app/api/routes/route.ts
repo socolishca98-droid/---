@@ -19,6 +19,15 @@ import {
   type RouteOrderLike,
 } from "@/lib/routes/model"
 import { routeOrdersOrderBy, serializeRoute } from "@/lib/routes/service"
+import {
+  canChangeOrderStatus,
+  isOrderRouteable,
+  normalizeOrderStatus,
+  orderStatusLabel,
+} from "@/lib/orders/stages"
+
+/** Сколько заказов можно включить в один рейс одним запросом. */
+const MAX_ROUTE_ORDERS = 50
 
 type SandboxOrderPayload = {
   atiCacheId?: string
@@ -35,9 +44,16 @@ type SandboxOrderPayload = {
 }
 
 type CreateRouteBody = {
-  vehicleId: string
+  /** Машина необязательна: рейс можно собрать до этапа «Назначение». */
+  vehicleId?: string | null
   driverId?: string | null
-  orders: SandboxOrderPayload[]
+  /** Новые грузы (путь песочницы): по ним создаются заказы организации. */
+  orders?: SandboxOrderPayload[]
+  /**
+   * Существующие заказы организации, которые включаются в рейс.
+   * Основной путь: на холст попадают только согласованные заказы.
+   */
+  orderIds?: string[]
   name?: string | null
   notes?: string | null
   totalPrice?: number
@@ -161,22 +177,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 })
     }
 
-    const { vehicleId, driverId, orders, name, notes } = body
+    const { vehicleId, driverId, orders, orderIds, name, notes } = body
 
-    if (!vehicleId) {
-      return NextResponse.json({ success: false, error: "vehicleId is required" }, { status: 400 })
+    const payloads = Array.isArray(orders) ? orders : []
+    const linkIds = Array.isArray(orderIds)
+      ? orderIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+      : []
+
+    if (payloads.length === 0 && linkIds.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Передайте orderIds[] (существующие заказы) или orders[] (новые грузы)",
+        },
+        { status: 400 },
+      )
+    }
+    if (linkIds.length > MAX_ROUTE_ORDERS) {
+      return NextResponse.json(
+        { success: false, error: `В одном рейсе максимум ${MAX_ROUTE_ORDERS} заказов` },
+        { status: 400 },
+      )
     }
 
-    if (!Array.isArray(orders) || orders.length === 0) {
-      return NextResponse.json({ success: false, error: "orders[] is required" }, { status: 400 })
-    }
+    // ── Машина и водитель: необязательны ──
+    // Этап «Маршрут» идёт раньше этапов «Документы» и «Назначение», поэтому
+    // рейс можно собрать, ещё не выбрав машину.
+    let vehicle: {
+      id: string
+      plate: string | null
+      type: string | null
+      capacity: number
+      status: string
+    } | null = null
 
-    const vehicle = await prisma.vehicle.findFirst({
-      where: scopedWhere(org.organizationId, { id: vehicleId }),
-      select: { id: true, plate: true, type: true, capacity: true, status: true },
-    })
-    if (!vehicle) {
-      return NextResponse.json({ success: false, error: "Машина не найдена" }, { status: 404 })
+    if (vehicleId) {
+      const found = await prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: vehicleId }),
+        select: { id: true, plate: true, type: true, capacity: true, status: true },
+      })
+      if (!found) {
+        return NextResponse.json({ success: false, error: "Машина не найдена" }, { status: 404 })
+      }
+      vehicle = found
     }
 
     if (driverId) {
@@ -189,20 +232,132 @@ export async function POST(request: NextRequest) {
       }
 
       // машина может быть закреплена только за одним водителем
-      const occupant = await findVehicleOccupant(prisma, vehicleId, driverId, org.organizationId)
-      if (occupant) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Машина уже закреплена за ${occupant.name || "другим водителем"}`,
-          },
-          { status: 409 },
-        )
+      if (vehicle) {
+        const occupant = await findVehicleOccupant(prisma, vehicle.id, driverId, org.organizationId)
+        if (occupant) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Машина уже закреплена за ${occupant.name || "другим водителем"}`,
+            },
+            { status: 409 },
+          )
+        }
       }
     }
 
-    const totalWeight = orders.reduce((sum, o) => sum + (o.weight || 0), 0)
-    if (vehicle.capacity > 0 && totalWeight > vehicle.capacity) {
+    // ── Существующие заказы, которые привязываются к рейсу ──
+    const linked =
+      linkIds.length > 0
+        ? await prisma.order.findMany({
+            where: scopedWhere(org.organizationId, { id: { in: linkIds } }),
+            select: {
+              id: true,
+              status: true,
+              routeId: true,
+              routeFrom: true,
+              routeTo: true,
+              distance: true,
+              weight: true,
+              volume: true,
+              price: true,
+              isAdditionalLoad: true,
+            },
+          })
+        : []
+
+    const notFound = linkIds.filter((id) => !linked.some((order) => order.id === id))
+    if (notFound.length > 0) {
+      return NextResponse.json(
+        { success: false, error: `Заказы не найдены: ${notFound.join(", ")}` },
+        { status: 404 },
+      )
+    }
+
+    // На холст и в рейс попадают только согласованные заказы
+    const notAgreed = linked.filter((order) => !isOrderRouteable(order.status))
+    if (notAgreed.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `В рейс можно брать только согласованные заказы. Не подходят: ${notAgreed
+            .map((order) => `${order.routeFrom} → ${order.routeTo} (${orderStatusLabel(order.status)})`)
+            .join("; ")}`,
+          code: "orders_not_agreed",
+          orderIds: notAgreed.map((order) => order.id),
+        },
+        { status: 409 },
+      )
+    }
+
+    const alreadyInRoute = linked.filter((order) => order.routeId)
+    if (alreadyInRoute.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Заказы уже включены в другой рейс: ${alreadyInRoute
+            .map((order) => `${order.routeFrom} → ${order.routeTo}`)
+            .join("; ")}`,
+          code: "orders_already_in_route",
+          orderIds: alreadyInRoute.map((order) => order.id),
+        },
+        { status: 409 },
+      )
+    }
+
+    // ── Новые грузы: проверяем, нет ли уже заказа на эту строку базы ATI ──
+    const payloadCacheIds = payloads
+      .map((o) => o.atiCacheId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+    const duplicatePayloads = payloadCacheIds.filter(
+      (value, index) => payloadCacheIds.indexOf(value) !== index,
+    )
+    if (duplicatePayloads.length > 0) {
+      return NextResponse.json(
+        { success: false, error: "Один и тот же груз передан в рейс дважды" },
+        { status: 400 },
+      )
+    }
+
+    const existingByCache =
+      payloadCacheIds.length > 0
+        ? await prisma.order.findMany({
+            where: scopedWhere(org.organizationId, { atiCacheId: { in: payloadCacheIds } }),
+            select: {
+              id: true,
+              atiCacheId: true,
+              status: true,
+              routeId: true,
+              routeFrom: true,
+              routeTo: true,
+              distance: true,
+              weight: true,
+              volume: true,
+              price: true,
+              isAdditionalLoad: true,
+            },
+          })
+        : []
+
+    const conflicting = existingByCache.filter((order) => order.routeId)
+    if (conflicting.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Заказы уже включены в другой рейс: ${conflicting
+            .map((order) => `${order.routeFrom} → ${order.routeTo}`)
+            .join("; ")}`,
+          code: "orders_already_in_route",
+          orderIds: conflicting.map((order) => order.id),
+        },
+        { status: 409 },
+      )
+    }
+
+    const totalWeight =
+      payloads.reduce((sum, o) => sum + (o.weight || 0), 0) +
+      linked.reduce((sum, o) => sum + (o.weight || 0), 0)
+    if (vehicle && vehicle.capacity > 0 && totalWeight > vehicle.capacity) {
       return NextResponse.json(
         {
           success: false,
@@ -213,54 +368,145 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx: any) => {
       const route = await tx.route.create({
         data: {
           organizationId: org.organizationId,
           name: name?.trim() || null,
           status: "planned",
           driverId: driverId || null,
-          vehicleId: vehicle.id,
+          vehicleId: vehicle?.id ?? null,
           notes: notes?.trim() || null,
         },
       })
 
-      const createdOrders = await Promise.all(
-        orders.map((o, idx) =>
-          tx.order.create({
+      const actorName = auth.value.user?.name ?? auth.value.user?.email ?? null
+      const routeOrders: RouteOrderLike[] = []
+      const takenOrderIds = new Set<string>(linkIds)
+      let sequence = 0
+
+      /** Запись в ленту согласования: статус заказа изменился сервером. */
+      const logStatusChange = async (
+        orderId: string,
+        from: string,
+        to: string,
+        reason: string,
+      ) => {
+        await tx.orderNegotiation.create({
+          data: {
+            organizationId: org.organizationId,
+            orderId,
+            kind: "status_change",
+            text: `Статус: ${orderStatusLabel(from)} → ${orderStatusLabel(to)} (${reason})`,
+            priceOffer: null,
+            authorId: org.userId,
+            authorName: actorName,
+          },
+        })
+      }
+
+      // 1) Существующие согласованные заказы — основной путь сборки рейса
+      for (const order of linked) {
+        sequence += 1
+        const current = normalizeOrderStatus(order.status)
+        const next = canChangeOrderStatus(order.status, "in_route") ? "in_route" : current
+
+        await tx.order.updateMany({
+          where: scopedWhere(org.organizationId, { id: order.id, routeId: null }),
+          data: {
+            routeId: route.id,
+            routeSequence: sequence,
+            addedToRouteAt: new Date(),
+            ...(next && { status: next }),
+            ...(vehicle && { assignedVehicleId: vehicle.id }),
+            ...(driverId && { assignedDriverId: driverId }),
+          },
+        })
+
+        if (next && current && next !== current) {
+          await logStatusChange(order.id, order.status, next, "включён в рейс")
+        }
+
+        routeOrders.push({ ...order, status: next ?? order.status, routeSequence: sequence })
+      }
+
+      // 2) Новые грузы из песочницы. Если заказ на эту строку базы ATI у
+      //    организации уже есть — дубль не создаём (в схеме уникальность
+      //    [organizationId, atiCacheId]), а привязываем существующий.
+      for (const payload of payloads) {
+        const existing = payload.atiCacheId
+          ? existingByCache.find((order) => order.atiCacheId === payload.atiCacheId)
+          : undefined
+
+        if (existing) {
+          if (takenOrderIds.has(existing.id)) continue // уже включён в этот рейс
+          takenOrderIds.add(existing.id)
+          sequence += 1
+          const current = normalizeOrderStatus(existing.status)
+          const next = canChangeOrderStatus(existing.status, "in_route") ? "in_route" : current
+
+          await tx.order.updateMany({
+            where: scopedWhere(org.organizationId, { id: existing.id, routeId: null }),
             data: {
-              organizationId: org.organizationId,
-              source: o.atiCacheId ? "ATI" : "manual",
-              sourceId: o.atiCacheId || null,
-              routeFrom: o.routeFrom,
-              routeTo: o.routeTo,
-              distance: o.distance || 0,
-              weight: o.weight || 0,
-              volume: o.volume ?? null,
-              cargoType: o.cargo || "Груз",
-              loadingType: "other",
-              price: o.price || 0,
-              priceNegotiable: !o.price || o.price === 0,
-              clientName: o.clientCompany || null,
-              clientContact: o.clientPhone || "",
-              deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-              status: "confirmed", // заказ сразу в работе
-              priority: "needs_clarification",
-              aiScore: 50,
-              assignedDriverId: driverId || null,
-              assignedVehicleId: vehicle.id,
               routeId: route.id,
-              isAdditionalLoad: false,
+              routeSequence: sequence,
               addedToRouteAt: new Date(),
-              proposedToDriver: false,
-              routeSequence: idx + 1,
+              ...(next && { status: next }),
+              ...(vehicle && { assignedVehicleId: vehicle.id }),
+              ...(driverId && { assignedDriverId: driverId }),
             },
-          }),
-        ),
-      )
+          })
+
+          if (next && current && next !== current) {
+            await logStatusChange(existing.id, existing.status, next, "включён в рейс")
+          }
+
+          routeOrders.push({ ...existing, status: next ?? existing.status, routeSequence: sequence })
+          continue
+        }
+
+        sequence += 1
+        const createdOrder = await tx.order.create({
+          data: {
+            organizationId: org.organizationId,
+            source: payload.atiCacheId ? "ATI" : "manual",
+            sourceId: payload.atiCacheId || null,
+            // связь со строкой накопленной базы: по ней заказ находится в базе ATI
+            atiCacheId: payload.atiCacheId || null,
+            routeFrom: payload.routeFrom,
+            routeTo: payload.routeTo,
+            distance: payload.distance || 0,
+            weight: payload.weight || 0,
+            volume: payload.volume ?? null,
+            cargoType: payload.cargo || "Груз",
+            loadingType: "other",
+            price: payload.price || 0,
+            priceNegotiable: !payload.price || payload.price === 0,
+            clientName: payload.clientCompany || null,
+            clientContact: payload.clientPhone || "",
+            deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            // заказ сразу в рейсе: согласование пройдено до сборки маршрута
+            status: "in_route",
+            priority: "needs_clarification",
+            aiScore: 50,
+            assignedDriverId: driverId || null,
+            assignedVehicleId: vehicle?.id ?? null,
+            routeId: route.id,
+            isAdditionalLoad: false,
+            addedToRouteAt: new Date(),
+            proposedToDriver: false,
+            routeSequence: sequence,
+          },
+        })
+        routeOrders.push(createdOrder)
+      }
+
+      // Общая таблица AtiCache намеренно не меняется: это накопленная база всей
+      // платформы, и пометка «imported» спрятала бы груз от других организаций.
+      // Принадлежность заказа строке базы хранится в Order.atiCacheId.
 
       // связь «водитель ↔ машина» пишется ровно один раз и только здесь
-      if (driverId) {
+      if (driverId && vehicle) {
         await linkDriverToVehicle(tx, driverId, vehicle.id, org.organizationId)
         await tx.driver.updateMany({
           where: scopedWhere(org.organizationId, { id: driverId }),
@@ -268,34 +514,27 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      await tx.vehicle.updateMany({
-        where: scopedWhere(org.organizationId, { id: vehicle.id }),
-        data: { status: "in_use" },
-      })
-
-      // заказы, пришедшие из кэша ATI, помечаем импортированными
-      const atiCacheIds = orders.map((o) => o.atiCacheId).filter(Boolean) as string[]
-      if (atiCacheIds.length > 0) {
-        await tx.atiCache.updateMany({
-          where: { id: { in: atiCacheIds } },
-          data: { status: "imported" },
+      if (vehicle) {
+        await tx.vehicle.updateMany({
+          where: scopedWhere(org.organizationId, { id: vehicle.id }),
+          data: { status: "in_use" },
         })
       }
 
-      const summary = summarizeRoute(createdOrders)
+      const summary = summarizeRoute(routeOrders)
       // org-audit: manual — рейс создан этой же транзакцией с organizationId вызывающего
       const finalRoute = await tx.route.update({
         where: { id: route.id },
         data: {
-          name: name?.trim() || buildRouteName(createdOrders) || null,
-          status: deriveRouteStatus(createdOrders.map((o) => o.status)),
+          name: name?.trim() || buildRouteName(routeOrders) || null,
+          status: deriveRouteStatus(routeOrders.map((o) => o.status)),
           totalDistance: summary.totalDistance || null,
           cargoWeight: summary.cargoWeight || null,
           cargoVolume: summary.cargoVolume || null,
         },
       })
 
-      return { route: finalRoute, orders: createdOrders }
+      return { route: finalRoute, orders: routeOrders }
     })
 
     return NextResponse.json({

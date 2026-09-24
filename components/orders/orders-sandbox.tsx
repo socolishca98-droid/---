@@ -103,12 +103,23 @@ import {
   type ETARequest,
   type RiskLevel,
 } from "@/lib/eta"
+import {
+  isOrderClosed,
+  isOrderRouteable,
+  normalizeOrderStatus,
+  orderStatusLabel,
+  type OrderStatus,
+} from "@/lib/orders/stages"
 
 // ==================== ТИПЫ ====================
 type Mode = "select" | "connect" | "route" | "group"
 
 interface OrderItem {
+  /** Локальный id элемента холста (для dnd-kit и подсветки). */
   id: string
+  /** Id настоящего заказа организации, если элемент взят из песочницы. */
+  orderId?: string
+  /** Id строки накопленной базы ATI, из которой заказ был взят в работу. */
   atiCacheId?: string
   routeFrom: string
   routeTo: string
@@ -126,7 +137,8 @@ interface OrderItem {
   clientPhone?: string
   clientCompany?: string
   comment?: string
-  status: "new" | "in_route" | "assigned" | "completed"
+  /** Этап заказа — канон жизненного цикла (lib/orders/stages.ts). */
+  status: OrderStatus
   x: number
   y: number
   inRouteOrder?: number | null
@@ -188,6 +200,28 @@ interface AtiOrderFromApi {
   loadingDate?: string | null
   contactName?: string | null
   firmId?: string | null
+  /**
+   * Песочница показывает настоящие заказы организации (GET /api/ati/sandbox),
+   * поэтому у строки есть id заказа и ссылка на строку накопленной базы ATI.
+   */
+  orderId?: string
+  atiCacheId?: string | null
+  routeFrom?: string
+  routeTo?: string
+  clientCompany?: string | null
+  clientPhone?: string | null
+  volume?: number | null
+  requirements?: string | null
+  priceNegotiable?: boolean
+  /** Этап процесса заказа — lib/orders/stages.ts. */
+  status?: string
+  stage?: string | null
+  statusLabel?: string
+  agreedPrice?: number | null
+  negotiationStatus?: string | null
+  nextFollowUpAt?: string | null
+  source?: string | null
+  createdAt?: string | null
 }
 
 interface VehicleWithDriver {
@@ -553,10 +587,15 @@ function DraggableOrderCard({
           <Building2
             className={cn(
               "h-3.5 w-3.5 flex-shrink-0",
-              order.status === "new" && "text-blue-400",
+              order.status === "search" && "text-sky-400",
+              order.status === "negotiation" && "text-amber-400",
+              order.status === "agreed" && "text-emerald-400",
               order.status === "in_route" && "text-orange-400",
+              order.status === "documents" && "text-violet-400",
               order.status === "assigned" && "text-green-400",
-              order.status === "completed" && "text-slate-400",
+              order.status === "control" && "text-orange-400",
+              order.status === "delivered" && "text-slate-400",
+              isOrderClosed(order.status) && "text-red-400",
             )}
           />
           <span className="text-xs font-medium text-slate-200 truncate">
@@ -1084,9 +1123,9 @@ export function OrdersSandbox() {
     const set = new Set<string>()
     sheets.forEach((sheet: any) => {
       sheet.orders.forEach((order: any) => {
-        if (order.atiCacheId) {
-          set.add(order.atiCacheId)
-        }
+        // в списке песочницы строка идентифицируется id заказа
+        if (order.orderId) set.add(order.orderId)
+        if (order.atiCacheId) set.add(order.atiCacheId)
       })
     })
     return set
@@ -1236,21 +1275,25 @@ export function OrdersSandbox() {
   const addOrderFromAti = (atiOrder: AtiOrderFromApi): void => {
     const newOrder: OrderItem = {
       id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      atiCacheId: atiOrder.id,
-      routeFrom: atiOrder.from,
-      routeTo: atiOrder.to,
+      // элемент песочницы — это существующий заказ организации: при оформлении
+      // рейса он передаётся по orderId, а не создаётся заново
+      orderId: atiOrder.orderId ?? atiOrder.id,
+      atiCacheId: atiOrder.atiCacheId ?? undefined,
+      routeFrom: atiOrder.routeFrom ?? atiOrder.from,
+      routeTo: atiOrder.routeTo ?? atiOrder.to,
       distance: atiOrder.distance,
       cargo: atiOrder.cargo,
       weight: atiOrder.weight,
+      volume: atiOrder.volume ?? undefined,
       price: atiOrder.price,
       pricePerKm:
         atiOrder.distance > 0
           ? Math.round(atiOrder.price / atiOrder.distance)
           : 0,
-      clientCompany: atiOrder.company,
-      clientPhone: atiOrder.phone || undefined,
+      clientCompany: atiOrder.clientCompany ?? atiOrder.company,
+      clientPhone: atiOrder.clientPhone ?? atiOrder.phone ?? undefined,
       loadingDate: atiOrder.loadingDate || undefined,
-      status: "new",
+      status: normalizeOrderStatus(atiOrder.status) ?? "search",
       x: 100 + Math.random() * 50,
       y: 100 + Math.random() * 50,
       groupId: null,
@@ -2195,18 +2238,25 @@ export function OrdersSandbox() {
         body: JSON.stringify({
           vehicleId: selectedVehicle.id,
           driverId: selectedVehicle.driver?.id,
-          orders: routeOrders.map((o: any) => ({
-            atiCacheId: o.atiCacheId,
-            routeFrom: o.routeFrom,
-            routeTo: o.routeTo,
-            distance: o.distance,
-            weight: o.weight,
-            price: o.price,
-            cargo: o.cargo,
-            clientCompany: o.clientCompany,
-            clientPhone: o.clientPhone,
-            groupId: o.groupId,
-          })),
+          // заказы, которые уже есть у организации, привязываются к рейсу по id
+          orderIds: routeOrders
+            .map((o: any) => o.orderId)
+            .filter((value: unknown): value is string => typeof value === "string" && !!value),
+          // грузы без заказа (например, из живого поиска ATI) создаются на месте
+          orders: routeOrders
+            .filter((o: any) => !o.orderId)
+            .map((o: any) => ({
+              atiCacheId: o.atiCacheId,
+              routeFrom: o.routeFrom,
+              routeTo: o.routeTo,
+              distance: o.distance,
+              weight: o.weight,
+              price: o.price,
+              cargo: o.cargo,
+              clientCompany: o.clientCompany,
+              clientPhone: o.clientPhone,
+              groupId: o.groupId,
+            })),
           totalPrice: routeCalculation.totalPrice,
           totalDistance: routeCalculation.effectiveDistance,
           totalWeight: routeCalculation.totalWeight,
@@ -2216,6 +2266,7 @@ export function OrdersSandbox() {
       const data = (await res.json()) as {
         success?: boolean
         error?: string
+        code?: string
       }
 
       if (data.success) {
@@ -2236,6 +2287,11 @@ export function OrdersSandbox() {
         setShowVehicleDialog(false)
         setSelectedVehicle(null)
         setMode("select")
+      } else if (data.code === "orders_not_agreed") {
+        toast.error("На холст попадают только согласованные заказы", {
+          description: data.error || "Проведите согласование, затем соберите рейс снова",
+          duration: 8000,
+        })
       } else {
         toast.error(data.error || "Ошибка сохранения рейса")
       }
@@ -2288,6 +2344,8 @@ export function OrdersSandbox() {
               <div className="space-y-2 pr-4">
                 {atiOrders.map((order: any) => {
                   const isUsed = usedAtiIds.has(order.id)
+                  // на холст берём только согласованные заказы (канон — lib/orders/stages.ts)
+                  const canTakeToCanvas = isOrderRouteable(order.status)
 
                   return (
                     <div
@@ -2305,6 +2363,24 @@ export function OrdersSandbox() {
                         </div>
                       )}
 
+                      {!isUsed && (
+                        <div
+                          className={cn(
+                            "absolute left-2 top-1 px-1.5 py-0.5 rounded-full border text-[10px]",
+                            canTakeToCanvas
+                              ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
+                              : "bg-amber-500/10 border-amber-500/40 text-amber-300",
+                          )}
+                          title={
+                            canTakeToCanvas
+                              ? "Заказ согласован — можно брать в рейс"
+                              : "Сначала согласование: на холст попадают только согласованные заказы"
+                          }
+                        >
+                          {order.statusLabel || orderStatusLabel(order.status)}
+                        </div>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => void removeFromAtiList(order.id)}
@@ -2318,13 +2394,22 @@ export function OrdersSandbox() {
                         className="cursor-pointer mt-3"
                         onClick={() => {
                           if (isUsed) {
-                            const existing = activeSheet.orders.find((o: any) => o.atiCacheId === order.id,
+                            const existing = activeSheet.orders.find(
+                              (o: any) => o.orderId === order.id || o.atiCacheId === order.id,
                             )
                             if (existing) {
                               setHighlightOrderId(existing.id)
                               window.setTimeout(() => setHighlightOrderId(null), 2500)
                             }
                             toast.message("Этот груз уже на холсте")
+                            return
+                          }
+                          if (!canTakeToCanvas) {
+                            toast.message("Заказ ещё не согласован", {
+                              description:
+                                "Откройте карточку заказа и проведите согласование — тогда его можно взять в рейс",
+                              duration: 6000,
+                            })
                             return
                           }
                           addOrderFromAti(order)
@@ -3858,27 +3943,35 @@ function OrderEditForm({
           />
         </div>
         <div>
-          <Label>Статус в песочнице</Label>
+          <Label>Этап заказа</Label>
           <div className="mt-2 flex gap-2 text-[11px] text-slate-400">
             <Badge
               variant="outline"
               className={cn(
                 "px-2 py-0.5",
-                formData.status === "new" && "border-blue-500/50 text-blue-300",
+                formData.status === "search" && "border-sky-500/50 text-sky-300",
+                formData.status === "negotiation" &&
+                  "border-amber-500/50 text-amber-300",
+                formData.status === "agreed" &&
+                  "border-emerald-500/50 text-emerald-300",
                 formData.status === "in_route" &&
                   "border-orange-500/50 text-orange-300",
+                formData.status === "documents" &&
+                  "border-violet-500/50 text-violet-300",
                 formData.status === "assigned" &&
                   "border-emerald-500/50 text-emerald-300",
-                formData.status === "completed" &&
+                formData.status === "control" &&
+                  "border-orange-500/50 text-orange-300",
+                formData.status === "delivered" &&
                   "border-slate-500/50 text-slate-300",
+                isOrderClosed(formData.status) && "border-red-500/50 text-red-300",
               )}
             >
-              {formData.status === "new" && "Новый"}
-              {formData.status === "in_route" && "В маршруте (подбор)"}
-              {formData.status === "assigned" && "Назначен"}
-              {formData.status === "completed" && "Выполнен"}
+              {orderStatusLabel(formData.status)}
             </Badge>
-            <span className="text-slate-500">(статус меняется логикой оформления рейса)</span>
+            <span className="text-slate-500">
+              (этап меняют согласование и оформление рейса)
+            </span>
           </div>
         </div>
       </div>

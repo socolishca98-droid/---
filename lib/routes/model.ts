@@ -22,22 +22,22 @@ export const ROUTE_STATUS_LABELS: Record<RouteStatus, string> = {
   cancelled: "Отменён",
 }
 
-/** Статусы заказов, которые считаются «рейс ещё идёт». */
-export const ACTIVE_ORDER_STATUSES = [
-  "confirmed",
-  "in_transit",
-  "loading",
-  "unloading",
-] as const
+// Статусы заказов объявлены в одном месте — lib/orders/stages.ts (канон
+// жизненного цикла заказа). Здесь они только переэкспортируются, чтобы прежние
+// импорты из этой модели рейса продолжали работать.
+export {
+  ACTIVE_ORDER_STATUSES,
+  CANVAS_ORDER_STATUSES,
+  CLOSED_ORDER_STATUSES,
+  MOVING_ORDER_STATUSES,
+  OCCUPYING_ORDER_STATUSES,
+} from "../orders/stages"
 
-/** Статусы заказов, при которых машина реально движется/работает на точках. */
-export const MOVING_ORDER_STATUSES = ["in_transit", "loading", "unloading"] as const
-
-/** Статусы заказов, которые уже закрыты (дальше не меняются). */
-export const CLOSED_ORDER_STATUSES = ["delivered", "cancelled", "rejected"] as const
-
-/** Заказ «в рейсе» — именно эти статусы освобождают водителя/машину при закрытии рейса. */
-export const OCCUPYING_ORDER_STATUSES = ACTIVE_ORDER_STATUSES
+import {
+  isOrderClosed,
+  isOrderMoving,
+  normalizeOrderStatus,
+} from "../orders/stages"
 
 export function isRouteStatus(value: unknown): value is RouteStatus {
   return typeof value === "string" && (ROUTE_STATUSES as readonly string[]).includes(value)
@@ -133,11 +133,12 @@ const toFloat = (value: unknown): number => {
 /** Итоги рейса по его заказам: километры, вес, объём, выручка, счётчики точек. */
 export function summarizeRoute(orders: readonly RouteOrderLike[]): RouteSummary {
   const list = Array.isArray(orders) ? orders : []
-  const delivered = list.filter((o) => o.status === "delivered").length
-  const cancelled = list.filter((o) => o.status === "cancelled" || o.status === "rejected").length
-  const active = list.filter((o) =>
-    (MOVING_ORDER_STATUSES as readonly string[]).includes(o.status),
-  ).length
+  const delivered = list.filter((o) => normalizeOrderStatus(o.status) === "delivered").length
+  const cancelled = list.filter((o) => {
+    const status = normalizeOrderStatus(o.status)
+    return status === "cancelled" || status === "rejected" || status === "expired"
+  }).length
+  const active = list.filter((o) => isOrderMoving(o.status)).length
 
   return {
     totalOrders: list.length,
@@ -147,7 +148,7 @@ export function summarizeRoute(orders: readonly RouteOrderLike[]): RouteSummary 
       list.reduce((sum, o) => sum + toFloat(o.volume), 0).toFixed(3),
     ),
     revenue: list
-      .filter((o) => o.status !== "cancelled" && o.status !== "rejected")
+      .filter((o) => !isOrderClosed(o.status) || normalizeOrderStatus(o.status) === "delivered")
       .reduce((sum, o) => sum + toInt(o.price), 0),
     deliveredOrders: delivered,
     activeOrders: active,
@@ -167,23 +168,27 @@ export function deriveRouteStatus(
   orderStatuses: readonly string[],
   hints?: { startedAt?: Date | string | null; completedAt?: Date | string | null },
 ): RouteStatus {
-  const statuses = (Array.isArray(orderStatuses) ? orderStatuses : []).map((s) =>
-    typeof s === "string" ? s : String(s ?? ""),
-  )
+  // Значения приводятся к канону: в базе могут лежать и прежние статусы
+  // («confirmed», «loading», «in_transit»), и новые («agreed», «control»).
+  const statuses = (Array.isArray(orderStatuses) ? orderStatuses : [])
+    .map((s) => normalizeOrderStatus(typeof s === "string" ? s : String(s ?? "")))
+    .filter((s): s is NonNullable<typeof s> => s !== null)
 
   if (statuses.length === 0) return "planned"
 
-  const allCancelled = statuses.every((s) => s === "cancelled" || s === "rejected")
+  const allCancelled = statuses.every(
+    (s) => s === "cancelled" || s === "rejected" || s === "expired",
+  )
   if (allCancelled) return "cancelled"
 
   if (hints?.completedAt) return "completed"
 
-  const closed = statuses.filter((s) => (CLOSED_ORDER_STATUSES as readonly string[]).includes(s))
+  const closed = statuses.filter((s) => isOrderClosed(s))
   if (closed.length === statuses.length) {
     return statuses.some((s) => s === "delivered") ? "completed" : "cancelled"
   }
 
-  if (statuses.some((s) => (MOVING_ORDER_STATUSES as readonly string[]).includes(s))) {
+  if (statuses.some((s) => isOrderMoving(s))) {
     return "in_transit"
   }
 

@@ -1,5 +1,18 @@
 // lib/validators.ts - Zod validation schemas (P1-6)
 import { z } from "zod"
+import {
+  LEGACY_ORDER_STATUS_MAP,
+  NEGOTIATION_STATUSES,
+  ORDER_STATUSES,
+  normalizeOrderStatus,
+} from "@/lib/orders/stages"
+
+/** Допустимые значения статуса заказа: канон + прежние (для обратной совместимости). */
+const ORDER_STATUS_VALUES = [...ORDER_STATUSES] as [string, ...string[]]
+const LEGACY_ORDER_STATUS_VALUES = Object.keys(LEGACY_ORDER_STATUS_MAP).filter(
+  (value) => !(ORDER_STATUSES as readonly string[]).includes(value),
+) as [string, ...string[]]
+const NEGOTIATION_STATUS_VALUES = [...NEGOTIATION_STATUSES] as [string, ...string[]]
 
 // -------------------- Helpers --------------------
 export function formatZodError(error: z.ZodError) {
@@ -205,10 +218,37 @@ export const createOrderSchema = z.object({
   assignedDriverId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   assignedVehicleId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   routeId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
+  /** Ид строки накопленной базы ATI, из которой взят заказ (связь с общей базой). */
+  atiCacheId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
+  /** Цена, о которой договорились с клиентом (итог согласования). */
+  agreedPrice: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return null
+      const n = typeof v === "string" ? parseInt(v, 10) : v
+      return isNaN(n as number) ? null : (n as number)
+    })
+    .pipe(z.number().int().min(0).nullable().optional()),
+  negotiationStatus: z.enum(NEGOTIATION_STATUS_VALUES).optional(),
+  nextFollowUpAt: z
+    .string()
+    .or(z.date())
+    .optional()
+    .or(z.null())
+    .transform((v) => (v ? new Date(v as string | Date) : null)),
 })
 
 export const updateOrderSchema = createOrderSchema.partial().extend({
-  status: z.enum(["new", "confirmed", "in_transit", "delivered", "cancelled", "assigned", "in_route", "completed", "proposed", "needs_clarification"]).optional(),
+  /**
+   * Статус заказа — канон из lib/orders/stages.ts. Прежние значения
+   * («new», «processing», «confirmed», «in_transit», «loading», «unloading», …)
+   * принимаются и сразу приводятся к канону, поэтому старые клиенты не ломаются.
+   */
+  status: z
+    .enum([...ORDER_STATUS_VALUES, ...LEGACY_ORDER_STATUS_VALUES])
+    .transform((value) => normalizeOrderStatus(value))
+    .optional(),
 })
 
 // -------------------- Admin --------------------
@@ -241,6 +281,8 @@ export const createRouteSchema = z.object({
   totalCost: z.number().int().min(0).optional(),
   cargoWeight: z.number().int().min(0).optional(),
   notes: z.string().max(1000).optional(),
+  /** Существующие заказы организации, которые включаются в рейс (обычно согласованные). */
+  orderIds: z.array(z.string().min(1)).max(50).optional(),
   orders: z.array(z.object({
     routeFrom: z.string().min(1),
     routeTo: z.string().min(1),

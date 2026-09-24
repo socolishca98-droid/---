@@ -4,8 +4,13 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "lib": ["ES2022", "DOM"],
-    "types": ["node"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -20,6 +25,7 @@
     "../lib/auth/token.ts",
     "../lib/auth/startup.ts",
     "../lib/auth/password.ts",
-    "../lib/routes/model.ts"
+    "../lib/routes/model.ts",
+    "../lib/orders/stages.ts"
   ]
 }

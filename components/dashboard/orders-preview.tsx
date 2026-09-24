@@ -57,17 +57,29 @@ const priorityConfig = {
   },
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string }> = {
+  // Канон этапов заказа — lib/orders/stages.ts; прежние значения оставлены
+  // псевдонимами, чтобы старые строки в базе отображались корректно.
   new: { label: "Новый", className: "bg-primary/20 text-primary" },
+  search: { label: "Поиск", className: "bg-primary/20 text-primary" },
   processing: {
     label: "В обработке",
+    className: "bg-warning/20 text-warning",
+  },
+  negotiation: {
+    label: "Согласование",
     className: "bg-warning/20 text-warning",
   },
   confirmed: {
     label: "Подтверждён",
     className: "bg-success/20 text-success",
   },
+  agreed: { label: "Согласован", className: "bg-success/20 text-success" },
+  in_route: { label: "В рейсе", className: "bg-chart-2/20 text-chart-2" },
+  documents: { label: "Документы", className: "bg-chart-4/20 text-chart-4" },
+  assigned: { label: "Назначен", className: "bg-chart-3/20 text-chart-3" },
   in_transit: { label: "В пути", className: "bg-chart-2/20 text-chart-2" },
+  control: { label: "На контроле", className: "bg-chart-2/20 text-chart-2" },
   delivered: {
     label: "Доставлен",
     className: "bg-muted text-muted-foreground",
@@ -75,6 +87,14 @@ const statusConfig = {
   cancelled: {
     label: "Отменён",
     className: "bg-destructive/20 text-destructive",
+  },
+  rejected: {
+    label: "Отклонён",
+    className: "bg-destructive/20 text-destructive",
+  },
+  expired: {
+    label: "Просрочен",
+    className: "bg-muted text-muted-foreground",
   },
 }
 

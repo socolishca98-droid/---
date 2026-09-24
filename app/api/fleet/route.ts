@@ -6,8 +6,11 @@ import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
 
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)

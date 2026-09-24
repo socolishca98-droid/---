@@ -3,6 +3,7 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
       prisma.order.count({ where: scopedWhere(__org.organizationId) }),
       prisma.order.count({
         where: scopedWhere(__org.organizationId, {
-          status: { in: ["active", "in_transit", "loading", "unloading", "assigned"] },
+          // заказы в работе: канон — lib/orders/stages.ts
+          status: { in: [...OCCUPYING_ORDER_STATUSES] },
         }),
       }),
       prisma.order.count({
@@ -40,7 +42,8 @@ export async function GET(request: NextRequest) {
       prisma.order.aggregate({
         _sum: { price: true },
         where: scopedWhere(__org.organizationId, {
-          status: { in: ["delivered", "in_transit", "active"] },
+          // выручка = доставленные + те, что ещё в работе
+          status: { in: [...OCCUPYING_ORDER_STATUSES, "delivered"] },
         }),
       }),
       prisma.vehicle.findMany({
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.route.count({
         where: scopedWhere(__org.organizationId, {
-          status: { in: ["active", "in_progress", "in_transit"] },
+          status: { in: ["active", "in_transit"] },
         }),
       }),
       prisma.route.count({

@@ -10,6 +10,7 @@ import { SosButton } from "@/components/driver-mobile/sos-button"
 import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
 import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { isOrderMoving } from "@/lib/orders/stages"
 import {
   Loader2,
   Truck,
@@ -202,7 +203,9 @@ export default function MobileHomePage() {
         const order = orderData.order || null
         setActiveOrder(order)
         setAllRouteOrders(orderData.allRouteOrders || [])
-        if (order && ["in_transit", "loading", "unloading"].includes(order.status)) {
+        // Рейс начат, если заказ в движении (канон — lib/orders/stages.ts,
+        // прежние «in_transit»/«loading»/«unloading» приводятся к «control»)
+        if (order && isOrderMoving(order.status)) {
           setTripStarted(true)
         } else {
           setTripStarted(false)
@@ -448,13 +451,13 @@ export default function MobileHomePage() {
       const res = await fetch(`/api/orders/${activeOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "in_transit" }),
+        body: JSON.stringify({ status: "control" }),
       })
 
       const data = await res.json()
       if (data.success) {
         setTripStarted(true)
-        setActiveOrder((prev) => (prev ? { ...prev, status: "in_transit" } : prev))
+        setActiveOrder((prev) => (prev ? { ...prev, status: "control" } : prev))
 
         toast.success("Рейс начат", {
           description: `${activeOrder.routeFrom} → ${activeOrder.routeTo}`,
@@ -480,10 +483,15 @@ export default function MobileHomePage() {
     }
   }
 
+  /**
+   * Состояние рейса водителя (погрузка/выгрузка/в пути) — детальнее, чем этап
+   * заказа, поэтому в заказе все три означают «на контроле». Подробное
+   * состояние сохраняется в статусе самого водителя (POST /api/m/shift).
+   */
   const mapTripStatusToOrderStatus = (statusId: string): string | undefined => {
-    if (statusId === "loading") return "loading"
-    if (statusId === "unloading") return "unloading"
-    if (statusId === "driving") return "in_transit"
+    if (statusId === "loading") return "control"
+    if (statusId === "unloading") return "control"
+    if (statusId === "driving") return "control"
     return undefined
   }
 

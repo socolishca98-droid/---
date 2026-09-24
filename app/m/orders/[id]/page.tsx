@@ -88,11 +88,29 @@ export default function OrderDetailsPage() {
       case "unloading":
         return "Выгрузка"
       case "in_transit":
+      case "control":
         return "В пути"
+      // канон этапов заказа — lib/orders/stages.ts
+      case "search":
+        return "Поиск"
+      case "negotiation":
+        return "Согласование"
+      case "agreed":
+        return "Согласован"
+      case "in_route":
+        return "В рейсе"
+      case "documents":
+        return "Документы"
+      case "assigned":
+        return "Назначен"
       case "delivered":
         return "Доставлен"
       case "cancelled":
         return "Отменён"
+      case "rejected":
+        return "Отклонён"
+      case "expired":
+        return "Просрочен"
       default:
         return "В работе"
     }

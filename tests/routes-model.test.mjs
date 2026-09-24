@@ -55,7 +55,12 @@ test("статусы рейса и заказов согласованы", () =>
     assert.equal(typeof ROUTE_STATUS_LABELS[status], "string")
   }
   // статусы, занимающие водителя и машину, — это активные заказы
-  assert.deepEqual([...OCCUPYING_ORDER_STATUSES], [...ACTIVE_ORDER_STATUSES])
+  // наборы приходят из канона lib/orders/stages.ts: занимающие машину и водителя —
+  // это подмножество активных (заказ в рейсе, на документах, назначен, на контроле)
+  for (const s of OCCUPYING_ORDER_STATUSES) {
+    assert.ok(ACTIVE_ORDER_STATUSES.includes(s), `${s} должен быть в активных`)
+  }
+  assert.ok(OCCUPYING_ORDER_STATUSES.length < ACTIVE_ORDER_STATUSES.length)
   for (const s of MOVING_ORDER_STATUSES) {
     assert.ok(ACTIVE_ORDER_STATUSES.includes(s), `${s} должен быть в активных`)
   }

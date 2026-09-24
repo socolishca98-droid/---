@@ -65,6 +65,7 @@ const ORG_MODELS = new Set([
   "driver",
   "vehicle",
   "order",
+  "orderNegotiation",
   "route",
   "routeStage",
   "routeEvent",

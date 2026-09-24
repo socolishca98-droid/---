@@ -89,7 +89,30 @@ export async function POST(request: NextRequest) {
       assignedDriverId,
       assignedVehicleId,
       routeId,
+      atiCacheId,
+      agreedPrice,
+      negotiationStatus,
+      nextFollowUpAt,
     } = parsed.data
+
+    // Заказ на строку накопленной базы может быть у организации только один
+    if (atiCacheId) {
+      const taken = await prisma.order.findFirst({
+        where: scopedWhere(org.organizationId, { atiCacheId }),
+        select: { id: true },
+      })
+      if (taken) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Этот груз уже взят в работу",
+            code: "already_taken",
+            orderId: taken.id,
+          },
+          { status: 409 },
+        )
+      }
+    }
 
     // Назначить можно только своего водителя и свою машину
     if (assignedDriverId) {
@@ -165,10 +188,17 @@ export async function POST(request: NextRequest) {
           clientName,
           clientContact: clientContact || "",
           deadline: deadline ? new Date(deadline as any) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          status: assignedDriverId ? "confirmed" : "new",
+          // Этап заказа определяется тем, что уже известно (канон — lib/orders/stages.ts):
+          // назначен водитель → «Назначение», заказ в рейсе → «Маршрут»,
+          // иначе заказ, заведённый вручную, начинается с «Согласования».
+          status: assignedDriverId ? "assigned" : finalRouteId ? "in_route" : "negotiation",
           assignedDriverId,
           assignedVehicleId,
           routeId: finalRouteId,
+          atiCacheId: atiCacheId || null,
+          agreedPrice: agreedPrice ?? null,
+          negotiationStatus: negotiationStatus ?? "new",
+          nextFollowUpAt: nextFollowUpAt ?? null,
         },
       })
 

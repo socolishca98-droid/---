@@ -3,6 +3,8 @@
 // ============================================
 // ЧАТ
 // ============================================
+import type { OrderStatus } from "@/lib/orders/stages"
+
 export interface ChatMessage {
   id: string
   senderId: string
@@ -98,7 +100,14 @@ export interface Order {
   clientContact: string
   clientFirmId?: string
   deadline: Date
-  status: "new" | "confirmed" | "in_transit" | "delivered" | "cancelled" | "processing"
+  /**
+   * Канон жизненного цикла заказа — lib/orders/stages.ts:
+   * search → negotiation → agreed → in_route → documents → assigned → control → delivered
+   * (+ cancelled / rejected / expired). В базе могут встречаться прежние значения
+   * («new», «confirmed», «in_transit», «loading», …) — они приводятся к канону
+   * функцией normalizeOrderStatus и переносятся scripts/migrate-order-stages.ts.
+   */
+  status: OrderStatus | (string & {})
   priority: "profitable" | "possible" | "needs_clarification" | "reject"
   aiScore: number
   aiReason?: string

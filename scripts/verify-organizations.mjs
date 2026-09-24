@@ -53,6 +53,7 @@ const BUSINESS_MODELS = [
   "Driver",
   "Vehicle",
   "Order",
+  "OrderNegotiation",
   "Route",
   "RouteStage",
   "RouteEvent",

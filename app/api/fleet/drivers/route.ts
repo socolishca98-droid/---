@@ -4,8 +4,11 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);

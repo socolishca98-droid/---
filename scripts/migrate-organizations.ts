@@ -58,6 +58,7 @@ const TABLES = [
   { key: "driver", label: "Водители", model: "driver" },
   { key: "vehicle", label: "Машины", model: "vehicle" },
   { key: "order", label: "Заказы", model: "order" },
+  { key: "orderNegotiation", label: "Лента согласования заказов", model: "orderNegotiation" },
   { key: "route", label: "Рейсы", model: "route" },
   { key: "routeStage", label: "Этапы рейсов", model: "routeStage" },
   { key: "routeEvent", label: "События рейсов", model: "routeEvent" },

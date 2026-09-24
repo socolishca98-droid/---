@@ -122,10 +122,60 @@ export default function DriverOrdersPage() {
           className: "bg-emerald-500/15 text-emerald-400",
         }
       case "in_transit":
+      case "control":
         return {
           label: "В пути",
           icon: Clock,
           className: "bg-orange-500/15 text-orange-400",
+        }
+      // канон этапов заказа — lib/orders/stages.ts
+      case "search":
+        return {
+          label: "Поиск",
+          icon: Clock,
+          className: "bg-slate-500/15 text-slate-300",
+        }
+      case "negotiation":
+        return {
+          label: "Согласование",
+          icon: Clock,
+          className: "bg-amber-500/15 text-amber-400",
+        }
+      case "agreed":
+        return {
+          label: "Согласован",
+          icon: CheckCircle2,
+          className: "bg-cyan-500/15 text-cyan-400",
+        }
+      case "in_route":
+        return {
+          label: "В рейсе",
+          icon: Clock,
+          className: "bg-blue-500/15 text-blue-400",
+        }
+      case "documents":
+        return {
+          label: "Документы",
+          icon: Package,
+          className: "bg-violet-500/15 text-violet-400",
+        }
+      case "assigned":
+        return {
+          label: "Назначен",
+          icon: CheckCircle2,
+          className: "bg-emerald-500/15 text-emerald-400",
+        }
+      case "rejected":
+        return {
+          label: "Отклонён",
+          icon: XCircle,
+          className: "bg-red-500/15 text-red-400",
+        }
+      case "expired":
+        return {
+          label: "Просрочен",
+          icon: XCircle,
+          className: "bg-slate-500/15 text-slate-300",
         }
       default:
         return {

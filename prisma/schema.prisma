@@ -170,7 +170,12 @@ model Order {
   clientContact     String
   clientFirmId      String?
   deadline          DateTime
-  status            String    @default("new")
+  // Канон жизненного цикла — lib/orders/stages.ts:
+  //   search → negotiation → agreed → in_route → documents → assigned → control → delivered
+  //   (+ cancelled / rejected / expired). Прежние значения («new», «confirmed»,
+  //   «in_transit», «loading», …) принимаются при чтении как легас и переносятся
+  //   скриптом scripts/migrate-order-stages.ts (по умолчанию сухой прогон).
+  status            String    @default("search")
   priority          String    @default("needs_clarification")
   aiScore           Int       @default(50)
   aiReason          String?
@@ -184,6 +189,20 @@ model Order {
   /// Рейс, в который собран заказ (одна машина может везти несколько заказов)
   routeId           String?
   route             Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
+
+  // ── Процесс заказа (Задача 2: Поиск → Согласование → Маршрут → Документы → Назначение → Контроль)
+  // Строка накопленной базы ATI, из которой заказ взят в работу.
+  // Заказ рождается кнопкой «Взять в работу» (POST /api/orders/from-cache),
+  // а не в момент оформления рейса. В рамках организации один груз берётся один раз.
+  atiCacheId        String?
+  takenAt           DateTime?
+  takenById         String?
+  // Согласование: цена, о которой договорились, состояние переговоров и когда
+  // напомнить себе продолжить. Лента переговоров — модель OrderNegotiation.
+  agreedPrice       Int?
+  negotiationStatus String    @default("new")
+  nextFollowUpAt    DateTime?
+  negotiations      OrderNegotiation[]
 
   // Догруз
   isAdditionalLoad  Boolean   @default(false)
@@ -213,10 +232,41 @@ model Order {
   @@index([assignedVehicleId, status])
   @@index([proposedToDriver])
   @@index([organizationId])
+  @@index([status, organizationId])
+  @@index([negotiationStatus])
+  @@index([nextFollowUpAt])
+  // Один и тот же груз из общей базы ATI может взять каждая организация,
+  // но внутри организации — один раз (NULL не участвует в уникальности,
+  // поэтому ручные заказы без atiCacheId не конфликтуют).
+  @@unique([organizationId, atiCacheId])
 }
 
 /// Водитель
 /// Допустимые значения status: available, busy, maintenance, offline
+
+// Лента согласования заказа: переговоры, заметки, торг по цене, звонки и письма.
+// Записи «price_change» и «status_change» создаются автоматически при изменении
+// цены или статуса заказа — история не теряется и не ведётся вручную.
+model OrderNegotiation {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // note | price_offer | price_change | call | email | document | status_change
+  kind           String
+  text           String?
+  // Предложенная/итоговая сумма для записей торга
+  priceOffer     Int?
+  authorId       String?
+  authorName     String?
+  createdAt      DateTime      @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+  @@index([orderId, createdAt])
+}
+
 model Driver {
   id              String            @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
@@ -616,24 +666,25 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           User[]
-  drivers         Driver[]
-  vehicles        Vehicle[]
-  orders          Order[]
-  routes          Route[]
-  routeStages     RouteStage[]
-  routeEvents     RouteEvent[]
-  photos          Photo[]
-  maintenanceLogs MaintenanceLog[]
-  chatMessages    ChatMessage[]
-  notifications   Notification[]
-  sosAlerts       SosAlert[]
-  driverShifts    DriverShift[]
-  shiftEvents     ShiftEvent[]
-  fleetSettings   FleetSettings[]
-  atiScanConfigs  AtiScanConfig[]
-  auditLogs       AuditLog[]
-  inviteCodes     InviteCode[]
+  users             User[]
+  drivers           Driver[]
+  vehicles          Vehicle[]
+  orders            Order[]
+  orderNegotiations OrderNegotiation[]
+  routes            Route[]
+  routeStages       RouteStage[]
+  routeEvents       RouteEvent[]
+  photos            Photo[]
+  maintenanceLogs   MaintenanceLog[]
+  chatMessages      ChatMessage[]
+  notifications     Notification[]
+  sosAlerts         SosAlert[]
+  driverShifts      DriverShift[]
+  shiftEvents       ShiftEvent[]
+  fleetSettings     FleetSettings[]
+  atiScanConfigs    AtiScanConfig[]
+  auditLogs         AuditLog[]
+  inviteCodes       InviteCode[]
 
   @@index([name])
 }

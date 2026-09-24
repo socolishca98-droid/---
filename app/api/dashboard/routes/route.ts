@@ -4,6 +4,7 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
 
 const OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 
@@ -203,7 +204,8 @@ export async function GET(request: NextRequest) {
     // ========== ПОЛУЧЕНИЕ ЗАКАЗОВ ==========
     const activeOrders = await prisma.order.findMany({
       where: scopedWhere(__org.organizationId, {
-        status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
+        // заказы в работе: канон — lib/orders/stages.ts
+        status: { in: [...OCCUPYING_ORDER_STATUSES] },
         assignedDriverId: { not: null },
       }),
       orderBy: { createdAt: "asc" },
@@ -343,9 +345,8 @@ export async function GET(request: NextRequest) {
       }
 
       const totalPrice = ordersSorted.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
-      const mainStatus = ordersSorted.some((o: any) =>
-        ["in_transit", "loading", "unloading"].includes(o.status)
-      )
+      // Статус для маркера на карте: едет ли хотя бы один заказ рейса
+      const mainStatus = ordersSorted.some((o: any) => isOrderMoving(o.status))
         ? "in_transit"
         : "confirmed"
 
