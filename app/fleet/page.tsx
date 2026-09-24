@@ -14,11 +14,14 @@ import { AddDriverDialog } from "@/components/fleet/add-driver-dialog"
 import { MaintenanceDialog } from "@/components/fleet/maintenance-dialog"
 import { FleetSettingsDialog } from "@/components/fleet/fleet-settings-dialog" // <-- Новый
 import { AssignDriverDialog } from "@/components/fleet/assign-driver-dialog" // <-- Новый
+import {
+  FleetInsightsPanel,
+  type FleetInsights,
+} from "@/components/fleet/fleet-insights-panel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import {
   Truck,
   Users,
@@ -28,7 +31,6 @@ import {
   RefreshCw,
   MapPin,
   Settings,
-  PieChart,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -61,12 +63,32 @@ export default function FleetPage() {
 
   const [availableVehicles, setAvailableVehicles] = useState<any[]>([])
   const [fleetSettings, setFleetSettings] = useState<any>(null)
+  // Практика вместо процента загрузки: простой, ТО/страховки, история назначений
+  const [insights, setInsights] = useState<FleetInsights | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/")
     }
   }, [user, authLoading, router])
+
+  /**
+   * Сводка по автопарку (задача 4). Обновляется вместе со списком машин:
+   * простой, ближайшие ТО/страховки и история назначений водителей.
+   */
+  const loadInsights = () => {
+    fetch("/api/fleet/insights", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) setInsights(data as FleetInsights)
+      })
+      .catch((error) => console.error("Fleet insights error:", error))
+  }
+
+  const refreshAll = () => {
+    void refresh()
+    loadInsights()
+  }
 
   const loadSettings = () => {
     fetch("/api/fleet/settings")
@@ -79,6 +101,7 @@ export default function FleetPage() {
 
   useEffect(() => {
     loadSettings()
+    loadInsights()
   }, [])
 
   useEffect(() => {
@@ -138,11 +161,6 @@ export default function FleetPage() {
     inUse: 0,
     maintenance: 0,
   }
-  const utilization =
-    vehicleStats.total > 0
-      ? Math.round((vehicleStats.inUse / vehicleStats.total) * 100)
-      : 0
-
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
@@ -155,7 +173,7 @@ export default function FleetPage() {
           {/* Инфо-панель */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* База */}
-            <Card className="md:col-span-2 bg-gradient-to-br from-background to-secondary/20">
+            <Card className="md:col-span-3 bg-gradient-to-br from-background to-secondary/20">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start">
                   <div>
@@ -197,23 +215,10 @@ export default function FleetPage() {
               </CardContent>
             </Card>
 
-            {/* Загруженность */}
-            <Card>
-              <CardContent className="p-6 flex flex-col justify-center h-full">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <PieChart className="h-5 w-5 text-muted-foreground" />
-                    <span className="font-medium">Загрузка парка</span>
-                  </div>
-                  <span className="font-bold text-xl">{utilization}%</span>
-                </div>
-                <Progress value={utilization} className="h-2" />
-                <p className="text-xs text-muted-foreground mt-2">
-                  {vehicleStats.available} машин свободно
-                </p>
-              </CardContent>
-            </Card>
           </div>
+
+          {/* Практика вместо процента загрузки: что стоит, что пора обслужить */}
+          <FleetInsightsPanel insights={insights} />
 
           {/* Контент */}
           <Tabs defaultValue="vehicles" className="space-y-6">
@@ -239,7 +244,7 @@ export default function FleetPage() {
                     className="pl-9 bg-background"
                   />
                 </div>
-                <Button onClick={refresh} variant="outline" size="icon">
+                <Button onClick={refreshAll} variant="outline" size="icon">
                   <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
                 </Button>
                 <Button onClick={() => setShowAddVehicle(true)}>
@@ -260,6 +265,9 @@ export default function FleetPage() {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {filteredVehicles.map((vehicle: any) => {
                     const driver = drivers.find((d: any) => d.vehicleId === vehicle.id) ?? null
+                    const vehicleInsight = insights?.idle.find(
+                      (item) => item.vehicleId === vehicle.id,
+                    )
 
                     const vehicleWithDriver = {
                       ...vehicle,
@@ -277,6 +285,8 @@ export default function FleetPage() {
                       <VehicleCard
                         key={vehicle.id}
                         vehicle={vehicleWithDriver}
+                        assignments={insights?.history?.[vehicle.id] ?? []}
+                        idleDays={vehicleInsight?.idleDays}
                         onDelete={() => handleDeleteVehicle(vehicle.id)}
                         onMaintenance={() => setMaintenanceVehicle(vehicle)}
                         onAssignDriver={() => setAssignVehicle(vehicle)}

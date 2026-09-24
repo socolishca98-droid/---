@@ -680,6 +680,27 @@ export const memoryDb = {
   count(model: string): number {
     return table(model).length
   },
+  /**
+   * Удалить строку (или строки) из заглушки.
+   * Нужно тестам, которым мешают данные seedWorld: например, сводка по
+   * автопарку считает ВСЕ машины организации, и «спрятать» их статусом нельзя.
+   */
+  remove(model: string, idOrPredicate: string | ((row: Row) => boolean)): number {
+    const rows = table(model)
+    const predicate =
+      typeof idOrPredicate === "string"
+        ? (row: Row) => row.id === idOrPredicate
+        : idOrPredicate
+
+    let removed = 0
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (predicate(rows[index])) {
+        rows.splice(index, 1)
+        removed += 1
+      }
+    }
+    return removed
+  },
 }
 
 export default prisma
