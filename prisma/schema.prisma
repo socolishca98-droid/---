@@ -168,7 +168,14 @@ model Order {
   dueDate           DateTime?
   clientName        String?
   clientContact     String
+  /// Устаревшее поле: модель ClientFirm была задумана, но так и не появилась.
+  /// Клиенты живут в модели Client, связь — clientId ниже.
   clientFirmId      String?
+  /// Карточка клиента (задача 5). Заполняется при импорте базы, привязке
+  /// заказа к клиенту или взятии груза в работу. Может быть пустой: старые
+  /// заказы знают клиента только по имени (clientName).
+  clientId          String?
+  client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
   deadline          DateTime
   // Канон жизненного цикла — lib/orders/stages.ts:
   //   search → negotiation → agreed → in_route → documents → assigned → control → delivered
@@ -230,6 +237,7 @@ model Order {
   @@index([routeId, routeSequence])
   @@index([assignedDriverId, status])
   @@index([assignedVehicleId, status])
+  @@index([clientId])
   @@index([proposedToDriver])
   @@index([organizationId])
   @@index([status, organizationId])
@@ -686,6 +694,7 @@ model Organization {
   drivers           Driver[]
   vehicles          Vehicle[]
   orders            Order[]
+  clients           Client[]
   orderNegotiations OrderNegotiation[]
   routes            Route[]
   routeStages       RouteStage[]
@@ -702,6 +711,47 @@ model Organization {
   auditLogs         AuditLog[]
   inviteCodes       InviteCode[]
 
+  @@index([name])
+}
+
+// ---------------------------------------------------------------------------
+// Клиентская база (задача 5)
+// ---------------------------------------------------------------------------
+/// Карточка клиента: контакты, реквизиты и условия работы.
+/// Заказы ссылаются на неё через Order.clientId; у заказа остаются поля
+/// clientName/clientContact как «снимок» на момент заказа — если карточку
+/// потом поправят, уже оформленные заказы не изменятся задним числом.
+model Client {
+  id             String        @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Название так, как его ввёл человек («ООО Ромашка»)
+  name           String
+  /// Название, приведённое к сравнимому виду (см. lib/clients/normalize.ts).
+  /// По нему ищутся дубли при импорте: «ООО "Ромашка"» и «ромашка» — один клиент.
+  /// Уникален внутри организации.
+  nameKey        String
+  inn            String?
+  kpp            String?
+  address        String?
+  contactName    String?
+  phone          String?
+  email          String?
+  /// Условия работы: форма оплаты, НДС, отсрочка в днях
+  paymentType    String?
+  vatType        String?
+  deferredDays   Int?
+  notes          String?
+  /// manual — заведён вручную, import — пришёл из файла клиентской базы
+  source         String        @default("manual")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  orders         Order[]
+
+  @@unique([organizationId, nameKey])
+  @@index([organizationId])
   @@index([name])
 }
 

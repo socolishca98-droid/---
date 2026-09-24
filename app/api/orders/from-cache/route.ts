@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { linkOrderToClientByName } from "@/lib/clients/service"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
 import { normalizeOrderStatus, orderStageOf, orderStatusLabel } from "@/lib/orders/stages"
@@ -205,6 +206,16 @@ export async function POST(request: NextRequest) {
         createdAt: true,
       },
     })
+
+    // Клиентская база (задача 5): груз из общей базы тоже попадает в историю
+    // клиента, если его карточка уже заведена. Нет карточки — не выдумываем.
+    if (created.clientName) {
+      await linkOrderToClientByName({
+        organizationId: org.organizationId,
+        orderId: created.id,
+        clientName: created.clientName,
+      })
+    }
 
     await logAudit({
       organizationId: org.organizationId,

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { createOrderSchema, zodErrorResponse } from "@/lib/validators"
+import { linkOrderToClientByName } from "@/lib/clients/service"
 
 export async function GET(request: NextRequest) {
   try {
@@ -219,6 +220,16 @@ export async function POST(request: NextRequest) {
 
       return created
     })
+
+    // Клиентская база (задача 5): если карточка этого клиента уже есть,
+    // заказ сразу попадает в его историю. Нет карточки — не выдумываем её.
+    if (clientName) {
+      await linkOrderToClientByName({
+        organizationId: org.organizationId,
+        orderId: order.id,
+        clientName,
+      })
+    }
 
     return NextResponse.json({ success: true, order })
   } catch (error: any) {

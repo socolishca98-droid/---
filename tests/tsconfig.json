@@ -29,6 +29,9 @@
     "../lib/orders/stages.ts",
     "../lib/routes/optimizer.ts",
     "../lib/fleet/insights.ts",
+    "../lib/clients/normalize.ts",
+    "../lib/clients/stats.ts",
+    "../lib/clients/import.ts",
     "../lib/documents/types.ts",
     "../lib/documents/build.ts",
     "../lib/ati/scan-profile.ts"

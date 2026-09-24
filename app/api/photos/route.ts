@@ -47,7 +47,38 @@ function mapPhoto(dbPhoto: any) {
   }
 }
 
-// GET /api/photos?driverId=&orderId=&type=&limit=
+/**
+ * Фотографии заказов, отобранные по клиенту/рейсу/машине (задача 5).
+ *
+ * Фото привязано к заказу, а не к клиенту: фильтры по клиенту, рейсу и машине
+ * сначала превращаются в список заказов своей организации, а уже затем
+ * ограничивают выборку фотографий. Так фильтр не может вывести за границы
+ * организации, даже если чужой id пришёл в параметре.
+ */
+async function orderIdsForFilters(params: {
+  organizationId: string
+  clientId?: string | null
+  routeId?: string | null
+  vehicleId?: string | null
+}): Promise<string[] | null> {
+  const { organizationId, clientId, routeId, vehicleId } = params
+  if (!clientId && !routeId && !vehicleId) return null
+
+  const where: Record<string, unknown> = {}
+  if (clientId) where.clientId = clientId
+  if (routeId) where.routeId = routeId
+  if (vehicleId) where.assignedVehicleId = vehicleId
+
+  const orders = await prisma.order.findMany({
+    where: scopedWhere(organizationId, where),
+    select: { id: true },
+    take: 1000,
+  })
+
+  return orders.map((order) => order.id)
+}
+
+// GET /api/photos?driverId=&orderId=&type=&clientId=&routeId=&vehicleId=&limit=
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
@@ -60,6 +91,9 @@ export async function GET(request: NextRequest) {
     const driverId = searchParams.get("driverId")
     const orderId = searchParams.get("orderId")
     const type = searchParams.get("type")
+    const clientId = searchParams.get("clientId")
+    const routeId = searchParams.get("routeId")
+    const vehicleId = searchParams.get("vehicleId")
     const limit = parseInt(searchParams.get("limit") || "100", 10)
 
     const where: Record<string, unknown> = {}
@@ -67,6 +101,14 @@ export async function GET(request: NextRequest) {
     if (driverId) where.driverId = driverId
     if (orderId) where.orderId = orderId
     if (type) where.type = type
+
+    const filteredOrderIds = await orderIdsForFilters({
+      organizationId: __org.organizationId,
+      clientId,
+      routeId,
+      vehicleId,
+    })
+    if (filteredOrderIds) where.orderId = { in: filteredOrderIds }
 
     const photos = await prisma.photo.findMany({
       where: scopedWhere(__org.organizationId, where),

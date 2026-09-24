@@ -10,8 +10,17 @@ import { PhotoUpload } from "@/components/photos/photo-upload"
 import { PhotoGallery } from "@/components/photos/photo-gallery"
 import { ReceiptSummary } from "@/components/photos/receipt-summary"
 import { CargoAnalysisCard } from "@/components/photos/cargo-analysis-card"
-import { Loader2 } from "lucide-react"
+import { Filter, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export default function PhotosPage() {
   const { user, isLoading } = useAuth()
@@ -23,6 +32,21 @@ export default function PhotosPage() {
   const [loadingPhotos, setLoadingPhotos] = useState(false)
   const [activeRoute, setActiveRoute] = useState<any | null>(null)
 
+  // Фильтры галереи (задача 5): по клиенту, машине и рейсу. Одно и то же фото
+  // попадает в разные срезы — логист смотрит то, что нужно в конкретный момент.
+  const [filters, setFilters] = useState<{ clientId: string; vehicleId: string; routeId: string }>({
+    clientId: "",
+    vehicleId: "",
+    routeId: "",
+  })
+  const [filterOptions, setFilterOptions] = useState<{
+    clients: Array<{ id: string; name: string }>
+    vehicles: Array<{ id: string; plate: string; brand?: string | null }>
+    routes: Array<{ id: string; name: string }>
+  }>({ clients: [], vehicles: [], routes: [] })
+
+  const hasFilters = Boolean(filters.clientId || filters.vehicleId || filters.routeId)
+
   // Авторизация / роль
   useEffect(() => {
     if (!isLoading && !user) {
@@ -33,6 +57,66 @@ export default function PhotosPage() {
     }
   }, [user, isLoading, router])
 
+  // Списки для фильтров: клиенты, машины, рейсы своей организации
+  useEffect(() => {
+    if (!user || isLoading) return
+
+    const loadOptions = async () => {
+      try {
+        const [clientsRes, fleetRes, routesRes] = await Promise.all([
+          fetch("/api/clients?limit=500"),
+          fetch("/api/fleet"),
+          fetch("/api/routes?status=active,planned"),
+        ])
+
+        const clientsData = clientsRes.ok ? await clientsRes.json() : null
+        const fleetData = fleetRes.ok ? await fleetRes.json() : null
+        const routesData = routesRes.ok ? await routesRes.json() : null
+
+        setFilterOptions({
+          clients: Array.isArray(clientsData?.clients)
+            ? clientsData.clients.map((client: any) => ({ id: client.id, name: client.name }))
+            : [],
+          vehicles: Array.isArray(fleetData?.vehicles)
+            ? fleetData.vehicles.map((vehicle: any) => ({
+                id: vehicle.id,
+                plate: vehicle.plate,
+                brand: vehicle.brand ?? null,
+              }))
+            : [],
+          routes: Array.isArray(routesData?.routes)
+            ? routesData.routes.map((route: any) => ({
+                id: route.id,
+                name: route.name || `${route.origin ?? ""} → ${route.destination ?? ""}`.trim(),
+              }))
+            : [],
+        })
+      } catch (error) {
+        console.error("[PhotosPage] filters load error:", error)
+      }
+    }
+
+    void loadOptions()
+  }, [user, isLoading])
+
+  // Ссылка из карточки клиента: /photos?clientId=… сразу открывает нужный срез
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const params = new URLSearchParams(window.location.search)
+    const clientId = params.get("clientId")
+    const vehicleId = params.get("vehicleId")
+    const routeId = params.get("routeId")
+
+    if (clientId || vehicleId || routeId) {
+      setFilters({
+        clientId: clientId ?? "",
+        vehicleId: vehicleId ?? "",
+        routeId: routeId ?? "",
+      })
+    }
+  }, [])
+
   // Загрузка фото и активных рейсов из бэкенда
   useEffect(() => {
     if (!user || isLoading) return
@@ -40,8 +124,13 @@ export default function PhotosPage() {
     const load = async () => {
       setLoadingPhotos(true)
       try {
+        const query = new URLSearchParams()
+        if (filters.clientId) query.set("clientId", filters.clientId)
+        if (filters.vehicleId) query.set("vehicleId", filters.vehicleId)
+        if (filters.routeId) query.set("routeId", filters.routeId)
+
         const [photosRes, ordersRes] = await Promise.all([
-          fetch("/api/photos"),
+          fetch(`/api/photos${query.size > 0 ? `?${query.toString()}` : ""}`),
           fetch("/api/orders?status=in_transit,assigned&limit=10"),
         ])
 
@@ -76,7 +165,7 @@ export default function PhotosPage() {
     }
 
     void load()
-  }, [user, isLoading])
+  }, [user, isLoading, filters.clientId, filters.vehicleId, filters.routeId])
 
   if (isLoading || !user) {
     return (
@@ -181,10 +270,98 @@ export default function PhotosPage() {
               <ReceiptSummary photos={photos} />
             </div>
 
-            {/* Галерея */}
-            <div className="lg:col-span-2">
-              {/* Можно учесть loadingPhotos, но сейчас просто покажем галерею */}
-              <PhotoGallery photos={photos} />
+            {/* Галерея с фильтрами по клиенту, машине и рейсу */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <Filter className="h-4 w-4" />
+                  Фильтры
+                </div>
+
+                <Select
+                  value={filters.clientId || "__all__"}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, clientId: value === "__all__" ? "" : value }))
+                  }
+                >
+                  <SelectTrigger className="h-9 w-[190px]">
+                    <SelectValue placeholder="Все клиенты" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Все клиенты</SelectItem>
+                    {filterOptions.clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.vehicleId || "__all__"}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, vehicleId: value === "__all__" ? "" : value }))
+                  }
+                >
+                  <SelectTrigger className="h-9 w-[170px]">
+                    <SelectValue placeholder="Все машины" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Все машины</SelectItem>
+                    {filterOptions.vehicles.map((vehicle) => (
+                      <SelectItem key={vehicle.id} value={vehicle.id}>
+                        {vehicle.plate}
+                        {vehicle.brand ? ` · ${vehicle.brand}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.routeId || "__all__"}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, routeId: value === "__all__" ? "" : value }))
+                  }
+                >
+                  <SelectTrigger className="h-9 w-[210px]">
+                    <SelectValue placeholder="Все рейсы" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Все рейсы</SelectItem>
+                    {filterOptions.routes.map((route) => (
+                      <SelectItem key={route.id} value={route.id}>
+                        {route.name || route.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {hasFilters && (
+                  <>
+                    <Badge variant="secondary" className="text-xs">
+                      найдено: {photos.length}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilters({ clientId: "", vehicleId: "", routeId: "" })}
+                    >
+                      <X className="mr-1 h-3.5 w-3.5" />
+                      Сбросить
+                    </Button>
+                  </>
+                )}
+                {loadingPhotos && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              </div>
+
+              {hasFilters && photos.length === 0 && !loadingPhotos ? (
+                <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+                  По этому срезу фотографий нет. Сбросьте фильтры или выберите другого клиента,
+                  машину или рейс.
+                </div>
+              ) : (
+                <PhotoGallery photos={photos} />
+              )}
             </div>
           </div>
         </main>
