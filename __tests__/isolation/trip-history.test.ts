@@ -510,6 +510,87 @@ describe("загрузка фото с распознаванием (POST /api/p
   })
 })
 
+describe("водитель грузит фото и логист об этом узнаёт", () => {
+  it("фото водителя уходит в его рейс и организацию, логисту приходит уведомление", async () => {
+    const { POST: upload } = await import("@/app/api/photos/upload/route")
+    const { NextRequest } = await import("next/server")
+
+    const form = new FormData()
+    form.append(
+      "file",
+      new File([new Uint8Array([0xff, 0xd8, 0xff, 0xdb])], "damage.jpg", { type: "image/jpeg" }),
+    )
+    form.append("type", "damage")
+    form.append("orderId", world.orderA)
+
+    const before = memoryDb.rows("notification").length
+    const beforeOrgB = memoryDb
+      .rows("notification")
+      .filter((item: any) => item.organizationId === world.orgB).length
+
+    const response = await upload(
+      new NextRequest(new URL("http://localhost/api/photos/upload"), {
+        method: "POST",
+        body: form,
+        headers: { cookie: cookieDriverA },
+      }),
+    )
+    const data = await jsonOf(response)
+
+    expect(response.status).toBe(200)
+
+    // Автор — сам водитель из сессии, а не значение из тела: driverId не подделать
+    const stored = memoryDb.find("photo", data.photo.id) as Record<string, unknown>
+    expect(stored.driverId).toBe(world.driverA)
+    expect(stored.organizationId).toBe(world.orgA)
+    expect(stored.orderId).toBe(world.orderA)
+
+    // Повреждение груза — важное событие: логист должен увидеть его сразу
+    const notifications = memoryDb.rows("notification")
+    expect(notifications.length).toBe(before + 1)
+
+    const fresh = notifications[notifications.length - 1] as Record<string, unknown>
+    expect(fresh.organizationId).toBe(world.orgA)
+    expect(fresh.type).toBe("new_photo")
+    expect(fresh.driverId).toBe(world.driverA)
+    expect(fresh.photoId).toBe(data.photo.id)
+    expect(fresh.priority).toBe("high")
+
+    // В чужие организации уведомление не попало
+    expect(
+      notifications.filter((item: any) => item.organizationId === world.orgB),
+    ).toHaveLength(beforeOrgB)
+
+    const { unlink } = await import("node:fs/promises")
+    const path = await import("node:path")
+    await unlink(path.join(process.cwd(), "public", data.photo.url.replace(/^\//, ""))).catch(() => {})
+  })
+
+  it("водитель не может приложить фото к чужому заказу — 404, файла нет", async () => {
+    const { POST: upload } = await import("@/app/api/photos/upload/route")
+    const { NextRequest } = await import("next/server")
+
+    const form = new FormData()
+    form.append(
+      "file",
+      new File([new Uint8Array([0xff, 0xd8, 0xff])], "photo.jpg", { type: "image/jpeg" }),
+    )
+    form.append("type", "cargo_before")
+    form.append("orderId", world.orderB)
+
+    const response = await upload(
+      new NextRequest(new URL("http://localhost/api/photos/upload"), {
+        method: "POST",
+        body: form,
+        headers: { cookie: cookieDriverA },
+      }),
+    )
+
+    expect(response.status).toBe(404)
+    expect(memoryDb.rows("photo")).toHaveLength(2) // только фото из seedWorld
+  })
+})
+
 describe("карточка рейса у водителя (GET /api/m/orders/[id])", () => {
   it("штабная сессия карточку водителя не открывает — 401", async () => {
     const response = await mobileOrderGet(

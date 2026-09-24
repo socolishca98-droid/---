@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { clearPhotoQueue } from "@/lib/offline/photo-queue"
 
 // ============================================
 // ТИПЫ
@@ -143,6 +144,8 @@ export function useDriverSession(
     try {
       // Серверный выход: отзыв сессии в БД + удаление cookie
       await fetch("/api/auth/logout", { method: "POST" })
+      // Неотправленные фото не должны уходить от имени следующего пользователя
+      await clearPhotoQueue()
     } catch (error) {
       console.error("[useDriverSession] ошибка выхода:", error)
     } finally {

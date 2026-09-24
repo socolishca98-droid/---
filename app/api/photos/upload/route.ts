@@ -173,6 +173,26 @@ export async function POST(request: NextRequest) {
       },
     })) as { id: string; url: string; type: string; createdAt: Date }
 
+    // Логисту полезно узнать о фото от водителя (особенно о повреждении):
+    // раньше это делал старый JSON-эндпоинт /api/m/photos, теперь — здесь,
+    // потому что загрузка у водителя одна
+    if (session.kind === "driver") {
+      await prisma.notification.create({
+        data: {
+          organizationId: org.organizationId,
+          userId: "logist",
+          userRole: "logist",
+          type: "new_photo",
+          title: "Новое фото от водителя",
+          message: `Водитель загрузил фото: ${type}`,
+          driverId,
+          orderId,
+          photoId: photo.id,
+          priority: type === "damage" ? "high" : "normal",
+        },
+      })
+    }
+
     if (finalRouteId) {
       await logRouteEvent(prisma, {
         organizationId: org.organizationId,

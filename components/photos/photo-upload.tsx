@@ -20,7 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Upload, Camera, X, Loader2, Check, AlertCircle, ScanLine } from "lucide-react"
+import { Upload, Camera, X, Loader2, Check, AlertCircle, ScanLine, Cloud } from "lucide-react"
+import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
 
 export type PhotoType =
   | "cargo_before"
@@ -49,7 +50,7 @@ export interface PhotoUploadItem {
   file: File
   preview: string
   type: PhotoType
-  status: "pending" | "uploading" | "done" | "error"
+  status: "pending" | "uploading" | "done" | "error" | "queued"
   error?: string
   result?: PhotoUploadResult
 }
@@ -125,6 +126,26 @@ export function PhotoUpload({ onUpload, routeId, orderId, driverId }: PhotoUploa
 
   const effectiveDriverId = driverId || staffDriverId
 
+  // Очередь может отправить фото сама: тогда помечаем запись загруженной,
+  // чтобы логист видел правду, и просим родителя перечитать галерею
+  useEffect(() => {
+    const queue = getPhotoQueue()
+    if (!queue) return
+
+    return queue.onUploaded((item) => {
+      setUploads((prev) => {
+        const index = prev.findIndex((entry) => entry.file.name === item.fileName)
+        if (index === -1) return prev
+
+        const next = [...prev]
+        next[index] = { ...next[index], status: "done", error: undefined }
+        return next
+      })
+
+      onUpload([])
+    })
+  }, [onUpload])
+
   const uploadOne = useCallback(
     async (item: PhotoUploadItem) => {
       setUploads((prev) =>
@@ -145,25 +166,38 @@ export function PhotoUpload({ onUpload, routeId, orderId, driverId }: PhotoUploa
       }
 
       try {
-        const body = new FormData()
-        body.append("file", item.file)
-        body.append("type", item.type)
-        if (orderId) body.append("orderId", orderId)
-        if (routeId) body.append("routeId", routeId)
-        // Штабная загрузка требует водителя явно, водительская берёт его из сессии
-        body.append("driverId", effectiveDriverId)
+        // Единый путь загрузки: сразу на сервер, а если связь пропала — в очередь
+        // (IndexedDB), откуда фото уйдёт само. Файл не теряется на полпути.
+        const outcome = await uploadPhotoOrQueue({
+          blob: item.file,
+          fileName: item.file.name || "photo.jpg",
+          photoType: item.type,
+          orderId: orderId ?? null,
+          routeId: routeId ?? null,
+          // Штабная загрузка требует водителя явно, водительская берёт его из сессии
+          driverId: effectiveDriverId,
+        })
 
-        const res = await fetch("/api/photos/upload", { method: "POST", body })
-        const data = await res.json().catch(() => ({}))
+        if (outcome.queued) {
+          // Не ошибка: фото уже сохранено и уйдёт при появлении связи
+          setUploads((prev) =>
+            prev.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, status: "queued", error: outcome.error || undefined }
+                : entry,
+            ),
+          )
+          return false
+        }
 
-        if (!res.ok || !data.success) {
-          throw new Error(data?.error || `Не удалось загрузить (код ${res.status})`)
+        if (!outcome.sent) {
+          throw new Error(outcome.error || "Не удалось загрузить фото")
         }
 
         const result: PhotoUploadResult = {
-          photo: data.photo,
-          ocr: data.ocr ?? null,
-          warnings: Array.isArray(data.warnings) ? data.warnings : [],
+          photo: outcome.photo as PhotoUploadResult["photo"],
+          ocr: (outcome.ocr as PhotoUploadResult["ocr"]) ?? null,
+          warnings: outcome.warnings ?? [],
         }
 
         setUploads((prev) =>
@@ -226,6 +260,8 @@ export function PhotoUpload({ onUpload, routeId, orderId, driverId }: PhotoUploa
   }
 
   const done = useMemo(() => uploads.filter((entry) => entry.status === "done"), [uploads])
+  // Кнопка «Загрузить все» — только для тех, что ещё не уходили; записи «ждёт
+  // связи» отправляет очередь сама, вручную их повторять нельзя (будет дубль)
   const waiting = useMemo(
     () => uploads.filter((entry) => entry.status === "pending" || entry.status === "error"),
     [uploads],
@@ -370,6 +406,12 @@ export function PhotoUpload({ onUpload, routeId, orderId, driverId }: PhotoUploa
                       <Badge variant="secondary" className="bg-success/20 text-success">
                         <Check className="h-3 w-3 mr-1" />
                         Загружено
+                      </Badge>
+                    )}
+                    {upload.status === "queued" && (
+                      <Badge variant="secondary" className="bg-sky-500/20 text-sky-500">
+                        <Cloud className="h-3 w-3 mr-1" />
+                        Ждёт связи — отправится сам
                       </Badge>
                     )}
                     {upload.status === "error" && (

@@ -45,7 +45,9 @@ servers:
 - GET  /api/drivers - список водителей; POST - создать (заводит логист)
 - GET/POST /api/vehicles, /api/orders, /api/routes
 - GET/PATCH /api/routes/[routeId], /api/routes/[routeId]/events, .../add-load, .../complete
-- GET/POST /api/m/orders, /api/m/shift, /api/m/location, /api/m/sos, /api/m/photos
+- GET/POST /api/m/orders, /api/m/shift, /api/m/location, /api/m/sos
+- GET/DELETE /api/m/photos - фото водителя; загрузка файла: POST /api/photos/upload (multipart + распознавание)
+- GET/POST /api/routes/[routeId]/expenses, /api/m/expenses - расходы рейса
 - GET  /api/admin/audit - журнал административных действий
 - POST /api/fleet/assign - назначение машины на рейс
 - GET/POST /api/chat

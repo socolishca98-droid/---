@@ -19,6 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { clearPhotoQueue } from "@/lib/offline/photo-queue"
 
 export interface SessionUser {
   id: string
@@ -126,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Серверный выход: сессия отзывается в БД, cookie удаляется
       await fetch("/api/auth/logout", { method: "POST" })
+      // Неотправленные фото из очереди не должны уходить от имени следующего
+      await clearPhotoQueue()
     } catch (error) {
       console.error("[auth] ошибка выхода:", error)
     } finally {

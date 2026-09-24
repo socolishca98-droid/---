@@ -91,6 +91,10 @@ const ANY_ROLE_API: { pattern: SegmentPattern; reason: string }[] = [
     pattern: ["api", "auth", "change-password"],
     reason: "пароль меняет и сотрудник, и водитель (в своём профиле)",
   },
+  {
+    pattern: ["api", "photos", "upload"],
+    reason: "фото грузят и логист, и водитель: принадлежность проверяет обработчик",
+  },
 ]
 
 /** Явно штабные подпути, которые иначе попали бы под шаблон ":id" */

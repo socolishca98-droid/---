@@ -55,3 +55,7 @@ prisma/.task2-vehicle-links.json
 # генерируется из prisma/schema.prisma (npm run schema:postgres)
 prisma/schema.postgres.prisma
 prisma/schema.sqlite.prisma
+
+# загруженные пользователями файлы (фото чеков и накладных): в git не нужны
+public/uploads/*
+!public/uploads/.gitkeep

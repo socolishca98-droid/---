@@ -39,6 +39,7 @@ import {
   ScanLine,
 } from "lucide-react"
 import { toast } from "sonner"
+import { uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
 
 interface Order {
   id: string
@@ -244,24 +245,46 @@ export default function OrderDetailsPage() {
     }
   }
 
-  /** Фото → сервер сам распознаёт чек и возвращает сумму, литры и дату. */
+  /**
+   * Фото чека → сервер распознаёт его и возвращает сумму.
+   *
+   * Если связи нет, файл не теряется: он уходит в очередь (IndexedDB) и
+   * отправится сам, когда сеть вернётся, — чек с трассы не пропадёт.
+   */
   const handlePhotoUpload = async (file: File, type: string) => {
     setIsUploading(true)
 
     try {
-      const form = new FormData()
-      form.append("file", file)
-      form.append("type", type)
-      form.append("orderId", orderId)
+      const outcome = await uploadPhotoOrQueue({
+        blob: file,
+        fileName: file.name || "photo.jpg",
+        photoType: type,
+        orderId,
+      })
 
-      const res = await fetch("/api/photos/upload", { method: "POST", body: form })
-      const data = await res.json().catch(() => ({}))
-
-      if (!res.ok || !data.success) {
-        throw new Error(data?.error || "Не удалось загрузить фото")
+      if (outcome.queued) {
+        toast.info("Связи нет — фото сохранено", {
+          description: "Чек уйдёт на сервер сам и распознается при появлении сети",
+        })
+        return
       }
 
+      if (!outcome.sent) {
+        throw new Error(outcome.error || "Не удалось загрузить фото")
+      }
+
+      // После отправки перечитываем карточку: фото и распознавание с сервера
       await load(true)
+
+      const ocr = outcome.ocr as {
+        total?: number | null
+        liters?: number | null
+        odometer?: number | null
+        vendor?: string | null
+        number?: string | null
+      } | null
+      const uploaded = outcome.photo as { id?: string } | null
+      const data = { ocr, warnings: [] as string[], photo: { id: uploaded?.id ?? "" } }
 
       if (type === "receipt" && data.ocr?.total) {
         // Распознанную сумму не записываем молча: водитель проверяет её глазами

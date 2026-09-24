@@ -133,6 +133,14 @@ test("журнал ТО доступен обеим ролям, остальны
   assert.equal(area("/api/m/photos"), "driver")
 })
 
+test("загрузка фото открыта обеим ролям: принадлежность проверяет обработчик", () => {
+  // Фото грузит и логист (из карточки рейса), и водитель (из телефона):
+  // сессия проверяется внутри, поэтому middleware не должен резать водителя
+  assert.equal(area("/api/photos/upload"), "any")
+  assert.equal(area("/api/photos"), "staff")
+  assert.equal(area("/api/photos/abc123/ocr"), "staff")
+})
+
 test("служебные подпути не прячутся за шаблоном :id", () => {
   assert.equal(area("/api/drivers/locations"), "staff")
   assert.equal(area("/api/drivers/stats"), "staff")

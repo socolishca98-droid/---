@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Truck, Bell, LogOut, Wifi, WifiOff, Cloud } from "lucide-react"
 import { useEffect, useState } from "react"
-import { uploadQueue } from "@/lib/offline-queue"
+import { getPhotoQueue } from "@/lib/offline/photo-queue"
 
 interface MobileHeaderProps {
   notificationCount?: number
@@ -32,15 +32,29 @@ export function MobileHeader({ notificationCount = 0 }: MobileHeaderProps) {
   }, [])
 
   useEffect(() => {
-    // subscribe возвращает функцию отписки (unsubscribe), а не объект
-    const unsubscribe = uploadQueue.subscribe((queue) => {
-      setPendingUploads(queue.filter((q) => q.status !== "failed").length)
+    // Настоящая очередь: фото, которые не ушли из-за связи, лежат в IndexedDB
+    // и уходят сами. Показываем их число — водитель видит, что чек не потерян.
+    const queue = getPhotoQueue()
+    if (!queue) return
+
+    let unsubscribe: (() => void) | undefined
+    let cancelled = false
+
+    queue.pendingCount().then((count) => {
+      if (!cancelled) setPendingUploads(count)
     })
+
+    const unsubscribeUploaded = queue.onUploaded(async () => {
+      const count = await queue.pendingCount()
+      setPendingUploads(count)
+    })
+
+    unsubscribe = queue.subscribe((items) => setPendingUploads(items.length))
+
     return () => {
-      // Вызываем функцию отписки
-      if (typeof unsubscribe === "function") {
-        unsubscribe()
-      }
+      cancelled = true
+      unsubscribe?.()
+      unsubscribeUploaded()
     }
   }, [])
 
@@ -71,7 +85,10 @@ export function MobileHeader({ notificationCount = 0 }: MobileHeaderProps) {
                 </span>
               )}
               {pendingUploads > 0 && (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span
+                  className="flex items-center gap-1 text-xs text-muted-foreground"
+                  title="Фото ждут связи и загрузятся сами"
+                >
                   <Cloud className="h-3 w-3" />
                   {pendingUploads}
                 </span>

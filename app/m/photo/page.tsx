@@ -19,6 +19,7 @@ import {
   Check,
 } from "lucide-react"
 import { toast } from "sonner"
+import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
 
 // Этот экспорт всё равно оставим для надёжности
 export const dynamic = "force-dynamic"
@@ -227,54 +228,90 @@ function PhotoPageContent() {
     }
   }, [driver?.id, fetchOrders, fetchPhotos])
 
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = (e) => reject(e)
-      reader.readAsDataURL(file)
-    })
-  }
+  // Очередь может отправить фото сама (связь вернулась) — тогда список
+  // обновляем без участия водителя, а о распознанном чеке сообщаем тостом
+  useEffect(() => {
+    const queue = getPhotoQueue()
+    if (!queue) return
 
+    const unsubscribe = queue.onUploaded((_item, result) => {
+      void fetchPhotos()
+
+      const ocr = result.ocr as { total?: number | null } | null
+      if (ocr?.total) {
+        toast.success(`Чек распознан: ${ocr.total.toLocaleString("ru-RU")} ₽`, {
+          description: "Расход можно записать в карточке рейса",
+        })
+      } else {
+        toast.success("Фото из очереди загружено")
+      }
+    })
+
+    return unsubscribe
+  }, [fetchPhotos])
+
+  /**
+   * Загрузка фото (задача 7).
+   *
+   * Раньше файл превращался в data:image/...;base64 и целиком уезжал в базу —
+   * ни файла на диске, ни распознавания чека, ни события рейса. Теперь файл
+   * уходит на сервер (multipart), чек и накладная распознаются на месте, а
+   * если связи нет — фото кладётся в очередь и уходит само, когда связь
+   * вернётся: чек, снятый на трассе, не теряется.
+   */
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files?.length || !driver?.id) return
 
     setIsUploading(true)
 
-    let successCount = 0
+    let sentCount = 0
+    let queuedCount = 0
+    let recognizedSum = 0
 
     for (const file of Array.from(files)) {
       try {
-        const dataUrl = await readFileAsDataUrl(file)
-
-        const res = await fetch("/api/m/photos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driverId: driver.id,
-            orderId: selectedOrder?.id ?? null,
-            type: selectedCategory,
-            url: dataUrl,
-            description: null,
-          }),
+        const result = await uploadPhotoOrQueue({
+          blob: file,
+          fileName: file.name || "photo.jpg",
+          photoType: selectedCategory,
+          orderId: selectedOrder?.id ?? null,
         })
 
-        const data = await res.json()
-        if (data.success && data.photo) {
-          setPhotos((prev) => [data.photo as Photo, ...prev])
-          successCount++
+        if (result.sent) {
+          sentCount++
+
+          // Чек: сервер уже распознал сумму — показываем её водителю
+          const ocr = result.ocr as { total?: number | null; number?: string | null } | null
+          if (selectedCategory === "receipt" && ocr?.total) recognizedSum += ocr.total
+
+          if (selectedCategory === "waybill" && ocr?.number) {
+            toast.success(`Накладная № ${ocr.number} распознана`, {
+              description: "Документ привязан к заказу",
+            })
+          }
+        } else if (result.queued) {
+          queuedCount++
         } else {
-          console.error("Upload failed:", data.error)
+          toast.error(result.error || "Не удалось загрузить фото")
         }
       } catch (error) {
         console.error("Upload failed:", error)
+        toast.error("Не удалось загрузить фото")
       }
     }
 
-    if (successCount > 0) {
-      toast.success(`Загружено ${successCount} фото`, {
+    if (sentCount > 0) {
+      toast.success(`Загружено фото: ${sentCount}`, {
         icon: <Check className="h-4 w-4" />,
+        description: recognizedSum > 0 ? `Чек распознан: ${recognizedSum.toLocaleString("ru-RU")} ₽` : undefined,
+      })
+      await fetchPhotos()
+    }
+
+    if (queuedCount > 0) {
+      toast.info(`Фото сохранено: ${queuedCount}`, {
+        description: "Связи нет — фото уйдёт само, когда появится сеть",
       })
     }
 
