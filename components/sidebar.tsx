@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -26,26 +27,68 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
-const navigation = [
+/** Какие счётчики может показывать пункт меню. */
+type BadgeKey = "orders" | "chat"
+
+const navigation: Array<{ name: string; href: string; icon: any; badgeKey?: BadgeKey }> = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Заказы", href: "/orders", icon: Package, badge: 6 },
+  // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
+  { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
   { name: "Поиск грузов", href: "/search", icon: Search },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
   { name: "Фото", href: "/photos", icon: Camera },
-  { name: "Чат", href: "/chat", icon: MessageSquare, badge: 1 },
+  { name: "Чат", href: "/chat", icon: MessageSquare, badgeKey: "chat" },
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
   { name: "Сотрудники", href: "/users", icon: Users },
   { name: "Организация", href: "/organization", icon: Building2 },
 ]
 
+const EMPTY_COUNTS: Record<BadgeKey, number> = { orders: 0, chat: 0 }
+
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
   const { isCollapsed, toggle } = useSidebar()
+  const [counts, setCounts] = useState<Record<BadgeKey, number>>(EMPTY_COUNTS)
+
+  // Счётчики обновляются при переходе между разделами, раз в минуту и когда
+  // вкладка снова становится видимой. Ошибка не ломает меню — бейджи просто
+  // не показываются.
+  useEffect(() => {
+    let active = true
+
+    const load = async () => {
+      try {
+        const response = await fetch("/api/sidebar-counts", { credentials: "include" })
+        if (!response.ok) return
+        const data = await response.json()
+        if (!active) return
+        setCounts({
+          orders: Number(data?.orders) || 0,
+          chat: Number(data?.chat) || 0,
+        })
+      } catch {
+        /* счётчики — не критично */
+      }
+    }
+
+    load()
+    const interval = window.setInterval(load, 60_000)
+    const onVisible = () => {
+      if (!document.hidden) load()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [pathname])
 
   const handleLogout = async () => {
     // Серверный выход: сессия отзывается в БД, httpOnly-cookie удаляется
@@ -87,6 +130,8 @@ export function Sidebar() {
         <nav className="flex-1 space-y-1 p-3">
           {navigation.map((item) => {
             const isActive = pathname === item.href
+            const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0
+            const badgeLabel = badgeValue > 99 ? "99+" : String(badgeValue)
             return (
               <Link
                 key={item.name}
@@ -103,23 +148,23 @@ export function Sidebar() {
                 {!isCollapsed && (
                   <>
                     <span className="flex-1">{item.name}</span>
-                    {item.badge && (
+                    {badgeValue > 0 && (
                       <Badge
                         variant="default"
                         className="h-5 min-w-5 px-1.5 text-xs bg-primary text-primary-foreground"
                       >
-                        {item.badge}
+                        {badgeLabel}
                       </Badge>
                     )}
                   </>
                 )}
                 {/* Бейдж в свёрнутом режиме */}
-                {isCollapsed && item.badge && (
+                {isCollapsed && badgeValue > 0 && (
                   <Badge
                     variant="default"
                     className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px] bg-primary text-primary-foreground"
                   >
-                    {item.badge}
+                    {badgeLabel}
                   </Badge>
                 )}
 

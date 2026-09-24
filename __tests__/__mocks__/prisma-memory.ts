@@ -207,7 +207,7 @@ const DEFAULTS: Record<string, Row> = {
   driverShift: { status: "driving", totalDrivingSeconds: 0, totalRestingSeconds: 0, totalLoadingSeconds: 0, totalWaitingSeconds: 0, drivingSinceRestSeconds: 0 },
   sosAlert: { status: "active" },
   notification: { priority: "normal", isRead: false },
-  chatMessage: { type: "text", isImportant: false },
+  chatMessage: { type: "text", isImportant: false, isRead: false },
   inviteCode: { role: "logist", usedCount: 0 },
   fleetSettings: { parkName: "Наш Автопарк" },
   auditLog: { targetType: "user" },
