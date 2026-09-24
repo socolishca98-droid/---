@@ -24,10 +24,142 @@ import {
   orderStatusLabel,
 } from "@/lib/orders/stages"
 import { logRouteEvent } from "@/lib/routes/service"
+import { buildTripSummary } from "@/lib/trips/history"
 
 export const dynamic = "force-dynamic"
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+/**
+ * GET /api/m/orders/[id] — карточка рейса для водителя (задача 7).
+ *
+ * Отдаёт заказ вместе с итогом рейса, расходами и фото: водитель видит по
+ * своему заказу то же, что логист в кабинете, — пробег, заработок, расход
+ * и документы. Мобильный экран раньше ходил в штабной GET /api/orders/[id]
+ * и получал 401, поэтому карточка у водителя не открывалась.
+ *
+ * Свои заказы: assignedDriverId из сессии, чужой id даёт 404.
+ */
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
+  const driverId = auth.value.driver.id
+
+  try {
+    const { id } = await params
+
+    const order = (await prisma.order.findFirst({
+      where: scopedWhere(org.organizationId, { id, assignedDriverId: driverId }),
+      select: {
+        id: true,
+        routeId: true,
+        status: true,
+        routeFrom: true,
+        routeTo: true,
+        distance: true,
+        weight: true,
+        volume: true,
+        cargoType: true,
+        clientName: true,
+        clientContact: true,
+        price: true,
+        agreedPrice: true,
+        isPaid: true,
+        dueDate: true,
+        loadingType: true,
+        requirements: true,
+        deadline: true,
+        routeSequence: true,
+      },
+    })) as Record<string, any> | null
+
+    if (!order) {
+      return NextResponse.json({ success: false, error: "Заказ не найден" }, { status: 404 })
+    }
+
+    const route = order.routeId
+      ? ((await prisma.route.findFirst({
+          where: scopedWhere(org.organizationId, { id: order.routeId }),
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            createdAt: true,
+            startedAt: true,
+            completedAt: true,
+            totalDistance: true,
+            startOdometer: true,
+            endOdometer: true,
+          },
+        })) as Record<string, any> | null)
+      : null
+
+    const [expenses, photos, routeOrders] = await Promise.all([
+      order.routeId
+        ? prisma.routeExpense.findMany({
+            where: scopedWhere(org.organizationId, { routeId: order.routeId }),
+            orderBy: [{ spentAt: "desc" }],
+            take: 100,
+            select: {
+              id: true,
+              type: true,
+              amount: true,
+              liters: true,
+              odometer: true,
+              vendor: true,
+              spentAt: true,
+              source: true,
+              photoId: true,
+            },
+          })
+        : Promise.resolve([]),
+      prisma.photo.findMany({
+        where: scopedWhere(org.organizationId, { orderId: id }),
+        orderBy: [{ createdAt: "desc" }],
+        take: 30,
+        select: { id: true, url: true, type: true, createdAt: true, ocrData: true },
+      }),
+      order.routeId
+        ? prisma.order.findMany({
+            where: scopedWhere(org.organizationId, { routeId: order.routeId }),
+            select: { id: true, status: true, price: true, agreedPrice: true, distance: true },
+          })
+        : Promise.resolve([]),
+    ])
+
+    const expenseRows = expenses as { amount: number; type: string | null; liters: number | null }[]
+
+    return NextResponse.json({
+      success: true,
+      order: {
+        ...order,
+        statusLabel: orderStatusLabel(order.status),
+        routeName: route?.name ?? null,
+      },
+      summary: route
+        ? buildTripSummary({
+            route: route as any,
+            orders: routeOrders as any[],
+            expenses: expenseRows as any[],
+          })
+        : null,
+      expenses,
+      photos,
+      documents: {
+        // Что можно распечатать по рейсу — ссылка на печать из браузера
+        printUrl: order.routeId ? `/print/route/${order.routeId}` : null,
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Не удалось открыть заказ"
+    console.error("[Mobile Order] GET error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
+  }
+}
 
 /** Что водителю разрешено: только «взял в исполнение». */
 const DRIVER_ALLOWED_STATUSES = ["control"] as const

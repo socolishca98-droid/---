@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -117,6 +117,23 @@ export default function PhotosPage() {
     }
   }, [])
 
+  // Фото по текущим фильтрам — отдельной функцией: её же зовём после загрузки,
+  // чтобы новое фото сразу появилось в галерее
+  const loadPhotos = useCallback(async () => {
+    const query = new URLSearchParams()
+    if (filters.clientId) query.set("clientId", filters.clientId)
+    if (filters.vehicleId) query.set("vehicleId", filters.vehicleId)
+    if (filters.routeId) query.set("routeId", filters.routeId)
+
+    const res = await fetch(`/api/photos${query.size > 0 ? `?${query.toString()}` : ""}`)
+    if (!res.ok) return
+
+    const data = await res.json()
+    if (data.success && Array.isArray(data.photos)) {
+      setPhotos(data.photos)
+    }
+  }, [filters.clientId, filters.vehicleId, filters.routeId])
+
   // Загрузка фото и активных рейсов из бэкенда
   useEffect(() => {
     if (!user || isLoading) return
@@ -124,22 +141,9 @@ export default function PhotosPage() {
     const load = async () => {
       setLoadingPhotos(true)
       try {
-        const query = new URLSearchParams()
-        if (filters.clientId) query.set("clientId", filters.clientId)
-        if (filters.vehicleId) query.set("vehicleId", filters.vehicleId)
-        if (filters.routeId) query.set("routeId", filters.routeId)
+        const ordersRes = await fetch("/api/orders?status=in_transit,assigned&limit=10")
 
-        const [photosRes, ordersRes] = await Promise.all([
-          fetch(`/api/photos${query.size > 0 ? `?${query.toString()}` : ""}`),
-          fetch("/api/orders?status=in_transit,assigned&limit=10"),
-        ])
-
-        if (photosRes.ok) {
-          const data = await photosRes.json()
-          if (data.success && Array.isArray(data.photos)) {
-            setPhotos(data.photos)
-          }
-        }
+        await loadPhotos()
 
         if (ordersRes.ok) {
           const ordersData = await ordersRes.json()
@@ -165,7 +169,7 @@ export default function PhotosPage() {
     }
 
     void load()
-  }, [user, isLoading, filters.clientId, filters.vehicleId, filters.routeId])
+  }, [user, isLoading, loadPhotos])
 
   if (isLoading || !user) {
     return (
@@ -175,58 +179,17 @@ export default function PhotosPage() {
     )
   }
 
-  // Обработка сохранения фото из PhotoUpload
+  // Фото из PhotoUpload уже загружены на сервер (multipart + OCR),
+  // поэтому здесь остаётся только перечитать галерею
   const handleUpload = async (uploads: any[]) => {
-    const completed = uploads.filter((u: any) => u.result)
-    if (!completed.length) return
+    if (!uploads.length) return
 
-    if (!user) {
-      toast.error("Пользователь не определён")
-      return
-    }
+    await loadPhotos()
 
-    // useAuth().user может не иметь driverId в своём типе, поэтому берём через any
-    const effectiveDriverId =
-      (user as any)?.driverId || user.id || "backoffice"
-
-    const created: any[] = []
-
-    for (const u of completed) {
-      const r = u.result
-      try {
-        const res = await fetch("/api/photos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: r.url,
-            type: r.type, // cargo_before, cargo_after, receipt, waybill, damage
-            driverId: effectiveDriverId,
-            orderId: r.orderId || null,
-            description:
-              r.aiClassification?.description ||
-              r.description ||
-              null,
-            aiClassification: r.aiClassification,
-            ocrData: r.ocrData,
-          }),
-        })
-
-        const data = await res.json()
-        if (res.ok && data.success && data.photo) {
-          created.push(data.photo)
-        } else {
-          console.error("[PhotosPage] upload error:", data.error || data)
-        }
-      } catch (error) {
-        console.error("[PhotosPage] upload error:", error)
-        toast.error("Не удалось сохранить фото")
-      }
-    }
-
-    if (created.length) {
-      setPhotos((prev) => [...created, ...prev])
-      toast.success(`Сохранено фото: ${created.length}`)
-    }
+    const recognized = uploads.filter((u: any) => u.result?.ocr).length
+    toast.success(`Загружено фото: ${uploads.length}`, {
+      description: recognized > 0 ? `Распознано документов: ${recognized}` : undefined,
+    })
   }
 
   // Последнее фото кузова после погрузки с оценкой заполнения

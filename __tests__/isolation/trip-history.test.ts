@@ -45,6 +45,7 @@ import { GET as historyGet } from "@/app/api/routes/[routeId]/history/route"
 import { GET as expensesGet, POST as expensesPost } from "@/app/api/routes/[routeId]/expenses/route"
 import { DELETE as expenseDelete } from "@/app/api/expenses/[expenseId]/route"
 import { GET as mobileExpensesGet, POST as mobileExpensesPost } from "@/app/api/m/expenses/route"
+import { GET as mobileOrderGet } from "@/app/api/m/orders/[id]/route"
 
 let world: World
 let cookieA: string
@@ -506,5 +507,57 @@ describe("загрузка фото с распознаванием (POST /api/p
 
     expect(foreignResponse.status).toBe(404)
     expect(memoryDb.rows("photo")).toHaveLength(2) // только фото из seedWorld
+  })
+})
+
+describe("карточка рейса у водителя (GET /api/m/orders/[id])", () => {
+  it("штабная сессия карточку водителя не открывает — 401", async () => {
+    const response = await mobileOrderGet(
+      makeRequest("GET", `/api/m/orders/${world.orderA}`, { cookie: cookieA }),
+      routeContext({ id: world.orderA }),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  it("водитель видит свой заказ с итогом, расходами, фото и ссылкой на печать", async () => {
+    seedExpense("driverFuel", world.routeA, { amount: 18000, liters: 300, odometer: 120000 })
+    // cid() выдаёт новый id на каждый вызов — запоминаем тот, что попал в базу
+    const photoId = cid("driverPhoto")
+    memoryDb.insert("photo", {
+      id: photoId,
+      organizationId: world.orgA,
+      url: "/uploads/a/waybill.jpg",
+      type: "waybill",
+      driverId: world.driverA,
+      orderId: world.orderA,
+      routeId: world.routeA,
+    })
+
+    const response = await mobileOrderGet(
+      makeRequest("GET", `/api/m/orders/${world.orderA}`, { cookie: cookieDriverA }),
+      routeContext({ id: world.orderA }),
+    )
+    const body = (await jsonOf(response)) as any
+
+    expect(response.status).toBe(200)
+    expect(body.order.id).toBe(world.orderA)
+    expect(body.order.statusLabel).toBeTruthy()
+    expect(body.summary.ordersCount).toBe(1)
+    expect(body.summary.revenueRub).toBe(100000)
+    expect(body.summary.expensesRub).toBe(18000)
+    expect(body.summary.profitRub).toBe(82000)
+    expect(body.expenses).toHaveLength(1)
+    expect(body.photos.map((photo: any) => photo.id)).toContain(photoId)
+    expect(body.documents.printUrl).toBe(`/print/route/${world.routeA}`)
+  })
+
+  it("чужой заказ водителю не отдаётся — 404", async () => {
+    const response = await mobileOrderGet(
+      makeRequest("GET", `/api/m/orders/${world.orderB}`, { cookie: cookieDriverA }),
+      routeContext({ id: world.orderB }),
+    )
+
+    expect(response.status).toBe(404)
   })
 })

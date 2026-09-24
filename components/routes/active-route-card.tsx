@@ -23,6 +23,7 @@ import {
   Sparkles,
   Loader2,
   FileText,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -36,6 +37,7 @@ import {
 import { RouteOptimizer, type RouteOptimizerOrder } from "@/components/routes/route-optimizer"
 import { RouteCrewDialog } from "@/components/routes/route-crew-dialog"
 import { RouteDocumentsDialog } from "@/components/routes/route-documents-dialog"
+import { RouteTripDialog } from "@/components/routes/route-trip-dialog"
 import {
   calculateAllCoefficients,
   calculateRiskFactors,
@@ -146,6 +148,8 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const [showOptimizer, setShowOptimizer] = useState(false)
   const [showCrew, setShowCrew] = useState(false)
   const [showDocuments, setShowDocuments] = useState(false)
+  /** Карточка рейса: хронология, расходы, документы и итог (задача 7) */
+  const [showTrip, setShowTrip] = useState(false)
   const [applyingOptimizer, setApplyingOptimizer] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -436,6 +440,21 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                     Документы
                   </Button>
 
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowTrip(true)
+                    }}
+                    disabled={isCompleting || isCancelling}
+                    title="Хронология, расходы, фото и итог рейса"
+                  >
+                    <TrendingUp className="h-3.5 w-3.5 mr-2" />
+                    Рейс
+                  </Button>
+
                   {canOptimize && (
                     <Button
                       size="sm"
@@ -630,6 +649,13 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
           )}
         </CardContent>
       </Card>
+
+      <RouteTripDialog
+        routeId={route.id}
+        open={showTrip}
+        onOpenChange={setShowTrip}
+        onChanged={onRefresh}
+      />
 
       <RouteDocumentsDialog
         routeId={route.id}
