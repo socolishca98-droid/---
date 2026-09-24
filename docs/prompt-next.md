@@ -841,3 +841,53 @@ npm run test                  # node:test + vitest + изоляция
 Проверки после правок: `tsc` 0 реальных ошибок · `test:unit` 65/65 · `test:vitest` 48/48 ·
 `test:isolation` 56/56 · `audit:orgs` 0 нарушений · `verify:orgs --no-db` 54/54.
 
+---
+
+## §18 Задача 2 — вычистка мёртвого кода (2026-09-24)
+
+Решение пользователя: «если это не испортит функционал — удаляй».
+
+### Метод (а не «эвристика grep»)
+Построен граф импортов по всем `.ts/.tsx/.mjs/.js` репозитория (статический
+`import … from`, динамический `import()`, `next/dynamic`, `require`), обход в
+ширину от **настоящих точек входа**:
+
+- всё `app/**` (страницы, `layout`, `route`, `loading`, `error`, …);
+- `proxy.ts` (в Next 16 это бывший `middleware.ts` — он живой), `instrumentation.ts`;
+- `next.config.mjs`, `postcss.config.mjs`, `vitest*.config.ts`, `sentry.client.config.ts`;
+- `__tests__/**`, `tests/**`, `scripts/**`.
+
+Результат по 338 файлам: 265 достижимо, 73 недостижимо. Отдельно проверено, что
+**ни один достижимый файл не импортирует ни одного недостижимого** (единственные
+входящие рёбра — внутри самого мёртвого набора), поэтому удаление не могло
+сломать сборку. `tsc` это подтвердил после удаления.
+
+### Удалено — 41 файл, −5995 строк
+| Группа | Файлы |
+|---|---|
+| `components/dashboard/*` | `activity-chart`, `ai-insights`, `dashboard-map`, `drivers-status`, `orders-preview`, `stats-cards`, старый barrel `map/index.tsx` — 7 |
+| `components/orders/*` | `order-card`, `order-filters`, `create-order-dialog`, `load-details-dialog`, `assign-driver-dialog`, `sandbox-card`, `trip-builder-bar` — 7 |
+| `components/routes/*` | `route-map` (схематичная заглушка карты), `route-card`, `route-list`, `route-detail-photos` — 4 |
+| `components/driver/*` | `driver-header`, `driver-stats`, `task-card`, `quick-photo-upload` — каталог удалён целиком, 4 |
+| `components/driver-mobile/*` | `current-order-card`, `task-card-mobile`, `reminder-toast`, `fuel-dialog`, `photo-capture`, `photo-upload-mobile` — 6 |
+| прочее | `components/theme-provider.tsx`, `hooks/use-orders.ts`, `hooks/use-toast.ts`, `hooks/useDriverGps.ts`, `lib/csrf-client.ts`, `lib/mock-data.ts` (≈600 строк демо-данных), `lib/traffic/batch/route.ts` (копия маршрута **без** auth и scope организации), 5 корневых `test-ati*`/`test-api`/`test-cities` + мусорный `test-ati.jsRemove-Item` |
+
+### Найдено по ходу (важно)
+- **`lib/traffic/batch/route.ts` — не просто мёртвая копия `app/api/traffic/batch/route.ts`, а копия без `requireStaffAuth` и без `requireStaffOrganization`.** Лежала в `lib/`, где Next её не исполняет, поэтому утечки не было; удалена.
+- **В корне репозитория и в git лежал открытый токен ATI** (`test-ati.mjs`, `test-ati.js`, `test-cities.mjs`, `test-api.mjs`, `test-ati.ps1`, `test-ati.jsRemove-Item`). Файлы удалены, но **токен остаётся в истории git — его нужно отозвать в кабинете ATI**.
+- Мобильный `app/m/**` — живой (вход водителя, заказы, фото, ТО); удалены только неиспользуемые компоненты, а не экраны.
+
+### Сознательно НЕ удалено
+- **`components/ui/*` (shadcn/ui)** — из 57 файлов 33 не используются. Это библиотека: нужные компоненты ставятся из неё и она же задаёт переменные темы. Удалять нельзя без потери базы для будущей вёрстки (канбан задачи 4, фото задачи 5).
+- **`hooks/use-mobile.ts`** — импортируется `components/ui/sidebar.tsx`, без него библиотека перестала бы компилироваться.
+- **`next-themes`** — используется в `components/ui/sonner.tsx` (сам `sonner` жив: `app/layout.tsx`).
+- **`components/dashboard/map/DashboardMap.tsx` и весь каталог `dashboard/map/*`** — грузится динамически из `app/dashboard/page.tsx`; карту дашборда не трогаем (решение пользователя). Удалён только устаревший barrel `map/index.tsx`.
+
+### Как восстановить один файл
+`git show 591cbc3:components/orders/order-card.tsx > components/orders/order-card.tsx`
+(коммит до вычистки). Полный откат — `git revert` коммита вычистки.
+
+### Проверки после удаления (всё зелёное)
+`tsc` 0 ошибок · `test:build` (`tests/tsconfig.json`) 0 ошибок · `test:unit` 97/97 ·
+`test:vitest` 48/48 · `test:isolation` 102/102 · `audit:orgs` 0 нарушений ·
+`verify:orgs --no-db` 56/56.
