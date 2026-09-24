@@ -3,16 +3,21 @@
 /**
  * /organization — панель администратора организации.
  *
- * Три вещи, которые делает админ своей компании:
+ * Что здесь делает админ своей компании:
  *   1. видит карточку организации (название, дата создания, состав);
  *   2. создаёт и отзывает инвайт-коды — единственный способ присоединиться
  *      к компании (по названию присоединиться нельзя);
- *   3. одобряет или отклоняет заявки сотрудников своей организации.
+ *   3. видит счётчик заявок и переходит к ним.
+ *
+ * Решения по заявкам (одобрить/отклонить) и все действия с доступом сотрудников
+ * живут в одном месте — на странице «Сотрудники» (/users), чтобы не держать два
+ * одинаковых экрана. Одобряет и отклоняет заявки и логист, и администратор.
  *
  * Организация всегда приходит с сервера из сессии: на экране нет и не может
  * быть переключателя «выбрать компанию».
  */
 
+import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { PageLayout } from "@/components/page-layout"
 import { useAuth } from "@/lib/auth-context"
@@ -53,7 +58,6 @@ import {
   Truck,
   UserCheck,
   Users,
-  XCircle,
 } from "lucide-react"
 
 interface OrganizationInfo {
@@ -82,15 +86,6 @@ interface InviteView {
   createdAt: string
   status: "active" | "expired" | "revoked" | "exhausted"
   registeredUsers: number
-}
-
-interface Application {
-  id: string
-  name: string
-  email: string | null
-  role: string
-  createdAt: string
-  inviteCode: { id: string; code: string; role: string } | null
 }
 
 const EXPIRY_OPTIONS = [
@@ -137,7 +132,6 @@ export default function OrganizationPage() {
   const [organization, setOrganization] = useState<OrganizationInfo | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [invites, setInvites] = useState<InviteView[]>([])
-  const [applications, setApplications] = useState<Application[]>([])
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -151,19 +145,16 @@ export default function OrganizationPage() {
   const [isCreating, setIsCreating] = useState(false)
 
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null)
-  const [busyApplicationId, setBusyApplicationId] = useState<string | null>(null)
   const [copiedCode, setCopiedCode] = useState("")
 
   const load = useCallback(async () => {
     setIsLoading(true)
     setLoadError("")
     try {
-      const [orgRes, usersRes] = await Promise.all([
-        fetch("/api/organization", { cache: "no-store" }),
-        fetch("/api/auth/users?status=pending", { cache: "no-store" }),
-      ])
+      // Список заявок здесь не грузим: решения по людям принимаются на странице
+      // «Сотрудники» (/users), а количество ожидающих приходит в summary.pending.
+      const orgRes = await fetch("/api/organization", { cache: "no-store" })
       const orgData = await orgRes.json().catch(() => ({}))
-      const usersData = await usersRes.json().catch(() => ({}))
 
       if (!orgRes.ok || !orgData?.success) {
         setLoadError(orgData?.error || "Не удалось загрузить данные организации")
@@ -172,18 +163,6 @@ export default function OrganizationPage() {
 
       setOrganization(orgData.organization)
       setSummary(orgData.summary)
-      setApplications(
-        usersRes.ok && usersData?.success
-          ? (usersData.users || []).map((row: any) => ({
-              id: row.id,
-              name: row.name,
-              email: row.email,
-              role: row.role,
-              createdAt: row.createdAt,
-              inviteCode: row.inviteCode || null,
-            }))
-          : [],
-      )
 
       if (isAdmin) {
         const invitesRes = await fetch("/api/organization/invites", { cache: "no-store" })
@@ -258,35 +237,6 @@ export default function OrganizationPage() {
     }
   }
 
-  const handleApplication = async (application: Application, action: "approve" | "reject") => {
-    setError("")
-    setNotice("")
-    setBusyApplicationId(application.id)
-    try {
-      const res = await fetch(`/api/auth/users/${application.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data?.success) {
-        setError(data?.error || "Не удалось изменить заявку")
-        return
-      }
-      setApplications((prev) => prev.filter((row) => row.id !== application.id))
-      setNotice(
-        action === "approve"
-          ? `Доступ открыт: ${application.name}`
-          : `Заявка отклонена: ${application.name}`,
-      )
-      await load()
-    } catch {
-      setError("Ошибка соединения")
-    } finally {
-      setBusyApplicationId(null)
-    }
-  }
-
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -303,7 +253,7 @@ export default function OrganizationPage() {
   return (
     <PageLayout
       title="Организация"
-      description="Инвайт-коды и заявки на присоединение к вашей компании"
+      description="Инвайт-коды вашей компании и заявки на присоединение"
       actions={
         summary && summary.pending > 0 ? (
           <Badge variant="outline" className="border-amber-500/40 text-amber-500 gap-1.5">
@@ -378,8 +328,7 @@ export default function OrganizationPage() {
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
               <span>
                 Инвайт-коды создаёт и отзывает администратор организации. Заявки на
-                присоединение вы можете одобрять и отклонять — список ниже. Список
-                сотрудников доступен на странице «Сотрудники».
+                присоединение вы можете одобрять и отклонять — на странице «Сотрудники».
               </span>
             </div>
           </CardContent>
@@ -557,6 +506,9 @@ export default function OrganizationPage() {
       )}
 
       {/* ── Заявки на присоединение ─────────────────────────────────── */}
+      {/* Решения по заявкам принимаются на странице «Сотрудники» (/users) — там
+          один список людей и все действия по ним. Здесь только счётчик и переход,
+          чтобы не держать два одинаковых экрана (решение от 2026-09-24). */}
       <Card className="border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -564,78 +516,25 @@ export default function OrganizationPage() {
             Заявки на присоединение
           </CardTitle>
           <CardDescription>
-            Одобряйте только тех, кого знаете: после одобрения человек увидит все данные
-            организации. Отклонённая заявка удаляется, а использование кода возвращается.
+            Заявки одобряют и отклоняют на странице «Сотрудники» — это может сделать и
+            логист, и администратор организации. Одобряйте только тех, кого знаете: после
+            одобрения человек увидит все данные организации. Отклонённая заявка удаляется,
+            а использование кода возвращается.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Сотрудник</TableHead>
-                <TableHead>Роль из кода</TableHead>
-                <TableHead>Заявка подана</TableHead>
-                <TableHead className="text-right">Решение</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                    Загружаем...
-                  </TableCell>
-                </TableRow>
-              ) : applications.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
-                    Заявок нет
-                  </TableCell>
-                </TableRow>
-              ) : (
-                applications.map((application) => (
-                  <TableRow key={application.id}>
-                    <TableCell>
-                      <div className="font-medium">{application.name}</div>
-                      <div className="text-xs text-muted-foreground">{application.email || "—"}</div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {application.role === "admin" ? "Администратор" : "Логист"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDateTime(application.createdAt)}
-                    </TableCell>
-                    {/* Решение по заявке принимает любой сотрудник организации —
-                        и логист, и администратор (решение пользователя 2026-09-24). */}
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
-                          disabled={busyApplicationId === application.id}
-                          onClick={() => void handleApplication(application, "approve")}
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                          Одобрить
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          disabled={busyApplicationId === application.id}
-                          onClick={() => void handleApplication(application, "reject")}
-                        >
-                          <XCircle className="h-4 w-4 mr-1.5" />
-                          Отклонить
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+        <CardContent className="flex flex-wrap items-center gap-4">
+          <div className="text-sm text-muted-foreground">
+            Ожидают решения:{" "}
+            <span className="text-foreground font-semibold">
+              {isLoading ? "…" : (summary?.pending ?? 0)}
+            </span>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/users">
+              <UserCheck className="h-4 w-4 mr-1.5" />
+              Перейти к заявкам
+            </Link>
+          </Button>
         </CardContent>
       </Card>
     </PageLayout>

@@ -14,9 +14,14 @@
  *  • сменить роль (admin / logist),
  *  • снять блокировку после серии неудачных попыток входа.
  *
- * Кнопка «Отклонить» на этой странице закрывает доступ (suspend), поэтому она
- * администраторская. Отклонение заявки с возвратом использования инвайт-кода
- * (reject) — на странице «Организация».
+ * Это единственное место, где принимают решения по людям: заявки одобряются и
+ * отклоняются здесь (на странице «Организация» остались инвайт-коды и карточка
+ * компании со счётчиком заявок и ссылкой сюда).
+ *
+ * «Отклонить» у заявки — это reject: запись удаляется, а использование
+ * инвайт-кода возвращается, чтобы код не «сгорал» из-за отклонённого человека.
+ * Роль будущего сотрудника задаётся администратором при создании кода и при
+ * одобрении не выбирается.
  */
 
 import { useCallback, useEffect, useState } from "react"
@@ -62,6 +67,7 @@ import {
   ShieldCheck,
   UserCog,
   Users,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -134,6 +140,9 @@ export default function UsersPage() {
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
+
+  // Диалог отклонения заявки (reject: заявка удаляется, использование кода возвращается)
+  const [rejectTarget, setRejectTarget] = useState<UserRow | null>(null)
 
   // Диалог закрытия доступа
   const [suspendTarget, setSuspendTarget] = useState<UserRow | null>(null)
@@ -216,6 +225,15 @@ export default function UsersPage() {
   const handleApprove = async (target: UserRow) => {
     const result = await runAction(target, "approve")
     if (result.ok) void fetchUsers()
+  }
+
+  const handleReject = async () => {
+    if (!rejectTarget) return
+    const result = await runAction(rejectTarget, "reject")
+    if (result.ok) {
+      setRejectTarget(null)
+      void fetchUsers()
+    }
   }
 
   const handleRestore = async (target: UserRow) => {
@@ -371,7 +389,7 @@ export default function UsersPage() {
                       </TableCell>
 
                       <TableCell>
-                        {isAdmin && !row.driverId ? (
+                        {isAdmin && !row.driverId && row.status !== "pending" ? (
                           <Select
                             value={row.role}
                             onValueChange={(value) => void handleRoleChange(row, value)}
@@ -386,7 +404,12 @@ export default function UsersPage() {
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-sm">{ROLE_LABELS[row.role] || row.role}</span>
+                          <span className="text-sm">
+                            {ROLE_LABELS[row.role] || row.role}
+                            {row.status === "pending" && (
+                              <span className="text-xs text-muted-foreground"> · из кода</span>
+                            )}
+                          </span>
                         )}
                       </TableCell>
 
@@ -429,25 +452,16 @@ export default function UsersPage() {
                                 )}
                                 Одобрить
                               </Button>
-                              {/* «Отклонить» здесь — закрытие доступа (suspend),
-                                  поэтому пока только для администратора. Отклонение
-                                  заявки с возвратом использования кода (reject) —
-                                  на странице «Организация». */}
+                              {/* Отклонить заявку может и логист, и администратор:
+                                  reject удаляет заявку и возвращает использование кода. */}
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="text-destructive hover:text-destructive"
-                                disabled={busy || !isAdmin}
-                                title={
-                                  isAdmin
-                                    ? undefined
-                                    : "Закрытие доступа — только администратор. Отклонить заявку можно на странице «Организация»"
-                                }
-                                onClick={() => {
-                                  setSuspendReason("Заявка отклонена")
-                                  setSuspendTarget(row)
-                                }}
+                                disabled={busy}
+                                onClick={() => setRejectTarget(row)}
                               >
+                                <XCircle className="h-4 w-4 mr-1.5" />
                                 Отклонить
                               </Button>
                             </>
@@ -540,6 +554,40 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {/* Диалог отклонения заявки */}
+      <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => !open && setRejectTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-destructive" />
+              Отклонить заявку
+            </DialogTitle>
+            <DialogDescription>
+              Заявка «{rejectTarget?.name ?? ""}» будет удалена, а использование кода
+              приглашения вернётся — код не «сгорит» из-за отклонённого человека. Если
+              сотрудник уже работал и нужно сохранить историю, вместо этого закройте ему
+              доступ («Закрыть доступ» в списке сотрудников).
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectTarget(null)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleReject()}
+              disabled={busyUserId === rejectTarget?.id}
+            >
+              {busyUserId === rejectTarget?.id && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Отклонить заявку
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Диалог закрытия доступа */}
       <Dialog open={Boolean(suspendTarget)} onOpenChange={(open) => !open && setSuspendTarget(null)}>
