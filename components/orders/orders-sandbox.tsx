@@ -59,7 +59,9 @@ import {
   ChevronRight,
   Clock,
   Undo2,
+  MessagesSquare,
 } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -110,6 +112,14 @@ import {
   orderStatusLabel,
   type OrderStatus,
 } from "@/lib/orders/stages"
+import { OrderProcess } from "@/components/orders/order-process"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 
 // ==================== ТИПЫ ====================
 type Mode = "select" | "connect" | "route" | "group"
@@ -1116,6 +1126,9 @@ export function OrdersSandbox() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   )
+
+  /** Заказ, открытый в выдвижной панели согласования (быстрые действия). */
+  const [negotiationOrderId, setNegotiationOrderId] = useState<string | null>(null)
 
   const activeSheet = sheets[activeSheetId]
 
@@ -2338,7 +2351,12 @@ export function OrdersSandbox() {
               <div className="text-center py-8 text-slate-500">
                 <Package className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Нет грузов</p>
-                <p className="text-xs mt-1">Нажмите &quot;Взять&quot; на вкладке ATI</p>
+                <p className="text-xs mt-1">
+                  Возьмите груз в работу на странице{" "}
+                  <Link href="/search" className="text-orange-400 hover:underline">
+                    «Поиск грузов»
+                  </Link>
+                </p>
               </div>
             ) : (
               <div className="space-y-2 pr-4">
@@ -2388,6 +2406,15 @@ export function OrdersSandbox() {
                         title="Вернуть в базу"
                       >
                         <X className="h-3 w-3 text-red-400" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNegotiationOrderId(order.orderId ?? order.id)}
+                        className="absolute top-1 right-7 p-1 rounded hover:bg-orange-500/20 opacity-0 group-hover:opacity-100"
+                        title="Согласование: переговоры, торг, лента"
+                      >
+                        <MessagesSquare className="h-3 w-3 text-orange-300" />
                       </button>
 
                       <div
@@ -3363,6 +3390,10 @@ export function OrdersSandbox() {
                 order={selectedOrderForEdit}
                 onSave={saveOrderEdit}
                 onCancel={() => setSelectedOrderForEdit(null)}
+                onOpenNegotiation={(orderId) => {
+                  setSelectedOrderForEdit(null)
+                  setNegotiationOrderId(orderId)
+                }}
               />
             ) : null}
           </DialogContent>
@@ -3626,6 +3657,42 @@ export function OrdersSandbox() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Быстрые действия по заказу: та же карточка процесса, что и на
+            /orders/[id], только в выдвижной панели — контекст песочницы не теряется */}
+        {/* Фон панели — обычный для приложения: карточка процесса использует
+            темы shadcn, и на тёмном холсте они бы спорили с интерфейсом */}
+        <Sheet
+          open={negotiationOrderId !== null}
+          onOpenChange={(open) => {
+            if (!open) setNegotiationOrderId(null)
+          }}
+        >
+          <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+            <SheetHeader className="text-left">
+              <SheetTitle>Согласование заказа</SheetTitle>
+              <SheetDescription>
+                Переговоры, торг по цене и лента записей. Полная карточка — по
+                ссылке ниже.
+              </SheetDescription>
+            </SheetHeader>
+
+            {negotiationOrderId && (
+              <div className="mt-4 space-y-3">
+                <Button type="button" size="sm" variant="outline" asChild>
+                  <Link href={`/orders/${negotiationOrderId}`}>
+                    Открыть полную карточку заказа
+                  </Link>
+                </Button>
+                <OrderProcess
+                  orderId={negotiationOrderId}
+                  compact
+                  onChanged={() => void loadAtiOrders()}
+                />
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     </TooltipProvider>
   )
@@ -3711,10 +3778,13 @@ function OrderEditForm({
   order,
   onSave,
   onCancel,
+  onOpenNegotiation,
 }: {
   order: OrderItem
   onSave: (o: OrderItem) => void
   onCancel: () => void
+  /** Открыть панель согласования настоящего заказа (если элемент из песочницы). */
+  onOpenNegotiation?: (orderId: string) => void
 }) {
   const [formData, setFormData] = useState<OrderItem>(order)
 
@@ -3973,6 +4043,29 @@ function OrderEditForm({
               (этап меняют согласование и оформление рейса)
             </span>
           </div>
+          {formData.orderId && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 border-slate-600 text-slate-200 hover:bg-slate-800"
+                onClick={() => onOpenNegotiation?.(formData.orderId as string)}
+              >
+                <MessagesSquare className="h-3.5 w-3.5 mr-1.5" />
+                Согласование
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 text-slate-300 hover:bg-slate-800"
+                asChild
+              >
+                <Link href={`/orders/${formData.orderId}`}>Полная карточка</Link>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

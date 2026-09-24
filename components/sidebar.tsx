@@ -21,6 +21,7 @@ import {
   CreditCard,
   Users,
   Building2,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +29,8 @@ import { Badge } from "@/components/ui/badge"
 const navigation = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
   { name: "Заказы", href: "/orders", icon: Package, badge: 6 },
+  // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
+  { name: "Поиск грузов", href: "/search", icon: Search },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
   { name: "Фото", href: "/photos", icon: Camera },

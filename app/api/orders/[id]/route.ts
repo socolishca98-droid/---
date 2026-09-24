@@ -178,6 +178,45 @@ export async function PATCH(request: NextRequest,
 
     const otherFields = other as Record<string, unknown>
 
+    // Поля процесса приходят из JSON строками — приводим к типам схемы.
+    // Делаем это до сравнения с прежними значениями, иначе автозапись в ленту
+    // согласования не заметит изменение.
+    if ("nextFollowUpAt" in otherFields) {
+      const value = otherFields.nextFollowUpAt
+      if (value === null || value === "") {
+        otherFields.nextFollowUpAt = null
+      } else if (typeof value === "string" || value instanceof Date) {
+        const date = new Date(value)
+        if (Number.isNaN(date.getTime())) {
+          return NextResponse.json(
+            { success: false, error: "Неверная дата напоминания (nextFollowUpAt)" },
+            { status: 400 },
+          )
+        }
+        otherFields.nextFollowUpAt = date
+      } else {
+        return NextResponse.json(
+          { success: false, error: "Неверная дата напоминания (nextFollowUpAt)" },
+          { status: 400 },
+        )
+      }
+    }
+    if ("agreedPrice" in otherFields) {
+      const value = otherFields.agreedPrice
+      if (value === null || value === "") {
+        otherFields.agreedPrice = null
+      } else {
+        const parsed = Number(value)
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return NextResponse.json(
+            { success: false, error: "Согласованная цена должна быть числом не меньше нуля" },
+            { status: 400 },
+          )
+        }
+        otherFields.agreedPrice = Math.round(parsed)
+      }
+    }
+
     // Рейс из тела запроса проверяем на принадлежность организации:
     // иначе заказ своей организации оказался бы привязан к чужому рейсу
     const nextRouteId = otherFields.routeId

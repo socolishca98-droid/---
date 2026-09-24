@@ -525,19 +525,29 @@ export function AtiSearchPanel() {
         onValueChange={(val) => setActiveTab(val as "search" | "database")}
         className="w-full"
       >
+        {/* Источник заказов по умолчанию — своя накопленная база (её наполняют
+            сканы по расписанию). Живой запрос на ATI.su — отдельная явная опция. */}
         <TabsList className="grid w-full grid-cols-2 h-12">
-          <TabsTrigger value="search" className="gap-2 text-base">
-            <Search className="h-4 w-4" />
-            Поиск грузов
-          </TabsTrigger>
           <TabsTrigger value="database" className="gap-2 text-base">
             <Database className="h-4 w-4" />
-            База ({stats?.new || 0})
+            Своя база ({stats?.new || 0})
+          </TabsTrigger>
+          <TabsTrigger value="search" className="gap-2 text-base">
+            <Search className="h-4 w-4" />
+            Живой поиск ATI
           </TabsTrigger>
         </TabsList>
 
-        {/* Вкладка поиска */}
+        {/* Вкладка живого поиска ATI */}
         <TabsContent value="search" className="space-y-6 mt-6">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+            <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <p className="text-amber-800 dark:text-amber-300">
+              Живой запрос уходит на ati.su и тратит лимиты токена. Основной
+              источник грузов — своя накопленная база (вкладка «Своя база»): её
+              наполняют плановые сканы, и поиск по ней мгновенный.
+            </p>
+          </div>
           <Card className="border-l-4 border-l-primary">
             <CardContent className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">

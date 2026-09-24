@@ -8,11 +8,12 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
+import Link from "next/link"
 import { OrdersSandbox } from "@/components/orders/orders-sandbox"
 import { AIParserDemo } from "@/components/orders/ai-parser-demo"
-import { AtiSearchPanel } from "@/components/orders/ati-search-panel"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Package, Bot, Loader2, Truck } from "lucide-react"
+import { Package, Bot, Loader2, Search } from "lucide-react"
 
 export default function OrdersPage() {
   const { user, isLoading } = useAuth()
@@ -44,13 +45,21 @@ export default function OrdersPage() {
       >
         <Header />
         <main className="p-6 space-y-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between items-center gap-3">
             <div>
               <h1 className="text-2xl font-bold">Заказы</h1>
               <p className="text-muted-foreground">
-                Управление грузовыми заказами
+                Поиск → Согласование → Маршрут → Документы → Назначение → Контроль
               </p>
             </div>
+            {/* Поиск грузов — по требованию, на отдельной странице: он не
+                занимает постоянную вкладку и не уводит из заказов */}
+            <Button asChild>
+              <Link href="/search">
+                <Search className="h-4 w-4 mr-2" />
+                Найти груз
+              </Link>
+            </Button>
           </div>
 
           <Tabs defaultValue="orders" className="space-y-6">
@@ -58,11 +67,6 @@ export default function OrdersPage() {
               <TabsTrigger value="orders" className="gap-2 px-6">
                 <Package className="h-4 w-4" />
                 Мои заказы (Песочница)
-              </TabsTrigger>
-
-              <TabsTrigger value="ati" className="gap-2 px-6">
-                <Truck className="h-4 w-4" />
-                ATI.SU Поиск
               </TabsTrigger>
 
               <TabsTrigger value="parser" className="gap-2 px-6">
@@ -73,10 +77,6 @@ export default function OrdersPage() {
 
             <TabsContent value="orders">
               <OrdersSandbox />
-            </TabsContent>
-
-            <TabsContent value="ati">
-              <AtiSearchPanel />
             </TabsContent>
 
             <TabsContent value="parser">
