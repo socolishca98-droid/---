@@ -27,6 +27,23 @@ export function FleetSettingsDialog({ open, onOpenChange, currentSettings, onSuc
   const [geocodeStatus, setGeocodeStatus] = useState<'none' | 'success' | 'error'>('none')
   const [geocodeMessage, setGeocodeMessage] = useState("")
 
+  // Реквизиты перевозчика для печатных документов (задача 3, пункт 3).
+  // Свои у каждой организации — печатаются в ТТН, путевом листе и заявке.
+  const [requisites, setRequisites] = useState({
+    legalName: "",
+    inn: "",
+    kpp: "",
+    ogrn: "",
+    legalAddress: "",
+    phone: "",
+    email: "",
+    bankName: "",
+    bankBic: "",
+    bankAccount: "",
+    signerName: "",
+    signerPosition: "",
+  })
+
   useEffect(() => {
     if (open && currentSettings) {
       setName(currentSettings.parkName || "")
@@ -35,6 +52,13 @@ export function FleetSettingsDialog({ open, onOpenChange, currentSettings, onSuc
       setLng(currentSettings.baseLng?.toString() || "")
       setGeocodeStatus(currentSettings.baseLat ? 'success' : 'none')
       setGeocodeMessage("")
+      setRequisites((prev) => {
+        const next = { ...prev }
+        for (const key of Object.keys(prev) as (keyof typeof prev)[]) {
+          next[key] = currentSettings[key] ?? ""
+        }
+        return next
+      })
     }
   }, [open, currentSettings])
 
@@ -118,6 +142,8 @@ export function FleetSettingsDialog({ open, onOpenChange, currentSettings, onSuc
           baseAddress: address,
           baseLat: lat ? parsedLat : null,
           baseLng: lng ? parsedLng : null,
+          // реквизиты уходят как есть; пустая строка означает «очистить поле»
+          ...requisites,
         }),
       })
 
@@ -149,7 +175,7 @@ export function FleetSettingsDialog({ open, onOpenChange, currentSettings, onSuc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Настройки автопарка</DialogTitle>
         </DialogHeader>
@@ -288,6 +314,121 @@ export function FleetSettingsDialog({ open, onOpenChange, currentSettings, onSuc
               >
                 📍 Казань: 55.7887, 49.1221
               </button>
+            </div>
+          </div>
+
+          {/* Реквизиты для печатных документов */}
+          <div className="space-y-3 border-t pt-4">
+            <div>
+              <Label>Реквизиты для документов</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Печатаются в транспортной накладной, путевом листе и договоре-заявке
+                от имени вашей организации. Незаполненные поля в бланке остаются
+                пустыми строками для заполнения от руки.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Наименование (как в документах)</Label>
+              <Input
+                value={requisites.legalName}
+                onChange={(e) => setRequisites((prev) => ({ ...prev, legalName: e.target.value }))}
+                placeholder="ИП Фролов Иван Александрович"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">ИНН</Label>
+                <Input
+                  value={requisites.inn}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, inn: e.target.value }))}
+                  placeholder="770000000000"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">ОГРН / ОГРНИП</Label>
+                <Input
+                  value={requisites.ogrn}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, ogrn: e.target.value }))}
+                  placeholder="320000000000000"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Юридический адрес</Label>
+              <Input
+                value={requisites.legalAddress}
+                onChange={(e) => setRequisites((prev) => ({ ...prev, legalAddress: e.target.value }))}
+                placeholder="150000, г. Ярославль, ул. Промышленная, д. 5"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Телефон</Label>
+                <Input
+                  value={requisites.phone}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="+7 900 000-00-00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">E-mail</Label>
+                <Input
+                  value={requisites.email}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="mail@example.ru"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Банк</Label>
+              <Input
+                value={requisites.bankName}
+                onChange={(e) => setRequisites((prev) => ({ ...prev, bankName: e.target.value }))}
+                placeholder="Отделение банка, г. Ярославль"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">БИК</Label>
+                <Input
+                  value={requisites.bankBic}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, bankBic: e.target.value }))}
+                  placeholder="047888777"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Расчётный счёт</Label>
+                <Input
+                  value={requisites.bankAccount}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, bankAccount: e.target.value }))}
+                  placeholder="40802810000000000001"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Подписант (ФИО)</Label>
+                <Input
+                  value={requisites.signerName}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, signerName: e.target.value }))}
+                  placeholder="Фролов И. А."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Должность подписанта</Label>
+                <Input
+                  value={requisites.signerPosition}
+                  onChange={(e) => setRequisites((prev) => ({ ...prev, signerPosition: e.target.value }))}
+                  placeholder="Индивидуальный предприниматель"
+                />
+              </div>
             </div>
           </div>
 

@@ -16,6 +16,7 @@
     "db:push": "prisma db push",
     "db:sql:auth": "prisma db execute --file prisma/sql/2026-09-21-auth-users-sessions.sql --schema prisma/schema.prisma",
     "db:sql:routes": "prisma db execute --file prisma/sql/2026-09-22-route-model.sql --schema prisma/schema.prisma",
+    "db:sql:requisites": "prisma db execute --file prisma/sql/2026-09-24-fleet-requisites.sql --schema prisma/schema.prisma",
     "seed:auth": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/seed-auth.ts",
     "db:migrate-task2": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/migrate-task2.ts",
     "db:migrate-order-stages": "ts-node --project scripts/tsconfig.seed.json -r dotenv/config scripts/migrate-order-stages.ts",

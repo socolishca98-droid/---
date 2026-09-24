@@ -130,3 +130,51 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Печать документов по рейсу (задача 3, пункт 3)
+   Печатная страница открывается в браузере и печатается штатным способом
+   (Ctrl+P) либо сохраняется в PDF — без сторонних библиотек и сервисов.
+   Каждый документ — отдельный лист А4.
+--------------------------------------------------------------------------- */
+.doc-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 15mm;
+  margin: 0 auto 12mm;
+  background: #ffffff;
+  color: #111111;
+  font-size: 12px;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .doc-sheet {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .doc-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

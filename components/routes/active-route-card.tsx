@@ -22,6 +22,7 @@ import {
   AlertCircle,
   Sparkles,
   Loader2,
+  FileText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/dialog"
 import { RouteOptimizer, type RouteOptimizerOrder } from "@/components/routes/route-optimizer"
 import { RouteCrewDialog } from "@/components/routes/route-crew-dialog"
+import { RouteDocumentsDialog } from "@/components/routes/route-documents-dialog"
 import {
   calculateAllCoefficients,
   calculateRiskFactors,
@@ -143,6 +145,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
   const [showOptimizer, setShowOptimizer] = useState(false)
   const [showCrew, setShowCrew] = useState(false)
+  const [showDocuments, setShowDocuments] = useState(false)
   const [applyingOptimizer, setApplyingOptimizer] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -418,6 +421,21 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                     Экипаж
                   </Button>
 
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowDocuments(true)
+                    }}
+                    disabled={isCompleting || isCancelling}
+                    title="Печать накладных, путевого листа и заявок по рейсу"
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-2" />
+                    Документы
+                  </Button>
+
                   {canOptimize && (
                     <Button
                       size="sm"
@@ -612,6 +630,13 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
           )}
         </CardContent>
       </Card>
+
+      <RouteDocumentsDialog
+        routeId={route.id}
+        ordersCount={route.orders?.length ?? 0}
+        open={showDocuments}
+        onOpenChange={setShowDocuments}
+      />
 
       <RouteCrewDialog
         routeId={route.id}

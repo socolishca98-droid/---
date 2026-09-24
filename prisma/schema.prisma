@@ -568,6 +568,22 @@ model FleetSettings {
   baseAddress String?
   baseLat     Float?
   baseLng     Float?
+  // ── Реквизиты перевозчика для печатных документов (задача 3, пункт 3) ──
+  // Свои у каждой организации: ТТН, путевой лист и договор-заявка печатаются
+  // от её имени. Пустое поле печатается как строка для заполнения от руки,
+  // документ не подставляет чужие данные.
+  legalName      String?
+  inn            String?
+  kpp            String?
+  ogrn           String?
+  legalAddress   String?
+  phone          String?
+  email          String?
+  bankName       String?
+  bankBic        String?
+  bankAccount    String?
+  signerName     String?
+  signerPosition String?
   updatedAt   DateTime @updatedAt
 
   @@index([organizationId])
