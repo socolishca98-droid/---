@@ -145,7 +145,7 @@ export default function ChatPage() {
   const importantUnread = messages.filter(m => m.isImportant && !m.isRead).length
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <Sidebar />
       <div
         className="transition-all duration-300 ease-in-out"

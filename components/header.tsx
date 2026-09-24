@@ -114,7 +114,7 @@ export function Header() {
 
   if (!user) {
     return (
-      <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
+      <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-6">
         <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Проверяем доступ...
@@ -124,7 +124,7 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
+    <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-6">
       <div className="flex items-center gap-2 ml-auto">
         {user.mustChangePassword && (
           <Badge variant="outline" className="border-amber-500/40 text-amber-500 gap-1.5">

@@ -229,7 +229,7 @@ export default function DriversPage() {
       : "5.0"
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <Sidebar />
       <div
         className="transition-all duration-300 ease-in-out"

@@ -32,7 +32,7 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen">
       <Sidebar />
       <div className={`flex-1 ${isCollapsed ? "lg:ml-16" : "lg:ml-64"}`}>
         <Header />

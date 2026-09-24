@@ -256,7 +256,7 @@ export default function RoutesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <Sidebar />
       <div
         className="transition-all duration-300"
@@ -442,7 +442,7 @@ export default function RoutesPage() {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4">
+            <div className="stagger-in grid gap-4">
               {filteredRoutes.map((route) => (
                 <ActiveRouteCard
                   key={route.id}

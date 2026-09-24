@@ -41,7 +41,7 @@ export default function OrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <Sidebar />
       <div
         className="transition-all duration-300 ease-in-out"

@@ -17,7 +17,7 @@ export default function DriverPage() {
   }, [router])
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="max-w-md w-full border-border bg-card/70 backdrop-blur shadow-xl text-center">
         <CardHeader className="space-y-2">
           <div className="mx-auto w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-2">

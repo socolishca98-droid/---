@@ -281,7 +281,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
   return (
     <>
-      <Card className="overflow-hidden">
+      <Card className="card-interactive overflow-hidden">
         <CardContent className="p-0">
           <div
             className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"

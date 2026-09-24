@@ -212,7 +212,7 @@ export function VehicleCard({
   const needsMaintenance = nextMaintenanceDays !== null && nextMaintenanceDays <= 7
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-all">
+    <Card className="card-interactive overflow-hidden">
       <div className="p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-4">

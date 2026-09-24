@@ -162,7 +162,7 @@ export default function FleetPage() {
     maintenance: 0,
   }
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <Sidebar />
       <div
         className="transition-all duration-300 ease-in-out"
@@ -262,7 +262,7 @@ export default function FleetPage() {
                   <p className="text-muted-foreground">Добавьте первую машину</p>
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="stagger-in grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {filteredVehicles.map((vehicle: any) => {
                     const driver = drivers.find((d: any) => d.vehicleId === vehicle.id) ?? null
                     const vehicleInsight = insights?.idle.find(
@@ -298,7 +298,7 @@ export default function FleetPage() {
             </TabsContent>
 
             <TabsContent value="drivers" className="mt-0">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="stagger-in grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredDrivers.map((driver: any) => {
                   const vehicle = vehicles.find((v: any) => v.id === driver.vehicleId)
                   return (

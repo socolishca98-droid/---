@@ -112,7 +112,7 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
   return (
     <Card
       className={cn(
-        "hover:border-primary/50 transition-colors",
+        "card-interactive hover:border-primary/50",
         isOnMaintenance && "border-amber-200 bg-amber-50/10",
       )}
     >
