@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
+import { notifyDriverRouteAssigned } from "@/lib/routes/notify-driver"
 import {
   ROUTE_STATUSES,
   buildRouteName,
@@ -518,6 +519,19 @@ export async function POST(request: NextRequest) {
         await tx.vehicle.updateMany({
           where: scopedWhere(org.organizationId, { id: vehicle.id }),
           data: { status: "in_use" },
+        })
+      }
+
+      // Рейс сразу назначен водителю — он должен увидеть его в мобильном
+      // приложении без звонка логиста (задача 3, пункт 3).
+      if (driverId) {
+        await notifyDriverRouteAssigned(tx, {
+          organizationId: org.organizationId,
+          driverId,
+          routeId: route.id,
+          routeName: name?.trim() || buildRouteName(routeOrders) || null,
+          ordersCount: routeOrders.length,
+          actorName,
         })
       }
 

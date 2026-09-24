@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { RouteOptimizer, type RouteOptimizerOrder } from "@/components/routes/route-optimizer"
+import { RouteCrewDialog } from "@/components/routes/route-crew-dialog"
 import {
   calculateAllCoefficients,
   calculateRiskFactors,
@@ -141,6 +142,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const [showMap, setShowMap] = useState(false)
 
   const [showOptimizer, setShowOptimizer] = useState(false)
+  const [showCrew, setShowCrew] = useState(false)
   const [applyingOptimizer, setApplyingOptimizer] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -401,6 +403,21 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                     </Button>
                   )}
 
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowCrew(true)
+                    }}
+                    disabled={isCompleting || isCancelling}
+                    title="Назначить машину и водителя на рейс"
+                  >
+                    <Truck className="h-3.5 w-3.5 mr-2" />
+                    Экипаж
+                  </Button>
+
                   {canOptimize && (
                     <Button
                       size="sm"
@@ -595,6 +612,15 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
           )}
         </CardContent>
       </Card>
+
+      <RouteCrewDialog
+        routeId={route.id}
+        open={showCrew}
+        onOpenChange={setShowCrew}
+        currentDriverId={route.driverId}
+        currentVehicleId={route.vehicleId}
+        onAssigned={onRefresh}
+      />
 
       <Dialog open={showOptimizer} onOpenChange={setShowOptimizer}>
         <DialogContent className="max-w-5xl">

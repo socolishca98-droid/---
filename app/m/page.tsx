@@ -10,7 +10,7 @@ import { SosButton } from "@/components/driver-mobile/sos-button"
 import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
 import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
-import { isOrderMoving } from "@/lib/orders/stages"
+import { isOrderClosed, isOrderMoving } from "@/lib/orders/stages"
 import {
   Loader2,
   Truck,
@@ -186,11 +186,13 @@ export default function MobileHomePage() {
     if (!driver?.id) return
 
     try {
-      const [shiftRes, orderRes, maintenanceRes, proposedRes] = await Promise.all([
+      // Всё — из водительских эндпоинтов (requireDriver по сессии).
+      // Штабные /api/drivers/[id]/active-order и /api/orders водительская
+      // сессия не проходит: экран оставался пустым.
+      const [shiftRes, routeRes, maintenanceRes] = await Promise.all([
         fetch(`/api/m/shift?driverId=${driver.id}`),
-        fetch(`/api/drivers/${driver.id}/active-order`),
+        fetch("/api/m/route"),
         fetch(`/api/m/maintenance?driverId=${driver.id}`),
-        fetch(`/api/orders?driverId=${driver.id}&status=proposed`),
       ])
 
       const shiftData = await shiftRes.json()
@@ -198,28 +200,48 @@ export default function MobileHomePage() {
         setShift(shiftData.shift || null)
       }
 
-      const orderData = await orderRes.json()
-      if (orderData.success) {
-        const order = orderData.order || null
-        setActiveOrder(order)
-        setAllRouteOrders(orderData.allRouteOrders || [])
+      const routeData = await routeRes.json()
+      if (routeData.success) {
+        // Точки рейса — это и есть заказы водителя по порядку объезда
+        const points: ActiveOrder[] = (routeData.route?.points || []).map((point: any) => ({
+          id: point.id,
+          routeFrom: point.from,
+          routeTo: point.to,
+          distance: point.distanceKm ?? 0,
+          cargoType: point.cargoType,
+          price: point.price ?? undefined,
+          clientName: point.clientName ?? undefined,
+          status: point.status,
+          routeId: routeData.route?.id,
+          isAdditionalLoad: point.isAdditionalLoad,
+        }))
+
+        setAllRouteOrders(points)
+
+        // Текущая точка — первая незакрытая
+        const currentPoint = points.find((point) => !isOrderClosed(point.status)) || null
+        setActiveOrder(currentPoint)
+
         // Рейс начат, если заказ в движении (канон — lib/orders/stages.ts,
         // прежние «in_transit»/«loading»/«unloading» приводятся к «control»)
-        if (order && isOrderMoving(order.status)) {
-          setTripStarted(true)
-        } else {
-          setTripStarted(false)
-        }
+        setTripStarted(Boolean(currentPoint && isOrderMoving(currentPoint.status)))
+
+        setProposedLoads(
+          (routeData.proposedLoads || []).map((load: any) => ({
+            id: load.id,
+            routeFrom: load.routeFrom,
+            routeTo: load.routeTo,
+            distance: load.distanceKm ?? 0,
+            weight: load.weight ?? 0,
+            price: load.price ?? 0,
+            cargoType: load.cargoType,
+          })),
+        )
       }
 
       const maintenanceData = await maintenanceRes.json()
       if (maintenanceData.success) {
         setActiveMaintenance(maintenanceData.maintenance || null)
-      }
-
-      const proposedData = await proposedRes.json()
-      if (proposedData.success) {
-        setProposedLoads(proposedData.orders || [])
       }
     } catch (error) {
       console.error("[Mobile] Failed to fetch data:", error)
@@ -448,7 +470,7 @@ export default function MobileHomePage() {
     setIsChangingStatus(true)
 
     try {
-      const res = await fetch(`/api/orders/${activeOrder.id}`, {
+      const res = await fetch(`/api/m/orders/${activeOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "control" }),
@@ -530,7 +552,7 @@ export default function MobileHomePage() {
         const newOrderStatus = mapTripStatusToOrderStatus(statusId)
         if (activeOrder?.id && newOrderStatus) {
           try {
-            await fetch(`/api/orders/${activeOrder.id}`, {
+            await fetch(`/api/m/orders/${activeOrder.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ status: newOrderStatus }),

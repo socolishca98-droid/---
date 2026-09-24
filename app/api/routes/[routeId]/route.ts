@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
+import { notifyDriverRouteAssigned } from "@/lib/routes/notify-driver"
 import {
   ROUTE_STATUSES,
   OCCUPYING_ORDER_STATUSES,
@@ -303,6 +304,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         }
       }
 
+      const driverChanged = Boolean(nextDriverId) && nextDriverId !== route.driverId
+
       await prisma.$transaction(async (tx) => {
         await tx.route.updateMany({
           where: scopedWhere(org.organizationId, { id: routeId }),
@@ -321,6 +324,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         // единственная запись связи «водитель ↔ машина»
         if (nextDriverId) {
           await linkDriverToVehicle(tx, nextDriverId, nextVehicleId, org.organizationId)
+        }
+
+        // Автоматическая передача рейса в мобильное приложение: новый водитель
+        // получает уведомление (задача 3, пункт 3). При повторном сохранении
+        // того же водителя уведомление не дублируется.
+        if (driverChanged && nextDriverId) {
+          const ordersCount = await tx.order.count({
+            where: scopedWhere(org.organizationId, { routeId }),
+          })
+
+          await notifyDriverRouteAssigned(tx, {
+            organizationId: org.organizationId,
+            driverId: nextDriverId,
+            routeId,
+            routeName: null,
+            ordersCount,
+            actorName: auth.value.user?.name ?? auth.value.user?.email ?? null,
+          })
         }
       })
     }

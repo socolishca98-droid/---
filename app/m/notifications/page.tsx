@@ -77,6 +77,9 @@ export default function DriverNotificationsPage() {
       router.push("/m/chat")
     } else if (action.kind === "openOrder" && action.orderId) {
       router.push(`/m/orders/${action.orderId}`)
+    } else if (action.kind === "openRoute") {
+      // рейс целиком виден на главном экране водителя
+      router.push("/m")
     }
   }
 
