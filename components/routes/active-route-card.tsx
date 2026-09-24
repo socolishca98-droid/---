@@ -42,6 +42,27 @@ import {
   type RiskLevel,
 } from "@/lib/eta"
 import { RouteTimeline } from "@/components/routes/route-timeline"
+import {
+  isOrderClosed,
+  isOrderMoving,
+  normalizeOrderStatus,
+  orderStatusLabel,
+} from "@/lib/orders/stages"
+import dynamic from "next/dynamic"
+
+// leaflet работает только в браузере, поэтому карта подключается лениво
+const RouteSegmentsMap = dynamic(
+  () => import("@/components/routes/route-segments-map").then((mod) => mod.RouteSegmentsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[320px] items-center justify-center rounded-lg border bg-muted/30 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Загрузка карты…
+      </div>
+    ),
+  },
+)
 
 interface RouteData {
   id: string
@@ -116,6 +137,8 @@ function buildRouteEtaPreview(route: RouteData): RouteEtaPreview | null {
 
 export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCardProps) {
   const [expanded, setExpanded] = useState(false)
+  /** Карта грузится по требованию: за ней стоят внешние запросы (Nominatim/OSRM) */
+  const [showMap, setShowMap] = useState(false)
 
   const [showOptimizer, setShowOptimizer] = useState(false)
   const [applyingOptimizer, setApplyingOptimizer] = useState(false)
@@ -411,6 +434,31 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
           {expanded && (
             <div className="border-t px-4 py-3 bg-muted/30 space-y-4">
+              {/* Один рейс — одна линия: заказы показаны цветными сегментами */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Маршрут на карте
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowMap((value) => !value)}
+                  >
+                    {showMap ? "Скрыть карту" : "Показать карту"}
+                  </Button>
+                </div>
+                {showMap ? (
+                  <RouteSegmentsMap routeId={route.id} />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Каждый заказ рейса — свой цвет на общей линии. Координаты
+                    городов и дорога запрашиваются только при открытии карты.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                   <Route className="h-4 w-4" />
@@ -425,9 +473,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                         "flex items-center gap-3 p-3 rounded-lg border",
                         order.status === "delivered"
                           ? "bg-green-500/5 border-green-500/20"
-                          : order.status === "in_transit" ||
-                              order.status === "loading" ||
-                              order.status === "unloading"
+                          : isOrderMoving(order.status)
                             ? "bg-orange-500/5 border-orange-500/20"
                             : "bg-background border-border",
                       )}
@@ -437,9 +483,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                           "w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold",
                           order.status === "delivered"
                             ? "bg-green-500 text-white"
-                            : order.status === "in_transit" ||
-                                order.status === "loading" ||
-                                order.status === "unloading"
+                            : isOrderMoving(order.status)
                               ? "bg-orange-500 text-white"
                               : "bg-muted text-muted-foreground",
                         )}
@@ -477,23 +521,22 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                         <span className="font-medium text-green-600">
                           {(order.price || 0).toLocaleString()} ₽
                         </span>
+                        {/* Подпись точки — из канона этапов заказа
+                            (lib/orders/stages.ts): прежние значения приводятся сами */}
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {order.status === "delivered" && "Доставлено"}
-                          {order.status === "in_transit" && "В пути"}
-                          {order.status === "loading" && "Погрузка"}
-                          {order.status === "unloading" && "Выгрузка"}
-                          {order.status === "confirmed" && "Ожидает"}
-                          {order.status === "proposed" && (
-                            <span className="text-amber-500 flex items-center gap-1">
+                          {isOrderMoving(order.status) ? (
+                            <span className="text-orange-500 flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              Ждёт ответ
+                              {orderStatusLabel(order.status)}
                             </span>
-                          )}
-                          {order.status === "rejected" && (
+                          ) : isOrderClosed(order.status) &&
+                            normalizeOrderStatus(order.status) !== "delivered" ? (
                             <span className="text-red-500 flex items-center gap-1">
                               <AlertCircle className="h-3 w-3" />
-                              Отклонён
+                              {orderStatusLabel(order.status)}
                             </span>
+                          ) : (
+                            orderStatusLabel(order.status)
                           )}
                         </div>
                       </div>
