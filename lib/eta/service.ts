@@ -35,14 +35,20 @@ export async function calculateETA(
     return createErrorResult("Некорректные координаты назначения");
   }
 
+  const waypointsKey =
+    waypoints.length > 0
+      ? waypoints.map((point: any) => `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`).join("~")
+      : undefined;
+  const cacheKey = generateCacheKey(
+    origin.lat,
+    origin.lng,
+    destination.lat,
+    destination.lng,
+    departure.getHours(),
+    waypointsKey
+  );
+
   if (request.useCache !== false) {
-    const cacheKey = generateCacheKey(
-      origin.lat,
-      origin.lng,
-      destination.lat,
-      destination.lng,
-      departure.getHours()
-    );
     const cached = getFromCache(cacheKey);
     if (cached) {
       console.log("[ETA] Cache hit");
@@ -71,6 +77,7 @@ export async function calculateETA(
 
     const result: ETACalculation = {
       success: true,
+      source: "osrm",
       durationBase,
       durationWithTraffic,
       distance: route.distance,
@@ -94,13 +101,6 @@ export async function calculateETA(
     };
 
     if (request.useCache !== false) {
-      const cacheKey = generateCacheKey(
-        origin.lat,
-        origin.lng,
-        destination.lat,
-        destination.lng,
-        departure.getHours()
-      );
       saveToCache(cacheKey, result);
     }
 
@@ -144,6 +144,7 @@ function calculateFallbackETA(
 
   return {
     success: true,
+    source: "fallback",
     durationBase: Math.round(durationBase),
     durationWithTraffic,
     distance: Math.round(estimatedDistance),
@@ -162,6 +163,7 @@ function calculateFallbackETA(
 function createErrorResult(message: string): ETACalculation {
   return {
     success: false,
+    source: "error",
     durationBase: 0,
     durationWithTraffic: 0,
     distance: 0,

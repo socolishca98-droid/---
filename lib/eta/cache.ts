@@ -17,9 +17,14 @@ export function generateCacheKey(
   originLng: number,
   destLat: number,
   destLng: number,
-  departureHour?: number
+  departureHour?: number,
+  waypointsKey?: string
 ): string {
-  return `eta_${originLat.toFixed(4)}_${originLng.toFixed(4)}_${destLat.toFixed(4)}_${destLng.toFixed(4)}_${departureHour ?? "any"}`;
+  // waypointsKey обязателен для маршрутов с промежуточными точками: без него
+  // два разных порядка объезда с теми же началом и концом попадали в один ключ
+  // и второй получал результат первого.
+  const tail = waypointsKey ? `_${waypointsKey}` : "";
+  return `eta_${originLat.toFixed(4)}_${originLng.toFixed(4)}_${destLat.toFixed(4)}_${destLng.toFixed(4)}_${departureHour ?? "any"}${tail}`;
 }
 
 export function getFromCache(key: string): ETACalculation | null {

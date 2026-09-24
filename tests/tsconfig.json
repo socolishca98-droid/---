@@ -27,6 +27,7 @@
     "../lib/auth/password.ts",
     "../lib/routes/model.ts",
     "../lib/orders/stages.ts",
+    "../lib/routes/optimizer.ts",
     "../lib/ati/scan-profile.ts"
   ]
 }
