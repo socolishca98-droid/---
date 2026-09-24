@@ -212,12 +212,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const routeRow = (await prisma.route.findFirst({
         where: scopedWhere(org.organizationId, { id: routeId }),
         select: { startOdometer: true, endOdometer: true },
-      })) as { startOdometer: number | null; endOdometer: number | null } | null
+      })) as { startOdometer?: number | null; endOdometer?: number | null } | null
 
-      // Первое показание становится началом, следующие — концом рейса
+      // Первое показание становится началом, следующие — концом рейса.
+      // Сравниваем через ??: незаполненное поле может прийти и как null, и как undefined
+      const startOdometer = routeRow?.startOdometer ?? null
+      const endOdometer = routeRow?.endOdometer ?? null
+
       const patch: Record<string, number> = {}
-      if (routeRow && routeRow.startOdometer === null) patch.startOdometer = odometer
-      else if (routeRow && (routeRow.endOdometer === null || odometer > routeRow.endOdometer)) {
+      if (routeRow && startOdometer === null) patch.startOdometer = odometer
+      else if (routeRow && (endOdometer === null || odometer > endOdometer)) {
         patch.endOdometer = odometer
       }
 
