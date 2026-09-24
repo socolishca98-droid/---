@@ -18,6 +18,7 @@
     "../lib/auth/constants.ts",
     "../lib/auth/access.ts",
     "../lib/auth/token.ts",
+    "../lib/auth/startup.ts",
     "../lib/auth/password.ts",
     "../lib/routes/model.ts"
   ]

@@ -43,9 +43,11 @@ export class AuthSecretError extends Error {
 }
 
 /** Секрет подписи. Падение здесь — намеренное: без секрета авторизация невозможна,
- *  а «тихий» режим означал бы открытую систему. */
-export function getAuthSecret(): string {
-  const secret = process.env.AUTH_SECRET
+ *  а «тихий» режим означал бы открытую систему.
+ *  `env` можно подставить (используется проверкой конфигурации на старте сервера
+ *  в lib/auth/startup.ts и тестами) — по умолчанию читается process.env. */
+export function getAuthSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const secret = env.AUTH_SECRET
   if (!secret || secret.trim().length === 0) {
     throw new AuthSecretError(
       "AUTH_SECRET не задан. Добавьте его в .env (см. .env.example): " +
