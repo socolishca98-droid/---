@@ -103,6 +103,43 @@ model GeoCache {
 /// Раньше «маршрут» был просто строкой routeId в заказах — ни статуса,
 /// ни времени, ни итогов рейса хранить было негде.
 /// Допустимые значения status: planned | active | in_transit | completed | cancelled
+/// Расход рейса (задача 7): топливо, платные дороги, ремонт, прочее.
+///
+/// Сумма берётся либо из чека (распознаётся OCR, человек подтверждает),
+/// либо вводится руками. Расход привязан к рейсу, поэтому итог рейса —
+/// это заработок минус расходы, а не отдельная таблица для бухгалтера.
+model RouteExpense {
+  id             String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeId        String
+  route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// fuel | toll | repair | other
+  type           String   @default("fuel")
+  amount         Int
+  /// Литры для топлива: из них считается цена литра
+  liters         Float?
+  /// Показание одометра с чека — из него видно фактический пробег
+  odometer       Int?
+  vendor         String?
+  spentAt        DateTime @default(now())
+  photoId        String?
+  photo          Photo?   @relation(fields: [photoId], references: [id], onDelete: SetNull)
+  note           String?
+  /// ocr — сумма распознана с фото и подтверждена человеком, manual — введена руками
+  source         String   @default("manual")
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([routeId])
+  @@index([orderId])
+  @@index([organizationId])
+  @@index([spentAt])
+}
+
 model Route {
   id            String       @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
@@ -118,6 +155,9 @@ model Route {
   /// Фактическое время начала и конца рейса
   startedAt     DateTime?
   completedAt   DateTime?
+  /// Одометр на старте и на финише — из них считается фактический пробег
+  startOdometer Int?
+  endOdometer   Int?
   /// Итоги рейса: км, расходы руб, топливо руб, вес кг, объём м3
   totalDistance Int?
   totalCost     Int?
@@ -131,6 +171,8 @@ model Route {
   orders        Order[]
   stages        RouteStage[]
   events        RouteEvent[]
+  expenses      RouteExpense[]
+  photos        Photo[]
 
   @@index([status])
   @@index([driverId])
@@ -176,6 +218,7 @@ model Order {
   /// заказы знают клиента только по имени (clientName).
   clientId          String?
   client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  expenses          RouteExpense[]
   deadline          DateTime
   // Канон жизненного цикла — lib/orders/stages.ts:
   //   search → negotiation → agreed → in_route → documents → assigned → control → delivered
@@ -523,6 +566,9 @@ model Photo {
   driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
   order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// Рейс, к которому относится фото: чек на топливо или накладная рейса
+  routeId     String?
+  route       Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
   description String?
   ocrText     String?
   ocrData     String?
@@ -530,8 +576,10 @@ model Photo {
 
   @@index([driverId])
   @@index([orderId])
+  @@index([routeId])
   @@index([type])
   @@index([organizationId])
+  expenses    RouteExpense[]
 }
 
 // ============================================
@@ -694,6 +742,7 @@ model Organization {
   drivers           Driver[]
   vehicles          Vehicle[]
   orders            Order[]
+  routeExpenses    RouteExpense[]
   clients           Client[]
   orderNegotiations OrderNegotiation[]
   routes            Route[]

@@ -99,7 +99,14 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     vehicle: { model: "vehicle", many: false, local: "assignedVehicleId", foreign: "id" },
     route: { model: "route", many: false, local: "routeId", foreign: "id" },
     photos: { model: "photo", many: true, local: "id", foreign: "orderId" },
+    expenses: { model: "routeExpense", many: true, local: "id", foreign: "orderId" },
     events: { model: "routeEvent", many: true, local: "id", foreign: "orderId" },
+  },
+  routeExpense: {
+    organization: { model: "organization", many: false, local: "organizationId", foreign: "id" },
+    route: { model: "route", many: false, local: "routeId", foreign: "id" },
+    order: { model: "order", many: false, local: "orderId", foreign: "id" },
+    photo: { model: "photo", many: false, local: "photoId", foreign: "id" },
   },
   route: {
     organization: { model: "organization", many: false, local: "organizationId", foreign: "id" },
@@ -107,6 +114,8 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     vehicle: { model: "vehicle", many: false, local: "vehicleId", foreign: "id" },
     orders: { model: "order", many: true, local: "id", foreign: "routeId" },
     events: { model: "routeEvent", many: true, local: "id", foreign: "routeId" },
+    expenses: { model: "routeExpense", many: true, local: "id", foreign: "routeId" },
+    photos: { model: "photo", many: true, local: "id", foreign: "routeId" },
     stages: { model: "routeStage", many: true, local: "id", foreign: "routeId" },
   },
   routeEvent: {
@@ -137,6 +146,8 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
     organization: { model: "organization", many: false, local: "organizationId", foreign: "id" },
     driver: { model: "driver", many: false, local: "driverId", foreign: "id" },
     order: { model: "order", many: false, local: "orderId", foreign: "id" },
+    route: { model: "route", many: false, local: "routeId", foreign: "id" },
+    expenses: { model: "routeExpense", many: true, local: "id", foreign: "photoId" },
   },
   sosAlert: {
     organization: { model: "organization", many: false, local: "organizationId", foreign: "id" },
@@ -182,6 +193,7 @@ const UNIQUE: Record<string, string[][]> = {
   client: [["id"], ["organizationId", "nameKey"]],
   orderNegotiation: [["id"]],
   route: [["id"]],
+  routeExpense: [["id"]],
   routeEvent: [["id"]],
   routeStage: [["id"]],
   photo: [["id"]],
@@ -207,6 +219,7 @@ const DEFAULTS: Record<string, Row> = {
   driver: { status: "available", ordersCompleted: 0, rating: 5 },
   vehicle: { status: "available", features: "[]", capacity: 0 },
   client: { source: "manual" },
+  routeExpense: { type: "fuel", source: "manual" },
   order: { status: "search", negotiationStatus: "new", priority: "needs_clarification", source: "manual", loadingType: "other", distance: 0, weight: 0, priceNegotiable: false, isPaid: false, clientContact: "" },
   orderNegotiation: { kind: "note" },
   route: { status: "planned" },
