@@ -37,6 +37,8 @@
     "../lib/clients/import.ts",
     "../lib/documents/types.ts",
     "../lib/documents/build.ts",
-    "../lib/ati/scan-profile.ts"
+    "../lib/ati/scan-profile.ts",
+    "../lib/reports/aggregate.ts",
+    "../lib/reports/insights.ts"
   ]
 }
