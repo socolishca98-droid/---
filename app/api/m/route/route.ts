@@ -20,6 +20,7 @@ import {
   normalizeOrderStatus,
   orderStatusLabel,
 } from "@/lib/orders/stages"
+import { buildTripSummary } from "@/lib/trips/history"
 
 export const dynamic = "force-dynamic"
 
@@ -129,6 +130,25 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Расходы рейса (задача 7): водитель видит, что уже записано, и итог рейса
+    const expenses = route
+      ? ((await prisma.routeExpense.findMany({
+          where: scopedWhere(org.organizationId, { routeId: route.id }),
+          orderBy: [{ spentAt: "desc" }],
+          take: 100,
+        })) as {
+          id: string
+          type: string | null
+          amount: number
+          liters: number | null
+          odometer: number | null
+          vendor: string | null
+          spentAt: Date | null
+          source: string | null
+          photoId: string | null
+        }[])
+      : []
+
     const completedCount = points.filter((point) => point.isDone).length
     const totalDistance = points.reduce((sum, point) => sum + (point.distanceKm || 0), 0)
     const totalWeight = points.reduce((sum, point) => sum + (point.weight || 0), 0)
@@ -150,6 +170,45 @@ export async function GET(request: NextRequest) {
             totalWeight,
             totalPrice,
             points,
+            startOdometer: route.startOdometer ?? null,
+            endOdometer: route.endOdometer ?? null,
+            expenses: expenses.map((expense) => ({
+              id: expense.id,
+              type: expense.type ?? "fuel",
+              amount: expense.amount,
+              liters: expense.liters,
+              odometer: expense.odometer,
+              vendor: expense.vendor,
+              spentAt: expense.spentAt,
+              source: expense.source ?? "manual",
+              photoId: expense.photoId,
+            })),
+            // Итог считается из тех же расходов и заказов, что и в кабинете логиста
+            summary: buildTripSummary({
+              route: {
+                id: route.id,
+                name: route.name,
+                createdAt: route.createdAt,
+                startedAt: route.startedAt,
+                completedAt: route.completedAt,
+                totalDistance: route.totalDistance,
+                startOdometer: route.startOdometer,
+                endOdometer: route.endOdometer,
+              },
+              orders: routeOrders.map((order) => ({
+                id: order.id,
+                status: order.status,
+                price: order.price,
+                agreedPrice: order.agreedPrice,
+                distance: order.distance,
+              })),
+              expenses: expenses.map((expense) => ({
+                id: expense.id,
+                type: expense.type,
+                amount: expense.amount,
+                liters: expense.liters,
+              })),
+            }),
           }
         : null,
       // Статусы, при которых заказ считается «в работе» — для единообразия
