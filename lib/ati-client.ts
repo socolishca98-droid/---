@@ -54,6 +54,11 @@ interface ScanFilters {
   minPricePerKm?: number
   maxWeight?: number
   minWeight?: number
+  /**
+   * Нужные типы кузова («тент», «изотермический», «рефрижератор»).
+   * ATI не фильтрует по типу кузова в запросе, поэтому отбираем по ответу.
+   */
+  truckTypes?: string[]
 }
 
 interface ModeConfig {
@@ -157,6 +162,14 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
     if (filters.maxPrice && price > filters.maxPrice) return false
     if (filters.minPricePerKm && pricePerKm < filters.minPricePerKm) return false
   }
+
+  // Тип кузова: ATI отдаёт его в truck.carTypes — фильтруем по ответу
+  if (filters.truckTypes && filters.truckTypes.length > 0) {
+    const carTypes: string[] = Array.isArray(item.truck?.carTypes) ? item.truck.carTypes : []
+    const haystack = carTypes.join(" ").toLowerCase()
+    const wanted = filters.truckTypes.some((type) => haystack.includes(String(type).toLowerCase()))
+    if (!wanted) return false
+  }
   return true
 }
 
@@ -246,9 +259,15 @@ export async function scanAtiLoads(params?: any) {
   const customFilters: ScanFilters = params?.filters || DEFAULT_FILTERS
   globalSeenIds = new Set()
 
-  const hubsBase = HUB_IDS_PRIORITY_1
-  const cityLimit = cfg.cityLimit ?? hubsBase.length
+  // Города профиля расписания (AtiScanConfig.cities) важнее списка хабов:
+  // именно они решают, что сканировать по расписанию
+  const profileCities: number[] = Array.isArray(params?.cityIds)
+    ? params.cityIds.filter((id: unknown) => Number.isFinite(Number(id))).map(Number)
+    : []
+  const hubsBase = profileCities.length > 0 ? profileCities : HUB_IDS_PRIORITY_1
+  const cityLimit = profileCities.length > 0 ? hubsBase.length : (cfg.cityLimit ?? hubsBase.length)
   const hubsToScan = hubsBase.slice(0, cityLimit)
+  const scanRadius = Number.isFinite(Number(params?.radius)) ? Number(params.radius) : 100
 
   try {
     // Ручной поиск
@@ -265,7 +284,7 @@ export async function scanAtiLoads(params?: any) {
       const cityId = hubsToScan[i]
 
       try {
-        const { loads, requests } = await scanCity(cityId, cfg, customFilters)
+        const { loads, requests } = await scanCity(cityId, cfg, customFilters, scanRadius)
         totalRequests += requests
         totalFound += loads.length
 
@@ -297,6 +316,7 @@ async function scanCity(
   cityId: number,
   cfg: ModeConfig,
   filters: ScanFilters,
+  radius = 100,
 ): Promise<{ loads: any[]; requests: number }> {
   const allLoads: any[] = []
   let requests = 0
@@ -315,7 +335,7 @@ async function scanCity(
             from: {
               id: cityId,
               type: 1,
-              radius: 100,
+              radius,
               exact_only: false,
             },
           }

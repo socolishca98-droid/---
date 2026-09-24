@@ -10,7 +10,7 @@ import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import Link from "next/link"
 import { OrdersSandbox } from "@/components/orders/orders-sandbox"
-import { AIParserDemo } from "@/components/orders/ai-parser-demo"
+import { TextParsePanel } from "@/components/orders/text-parse-panel"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Package, Bot, Loader2, Search } from "lucide-react"
@@ -71,7 +71,7 @@ export default function OrdersPage() {
 
               <TabsTrigger value="parser" className="gap-2 px-6">
                 <Bot className="h-4 w-4" />
-                AI импорт
+                Заказ из текста
               </TabsTrigger>
             </TabsList>
 
@@ -80,7 +80,7 @@ export default function OrdersPage() {
             </TabsContent>
 
             <TabsContent value="parser">
-              <AIParserDemo />
+              <TextParsePanel />
             </TabsContent>
           </Tabs>
         </main>

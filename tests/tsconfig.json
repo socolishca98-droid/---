@@ -26,6 +26,7 @@
     "../lib/auth/startup.ts",
     "../lib/auth/password.ts",
     "../lib/routes/model.ts",
-    "../lib/orders/stages.ts"
+    "../lib/orders/stages.ts",
+    "../lib/ati/scan-profile.ts"
   ]
 }

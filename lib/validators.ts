@@ -218,6 +218,8 @@ export const createOrderSchema = z.object({
   assignedDriverId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   assignedVehicleId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   routeId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
+  /** Особые требования к грузу/погрузке (текст из заявки). */
+  requirements: z.string().trim().max(2000).optional().or(z.literal("")).or(z.null()),
   /** Ид строки накопленной базы ATI, из которой взят заказ (связь с общей базой). */
   atiCacheId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
   /** Цена, о которой договорились с клиентом (итог согласования). */

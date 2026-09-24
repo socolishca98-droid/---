@@ -34,6 +34,7 @@ import {
   POST as negotiationPost,
 } from "@/app/api/orders/[id]/negotiation/route"
 import { PATCH as orderPatch } from "@/app/api/orders/[id]/route"
+import { POST as ordersPost } from "@/app/api/orders/route"
 import { POST as routesPost } from "@/app/api/routes/route"
 
 let world: World
@@ -232,6 +233,65 @@ describe("взять груз в работу (POST /api/orders/from-cache)", ()
     expect(rows[0].targetId).toBe(data.order.id)
     // lib/audit.ts кладёт metadata строкой JSON — так же, как в реальной базе
     expect(JSON.parse(rows[0].metadata).atiCacheId).toBe(cacheId)
+  })
+})
+
+describe("ручное создание заказа (POST /api/orders)", () => {
+  it("заказ, заведённый вручную, начинается с этапа «Согласование»", async () => {
+    const response = await ordersPost(
+      makeRequest("POST", "/api/orders", {
+        cookie: cookieA,
+        body: {
+          routeFrom: "Москва",
+          routeTo: "Тверь",
+          weight: 18000,
+          price: 45000,
+          cargoType: "Стройматериалы",
+          clientName: "Иван",
+          clientContact: "+79251112233",
+          requirements: "тент, боковая загрузка",
+        },
+      }),
+    )
+    const data = await jsonOf(response)
+
+    expect(response.status).toBe(200)
+    expect(data.success).toBe(true)
+
+    const order = rowOf("order", data.order.id)
+    expect(order.organizationId).toBe(world.orgA)
+    // цена ещё не согласована — заказ ждёт переговоров, а не «в поиске»
+    expect(order.status).toBe("negotiation")
+    expect(order.negotiationStatus).toBe("new")
+    expect(order.requirements).toBe("тент, боковая загрузка")
+    expect(order.weight).toBe(18000)
+  })
+
+  it("на строку накопленной базы заказ у организации один", async () => {
+    const cacheId = seedCacheRow("cache8")
+    const body = {
+      routeFrom: "Москва",
+      routeTo: "Казань",
+      atiCacheId: cacheId,
+    }
+
+    const first = await ordersPost(
+      makeRequest("POST", "/api/orders", { cookie: cookieA, body }),
+    )
+    expect(first.status).toBe(200)
+
+    const second = await ordersPost(
+      makeRequest("POST", "/api/orders", { cookie: cookieA, body }),
+    )
+    const data = await jsonOf(second)
+
+    expect(second.status).toBe(409)
+    expect(data.code).toBe("already_taken")
+    expect(
+      memoryDb
+        .rows("order")
+        .filter((row) => row.atiCacheId === cacheId && row.organizationId === world.orgA).length,
+    ).toBe(1)
   })
 })
 

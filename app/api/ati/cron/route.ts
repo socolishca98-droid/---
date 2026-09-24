@@ -1,6 +1,10 @@
 // app/api/ati/cron/route.ts
-// Эндпоинт для cron-задач: сканирование ATI + очистка кэша.
+// Эндпоинт для cron-задач: сканирование ATI по расписанию + очистка кэша.
 // Вызывать раз в 10-15 минут через внешний cron или Vercel Cron.
+//
+// Что именно сканируется, решают профили расписания (таблица AtiScanConfig):
+// города, радиус, минимальный вес, типы кузова и интервал запуска. Профили с
+// autoScanInterval = 0 сами не запускаются — только вручную.
 //
 // Доступ (на выбор):
 //   1. Authorization: Bearer <CRON_SECRET>  — для внешнего планировщика
@@ -15,6 +19,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { timingSafeEqual } from "node:crypto"
 import { scanAtiLoads, cleanExpiredCache, getAtiStats } from "@/lib/ati-client"
 import { loadStaffSession } from "@/lib/auth/session"
+import { getDueScanProfiles, markProfileScanned, scanParamsForProfile } from "@/lib/ati/scan-schedule"
 
 export const dynamic = "force-dynamic"
 
@@ -72,6 +77,59 @@ function resolveAction(value: string | null | undefined, fallback: Action = "all
   return (ACTIONS as readonly string[]).includes(action) ? (action as Action) : "all"
 }
 
+/**
+ * Скан по расписанию.
+ *
+ * Профили расписания (AtiScanConfig) решают, что сканировать и как часто:
+ * города, радиус, минимальный вес, типы кузова и интервал. Профиль без
+ * интервала (autoScanInterval = 0) сам не запускается — только вручную из
+ * интерфейса.
+ *
+ * Профилей нет — работает прежнее поведение: один общий скан основных хабов.
+ * Живой ATI опрашивается только здесь и в ручном поиске: поиск заказов идёт по
+ * накопленной базе.
+ */
+async function runScheduledScan(mode: string) {
+  const { active, due, waiting } = await getDueScanProfiles()
+
+  if (active.length === 0) {
+    const result = await scanAtiLoads({ mode })
+    return {
+      mode: "default",
+      reason: "профилей расписания нет — скан по умолчанию",
+      result,
+    }
+  }
+
+  const profiles: { id: string; name: string; result: unknown }[] = []
+
+  for (const profile of due) {
+    try {
+      const result = await scanAtiLoads(scanParamsForProfile(profile, mode))
+      await markProfileScanned(profile.id)
+      profiles.push({ id: profile.id, name: profile.name, result })
+    } catch (error) {
+      // один сломанный профиль не должен останавливать остальные
+      profiles.push({
+        id: profile.id,
+        name: profile.name,
+        result: {
+          success: false,
+          error: error instanceof Error ? error.message : "ошибка скана",
+        },
+      })
+    }
+  }
+
+  return {
+    mode: "profiles",
+    scanned: profiles.length,
+    profiles,
+    // профили, которым ещё рано: следующий запуск — по их интервалу
+    waiting: waiting.map((profile) => ({ id: profile.id, name: profile.name })),
+  }
+}
+
 async function runActions(action: Action, mode: string) {
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
@@ -86,7 +144,7 @@ async function runActions(action: Action, mode: string) {
 
   if (action === "scan" || action === "all") {
     console.log("[CRON] Starting scan...")
-    results.scan = await scanAtiLoads({ mode })
+    results.scan = await runScheduledScan(mode)
   }
 
   results.stats = await getAtiStats()
