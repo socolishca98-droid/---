@@ -25,6 +25,12 @@ export type World = {
   adminA: string
   adminB: string
   logistNoOrg: string
+  /** логист организации А: проверяем, что заявки одобряет и логист */
+  logistA: string
+  /** заявка на присоединение в организации А (pending) */
+  pendingA: string
+  /** заявка на присоединение в организации Б (pending) */
+  pendingB: string
   driverUserA: string
   driverUserB: string
   driverA: string
@@ -85,6 +91,9 @@ export function seedWorld(): World {
     adminA: cid("admina"),
     adminB: cid("adminb"),
     logistNoOrg: cid("nologist"),
+    logistA: cid("logista"),
+    pendingA: cid("penda"),
+    pendingB: cid("pendb"),
     driverUserA: cid("driverusera"),
     driverUserB: cid("driveruserb"),
     driverA: cid("drivera"),
@@ -150,6 +159,40 @@ export function seedWorld(): World {
     passwordSalt: "x",
     role: "logist",
     status: "active",
+  })
+  // Логист организации А: заявки на присоединение одобряет и логист, и админ
+  memoryDb.insert("user", {
+    id: world.logistA,
+    organizationId: world.orgA,
+    name: "Логист А",
+    email: "logist@a.test",
+    passwordHash: "x",
+    passwordSalt: "x",
+    role: "logist",
+    status: "active",
+  })
+  // Заявки на присоединение: по одной в каждой организации
+  memoryDb.insert("user", {
+    id: world.pendingA,
+    organizationId: world.orgA,
+    name: "Заявка А",
+    email: "pending@a.test",
+    passwordHash: "x",
+    passwordSalt: "x",
+    role: "logist",
+    status: "pending",
+    inviteCodeId: world.inviteA,
+  })
+  memoryDb.insert("user", {
+    id: world.pendingB,
+    organizationId: world.orgB,
+    name: "Заявка Б",
+    email: "pending@b.test",
+    passwordHash: "x",
+    passwordSalt: "x",
+    role: "logist",
+    status: "pending",
+    inviteCodeId: world.inviteB,
   })
 
   // Госномер машины намеренно одинаковый в двух организациях:
@@ -402,6 +445,9 @@ export function seedWorld(): World {
     organizationId: world.orgA,
     createdById: world.adminA,
     role: "logist",
+    // код уже использовали один раз — заявкой pendingA
+    usedCount: 1,
+    maxUses: 5,
   })
   memoryDb.insert("inviteCode", {
     id: world.inviteB,
@@ -409,11 +455,15 @@ export function seedWorld(): World {
     organizationId: world.orgB,
     createdById: world.adminB,
     role: "logist",
+    usedCount: 1,
+    maxUses: 5,
   })
 
   world.ownIds = [
     world.orgA,
     world.adminA,
+    world.logistA,
+    world.pendingA,
     world.driverA,
     world.driverUserA,
     world.vehicleA,
@@ -432,6 +482,7 @@ export function seedWorld(): World {
   world.foreignIds = [
     world.orgB,
     world.adminB,
+    world.pendingB,
     world.driverB,
     world.driverUserB,
     world.vehicleB,

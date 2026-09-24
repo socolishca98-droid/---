@@ -377,8 +377,9 @@ export default function OrganizationPage() {
             <div className="flex items-start gap-2 text-sm text-muted-foreground">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
               <span>
-                Инвайт-кодами и заявками управляет администратор организации. Вы видите список
-                сотрудников на странице «Сотрудники» в режиме чтения.
+                Инвайт-коды создаёт и отзывает администратор организации. Заявки на
+                присоединение вы можете одобрять и отклонять — список ниже. Список
+                сотрудников доступен на странице «Сотрудники».
               </span>
             </div>
           </CardContent>
@@ -574,20 +575,20 @@ export default function OrganizationPage() {
                 <TableHead>Сотрудник</TableHead>
                 <TableHead>Роль из кода</TableHead>
                 <TableHead>Заявка подана</TableHead>
-                {isAdmin && <TableHead className="text-right">Решение</TableHead>}
+                <TableHead className="text-right">Решение</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={isAdmin ? 4 : 3} className="h-20 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                     Загружаем...
                   </TableCell>
                 </TableRow>
               ) : applications.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={isAdmin ? 4 : 3} className="h-20 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="h-20 text-center text-muted-foreground">
                     Заявок нет
                   </TableCell>
                 </TableRow>
@@ -604,32 +605,32 @@ export default function OrganizationPage() {
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDateTime(application.createdAt)}
                     </TableCell>
-                    {isAdmin && (
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
-                            disabled={busyApplicationId === application.id}
-                            onClick={() => void handleApplication(application, "approve")}
-                          >
-                            <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                            Одобрить
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            disabled={busyApplicationId === application.id}
-                            onClick={() => void handleApplication(application, "reject")}
-                          >
-                            <XCircle className="h-4 w-4 mr-1.5" />
-                            Отклонить
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
+                    {/* Решение по заявке принимает любой сотрудник организации —
+                        и логист, и администратор (решение пользователя 2026-09-24). */}
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
+                          disabled={busyApplicationId === application.id}
+                          onClick={() => void handleApplication(application, "approve")}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                          Одобрить
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={busyApplicationId === application.id}
+                          onClick={() => void handleApplication(application, "reject")}
+                        >
+                          <XCircle className="h-4 w-4 mr-1.5" />
+                          Отклонить
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               )}

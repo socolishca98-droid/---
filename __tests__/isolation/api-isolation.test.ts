@@ -101,6 +101,8 @@ let cookieB: string
 let cookieDriverA: string
 /** Cookie водителя организации Б */
 let cookieDriverB: string
+/** Cookie логиста организации А */
+let cookieLogistA: string
 /** Cookie сотрудника без организации */
 let cookieNoOrg: string
 
@@ -119,6 +121,11 @@ beforeEach(async () => {
     role: "driver",
     kind: "driver",
     driverId: world.driverB,
+  })
+  cookieLogistA = await sessionCookie({
+    userId: world.logistA,
+    role: "logist",
+    kind: "staff",
   })
   cookieNoOrg = await sessionCookie({
     userId: world.logistNoOrg,
@@ -831,6 +838,100 @@ describe("сотрудники, организация, приглашения, 
     expect(JSON.stringify(payload)).toContain("audit_a")
     expect(JSON.stringify(payload)).not.toContain("audit_b")
     expectNoForeignIds(payload, world)
+  })
+})
+
+describe("заявки на присоединение: одобряет и логист, и администратор", () => {
+  it("логист организации одобряет заявку своей организации", async () => {
+    const response = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.pendingA}`, {
+        cookie: cookieLogistA,
+        body: { action: "approve" },
+      }),
+      routeContext({ id: world.pendingA }),
+    )
+    expect(response.status).toBe(200)
+    const body = await jsonOf(response)
+    expect(body.user.status).toBe("active")
+    expect(rowOf("user", world.pendingA).status).toBe("active")
+    expect(rowOf("user", world.pendingA).organizationId).toBe(world.orgA)
+  })
+
+  it("логист отклоняет заявку: запись удалена, использование кода возвращено", async () => {
+    expect(rowOf("inviteCode", world.inviteA).usedCount).toBe(1)
+
+    const response = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.pendingA}`, {
+        cookie: cookieLogistA,
+        body: { action: "reject" },
+      }),
+      routeContext({ id: world.pendingA }),
+    )
+    expect(response.status).toBe(200)
+    expect(memoryDb.find("user", world.pendingA), "заявка удалена").toBeUndefined()
+    expect(rowOf("inviteCode", world.inviteA).usedCount).toBe(0)
+  })
+
+  it("логист организации А не одобряет заявку организации Б: 404, заявка цела", async () => {
+    const response = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.pendingB}`, {
+        cookie: cookieLogistA,
+        body: { action: "approve" },
+      }),
+      routeContext({ id: world.pendingB }),
+    )
+    expect(response.status).toBe(404)
+    expect(rowOf("user", world.pendingB).status).toBe("pending")
+  })
+
+  it("сотрудник без организации заявки не обрабатывает", async () => {
+    const response = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.pendingA}`, {
+        cookie: cookieNoOrg,
+        body: { action: "approve" },
+      }),
+      routeContext({ id: world.pendingA }),
+    )
+    expect(response.status).toBe(403)
+    expect(rowOf("user", world.pendingA).status).toBe("pending")
+  })
+
+  it("логист не управляет доступом: suspend, restore, setRole, resetPassword, unlock — 403", async () => {
+    for (const action of ["suspend", "restore", "setRole", "resetPassword", "unlock"]) {
+      const response = await userPatch(
+        makeRequest("PATCH", `/api/auth/users/${world.logistA}`, {
+          cookie: cookieLogistA,
+          body: { action, role: "admin", reason: "тест", password: "Passw0rd!2345" },
+        }),
+        routeContext({ id: world.logistA }),
+      )
+      expect(response.status, `${action} → 403 для логиста`).toBe(403)
+    }
+    expect(rowOf("user", world.logistA).status).toBe("active")
+  })
+
+  it("администратор закрывает доступ сотруднику и восстанавливает его (запись не удаляется)", async () => {
+    const suspended = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.logistA}`, {
+        cookie: cookieA,
+        body: { action: "suspend", reason: "Уволен" },
+      }),
+      routeContext({ id: world.logistA }),
+    )
+    expect(suspended.status).toBe(200)
+    expect(rowOf("user", world.logistA).status).toBe("suspended")
+    expect(rowOf("user", world.logistA).suspendReason).toBe("Уволен")
+
+    const restored = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.logistA}`, {
+        cookie: cookieA,
+        body: { action: "restore" },
+      }),
+      routeContext({ id: world.logistA }),
+    )
+    expect(restored.status).toBe(200)
+    expect(rowOf("user", world.logistA).status).toBe("active")
+    expect(rowOf("user", world.logistA).suspendReason ?? null).toBeNull()
   })
 })
 
