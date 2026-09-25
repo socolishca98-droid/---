@@ -57,6 +57,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CardsSkeleton, KpiSkeleton, TableSkeleton } from "@/components/ui/skeletons"
+import { fetchJsonCached, peekCache } from "@/lib/client-cache"
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
 
 // Recharts принимает цвета строками: переменные темы здесь в формате oklch,
 // hsl(var(--primary)) дал бы невалидный цвет и пустой график
@@ -308,6 +311,116 @@ const INSIGHT_STYLE: Record<Insight["level"], { icon: typeof Info; className: st
   info: { icon: Info, className: "border-border bg-muted/30 text-muted-foreground" },
 }
 
+// ── Столбцы таблиц отчётов ────────────────────────────────────────────────
+// Раньше каждая таблица была свёрстана руками (и разъезжалась по отступам),
+// теперь все они идут через единый DataTable — только описанием столбцов.
+
+type ClientReportRow = ReportResponse["report"]["clients"]["top"][number]
+type DriverReportRow = ReportResponse["report"]["drivers"][number]
+type VehicleReportRow = ReportResponse["report"]["vehicles"][number]
+
+const CLIENT_REPORT_COLUMNS: DataTableColumn<ClientReportRow>[] = [
+  { key: "name", label: "Клиент", cell: (row) => row.name },
+  { key: "orders", label: "Заказов", align: "right", cell: (row) => row.orders },
+  { key: "revenue", label: "Выручка", align: "right", cellClassName: "font-medium", cell: (row) => money(row.revenueRub) },
+  {
+    key: "debt",
+    label: "Долг",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => (row.debtRub > 0 ? money(row.debtRub) : "—"),
+  },
+  {
+    key: "overdue",
+    label: "Просрочено",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => (
+      <span className={row.overdueRub > 0 ? "font-medium text-destructive" : undefined}>
+        {row.overdueRub > 0 ? money(row.overdueRub) : "—"}
+      </span>
+    ),
+  },
+]
+
+const DRIVER_REPORT_COLUMNS: DataTableColumn<DriverReportRow>[] = [
+  { key: "name", label: "Водитель", cell: (row) => row.name },
+  { key: "routes", label: "Рейсов", align: "right", cell: (row) => row.routes },
+  { key: "orders", label: "Заказов", align: "right", cell: (row) => row.orders },
+  {
+    key: "distance",
+    label: "Пробег",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => `${row.distanceKm.toLocaleString("ru-RU")} км`,
+  },
+  { key: "revenue", label: "Выручка", align: "right", cellClassName: "font-medium", cell: (row) => money(row.revenueRub) },
+  {
+    key: "expenses",
+    label: "Расходы",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => money(row.expensesRub),
+  },
+  {
+    key: "profit",
+    label: "Прибыль",
+    align: "right",
+    cellClassName: "font-medium",
+    cell: (row) => (
+      <span className={row.profitRub >= 0 ? "text-success" : "text-destructive"}>
+        {money(row.profitRub)}
+      </span>
+    ),
+  },
+  {
+    key: "onTime",
+    label: "В срок",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => percent(row.onTimePercent, 0),
+  },
+]
+
+const VEHICLE_REPORT_COLUMNS: DataTableColumn<VehicleReportRow>[] = [
+  { key: "plate", label: "Машина", cell: (row) => row.plate },
+  { key: "routes", label: "Рейсов", align: "right", cell: (row) => row.routes },
+  { key: "orders", label: "Заказов", align: "right", cell: (row) => row.orders },
+  {
+    key: "distance",
+    label: "Пробег",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => `${row.distanceKm.toLocaleString("ru-RU")} км`,
+  },
+  { key: "revenue", label: "Выручка", align: "right", cellClassName: "font-medium", cell: (row) => money(row.revenueRub) },
+  {
+    key: "expenses",
+    label: "Расходы",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => money(row.expensesRub),
+  },
+  {
+    key: "profit",
+    label: "Прибыль",
+    align: "right",
+    cellClassName: "font-medium",
+    cell: (row) => (
+      <span className={row.profitRub >= 0 ? "text-success" : "text-destructive"}>
+        {money(row.profitRub)}
+      </span>
+    ),
+  },
+  {
+    key: "costPerKm",
+    label: "₽/км",
+    align: "right",
+    cellClassName: "text-muted-foreground",
+    cell: (row) => (row.costPerKmRub === null ? "—" : row.costPerKmRub),
+  },
+]
+
 export function ReportsView() {
   const [preset, setPreset] = useState<Preset>("30d")
   const [customFrom, setCustomFrom] = useState("")
@@ -328,26 +441,37 @@ export function ReportsView() {
     return params.toString()
   }, [preset, customFrom, customTo])
 
-  const load = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const res = await fetch(`/api/reports?${query}`, { credentials: "include" })
-      const payload = await res.json().catch(() => ({}))
+  const load = useCallback(
+    async (options?: { force?: boolean }) => {
+      const url = `/api/reports?${query}`
+      // Периоды листаются туда-обратно («30 дней» → «7 дней» → обратно):
+      // уже посчитанный отчёт показываем сразу из кеша
+      const known = options?.force ? null : peekCache<ReportResponse>(url)
+      if (known?.data) {
+        setData(known.data)
+        setIsLoading(false)
+      } else {
+        setIsLoading(true)
+      }
 
-      if (res.ok && payload.success) {
+      try {
+        const payload = await fetchJsonCached<ReportResponse & { success?: boolean; error?: string }>(
+          url,
+          { force: options?.force },
+        )
         setData(payload as ReportResponse)
         setError(null)
-      } else {
+      } catch (caught) {
         setData(null)
-        setError(payload?.error || `Не удалось построить отчёт (код ${res.status})`)
+        setError(
+          caught instanceof Error ? caught.message : "Не удалось связаться с сервером",
+        )
+      } finally {
+        setIsLoading(false)
       }
-    } catch {
-      setData(null)
-      setError("Не удалось связаться с сервером")
-    } finally {
-      setIsLoading(false)
-    }
-  }, [query])
+    },
+    [query],
+  )
 
   useEffect(() => {
     void load()
@@ -446,14 +570,16 @@ export function ReportsView() {
           <FileText className="h-4 w-4" />
           Отчёт целиком
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => void load()} disabled={isLoading}>
+        <Button variant="ghost" size="icon" onClick={() => void load({ force: true })} disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
       {isLoading && !report ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="space-y-6">
+          <KpiSkeleton />
+          <CardsSkeleton count={3} />
+          <TableSkeleton rows={6} columns={5} />
         </div>
       ) : report ? (
         <>
@@ -843,44 +969,18 @@ export function ReportsView() {
                   ` · крупнейший клиент даёт ${report.clients.concentrationPercent}% выручки`}
               </p>
 
-              {report.clients.top.length === 0 ? (
-                <p className="py-12 text-center text-sm text-muted-foreground">
-                  За период заказов с клиентами нет
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-muted-foreground">
-                      <tr className="text-left">
-                        <th className="p-2 font-medium">Клиент</th>
-                        <th className="p-2 text-right font-medium">Заказов</th>
-                        <th className="p-2 text-right font-medium">Выручка</th>
-                        <th className="p-2 text-right font-medium">Долг</th>
-                        <th className="p-2 text-right font-medium">Просрочено</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.clients.top.map((client) => (
-                        <tr key={client.key} className="border-t border-border">
-                          <td className="p-2">{client.name}</td>
-                          <td className="p-2 text-right">{client.orders}</td>
-                          <td className="p-2 text-right font-medium">{money(client.revenueRub)}</td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {client.debtRub > 0 ? money(client.debtRub) : "—"}
-                          </td>
-                          <td
-                            className={`p-2 text-right ${
-                              client.overdueRub > 0 ? "font-medium text-destructive" : "text-muted-foreground"
-                            }`}
-                          >
-                            {client.overdueRub > 0 ? money(client.overdueRub) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                            <DataTable
+                frame={false}
+                density="compact"
+                columns={CLIENT_REPORT_COLUMNS}
+                rows={report.clients.top}
+                rowKey={(row) => row.key}
+                empty={
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    За период заказов с клиентами нет
+                  </p>
+                }
+              />
             </div>
           </TabsContent>
 
@@ -888,54 +988,18 @@ export function ReportsView() {
           <TabsContent value="drivers" className="space-y-4">
             <div className="rounded-xl border border-border bg-card/70 p-5 backdrop-blur-sm">
               <h3 className="mb-4 font-medium">Водители за период</h3>
-              {report.drivers.length === 0 ? (
-                <p className="py-12 text-center text-sm text-muted-foreground">
-                  За период водители не выполняли рейсов
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-muted-foreground">
-                      <tr className="text-left">
-                        <th className="p-2 font-medium">Водитель</th>
-                        <th className="p-2 text-right font-medium">Рейсов</th>
-                        <th className="p-2 text-right font-medium">Заказов</th>
-                        <th className="p-2 text-right font-medium">Пробег</th>
-                        <th className="p-2 text-right font-medium">Выручка</th>
-                        <th className="p-2 text-right font-medium">Расходы</th>
-                        <th className="p-2 text-right font-medium">Прибыль</th>
-                        <th className="p-2 text-right font-medium">В срок</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.drivers.map((driver) => (
-                        <tr key={driver.driverId} className="border-t border-border">
-                          <td className="p-2">{driver.name}</td>
-                          <td className="p-2 text-right">{driver.routes}</td>
-                          <td className="p-2 text-right">{driver.orders}</td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {driver.distanceKm.toLocaleString("ru-RU")} км
-                          </td>
-                          <td className="p-2 text-right font-medium">{money(driver.revenueRub)}</td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {money(driver.expensesRub)}
-                          </td>
-                          <td
-                            className={`p-2 text-right font-medium ${
-                              driver.profitRub >= 0 ? "text-success" : "text-destructive"
-                            }`}
-                          >
-                            {money(driver.profitRub)}
-                          </td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {percent(driver.onTimePercent, 0)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                            <DataTable
+                frame={false}
+                density="compact"
+                columns={DRIVER_REPORT_COLUMNS}
+                rows={report.drivers}
+                rowKey={(row) => row.driverId}
+                empty={
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    За период водители не выполняли рейсов
+                  </p>
+                }
+              />
             </div>
           </TabsContent>
 
@@ -958,54 +1022,18 @@ export function ReportsView() {
 
             <div className="rounded-xl border border-border bg-card/70 p-5 backdrop-blur-sm">
               <h3 className="mb-4 font-medium">Машины за период</h3>
-              {report.vehicles.length === 0 ? (
-                <p className="py-12 text-center text-sm text-muted-foreground">
-                  За период машины не выезжали
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-muted-foreground">
-                      <tr className="text-left">
-                        <th className="p-2 font-medium">Машина</th>
-                        <th className="p-2 text-right font-medium">Рейсов</th>
-                        <th className="p-2 text-right font-medium">Заказов</th>
-                        <th className="p-2 text-right font-medium">Пробег</th>
-                        <th className="p-2 text-right font-medium">Выручка</th>
-                        <th className="p-2 text-right font-medium">Расходы</th>
-                        <th className="p-2 text-right font-medium">Прибыль</th>
-                        <th className="p-2 text-right font-medium">₽/км</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.vehicles.map((vehicle) => (
-                        <tr key={vehicle.vehicleId} className="border-t border-border">
-                          <td className="p-2">{vehicle.plate}</td>
-                          <td className="p-2 text-right">{vehicle.routes}</td>
-                          <td className="p-2 text-right">{vehicle.orders}</td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {vehicle.distanceKm.toLocaleString("ru-RU")} км
-                          </td>
-                          <td className="p-2 text-right font-medium">{money(vehicle.revenueRub)}</td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {money(vehicle.expensesRub)}
-                          </td>
-                          <td
-                            className={`p-2 text-right font-medium ${
-                              vehicle.profitRub >= 0 ? "text-success" : "text-destructive"
-                            }`}
-                          >
-                            {money(vehicle.profitRub)}
-                          </td>
-                          <td className="p-2 text-right text-muted-foreground">
-                            {vehicle.costPerKmRub === null ? "—" : vehicle.costPerKmRub}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                            <DataTable
+                frame={false}
+                density="compact"
+                columns={VEHICLE_REPORT_COLUMNS}
+                rows={report.vehicles}
+                rowKey={(row) => row.vehicleId}
+                empty={
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    За период машины не выезжали
+                  </p>
+                }
+              />
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">

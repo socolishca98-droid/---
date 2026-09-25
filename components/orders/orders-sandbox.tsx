@@ -115,6 +115,7 @@ import {
 } from "@/lib/orders/stages"
 import { OrderProcess } from "@/components/orders/order-process"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { fetchJsonCached, invalidateCache } from "@/lib/client-cache"
 import {
   Sheet,
   SheetContent,
@@ -2184,12 +2185,9 @@ export function OrdersSandbox() {
     setLoadingVehicles(true)
 
     try {
-      const res = await fetch("/api/fleet")
-      const data = await res.json()
-
-      if (!data.success) {
-        throw new Error(data.error || "Ошибка загрузки автопарка")
-      }
+      // Автопарк запрашивается при каждой попытке собрать рейс — берём из кеша,
+      // чтобы диалог подбора машины открывался без ожидания
+      const data = await fetchJsonCached<any>("/api/fleet")
 
       const vehiclesRaw = Array.isArray(data.vehicles) ? data.vehicles : []
 
@@ -2315,6 +2313,10 @@ export function OrdersSandbox() {
           orders: s.orders.filter((o: any) => !o.inRouteOrder),
           groups: s.groups.filter((g: any) => !routeOrders.some((o: any) => o.groupId === g.id)),
         }))
+
+        // Машина занята рейсом — автопарк в кеше устарел
+        invalidateCache("/api/fleet")
+        invalidateCache("/api/routes")
 
         setShowVehicleDialog(false)
         setSelectedVehicle(null)

@@ -40,14 +40,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   AlertCircle,
   Ban,
   Building2,
@@ -59,6 +51,8 @@ import {
   UserCheck,
   Users,
 } from "lucide-react"
+import { fetchJsonCached, invalidateCache } from "@/lib/client-cache"
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
 
 interface OrganizationInfo {
   id: string
@@ -147,16 +141,16 @@ export default function OrganizationPage() {
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null)
   const [copiedCode, setCopiedCode] = useState("")
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { force?: boolean }) => {
+    if (options?.force) invalidateCache("/api/organization")
     setIsLoading(true)
     setLoadError("")
     try {
       // Список заявок здесь не грузим: решения по людям принимаются на странице
       // «Сотрудники» (/users), а количество ожидающих приходит в summary.pending.
-      const orgRes = await fetch("/api/organization", { cache: "no-store" })
-      const orgData = await orgRes.json().catch(() => ({}))
+      const orgData = await fetchJsonCached<any>("/api/organization")
 
-      if (!orgRes.ok || !orgData?.success) {
+      if (!orgData?.success) {
         setLoadError(orgData?.error || "Не удалось загрузить данные организации")
         return
       }
@@ -165,9 +159,8 @@ export default function OrganizationPage() {
       setSummary(orgData.summary)
 
       if (isAdmin) {
-        const invitesRes = await fetch("/api/organization/invites", { cache: "no-store" })
-        const invitesData = await invitesRes.json().catch(() => ({}))
-        setInvites(invitesRes.ok && invitesData?.success ? invitesData.invites || [] : [])
+        const invitesData = await fetchJsonCached<any>("/api/organization/invites")
+        setInvites(invitesData?.success ? invitesData.invites || [] : [])
       }
     } catch {
       setLoadError("Ошибка соединения. Обновите страницу")
@@ -203,7 +196,7 @@ export default function OrganizationPage() {
       setInvites((prev) => [data.invite, ...prev])
       setNotice(`Код ${data.invite.code} создан. Скопируйте его или ссылку и передайте сотруднику`)
       setMaxUses("")
-      await load()
+      await load({ force: true })
     } catch {
       setError("Ошибка соединения")
     } finally {
@@ -222,6 +215,7 @@ export default function OrganizationPage() {
         setError(data?.error || "Не удалось отозвать код")
         return
       }
+      invalidateCache("/api/organization/invites")
       setInvites((prev) =>
         prev.map((row) =>
           row.id === invite.id
@@ -250,6 +244,128 @@ export default function OrganizationPage() {
   const inviteLink = (code: string) =>
     `${typeof window === "undefined" ? "" : window.location.origin}/register?invite=${code.replace(/-/g, "")}`
 
+  // Столбцы списка кодов — рисует единый DataTable
+  const inviteColumns: DataTableColumn<InviteView>[] = [
+    {
+      key: "code",
+      label: "Код",
+      cell: (invite) => {
+        const status = INVITE_STATUS_META[invite.status]
+        return (
+          <>
+            <div className="font-mono text-sm tracking-wider">{invite.code}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                onClick={() => void copyToClipboard(invite.code, invite.id)}
+              >
+                <Copy className="h-3 w-3" />
+                {copiedCode === invite.id ? "скопировано" : "код"}
+              </button>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                onClick={() => void copyToClipboard(inviteLink(invite.code), `${invite.id}-link`)}
+              >
+                <Copy className="h-3 w-3" />
+                {copiedCode === `${invite.id}-link` ? "скопировано" : "ссылка"}
+              </button>
+            </div>
+          </>
+        )
+      },
+    },
+    {
+      key: "role",
+      label: "Роль",
+      cellClassName: "text-sm",
+      cell: (invite) => {
+        const status = INVITE_STATUS_META[invite.status]
+        return (
+          <>
+            {invite.role === "admin" ? "Администратор" : "Логист"}
+          </>
+        )
+      },
+    },
+    {
+      key: "status",
+      label: "Статус",
+      cell: (invite) => {
+        const status = INVITE_STATUS_META[invite.status]
+        return (
+          <>
+            <Badge variant="outline" className={status.className}>
+              {status.label}
+            </Badge>
+          </>
+        )
+      },
+    },
+    {
+      key: "expires",
+      label: "Действует до",
+      cellClassName: "text-sm text-muted-foreground",
+      cell: (invite) => {
+        const status = INVITE_STATUS_META[invite.status]
+        return (
+          <>
+            {invite.expiresAt ? formatDateTime(invite.expiresAt) : "бессрочно"}
+          </>
+        )
+      },
+    },
+    {
+      key: "uses",
+      label: "Использован",
+      cellClassName: "text-sm text-muted-foreground",
+      cell: (invite) => {
+        const status = INVITE_STATUS_META[invite.status]
+        return (
+          <>
+            {invite.usedCount}
+            {invite.maxUses === null ? "" : ` / ${invite.maxUses}`}
+            {invite.registeredUsers > 0 && (
+              <div className="text-xs">зарегистрировалось: {invite.registeredUsers}</div>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      key: "actions",
+      label: "Действия",
+      align: "right",
+      cell: (invite) => {
+        const status = INVITE_STATUS_META[invite.status]
+        return (
+          <>
+            {invite.status === "active" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={busyInviteId === invite.id}
+                onClick={() => void handleRevoke(invite)}
+              >
+                {busyInviteId === invite.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Ban className="h-4 w-4 mr-1.5" />
+                    Отозвать
+                  </>
+                )}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">—</span>
+            )}
+          </>
+        )
+      },
+    },
+  ]
   return (
     <PageLayout
       title="Организация"
@@ -411,96 +527,18 @@ export default function OrganizationPage() {
               </Button>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Код</TableHead>
-                  <TableHead>Роль</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Действует до</TableHead>
-                  <TableHead>Использован</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invites.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
-                      Кодов пока нет — создайте первый
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  invites.map((invite) => {
-                    const status = INVITE_STATUS_META[invite.status]
-                    return (
-                      <TableRow key={invite.id}>
-                        <TableCell>
-                          <div className="font-mono text-sm tracking-wider">{invite.code}</div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <button
-                              type="button"
-                              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                              onClick={() => void copyToClipboard(invite.code, invite.id)}
-                            >
-                              <Copy className="h-3 w-3" />
-                              {copiedCode === invite.id ? "скопировано" : "код"}
-                            </button>
-                            <button
-                              type="button"
-                              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                              onClick={() => void copyToClipboard(inviteLink(invite.code), `${invite.id}-link`)}
-                            >
-                              <Copy className="h-3 w-3" />
-                              {copiedCode === `${invite.id}-link` ? "скопировано" : "ссылка"}
-                            </button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {invite.role === "admin" ? "Администратор" : "Логист"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={status.className}>
-                            {status.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {invite.expiresAt ? formatDateTime(invite.expiresAt) : "бессрочно"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {invite.usedCount}
-                          {invite.maxUses === null ? "" : ` / ${invite.maxUses}`}
-                          {invite.registeredUsers > 0 && (
-                            <div className="text-xs">зарегистрировалось: {invite.registeredUsers}</div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {invite.status === "active" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              disabled={busyInviteId === invite.id}
-                              onClick={() => void handleRevoke(invite)}
-                            >
-                              {busyInviteId === invite.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <Ban className="h-4 w-4 mr-1.5" />
-                                  Отозвать
-                                </>
-                              )}
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
+            <DataTable
+              columns={inviteColumns}
+              rows={invites}
+              rowKey={(invite) => invite.id}
+              density="compact"
+              skeletonRows={3}
+              empty={
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  Кодов пока нет — создайте первый
+                </p>
+              }
+            />
           </CardContent>
         </Card>
       )}

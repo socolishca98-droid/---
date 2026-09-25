@@ -35,6 +35,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { CardsSkeleton } from "@/components/ui/skeletons"
 
 export default function FleetPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -276,7 +277,9 @@ export default function FleetPage() {
             </div>
 
             <TabsContent value="vehicles" className="mt-0">
-              {filteredVehicles.length === 0 ? (
+              {isLoading ? (
+                <CardsSkeleton count={6} />
+              ) : filteredVehicles.length === 0 ? (
                 <div className="text-center py-20 bg-secondary/20 rounded-xl border border-dashed">
                   <Truck className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
                   <p className="text-lg font-medium">Нет транспорта</p>
@@ -311,6 +314,9 @@ export default function FleetPage() {
                         onDelete={() => handleDeleteVehicle(vehicle.id)}
                         onMaintenance={() => setMaintenanceVehicle(vehicle)}
                         onAssignDriver={() => setAssignVehicle(vehicle)}
+                        /* «Отправить на ТО» и «Вернуть в строй» карточка делает
+                           сама: без обновления список показывал бы прежний статус */
+                        onRefresh={refreshAll}
                       />
                     )
                   })}
@@ -331,6 +337,9 @@ export default function FleetPage() {
                   Все водители: статусы, рейтинги, добавление →
                 </Link>
               </div>
+              {isLoading ? (
+                <CardsSkeleton count={6} />
+              ) : (
               <div className="stagger-in grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredDrivers.map((driver: any) => {
                   const vehicle = vehicles.find((v: any) => v.id === driver.vehicleId)
@@ -344,6 +353,7 @@ export default function FleetPage() {
                   )
                 })}
               </div>
+              )}
             </TabsContent>
           </Tabs>
         </main>

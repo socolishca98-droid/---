@@ -484,6 +484,33 @@
   }
 }
 
+/* Скелетоны загрузки: мягкий блик, бегущий по контуру — «данные уже едут» */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--foreground) 5%, transparent),
+    transparent
+  );
+  animation: skeleton-sweep 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @keyframes route-dash {
   to {
     stroke-dashoffset: -240;
@@ -590,7 +617,8 @@ body {
   .canvas-node,
   .page-transition,
   .stagger-in > *,
-  .rise-in {
+  .rise-in,
+  .skeleton-shimmer::after {
     animation: none !important;
   }
 

@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Upload, Camera, X, Loader2, Check, AlertCircle, ScanLine, Cloud } from "lucide-react"
 import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
+import { fetchJsonCached } from "@/lib/client-cache"
 
 export type PhotoType =
   | "cargo_before"
@@ -107,8 +108,8 @@ export function PhotoUpload({ onUpload, routeId, orderId, driverId }: PhotoUploa
     if (driverId) return
 
     let cancelled = false
-    fetch("/api/drivers")
-      .then((res) => res.json())
+    // Тот же справочник, что и на других страницах: второй раз — из кеша
+    fetchJsonCached<{ success?: boolean; drivers?: any[] }>("/api/drivers")
       .then((data) => {
         if (cancelled || !data?.success || !Array.isArray(data.drivers)) return
         setDriverOptions(

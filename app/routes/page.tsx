@@ -27,6 +27,8 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { MOVING_ORDER_STATUSES, type OrderStatus } from "@/lib/orders/stages"
+import { fetchJsonCached, peekCache, invalidateCache } from "@/lib/client-cache"
+import { CardsSkeleton } from "@/components/ui/skeletons"
 
 // ============================================
 // ТИПЫ
@@ -120,6 +122,48 @@ function toCardStatus(routeStatus: string, orders: RouteOrder[]): string {
   return "pending"
 }
 
+/**
+ * Ответ API → карточки страницы: считаем загрузку машины, прогресс и статус.
+ * Чистая функция — её же вызываем из кеша, минуя сеть.
+ */
+function buildRouteCards(routes: ApiRoute[]): RouteData[] {
+  return routes.map((route) => {
+    const sortedOrders = [...route.orders].sort((a, b) => {
+      if (a.routeSequence != null && b.routeSequence != null) {
+        return a.routeSequence - b.routeSequence
+      }
+      return 0
+    })
+
+    const totalWeight = route.stats?.totalWeight ?? 0
+    const vehicleCapacity = route.vehicle?.capacity || 0
+    const availableCapacity = Math.max(0, vehicleCapacity - totalWeight)
+
+    return {
+      id: route.id,
+      name: route.name,
+      routeStatus: route.status,
+      startedAt: route.startedAt,
+      completedAt: route.completedAt,
+      notes: route.notes,
+      driverName: route.driver?.name || "Не назначен",
+      driverId: route.driver?.id || null,
+      vehiclePlate: route.vehicle?.plate || "—",
+      vehicleId: route.vehicle?.id || null,
+      ordersCount: sortedOrders.length,
+      completedOrders: route.stats?.completedOrders ?? 0,
+      totalDistance: route.stats?.totalDistance ?? 0,
+      totalWeight,
+      totalPrice: route.stats?.totalPrice ?? 0,
+      availableCapacity,
+      utilizationPercent:
+        vehicleCapacity > 0 ? Math.round((totalWeight / vehicleCapacity) * 100) : 0,
+      status: toCardStatus(route.status, sortedOrders),
+      orders: sortedOrders,
+    }
+  })
+}
+
 // ============================================
 // КОМПОНЕНТ
 // ============================================
@@ -143,81 +187,58 @@ export default function RoutesPage() {
 
   // Рейсы читаются из таблицы Route (задача 2): один запрос вместо
   // «заказы лимитом 500 → группировка по routeId → два запроса за справочниками».
-  const fetchRoutes = useCallback(async () => {
-    setIsLoading(true)
-    try {
+  const fetchRoutes = useCallback(
+    async (options?: { force?: boolean }) => {
       const statusFilter =
-        activeTab === "active"
-          ? "planned,active,in_transit"
-          : "completed,cancelled"
+        activeTab === "active" ? "planned,active,in_transit" : "completed,cancelled"
+      const url = `/api/routes?status=${statusFilter}&limit=200`
 
-      const res = await fetch(`/api/routes?status=${statusFilter}&limit=200`, {
-        cache: "no-store",
-      })
-      const data = (await res.json()) as {
-        success?: boolean
-        error?: string
-        routes?: ApiRoute[]
+      // Вкладка «Активные» и «Завершённые» — разные адреса, поэтому у каждой
+      // свой кеш: переключение туда-обратно рисуется мгновенно.
+      // force = «данные изменились»: сбрасываем все запросы рейсов, включая
+      // списки фильтров на других страницах (фото, песочница)
+      if (options?.force) invalidateCache("/api/routes")
+      const known = options?.force ? null : peekCache<{ routes?: ApiRoute[] }>(url)
+      if (known) {
+        setRoutes(buildRouteCards(known.data.routes ?? []))
+        setIsLoading(false)
+      } else {
+        setIsLoading(true)
       }
 
-      if (!data.success) {
-        throw new Error(data.error || "Failed to fetch routes")
-      }
+      try {
+        const data = await fetchJsonCached<{
+          success?: boolean
+          error?: string
+          routes?: ApiRoute[]
+        }>(url, { force: options?.force })
 
-      const enrichedRoutes: RouteData[] = (data.routes || []).map((route) => {
-        const sortedOrders = [...route.orders].sort((a, b) => {
-          if (a.routeSequence != null && b.routeSequence != null) {
-            return a.routeSequence - b.routeSequence
-          }
-          return 0
-        })
-
-        const totalWeight = route.stats?.totalWeight ?? 0
-        const vehicleCapacity = route.vehicle?.capacity || 0
-        const availableCapacity = Math.max(0, vehicleCapacity - totalWeight)
-
-        return {
-          id: route.id,
-          name: route.name,
-          routeStatus: route.status,
-          startedAt: route.startedAt,
-          completedAt: route.completedAt,
-          notes: route.notes,
-          driverName: route.driver?.name || "Не назначен",
-          driverId: route.driver?.id || null,
-          vehiclePlate: route.vehicle?.plate || "—",
-          vehicleId: route.vehicle?.id || null,
-          ordersCount: sortedOrders.length,
-          completedOrders: route.stats?.completedOrders ?? 0,
-          totalDistance: route.stats?.totalDistance ?? 0,
-          totalWeight,
-          totalPrice: route.stats?.totalPrice ?? 0,
-          availableCapacity,
-          utilizationPercent:
-            vehicleCapacity > 0
-              ? Math.round((totalWeight / vehicleCapacity) * 100)
-              : 0,
-          status: toCardStatus(route.status, sortedOrders),
-          orders: sortedOrders,
+        if (!data.success) {
+          throw new Error(data.error || "Failed to fetch routes")
         }
-      })
 
-      setRoutes(enrichedRoutes)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Неизвестная ошибка"
-      console.error("Failed to fetch routes:", message)
-      toast.error(`Ошибка загрузки маршрутов: ${message}`)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [activeTab])
+        setRoutes(buildRouteCards(data.routes || []))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Неизвестная ошибка"
+        console.error("Failed to fetch routes:", message)
+        toast.error(`Ошибка загрузки маршрутов: ${message}`)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [activeTab],
+  )
 
   useEffect(() => {
-    if (user) {
-      fetchRoutes()
-      const interval = setInterval(fetchRoutes, 30000)
-      return () => clearInterval(interval)
-    }
+    if (!user) return
+
+    void fetchRoutes()
+    // Обновляем в фоне, но только когда вкладка видима: иначе десяток открытых
+    // вкладок молотит один и тот же список
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") void fetchRoutes({ force: true })
+    }, 30000)
+    return () => clearInterval(interval)
   }, [user, fetchRoutes])
 
   const filteredRoutes = routes.filter((route) => {
@@ -404,7 +425,7 @@ export default function RoutesPage() {
             <Button
               variant="outline"
               size="icon"
-              onClick={fetchRoutes}
+              onClick={() => void fetchRoutes({ force: true })}
               disabled={isLoading}
               aria-label="Обновить список маршрутов"
               title="Обновить список маршрутов"
@@ -417,9 +438,7 @@ export default function RoutesPage() {
 
           {/* Контент */}
           {isLoading ? (
-            <div className="flex justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
+            <CardsSkeleton count={3} className="xl:grid-cols-2" />
           ) : filteredRoutes.length === 0 ? (
             <div className="text-center py-20 bg-muted/30 rounded-xl border border-dashed">
               <Route className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
@@ -437,7 +456,7 @@ export default function RoutesPage() {
                   key={route.id}
                   route={route}
                   onAddLoad={() => setAddLoadRoute(route)}
-                  onRefresh={fetchRoutes}
+                  onRefresh={() => void fetchRoutes({ force: true })}
                 />
               ))}
             </div>
@@ -451,7 +470,7 @@ export default function RoutesPage() {
         route={addLoadRoute}
         onSuccess={() => {
           setAddLoadRoute(null)
-          fetchRoutes()
+          void fetchRoutes({ force: true })
         }}
       />
     </div>

@@ -12,6 +12,8 @@ import { ChatList } from "@/components/chat/chat-list"
 import { ChatMessages } from "@/components/chat/chat-messages"
 import { ChatInput } from "@/components/chat/chat-input"
 import type { ChatMessage } from "@/lib/types"
+import { fetchJsonCached, invalidateCache, peekCache } from "@/lib/client-cache"
+import { FeedSkeleton } from "@/components/ui/skeletons"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -41,10 +43,12 @@ export default function ChatPage() {
   // Загрузка водителей
   const fetchDrivers = useCallback(async () => {
     try {
-      const res = await fetch('/api/drivers')
-      const data = await res.json()
+      // Справочник водителей общий для чата и автопарка — берём из кеша
+      const data = await fetchJsonCached<{ success?: boolean; drivers?: Driver[] }>(
+        '/api/drivers',
+      )
       if (data.success) {
-        setDrivers(data.drivers)
+        setDrivers(data.drivers ?? [])
       }
     } catch (error) {
       console.error('Failed to fetch drivers:', error)
@@ -53,15 +57,24 @@ export default function ChatPage() {
 
   // Загрузка сообщений
   const fetchMessages = useCallback(async () => {
+    const url = selectedDriverId
+      ? `/api/chat?driverId=${selectedDriverId}`
+      : '/api/chat'
+
+    // Переписка «живая»: данные всё равно перечитываем с сервера, но если
+    // диалог уже открывали — показываем его сразу, без пустого экрана
+    const known = peekCache<{ messages?: ChatMessage[] }>(url)
+    if (known?.data.messages) {
+      setMessages(known.data.messages)
+      setIsLoading(false)
+    }
+
     try {
-      const url = selectedDriverId 
-        ? `/api/chat?driverId=${selectedDriverId}`
-        : '/api/chat'
-      const res = await fetch(url)
-      const data = await res.json()
-      if (data.success) {
-        setMessages(data.messages)
-      }
+      const data = await fetchJsonCached<{ success?: boolean; messages?: ChatMessage[] }>(
+        url,
+        { ttlMs: 2000 },
+      )
+      if (data.success) setMessages(data.messages ?? [])
     } catch (error) {
       console.error('Failed to fetch messages:', error)
     } finally {
@@ -119,6 +132,8 @@ export default function ChatPage() {
       
       const data = await res.json()
       if (data.success) {
+        // В кеше лента без только что отправленного сообщения
+        invalidateCache("/api/chat")
         setMessages(prev => [...prev, data.message])
       }
     } catch (error) {
@@ -183,9 +198,7 @@ export default function ChatPage() {
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto">
                 {isLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
+                  <FeedSkeleton rows={5} />
                 ) : (
                   <ChatList
                     drivers={drivers}

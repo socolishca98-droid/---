@@ -44,6 +44,8 @@ import {
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { toast } from "sonner"
+import { fetchJsonCached, invalidateCache, peekCache } from "@/lib/client-cache"
+import { CardsSkeleton, KpiSkeleton } from "@/components/ui/skeletons"
 
 interface DriverItem {
   id: string
@@ -120,9 +122,8 @@ export default function DriversPage() {
 
   const loadDrivers = useCallback(async () => {
     try {
-      const res = await fetch("/api/drivers")
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
+      // Через кеш: тот же справочник нужен чату, фото и автопарку
+      const data = await fetchJsonCached<{ success?: boolean; drivers?: any[] }>("/api/drivers")
       if (data.success && Array.isArray(data.drivers)) {
         setDrivers(data.drivers)
       } else {
@@ -138,9 +139,14 @@ export default function DriversPage() {
   }, [])
 
   useEffect(() => {
-    if (user) {
-      loadDrivers()
+    if (!user) return
+    // Второй заход показываем сразу, без экрана загрузки
+    const known = peekCache<{ drivers?: any[] }>("/api/drivers")
+    if (known?.data.drivers) {
+      setDrivers(known.data.drivers)
+      setIsLoading(false)
     }
+    void loadDrivers()
   }, [user, loadDrivers])
 
   const handleStatusChange = async (driverId: string, newStatus: string) => {
@@ -152,6 +158,8 @@ export default function DriversPage() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
+        // Справочник водителей читают чат, фото и автопарк — в кеше он устарел
+        invalidateCache("/api/drivers")
         toast.success(`Статус обновлен на: ${statusConfig[newStatus]?.label || newStatus}`)
         setDrivers((prev) =>
           prev.map((d: any) => (d.id === driverId ? { ...d, status: newStatus } : d))
@@ -180,6 +188,7 @@ export default function DriversPage() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
+        invalidateCache("/api/drivers")
         toast.success("Водитель успешно добавлен в автопарк")
         setIsAddOpen(false)
         setFormData({
@@ -200,7 +209,31 @@ export default function DriversPage() {
     }
   }
 
-  if (authLoading || isLoading) {
+  // Пока грузим справочник — рисуем структуру страницы: список не «прыгнет»,
+  // когда придут данные
+  if (isLoading && !authLoading) {
+    return (
+      <div className="min-h-screen">
+        <Sidebar />
+        <div
+          className="transition-all duration-300 ease-in-out"
+          style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+        >
+          <Header />
+          <main className="p-6 space-y-6">
+            <div className="space-y-2">
+              <div className="skeleton-shimmer h-8 w-56 rounded-md" />
+              <div className="skeleton-shimmer h-4 w-80 rounded-md" />
+            </div>
+            <KpiSkeleton />
+            <CardsSkeleton count={6} />
+          </main>
+        </div>
+      </div>
+    )
+  }
+
+  if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -358,7 +391,7 @@ export default function DriversPage() {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="stagger-in grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredDrivers.map((driver: any) => {
                 const status = statusConfig[driver.status] || statusConfig.offline
                 const initials = driver.name
@@ -371,7 +404,7 @@ export default function DriversPage() {
                 return (
                   <Card
                     key={driver.id}
-                    className="bg-card/60 backdrop-blur border-border hover:border-primary/40 transition-all flex flex-col justify-between"
+                    className="card-interactive bg-card/60 backdrop-blur border-border flex flex-col justify-between"
                   >
                     <CardContent className="p-4 space-y-4">
                       {/* Driver Header */}

@@ -29,19 +29,13 @@ import { useRouter } from "next/navigation"
 import { PageLayout } from "@/components/page-layout"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
+import { fetchJsonCached, invalidateCache } from "@/lib/client-cache"
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import {
   Dialog,
   DialogContent,
@@ -168,14 +162,9 @@ export default function UsersPage() {
       })
       if (query.trim()) params.set("q", query.trim())
 
-      const res = await fetch(`/api/auth/users?${params.toString()}`, { cache: "no-store" })
-      const data = await res.json().catch(() => ({}))
-
-      if (!res.ok || !data?.success) {
-        toast.error(data?.error || "Не удалось загрузить список сотрудников")
-        setUsers([])
-        return
-      }
+      // Через кеш: пагинация, фильтры и поиск листаются туда-обратно, и каждый
+      // шаг не должен тянуть таблицу заново
+      const data = await fetchJsonCached<any>(`/api/auth/users?${params.toString()}`)
 
       setUsers(data.users || [])
       setPagination(data.pagination || null)
@@ -211,6 +200,9 @@ export default function UsersPage() {
         return { ok: false, message: data?.error }
       }
 
+      // Список и счётчик заявок изменились: кеш страницы больше не актуален,
+      // иначе повторный запрос вернул бы старую строку со статусом
+      invalidateCache("/api/auth/users")
       toast.success(data.message || "Готово")
       return { ok: true, message: data.message, temporaryPassword: data.temporaryPassword }
     } catch (error) {
@@ -272,6 +264,225 @@ export default function UsersPage() {
     if (result.ok) void fetchUsers()
   }
 
+  // Столбцы таблицы сотрудников — рисует единый DataTable
+  const userColumns: DataTableColumn<UserRow>[] = [
+    {
+      key: "person",
+      label: "Сотрудник",
+      align: undefined,
+      cell: (row) => {
+        const status = STATUS_META[row.status] || STATUS_META.pending
+        const busy = busyUserId === row.id
+        const isSelf = row.id === user?.id
+        return (
+          <>
+            <div className="font-medium">{row.name}</div>
+            <div className="text-xs text-muted-foreground">
+              {row.email || row.phone || "—"}
+              {row.driver?.vehiclePlate ? ` · ${row.driver.vehiclePlate}` : ""}
+            </div>
+            {row.isLocked && (
+              <Badge variant="outline" className="mt-1 border-destructive/40 text-destructive text-[10px]">
+                вход заблокирован
+              </Badge>
+            )}
+            {row.mustChangePassword && (
+              <Badge variant="outline" className="mt-1 ml-1 border-amber-500/40 text-amber-500 text-[10px]">
+                сменит пароль при входе
+              </Badge>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      key: "role",
+      label: "Роль",
+      align: undefined,
+      cell: (row) => {
+        const status = STATUS_META[row.status] || STATUS_META.pending
+        const busy = busyUserId === row.id
+        const isSelf = row.id === user?.id
+        return (
+          <>
+            {isAdmin && !row.driverId && row.status !== "pending" ? (
+              <Select
+                value={row.role}
+                onValueChange={(value) => void handleRoleChange(row, value)}
+                disabled={busy || isSelf || !isAdmin}
+              >
+                <SelectTrigger className="w-40 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Администратор</SelectItem>
+                  <SelectItem value="logist">Логист</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-sm">
+                {ROLE_LABELS[row.role] || row.role}
+                {row.status === "pending" && (
+                  <span className="text-xs text-muted-foreground"> · из кода</span>
+                )}
+              </span>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      key: "status",
+      label: "Статус",
+      align: undefined,
+      cell: (row) => {
+        const status = STATUS_META[row.status] || STATUS_META.pending
+        const busy = busyUserId === row.id
+        const isSelf = row.id === user?.id
+        return (
+          <>
+            <Badge variant="outline" className={status.className}>
+              {status.label}
+            </Badge>
+            {row.status === "suspended" && row.suspendReason && (
+              <div className="text-xs text-muted-foreground mt-1 max-w-[220px]">
+                {row.suspendReason}
+              </div>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      key: "login",
+      label: "Последний вход",
+      align: undefined,
+      cellClassName: "text-sm text-muted-foreground",
+      cell: (row) => {
+        const status = STATUS_META[row.status] || STATUS_META.pending
+        const busy = busyUserId === row.id
+        const isSelf = row.id === user?.id
+        return (
+          <>
+            {formatDate(row.lastLoginAt)}
+          </>
+        )
+      },
+    },
+    {
+      key: "sessions",
+      label: "Сессии",
+      align: "center",
+      cellClassName: "text-center text-center text-sm",
+      cell: (row) => {
+        const status = STATUS_META[row.status] || STATUS_META.pending
+        const busy = busyUserId === row.id
+        const isSelf = row.id === user?.id
+        return (
+          <>
+            {row.activeSessions}
+          </>
+        )
+      },
+    },
+    {
+      key: "actions",
+      label: "Действия",
+      align: "right",
+      cellClassName: "text-right",
+      cell: (row) => {
+        const status = STATUS_META[row.status] || STATUS_META.pending
+        const busy = busyUserId === row.id
+        const isSelf = row.id === user?.id
+        return (
+          <>
+            <div className="flex items-center justify-end gap-2 flex-wrap">
+              {row.status === "pending" && (
+                <>
+                  {/* Одобрить заявку может и логист, и администратор
+                      организации (решение пользователя 2026-09-24). */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
+                    disabled={busy}
+                    onClick={() => void handleApprove(row)}
+                  >
+                    {busy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                    )}
+                    Одобрить
+                  </Button>
+                  {/* Отклонить заявку может и логист, и администратор:
+                      reject удаляет заявку и возвращает использование кода. */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={busy}
+                    onClick={() => setRejectTarget(row)}
+                  >
+                    <XCircle className="h-4 w-4 mr-1.5" />
+                    Отклонить
+                  </Button>
+                </>
+              )}
+              {row.status === "active" && !isSelf && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  disabled={busy || !isAdmin}
+                  onClick={() => {
+                    setSuspendReason("")
+                    setSuspendTarget(row)
+                  }}
+                >
+                  <ShieldOff className="h-4 w-4 mr-1.5" />
+                  Закрыть доступ
+                </Button>
+              )}
+              {row.status === "suspended" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || !isAdmin}
+                  onClick={() => void handleRestore(row)}
+                >
+                  <ShieldCheck className="h-4 w-4 mr-1.5" />
+                  Восстановить
+                </Button>
+              )}
+              {row.isLocked && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || !isAdmin}
+                  onClick={() => void handleUnlock(row)}
+                >
+                  Снять блокировку
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy || !isAdmin}
+                onClick={() => {
+                  setTemporaryPassword(null)
+                  setResetTarget(row)
+                }}
+              >
+                <KeyRound className="h-4 w-4 mr-1.5" />
+                Сбросить пароль
+              </Button>
+            </div>
+          </>
+        )
+      },
+    },
+  ]
   return (
     <PageLayout
       title="Сотрудники и доступ"
@@ -336,197 +547,17 @@ export default function UsersPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-secondary/40">
-                <TableHead>Сотрудник</TableHead>
-                <TableHead>Роль</TableHead>
-                <TableHead>Статус</TableHead>
-                <TableHead>Последний вход</TableHead>
-                <TableHead className="text-center">Сессии</TableHead>
-                <TableHead className="text-right">Действия</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                    Загружаем...
-                  </TableCell>
-                </TableRow>
-              ) : users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                    Никого не найдено
-                  </TableCell>
-                </TableRow>
-              ) : (
-                users.map((row) => {
-                  const status = STATUS_META[row.status] || STATUS_META.pending
-                  const busy = busyUserId === row.id
-                  const isSelf = row.id === user?.id
-
-                  return (
-                    <TableRow key={row.id}>
-                      <TableCell>
-                        <div className="font-medium">{row.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {row.email || row.phone || "—"}
-                          {row.driver?.vehiclePlate ? ` · ${row.driver.vehiclePlate}` : ""}
-                        </div>
-                        {row.isLocked && (
-                          <Badge variant="outline" className="mt-1 border-destructive/40 text-destructive text-[10px]">
-                            вход заблокирован
-                          </Badge>
-                        )}
-                        {row.mustChangePassword && (
-                          <Badge variant="outline" className="mt-1 ml-1 border-amber-500/40 text-amber-500 text-[10px]">
-                            сменит пароль при входе
-                          </Badge>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        {isAdmin && !row.driverId && row.status !== "pending" ? (
-                          <Select
-                            value={row.role}
-                            onValueChange={(value) => void handleRoleChange(row, value)}
-                            disabled={busy || isSelf || !isAdmin}
-                          >
-                            <SelectTrigger className="w-40 h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="admin">Администратор</SelectItem>
-                              <SelectItem value="logist">Логист</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <span className="text-sm">
-                            {ROLE_LABELS[row.role] || row.role}
-                            {row.status === "pending" && (
-                              <span className="text-xs text-muted-foreground"> · из кода</span>
-                            )}
-                          </span>
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge variant="outline" className={status.className}>
-                          {status.label}
-                        </Badge>
-                        {row.status === "suspended" && row.suspendReason && (
-                          <div className="text-xs text-muted-foreground mt-1 max-w-[220px]">
-                            {row.suspendReason}
-                          </div>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDate(row.lastLoginAt)}
-                      </TableCell>
-
-                      <TableCell className="text-center text-sm">
-                        {row.activeSessions}
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {row.status === "pending" && (
-                            <>
-                              {/* Одобрить заявку может и логист, и администратор
-                                  организации (решение пользователя 2026-09-24). */}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
-                                disabled={busy}
-                                onClick={() => void handleApprove(row)}
-                              >
-                                {busy ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                                )}
-                                Одобрить
-                              </Button>
-                              {/* Отклонить заявку может и логист, и администратор:
-                                  reject удаляет заявку и возвращает использование кода. */}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-destructive hover:text-destructive"
-                                disabled={busy}
-                                onClick={() => setRejectTarget(row)}
-                              >
-                                <XCircle className="h-4 w-4 mr-1.5" />
-                                Отклонить
-                              </Button>
-                            </>
-                          )}
-
-                          {row.status === "active" && !isSelf && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive hover:text-destructive"
-                              disabled={busy || !isAdmin}
-                              onClick={() => {
-                                setSuspendReason("")
-                                setSuspendTarget(row)
-                              }}
-                            >
-                              <ShieldOff className="h-4 w-4 mr-1.5" />
-                              Закрыть доступ
-                            </Button>
-                          )}
-
-                          {row.status === "suspended" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={busy || !isAdmin}
-                              onClick={() => void handleRestore(row)}
-                            >
-                              <ShieldCheck className="h-4 w-4 mr-1.5" />
-                              Восстановить
-                            </Button>
-                          )}
-
-                          {row.isLocked && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={busy || !isAdmin}
-                              onClick={() => void handleUnlock(row)}
-                            >
-                              Снять блокировку
-                            </Button>
-                          )}
-
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={busy || !isAdmin}
-                            onClick={() => {
-                              setTemporaryPassword(null)
-                              setResetTarget(row)
-                            }}
-                          >
-                            <KeyRound className="h-4 w-4 mr-1.5" />
-                            Сбросить пароль
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        <DataTable
+          columns={userColumns}
+          rows={users}
+          rowKey={(row) => row.id}
+          density="compact"
+          isLoading={isLoading}
+          skeletonRows={5}
+          empty={
+            <p className="py-12 text-center text-sm text-muted-foreground">Никого не найдено</p>
+          }
+        />
 
         {pagination && pagination.totalPages > 1 && (
           <div className="flex items-center justify-between">

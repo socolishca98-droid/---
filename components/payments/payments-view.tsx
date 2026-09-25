@@ -34,6 +34,9 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { PaymentTermsDialog, type PaymentTermsTarget } from "./payment-terms-dialog"
+import { TableSkeleton, KpiSkeleton } from "@/components/ui/skeletons"
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
+import { fetchJsonCached, peekCache } from "@/lib/client-cache"
 
 type PaymentRow = {
   id: string
@@ -75,6 +78,14 @@ type Stats = {
   avgPaymentDays: number | null
 }
 
+type PaymentsPayload = {
+  success?: boolean
+  orders?: PaymentRow[]
+  stats?: Stats
+  debtors?: Debtor[]
+  error?: string
+}
+
 type Debtor = {
   key: string
   clientId: string | null
@@ -102,6 +113,7 @@ const EMPTY_STATS: Stats = {
   totalOrders: 0,
   avgPaymentDays: null,
 }
+
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "Наличные",
@@ -186,12 +198,12 @@ export function PaymentsView() {
         params.set("tab", activeTab === "debtors" ? "pending" : activeTab)
         if (activeSearch.trim()) params.set("q", activeSearch.trim())
 
-        const res = await fetch(`/api/payments?${params.toString()}`)
-        const data = await res.json().catch(() => null)
-
-        if (!res.ok || !data?.success) {
-          throw new Error(data?.error || "Не удалось загрузить оплаты")
-        }
+        // Через кеш: возврат на вкладку рисуется мгновенно из памяти,
+        // а свежие суммы подставляются, когда ответит сервер
+        const data = await fetchJsonCached<PaymentsPayload>(
+          `/api/payments?${params.toString()}`,
+          { force: options?.quiet === true },
+        )
 
         setOrders(data.orders ?? [])
         setStats(data.stats ?? EMPTY_STATS)
@@ -207,8 +219,14 @@ export function PaymentsView() {
   )
 
   useEffect(() => {
+    // Смена вкладки: если данные уже приносили — показываем сразу, без скелетона.
+    // Поиск применяется по кнопке или Enter (там load вызывается явно).
+    const params = new URLSearchParams()
+    params.set("tab", tab === "debtors" ? "pending" : tab)
+    if (search.trim()) params.set("q", search.trim())
+    if (peekCache(`/api/payments?${params.toString()}`)) setIsLoading(false)
+
     void load()
-    // перезагрузка при смене вкладки; поиск применяется по кнопке или Enter
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
@@ -330,6 +348,84 @@ export function PaymentsView() {
     })
   }
 
+const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
+  {
+    key: "client",
+    label: "Клиент",
+    cell: (debtor) => (
+      <>
+        <div className="font-medium">{debtor.clientName}</div>
+        {debtor.inn && <div className="text-xs text-muted-foreground">ИНН {debtor.inn}</div>}
+      </>
+    ),
+  },
+  {
+    key: "debt",
+    label: "Долг",
+    align: "right",
+    cellClassName: "font-medium",
+    cell: (debtor) => money(debtor.debt),
+  },
+  {
+    key: "overdue",
+    label: "Из них просрочено",
+    align: "right",
+    cell: (debtor) =>
+      debtor.overdue > 0 ? (
+        <>
+          <span className="text-destructive">{money(debtor.overdue)}</span>
+          <div className="text-xs text-destructive">до {debtor.maxOverdueDays} дн.</div>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground">нет</span>
+      ),
+  },
+  {
+    key: "orders",
+    label: "Заказов",
+    align: "right",
+    cell: (debtor) => (
+      <>
+        {debtor.ordersCount}
+        {debtor.overdueCount > 0 && (
+          <div className="text-xs text-muted-foreground">
+            из них {debtor.overdueCount} с просрочкой
+          </div>
+        )}
+      </>
+    ),
+  },
+  {
+    key: "oldest",
+    label: "Самый старый срок",
+    cellClassName: "text-xs text-muted-foreground",
+    cell: (debtor) => date(debtor.oldestDueDate),
+  },
+  {
+    key: "actions",
+    label: null,
+    align: "right",
+    cell: (debtor) =>
+      debtor.clientId ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(event) => {
+            event.stopPropagation()
+            setCardClientId(debtor.clientId as string)
+            setIsCardOpen(true)
+          }}
+        >
+          Карточка
+        </Button>
+      ) : (
+        <Badge variant="outline" className="text-[10px]">
+          нет карточки клиента
+        </Badge>
+      ),
+  },
+]
+
   const emptyLabel: Record<string, string> = {
     pending: "Нет счетов, ожидающих оплаты",
     deferred: "Заказов с отсрочкой нет",
@@ -377,69 +473,75 @@ export function PaymentsView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
-              <Clock className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xl font-bold">{shortMoney(stats.totalPending)}</p>
-              <p className="text-xs text-muted-foreground">
-                К получению · {stats.pendingCount}{" "}
-                {plural(stats.pendingCount, "заказ", "заказа", "заказов")}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {isLoading ? (
+        <KpiSkeleton />
+      ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 stagger-in">
+          <Card className="card-interactive">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{shortMoney(stats.totalPending)}</p>
+                <p className="text-xs text-muted-foreground">
+                  К получению · {stats.pendingCount}{" "}
+                  {plural(stats.pendingCount, "заказ", "заказа", "заказов")}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-500">
-              <Calendar className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xl font-bold">{shortMoney(stats.totalDeferred)}</p>
-              <p className="text-xs text-muted-foreground">С отсрочкой · {stats.deferredCount}</p>
-            </div>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-500">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{shortMoney(stats.totalDeferred)}</p>
+                <p className="text-xs text-muted-foreground">С отсрочкой · {stats.deferredCount}</p>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className={stats.overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : ""}>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="rounded-xl bg-destructive/10 p-2.5 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <div>
-              <p
-                className={
-                  stats.overdueCount > 0 ? "text-xl font-bold text-destructive" : "text-xl font-bold"
-                }
-              >
-                {shortMoney(stats.totalOverdue)}
-              </p>
-              <p className="text-xs text-muted-foreground">Просрочено · {stats.overdueCount}</p>
-            </div>
-          </CardContent>
-        </Card>
+          <Card
+            className={`card-interactive ${stats.overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : ""}`}
+          >
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="rounded-xl bg-destructive/10 p-2.5 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <p
+                  className={
+                    stats.overdueCount > 0 ? "text-xl font-bold text-destructive" : "text-xl font-bold"
+                  }
+                >
+                  {shortMoney(stats.totalOverdue)}
+                </p>
+                <p className="text-xs text-muted-foreground">Просрочено · {stats.overdueCount}</p>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-500">
-              <Banknote className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xl font-bold">{shortMoney(stats.totalPaid)}</p>
-              <p className="text-xs text-muted-foreground">
-                Получено · {stats.paidCount}
-                {stats.avgPaymentDays !== null
-                  ? `, ${stats.avgPaymentDays > 0 ? "+" : ""}${stats.avgPaymentDays} дн. к сроку`
-                  : ""}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-500">
+                <Banknote className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{shortMoney(stats.totalPaid)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Получено · {stats.paidCount}
+                  {stats.avgPaymentDays !== null
+                    ? `, ${stats.avgPaymentDays > 0 ? "+" : ""}${stats.avgPaymentDays} дн. к сроку`
+                    : ""}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {stats.overdueCount > 0 && (
         <Card className="border-destructive/40 bg-destructive/5">
@@ -535,85 +637,23 @@ export function PaymentsView() {
 
         <TabsContent value={tab} className="space-y-3">
           {isLoading ? (
-            <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Загружаем оплаты…
-            </div>
-          ) : tab === "debtors" ? (
-            debtors.length === 0 ? (
-              <EmptyState text={emptyLabel.debtors} />
+            tab === "debtors" ? (
+              <TableSkeleton rows={5} columns={5} />
             ) : (
-              <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-xs text-muted-foreground">
-                      <tr className="text-left">
-                        <th className="p-3 font-medium">Клиент</th>
-                        <th className="p-3 text-right font-medium">Долг</th>
-                        <th className="p-3 text-right font-medium">Из них просрочено</th>
-                        <th className="p-3 text-right font-medium">Заказов</th>
-                        <th className="p-3 font-medium">Самый старый срок</th>
-                        <th className="p-3" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {debtors.map((debtor) => (
-                        <tr key={debtor.key} className="border-t">
-                          <td className="p-3">
-                            <div className="font-medium">{debtor.clientName}</div>
-                            {debtor.inn && (
-                              <div className="text-xs text-muted-foreground">ИНН {debtor.inn}</div>
-                            )}
-                          </td>
-                          <td className="p-3 text-right font-medium">{money(debtor.debt)}</td>
-                          <td className="p-3 text-right">
-                            {debtor.overdue > 0 ? (
-                              <>
-                                <span className="text-destructive">{money(debtor.overdue)}</span>
-                                <div className="text-xs text-destructive">
-                                  до {debtor.maxOverdueDays} дн.
-                                </div>
-                              </>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">нет</span>
-                            )}
-                          </td>
-                          <td className="p-3 text-right">
-                            {debtor.ordersCount}
-                            {debtor.overdueCount > 0 && (
-                              <div className="text-xs text-muted-foreground">
-                                из них {debtor.overdueCount} с просрочкой
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 text-xs text-muted-foreground">
-                            {date(debtor.oldestDueDate)}
-                          </td>
-                          <td className="p-3 text-right">
-                            {debtor.clientId ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setCardClientId(debtor.clientId)
-                                  setIsCardOpen(true)
-                                }}
-                              >
-                                Карточка
-                              </Button>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px]">
-                                нет карточки клиента
-                              </Badge>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
+              <TableSkeleton rows={6} columns={6} />
             )
+          ) : tab === "debtors" ? (
+            <DataTable
+              columns={DEBTOR_COLUMNS}
+              rows={debtors}
+              rowKey={(debtor) => debtor.key}
+              empty={<EmptyState text={emptyLabel.debtors} />}
+              onRowClick={(debtor) => {
+                if (!debtor.clientId) return
+                setCardClientId(debtor.clientId)
+                setIsCardOpen(true)
+              }}
+            />
           ) : orders.length === 0 ? (
             <EmptyState text={emptyLabel[tab] ?? "Ничего не найдено"} />
           ) : (
