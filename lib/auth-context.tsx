@@ -15,11 +15,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useMemo,
   useState,
   type ReactNode,
 } from "react"
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
+import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
 
 export interface SessionUser {
   id: string
@@ -53,13 +55,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const refresh = useCallback(async () => {
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /**
+   * Проверка сессии сотрудника.
+   *
+   * Раньше любой не-2xx (в том числе разовый 429 или 500) обнулял пользователя:
+   * логиста выбрасывало из кабинета при живой сессии. Теперь состояние
+   * сохраняется, а запрос повторяется с паузой; выход — только по 401/403.
+   */
+  const refresh = useCallback(async (attempt = 0): Promise<void> => {
     try {
       const res = await fetch("/api/auth/session?kind=staff", { cache: "no-store" })
-      if (!res.ok) {
+      const outcome = classifySessionStatus(res.status)
+
+      if (outcome === "unauthorized") {
         setUser(null)
         return
       }
+
+      if (outcome === "transient") {
+        throw new Error(`сервер ответил ${res.status}`)
+      }
+
       const data = await res.json()
       if (data?.success && data.session?.user) {
         setUser({
@@ -79,8 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
       }
     } catch (error) {
-      console.error("[auth] не удалось получить сессию:", error)
-      setUser(null)
+      console.error("[auth] сессия не проверена, повтор:", error)
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = setTimeout(() => {
+        void refresh(attempt + 1)
+      }, retryDelayMs(attempt))
     } finally {
       setIsLoading(false)
     }

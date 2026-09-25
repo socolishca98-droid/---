@@ -12,9 +12,10 @@
  */
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
+import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
 
 // ============================================
 // ТИПЫ
@@ -60,7 +61,7 @@ interface UseDriverSessionReturn {
   login: (phone: string, password: string) => Promise<LoginDriverResult>
   logout: () => Promise<void>
   updateDriver: (updates: Partial<DriverSession>) => void
-  refresh: () => Promise<void>
+  refresh: (attempt?: number) => Promise<void>
 }
 
 const LOGIN_PATH = "/m/login"
@@ -84,34 +85,62 @@ export function useDriverSession(
     router.replace(loginPath)
   }, [requireAuth, loginPath, router])
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch("/api/auth/session?kind=driver", { cache: "no-store" })
-      if (!res.ok) {
-        setDriver(null)
-        redirectToLogin()
-        return
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /**
+   * Проверка сессии.
+   *
+   * Разовый 429/500 или обрыв сети больше не выбрасывает водителя на экран
+   * входа: состояние сохраняется, запрос повторяется с паузой. Выход — только
+   * когда сервер прямо сказал, что сессии нет (401/403).
+   */
+  const refresh = useCallback(
+    async (attempt = 0): Promise<void> => {
+      try {
+        const res = await fetch("/api/auth/session?kind=driver", { cache: "no-store" })
+        const outcome = classifySessionStatus(res.status)
+
+        if (outcome === "unauthorized") {
+          setDriver(null)
+          setMustChangePassword(false)
+          redirectToLogin()
+          return
+        }
+
+        if (outcome === "transient") {
+          throw new Error(`сервер ответил ${res.status}`)
+        }
+
+        const data = await res.json()
+        const sessionDriver = data?.session?.driver as DriverSession | undefined
+        if (!sessionDriver?.id) {
+          setDriver(null)
+          setMustChangePassword(false)
+          redirectToLogin()
+          return
+        }
+
+        setDriver(sessionDriver)
+        setMustChangePassword(Boolean(data.session.user?.mustChangePassword))
+      } catch (error) {
+        // Временная ошибка: сессию не трогаем, пробуем ещё раз
+        console.error("[useDriverSession] сессия не проверена, повтор:", error)
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = setTimeout(() => {
+          void refresh(attempt + 1)
+        }, retryDelayMs(attempt))
+      } finally {
+        setIsLoading(false)
       }
-      const data = await res.json()
-      const sessionDriver = data?.session?.driver as DriverSession | undefined
-      if (!sessionDriver?.id) {
-        setDriver(null)
-        redirectToLogin()
-        return
-      }
-      setDriver(sessionDriver)
-      setMustChangePassword(Boolean(data.session.user?.mustChangePassword))
-    } catch (error) {
-      console.error("[useDriverSession] ошибка загрузки сессии:", error)
-      setDriver(null)
-      redirectToLogin()
-    } finally {
-      setIsLoading(false)
-    }
-  }, [redirectToLogin])
+    },
+    [redirectToLogin],
+  )
 
   useEffect(() => {
     void refresh()
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    }
   }, [refresh])
 
   const login = useCallback(

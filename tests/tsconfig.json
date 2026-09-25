@@ -41,6 +41,7 @@
     "../lib/reports/aggregate.ts",
     "../lib/reports/insights.ts",
     "../lib/offline/photo-queue.ts",
-    "../lib/api-docs/endpoints.ts"
+    "../lib/api-docs/endpoints.ts",
+    "../lib/auth/refresh-policy.ts"
   ]
 }
