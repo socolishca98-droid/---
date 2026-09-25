@@ -113,6 +113,25 @@ test("спецификация измеряется по факту, а не н�
   assert.ok(spec.covered > 0, "хотя бы часть путей спецификации должна существовать в коде")
 })
 
+test("манифест docs/api-endpoints.json не устарел", () => {
+  // Страница /docs берёт список импортом из манифеста (в собранном образе
+  // исходников рядом нет). Значит, манифест обязан совпадать с кодом, иначе
+  // документация начнёт врать — именно от этого её и лечили.
+  const manifestPath = path.join(root, "docs", "api-endpoints.json")
+  assert.ok(fs.existsSync(manifestPath), "нет docs/api-endpoints.json — запустите npm run docs:api")
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
+  const fromCode = endpoints.map(({ method, route }) => `${method} ${route}`)
+  const fromManifest = manifest.endpoints.map(({ method, route }) => `${method} ${route}`)
+
+  assert.deepEqual(
+    fromManifest,
+    fromCode,
+    "манифест разошёлся с кодом: обновите его командой npm run docs:api",
+  )
+  assert.ok(manifest.generatedAt, "в манифесте должна быть дата сборки")
+})
+
 test("в документации и спецификации нет пароля администратора", () => {
   assert.ok(!fs.readFileSync(path.join(root, "docs", "openapi.yaml"), "utf-8").includes("demo_dev_only"))
   assert.ok(!fs.readFileSync(path.join(root, "app", "docs", "page.tsx"), "utf-8").includes("demo_dev_only"))

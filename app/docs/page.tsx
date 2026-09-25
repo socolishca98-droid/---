@@ -6,30 +6,31 @@
 // открытым текстом и устаревшие счётчики тестов. Такая «документация» врёт
 // сразу после первого изменения в коде.
 //
-// Теперь источник правды — сам код: страница сканирует каталог `app/api`,
-// читает HTTP-методы из обработчиков и строит список эндпоинтов. Ничего
-// вписывать руками не нужно, список не может разойтись с приложением.
-// Машинночитаемая спецификация (docs/openapi.yaml) отдаётся через /api/docs
-// и здесь показывается честно: сколько путей в ней описано из существующих.
+// Теперь источник правды — сам код: список эндпоинтов собирает
+// `npm run docs:api` (скрипт обходит app/api) в docs/api-endpoints.json, а
+// страница импортирует готовый манифест. Импорт, а не чтение файлов на месте,
+// — чтобы список был и в собранном образе, где исходников рядом нет.
+// Тест tests/api-docs.test.mjs следит, что манифест не устарел.
 
-import fs from "node:fs"
-import path from "node:path"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-
-import {
-  collectEndpoints,
-  groupEndpoints,
-  readOpenApiSummary,
-} from "@/lib/api-docs/endpoints"
+import manifest from "@/docs/api-endpoints.json"
+import { groupEndpoints, type Endpoint } from "@/lib/api-docs/endpoints"
 
 export const dynamic = "force-dynamic"
 
 export default function DocsPage() {
-  const endpoints = collectEndpoints(path.join(process.cwd(), "app", "api"))
+  const endpoints = manifest.endpoints as Endpoint[]
   const groups = groupEndpoints(endpoints)
-  const spec = readOpenApiSummary(undefined, endpoints)
+  const spec = manifest.openApi
+  const generatedAt = new Date(manifest.generatedAt).toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 
   return (
     <div className="min-h-screen p-6">
@@ -37,8 +38,8 @@ export default function DocsPage() {
         <div>
           <h1 className="text-3xl font-bold">API Loginex TMS</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Список составлен из кода приложения: каждый пункт — существующий обработчик.
-            Изменения в роутах появляются здесь сами, вписывать вручную нечего.
+            Список собран из кода приложения: каждый пункт — существующий обработчик,
+            вписывать вручную нечего. Обновлён {generatedAt}.
           </p>
         </div>
 
@@ -59,7 +60,9 @@ export default function DocsPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               Спецификация не обязана описывать всё сразу: непокрытые эндпоинты перечислены
-              ниже по фактическому коду. При расхождении верен код.
+              ниже по фактическому коду. При расхождении верен код. Обновить список после
+              правок: <code>npm run docs:api</code> (он же выполняется перед сборкой, а
+              расхождение ловит <code>npm test</code>).
             </p>
           </CardContent>
         </Card>

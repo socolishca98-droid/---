@@ -29,8 +29,19 @@ function collectFiles(dir) {
   return files
 }
 
-const allFiles = searchDirs.flatMap((dir) => collectFiles(path.join(root, dir)))
-const sources = new Map(allFiles.map((file) => [file, fs.readFileSync(file, "utf-8")]))
+// Файлы в корне (proxy.ts, instrumentation.ts, next.config.mjs) тоже содержат
+// импорты — без них проверка считала бы живые модули бесхозными
+const rootFiles = fs
+  .readdirSync(root, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /\.(ts|tsx|mjs|js)$/.test(entry.name))
+  .map((entry) => path.join(root, entry.name))
+
+// Корневые файлы — точки входа (их подхватывает Next, Vitest, сборщик):
+// они участвуют как источники ссылок, но сами «бесхозными» не считаются
+const projectFiles = searchDirs.flatMap((dir) => collectFiles(path.join(root, dir)))
+const sources = new Map(
+  [...projectFiles, ...rootFiles].map((file) => [file, fs.readFileSync(file, "utf-8")]),
+)
 
 /** Точки входа: их подхватывает Next или тесты — ссылок в коде у них не бывает */
 function isEntryPoint(relative) {
@@ -46,12 +57,15 @@ function isEntryPoint(relative) {
 
 const unreferenced = []
 
-for (const [file, source] of sources) {
+for (const file of projectFiles) {
   const relative = path.relative(root, file).split(path.sep).join("/")
-  if (isEntryPoint(relative)) continue
+  if (isEntryPoint(relative) || relative.endsWith(".d.ts")) continue
 
   const withoutExtension = relative.replace(/\.(tsx?|mjs|js)$/, "")
   const name = path.basename(withoutExtension)
+
+  // Импорт каталога: `lib/eta/index.ts` подключают как "@/lib/eta"
+  const directoryImport = name === "index" ? path.posix.dirname(withoutExtension) : null
 
   const referenced = [...sources.entries()].some(([otherFile, otherSource]) => {
     if (otherFile === file) return false
@@ -62,18 +76,23 @@ for (const [file, source] of sources) {
       otherSource.includes(`@/${withoutExtension}'`) ||
       otherSource.includes(`/${name}"`) ||
       otherSource.includes(`/${name}'`) ||
+      // относительные динамические импорты вида import("./lib/sentry")
+      otherSource.includes(`"./${withoutExtension}"`) ||
+      otherSource.includes(`'./${withoutExtension}'`) ||
       otherSource.includes(`"${name}"`) ||
       otherSource.includes(`'${name}'`) ||
       new RegExp(`[\"'/]${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\"']`).test(otherSource) ||
-      new RegExp(`from\\s+[\"'][^\"']*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\"']`).test(otherSource)
+      new RegExp(`from\\s+[\"'][^\"']*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\"']`).test(otherSource) ||
+      (directoryImport !== null &&
+        (otherSource.includes(`/${directoryImport}"`) || otherSource.includes(`/${directoryImport}'`)))
   })
 
   if (!referenced) unreferenced.push(relative)
 }
 
 if (unreferenced.length === 0) {
-  console.log(`Файлов проверено: ${allFiles.length}. На бесхозные ничего не похоже.`)
+  console.log(`Файлов проверено: ${projectFiles.length}. На бесхозные ничего не похоже.`)
 } else {
-  console.log(`Файлов проверено: ${allFiles.length}. Без ссылок: ${unreferenced.length}`)
+  console.log(`Файлов проверено: ${projectFiles.length}. Без ссылок: ${unreferenced.length}`)
   for (const file of unreferenced.sort()) console.log("  " + file)
 }

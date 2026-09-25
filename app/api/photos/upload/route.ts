@@ -148,9 +148,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Сохраняем файл: public/uploads/<организация>/<дата>-<имя>
-    const relativeDir = path.join(org.organizationId ?? "shared", new Date().toISOString().slice(0, 10))
-    const absoluteDir = path.join(process.cwd(), "public", "uploads", relativeDir)
+    // Сохраняем файл: public/uploads/<организация>/<дата>/<имя>.
+    // Корень каталога — константа (папка задана статически), динамическая часть
+    // добавляется второй ступенью: иначе сборщик считает путь произвольным и
+    // тянет в образ весь проект целиком
+    const uploadsRoot = path.join(process.cwd(), "public", "uploads")
+    const relativeDir = path.join(
+      org.organizationId ?? "shared",
+      new Date().toISOString().slice(0, 10),
+    )
+    const absoluteDir = path.join(uploadsRoot, relativeDir)
 
     await mkdir(absoluteDir, { recursive: true })
 
