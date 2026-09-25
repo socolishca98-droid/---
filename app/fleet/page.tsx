@@ -34,11 +34,13 @@ import {
   Settings,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 export default function FleetPage() {
   const { user, isLoading: authLoading } = useAuth()
   const { isCollapsed } = useSidebar()
   const router = useRouter()
+  const confirm = useConfirm()
 
   const {
     drivers,
@@ -129,7 +131,13 @@ export default function FleetPage() {
 
   // Helpers
   const handleDeleteVehicle = async (id: string) => {
-    if (!confirm("Удалить транспорт?")) return
+    const ok = await confirm({
+      title: "Удалить транспорт?",
+      description: "Машина исчезнет из автопарка. История рейсов, где она была, сохранится.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
     try {
       await deleteVehicle(id)
       toast.success("Транспорт удалён")
@@ -139,7 +147,13 @@ export default function FleetPage() {
   }
 
   const handleDeleteDriver = async (id: string) => {
-    if (!confirm("Удалить водителя?")) return
+    const ok = await confirm({
+      title: "Удалить водителя?",
+      description: "Учётная запись водителя и вход в мобильное приложение перестанут работать.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
     try {
       await deleteDriver(id)
       toast.success("Водитель удалён")

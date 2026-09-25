@@ -16,8 +16,10 @@ import {
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 export default function DriverNotificationsPage() {
+  const confirm = useConfirm()
   const router = useRouter()
   // Сессия — серверная (httpOnly-cookie): раньше здесь читалась запись
   // «driver_session» из localStorage, которой больше не существует
@@ -64,11 +66,17 @@ export default function DriverNotificationsPage() {
     }
   }
 
-  const handleClearAll = () => {
-    if (confirm("Удалить все уведомления?")) {
-      clearAll()
-      toast.success("Уведомления очищены")
-    }
+  const handleClearAll = async () => {
+    const ok = await confirm({
+      title: "Удалить все уведомления?",
+      description: "Список уведомлений очистится. Пропущенные задачи останутся в рейсе.",
+      confirmLabel: "Очистить",
+      destructive: true,
+    })
+    if (!ok) return
+
+    clearAll()
+    toast.success("Уведомления очищены")
   }
 
   const formatTime = (iso: string) => {

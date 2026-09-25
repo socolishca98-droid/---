@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   Dialog,
   DialogContent,
@@ -153,6 +154,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const [applyingOptimizer, setApplyingOptimizer] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const confirm = useConfirm()
 
   const progress =
     route.ordersCount > 0 ? Math.round((route.completedOrders / route.ordersCount) * 100) : 0
@@ -220,9 +222,13 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const handleCompleteRoute = async () => {
     if (isCompleting || isCancelling) return
 
-    if (!window.confirm("Завершить рейс? Все незавершённые точки будут помечены как 'доставлено'.")) {
-      return
-    }
+    const ok = await confirm({
+      title: "Завершить рейс?",
+      description:
+        "Все незавершённые точки будут помечены как «доставлено», машина и водитель освободятся.",
+      confirmLabel: "Завершить рейс",
+    })
+    if (!ok) return
 
     setIsCompleting(true)
     try {
@@ -250,13 +256,14 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const handleCancelRoute = async () => {
     if (isCancelling || isCompleting) return
 
-    if (
-      !window.confirm(
-        "Отменить рейс? Все заказы в маршруте будут помечены как 'cancelled', водитель и ТС освободятся.",
-      )
-    ) {
-      return
-    }
+    const ok = await confirm({
+      title: "Отменить рейс?",
+      description:
+        "Заказы в маршруте получат статус «отменён», машина и водитель освободятся. Вернуть рейс в работу будет нельзя.",
+      confirmLabel: "Отменить рейс",
+      destructive: true,
+    })
+    if (!ok) return
 
     setIsCancelling(true)
     try {

@@ -36,6 +36,7 @@ import {
   User,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -210,6 +211,7 @@ export function RouteTripDialog({ routeId, open, onOpenChange, onChanged }: Rout
   const [form, setForm] = useState({ ...EMPTY_EXPENSE_FORM })
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const confirm = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -283,7 +285,13 @@ export function RouteTripDialog({ routeId, open, onOpenChange, onChanged }: Rout
   }
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if (!window.confirm("Удалить расход? Фото чека останется в истории рейса.")) return
+    const ok = await confirm({
+      title: "Удалить расход?",
+      description: "Фото чека останется в истории рейса — расход можно внести заново.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
 
     try {
       const res = await fetch(`/api/expenses/${expenseId}`, { method: "DELETE" })

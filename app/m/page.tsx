@@ -10,6 +10,7 @@ import { SosButton } from "@/components/driver-mobile/sos-button"
 import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
 import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { isOrderClosed, isOrderMoving } from "@/lib/orders/stages"
 import {
   Loader2,
@@ -160,6 +161,7 @@ type GpsStatus = "inactive" | "searching" | "active" | "error"
 let geoPermissionToastShown = false
 
 export default function MobileHomePage() {
+  const confirm = useConfirm()
   const router = useRouter()
 
   // ✅ Используем централизованный хук вместо ручного парсинга
@@ -450,7 +452,13 @@ export default function MobileHomePage() {
   const endShift = async () => {
     if (!driver?.id || !shift) return
 
-    if (!confirm("Завершить смену?")) return
+    const okShift = await confirm({
+      title: "Завершить смену?",
+      description: "Смена закроется, а рейс останется за вами — открыть смену можно снова.",
+      confirmLabel: "Завершить",
+      destructive: true,
+    })
+    if (!okShift) return
 
     setIsChangingStatus(true)
 
@@ -696,12 +704,15 @@ export default function MobileHomePage() {
     const pendingCount = allRouteOrders.filter((o: any) => !["delivered", "cancelled", "rejected"].includes(o.status)
     ).length
 
-    const confirmMessage =
-      pendingCount > 1
-        ? `Завершить рейс? Все ${pendingCount} точек будут отмечены как доставленные.`
-        : "Завершить рейс?"
-
-    if (!confirm(confirmMessage)) return
+    const okRoute = await confirm({
+      title: "Завершить рейс?",
+      description:
+        pendingCount > 1
+          ? `Незакрытых точек: ${pendingCount}. Все они будут отмечены как доставленные.`
+          : "Рейс закроется, машина освободится для следующего задания.",
+      confirmLabel: "Завершить рейс",
+    })
+    if (!okRoute) return
 
     setCompletingRoute(true)
 

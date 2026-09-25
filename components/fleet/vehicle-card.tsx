@@ -32,6 +32,7 @@ import {
   type VehicleAssignment,
 } from "@/components/fleet/vehicle-history-dialog"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { safeJsonParse } from "@/lib/safe-json"
 
 interface Vehicle {
@@ -90,6 +91,7 @@ export function VehicleCard({
 }: VehicleCardProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const confirm = useConfirm()
 
   // ✅ ИСПРАВЛЕНО: безопасный парсинг features
   const features = safeJsonParse<string[]>(vehicle.features, [])
@@ -134,7 +136,13 @@ export function VehicleCard({
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Удалить ТС ${vehicle.plate}?`)) return
+    const ok = await confirm({
+      title: `Удалить ТС ${vehicle.plate}?`,
+      description: "Машина исчезнет из автопарка. История рейсов сохранится.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
 
     setIsDeleting(true)
     try {

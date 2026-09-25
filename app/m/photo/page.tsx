@@ -19,6 +19,7 @@ import {
   Check,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
 import { useDriverSession } from "@/hooks/use-driver-session"
 
@@ -127,6 +128,7 @@ function mapContextToCategory(context: PhotoContext): PhotoCategory {
 
 // Внутренний компонент с логикой
 function PhotoPageContent() {
+  const confirm = useConfirm()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -309,7 +311,13 @@ function PhotoPageContent() {
   }
 
   const handleDelete = async (photoId: string) => {
-    if (!confirm("Удалить фото?")) return
+    const ok = await confirm({
+      title: "Удалить фото?",
+      description: "Снимок исчезнет и из галереи, и из истории рейса.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
 
     try {
       const res = await fetch(`/api/m/photos?id=${photoId}`, {

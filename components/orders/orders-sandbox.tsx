@@ -114,6 +114,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders/stages"
 import { OrderProcess } from "@/components/orders/order-process"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   Sheet,
   SheetContent,
@@ -1109,6 +1110,7 @@ export function OrdersSandbox() {
 
   const [showVehicleDialog, setShowVehicleDialog] = useState(false)
   const router = useRouter()
+  const confirm = useConfirm()
   const [availableVehicles, setAvailableVehicles] = useState<VehicleWithDriver[]>(
     [],
   )
@@ -1756,16 +1758,22 @@ export function OrdersSandbox() {
       notes: s.notes.filter((n: any) => n.id !== noteId),
     }))
 
-  const clearCanvas = (): void => {
-    if (window.confirm("Очистить лист?")) {
-      updateSheet((s) => ({
-        ...s,
-        orders: [],
-        notes: [],
-        connections: [],
-        groups: [],
-      }))
-    }
+  const clearCanvas = async (): Promise<void> => {
+    const ok = await confirm({
+      title: "Очистить лист?",
+      description: "С листа уйдут заказы, заметки, связи и группы. Сами заказы останутся в базе.",
+      confirmLabel: "Очистить",
+      destructive: true,
+    })
+    if (!ok) return
+
+    updateSheet((s) => ({
+      ...s,
+      orders: [],
+      notes: [],
+      connections: [],
+      groups: [],
+    }))
   }
 
   const renderConnections = (): React.ReactNode => {

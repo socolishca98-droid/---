@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import Link from "next/link"
 import { useDriverSession } from "@/hooks/use-driver-session"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   Loader2,
   Phone,
@@ -44,6 +45,7 @@ interface DriverStats {
 }
 
 export default function MobileProfilePage() {
+  const confirm = useConfirm()
   // Сессия — серверная (httpOnly-cookie), а не запись в localStorage:
   // раньше страница читала «driver_session», которой после задачи 1 больше
   // не существует, и любой вход заканчивался возвратом на экран логина
@@ -106,9 +108,14 @@ export default function MobileProfilePage() {
       : null)
 
   const handleLogout = async () => {
-    if (confirm("Выйти из аккаунта?")) {
-      await logout()
-    }
+    const ok = await confirm({
+      title: "Выйти из аккаунта?",
+      description: "Чтобы вернуться к рейсам, нужно будет снова войти по телефону и паролю.",
+      confirmLabel: "Выйти",
+    })
+    if (!ok) return
+
+    await logout()
   }
 
   const formatDate = (dateString?: string) => {
