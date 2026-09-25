@@ -343,7 +343,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                     <span>{route.driverName}</span>
                   </div>
 
-                  <div className="mt-3 flex items-center_gap-4 flex text-sm">
+                  <div className="mt-3 flex items-center gap-4 text-sm">
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                       {route.totalDistance} км

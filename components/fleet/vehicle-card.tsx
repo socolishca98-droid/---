@@ -264,7 +264,13 @@ export function VehicleCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={isDeleting}>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={isDeleting}
+                aria-label="Действия с машиной"
+                title="Действия с машиной"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>

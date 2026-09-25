@@ -23,11 +23,10 @@ import {
   Truck,
   Package,
   TrendingUp,
-  Map,
-  List,
   AlertCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import { MOVING_ORDER_STATUSES, type OrderStatus } from "@/lib/orders/stages"
 
 // ============================================
 // ТИПЫ
@@ -111,7 +110,11 @@ function toCardStatus(routeStatus: string, orders: RouteOrder[]): string {
   if (routeStatus === "cancelled") return "cancelled"
   if (routeStatus === "completed") return "completed"
   if (routeStatus === "in_transit" || routeStatus === "active") return "in_progress"
-  if (orders.some((o) => ["in_transit", "loading", "unloading"].includes(o.status))) {
+  // «В пути» — это когда заказ действительно в дороге: канон статусов заказа
+  // объявлен в lib/orders/stages.ts (MOVING_ORDER_STATUSES = control).
+  // Прежний список (in_transit / loading / unloading) — статусы старой модели,
+  // их не бывает ни у одного заказа, поэтому рейс в пути выглядел ожидающим.
+  if (orders.some((o) => MOVING_ORDER_STATUSES.includes(o.status as OrderStatus))) {
     return "in_progress"
   }
   return "pending"
@@ -130,7 +133,6 @@ export default function RoutesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"active" | "completed">("active")
-  const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const [addLoadRoute, setAddLoadRoute] = useState<RouteData | null>(null)
 
   useEffect(() => {
@@ -273,24 +275,9 @@ export default function RoutesPage() {
               </p>
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === "list" ? "default" : "outline"}
-                size="icon"
-                onClick={() => setViewMode("list")}
-              >
-                <List className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === "map" ? "default" : "outline"}
-                size="icon"
-                onClick={() => setViewMode("map")}
-                disabled
-                title="Карта в разработке"
-              >
-                <Map className="h-4 w-4" />
-              </Button>
-            </div>
+            {/* Переключателя «список/карта» здесь нет намеренно: карта рейса
+                живёт внутри карточки рейса (RouteSegmentsMap), а кнопка-заглушка
+                «Карта в разработке» только путала — нажималась и ничего не делала. */}
           </div>
 
           {/* Статистика */}
@@ -419,6 +406,8 @@ export default function RoutesPage() {
               size="icon"
               onClick={fetchRoutes}
               disabled={isLoading}
+              aria-label="Обновить список маршрутов"
+              title="Обновить список маршрутов"
             >
               <RefreshCw
                 className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}

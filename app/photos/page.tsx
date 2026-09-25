@@ -141,7 +141,12 @@ export default function PhotosPage() {
     const load = async () => {
       setLoadingPhotos(true)
       try {
-        const ordersRes = await fetch("/api/orders?status=in_transit,assigned&limit=10")
+        // «Активный рейс» на странице фото — это заказ, который реально в работе:
+        // в пути (control), в рейсе или на оформлении. Статуса in_transit у
+        // заказов не существует — с ним список всегда оставался пустым.
+        const ordersRes = await fetch(
+          "/api/orders?status=control,in_route,documents,assigned&limit=10",
+        )
 
         await loadPhotos()
 

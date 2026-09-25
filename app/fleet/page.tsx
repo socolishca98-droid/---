@@ -245,7 +245,13 @@ export default function FleetPage() {
                     className="pl-9 bg-background"
                   />
                 </div>
-                <Button onClick={refreshAll} variant="outline" size="icon">
+                <Button
+                  onClick={refreshAll}
+                  variant="outline"
+                  size="icon"
+                  aria-label="Обновить автопарк"
+                  title="Обновить автопарк"
+                >
                   <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
                 </Button>
                 <Button onClick={() => setShowAddVehicle(true)}>

@@ -150,7 +150,13 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label="Действия с водителем"
+                title="Действия с водителем"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>

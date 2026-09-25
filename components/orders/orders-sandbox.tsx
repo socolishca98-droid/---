@@ -62,6 +62,7 @@ import {
   MessagesSquare,
 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -1107,6 +1108,7 @@ export function OrdersSandbox() {
   const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null)
 
   const [showVehicleDialog, setShowVehicleDialog] = useState(false)
+  const router = useRouter()
   const [availableVehicles, setAvailableVehicles] = useState<VehicleWithDriver[]>(
     [],
   )
@@ -2283,12 +2285,21 @@ export function OrdersSandbox() {
       }
 
       if (data.success) {
+        // Рейс уехал из песочницы в раздел «Маршруты» — сразу это и показываем:
+        // без ссылки было непонятно, куда смотреть дальше
         toast.success(
           `Рейс оформлен! Машина: ${selectedVehicle.plate}${
             selectedVehicle.driver
               ? `, водитель: ${selectedVehicle.driver.name}`
-              : ""
+              : " (водитель не назначен)"
           }`,
+          {
+            action: {
+              label: "Открыть рейсы",
+              onClick: () => router.push("/routes"),
+            },
+            duration: 8000,
+          },
         )
 
         updateSheet((s) => ({
@@ -2594,6 +2605,8 @@ export function OrdersSandbox() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-red-400 hover:text-red-300"
+                    aria-label="Очистить лист"
+                    title="Очистить лист"
                     onClick={clearCanvas}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -3529,7 +3542,7 @@ export function OrdersSandbox() {
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : availableVehicles.length === 0 ? (
-                <div className="text-center_py-8 text-slate-500">
+                <div className="text-center py-8 text-slate-500">
                   <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
                   <p>Нет машин в автопарке</p>
                 </div>
@@ -3638,22 +3651,31 @@ export function OrdersSandbox() {
                   })
               )}
             </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setShowVehicleDialog(false)}>
-                Отмена
-              </Button>
-              <Button
-                onClick={() => void confirmRoute()}
-                disabled={!selectedVehicle || savingRoute}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                {savingRoute ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                )}
-                Назначить
-              </Button>
+            <DialogFooter className="flex-col sm:flex-col sm:items-stretch gap-3">
+              {selectedVehicle && !selectedVehicle.driver && (
+                <p className="flex items-start gap-2 text-xs text-yellow-500 text-left">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                  У машины нет водителя. Рейс создастся, но водитель его не увидит —
+                  назначьте водителя в карточке рейса на странице «Маршруты».
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setShowVehicleDialog(false)}>
+                  Отмена
+                </Button>
+                <Button
+                  onClick={() => void confirmRoute()}
+                  disabled={!selectedVehicle || savingRoute}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {savingRoute ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                  )}
+                  Оформить рейс
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -4111,7 +4133,7 @@ function OrderEditForm({
         </div>
       </div>
 
-      <div className="flex justify-end_gap-2 flex pt-4">
+      <div className="flex justify-end gap-2 pt-4">
         <Button variant="ghost" onClick={onCancel}>
           Отмена
         </Button>
