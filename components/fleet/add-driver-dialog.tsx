@@ -134,7 +134,7 @@ export function AddDriverDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Без закрепления</SelectItem>
-                {availableVehicles.map((vehicle) => (
+                {availableVehicles.map((vehicle: any) => (
                   <SelectItem key={vehicle.id} value={vehicle.id}>
                     {vehicle.plate} — {vehicle.type}
                   </SelectItem>

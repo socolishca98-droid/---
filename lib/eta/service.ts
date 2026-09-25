@@ -35,23 +35,27 @@ export async function calculateETA(
     return createErrorResult("Некорректные координаты назначения");
   }
 
+  const waypointsKey =
+    waypoints.length > 0
+      ? waypoints.map((point: any) => `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`).join("~")
+      : undefined;
+  const cacheKey = generateCacheKey(
+    origin.lat,
+    origin.lng,
+    destination.lat,
+    destination.lng,
+    departure.getHours(),
+    waypointsKey
+  );
+
   if (request.useCache !== false) {
-    const cacheKey = generateCacheKey(
-      origin.lat,
-      origin.lng,
-      destination.lat,
-      destination.lng,
-      departure.getHours()
-    );
     const cached = getFromCache(cacheKey);
     if (cached) {
-      console.log("[ETA] Cache hit");
       return cached;
     }
   }
 
   try {
-    console.log("[ETA] Fetching route from OSRM...");
     const osrmResponse = await fetchOSRMRoute(origin, destination, waypoints, {
       steps: true,
       overview: "full"
@@ -71,6 +75,7 @@ export async function calculateETA(
 
     const result: ETACalculation = {
       success: true,
+      source: "osrm",
       durationBase,
       durationWithTraffic,
       distance: route.distance,
@@ -84,7 +89,7 @@ export async function calculateETA(
       calculatedAt: new Date(),
       validUntil: new Date(Date.now() + CACHE_TTL),
       routeDetails: {
-        legs: route.legs.map((leg, index) => ({
+        legs: route.legs.map((leg: any, index: any) => ({
           from: osrmResponse.waypoints[index]?.name || `Точка ${index + 1}`,
           to: osrmResponse.waypoints[index + 1]?.name || `Точка ${index + 2}`,
           distance: leg.distance,
@@ -94,20 +99,9 @@ export async function calculateETA(
     };
 
     if (request.useCache !== false) {
-      const cacheKey = generateCacheKey(
-        origin.lat,
-        origin.lng,
-        destination.lat,
-        destination.lng,
-        departure.getHours()
-      );
       saveToCache(cacheKey, result);
     }
 
-    console.log("[ETA] Done:", {
-      distance: `${distanceKm.toFixed(1)} km`,
-      risk: riskFactors.level
-    });
     return result;
   } catch (error) {
     console.error("[ETA] Error, using fallback:", error);
@@ -144,6 +138,7 @@ function calculateFallbackETA(
 
   return {
     success: true,
+    source: "fallback",
     durationBase: Math.round(durationBase),
     durationWithTraffic,
     distance: Math.round(estimatedDistance),
@@ -162,6 +157,7 @@ function calculateFallbackETA(
 function createErrorResult(message: string): ETACalculation {
   return {
     success: false,
+    source: "error",
     durationBase: 0,
     durationWithTraffic: 0,
     distance: 0,

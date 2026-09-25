@@ -1,18 +1,27 @@
 // app/api/drivers/[id]/active-order/route.ts
 
+import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
 
 type RouteParams = {
   params: Promise<{ id: string }>
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: RouteParams
-) {
+export async function GET(_request: NextRequest,
+  { params }: RouteParams) {
+  const __auth = await requireStaffAuth(_request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+
+
   try {
     // ✅ Next.js 15+ требует await для params
     const { id: driverId } = await params
@@ -24,12 +33,24 @@ export async function GET(
       )
     }
 
+    // Водитель должен быть из организации вызывающего: чужой id даёт 404
+    const driver = await prisma.driver.findFirst({
+      where: scopedWhere(__org.organizationId, { id: driverId }),
+      select: { id: true },
+    })
+    if (!driver) {
+      return NextResponse.json(
+        { success: false, error: "Водитель не найден" },
+        { status: 404 }
+      )
+    }
+
     // Получаем первый активный заказ
     const activeOrder = await prisma.order.findFirst({
-      where: {
+      where: scopedWhere(__org.organizationId, {
         assignedDriverId: driverId,
         status: { in: [...ACTIVE_ORDER_STATUSES] },
-      },
+      }),
       orderBy: [
         { routeSequence: "asc" },
         { createdAt: "asc" },
@@ -49,9 +70,9 @@ export async function GET(
 
     if (activeOrder.routeId) {
       allRouteOrders = await prisma.order.findMany({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           routeId: activeOrder.routeId,
-        },
+        }),
         orderBy: [
           { routeSequence: "asc" },
           { createdAt: "asc" },

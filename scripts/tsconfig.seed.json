@@ -1,0 +1,21 @@
+{
+  "//": "Отдельный tsconfig для запуска TS-скриптов через ts-node: в основном tsconfig module=esnext + moduleResolution=bundler, с которыми ts-node не работает.",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "noEmit": false,
+    "jsx": "react-jsx",
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "ts-node": {
+    "transpileOnly": true,
+    "files": true
+  }
+}

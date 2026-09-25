@@ -3,27 +3,28 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// Получить фото водителя
+import { forbidden, requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+// GET — фото водителя (только свои)
 export async function GET(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
+  const driverId = auth.value.driver.id
+
   try {
     const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get("driverId")
     const orderId = searchParams.get("orderId")
     const type = searchParams.get("type")
-
-    if (!driverId) {
-      return NextResponse.json(
-        { success: false, error: "driverId обязателен" },
-        { status: 400 },
-      )
-    }
 
     const where: Record<string, string> = { driverId }
     if (orderId) where.orderId = orderId
     if (type) where.type = type
 
     const photos = await prisma.photo.findMany({
-      where,
+      where: scopedWhere(org.organizationId, where),
       orderBy: { createdAt: "desc" },
       take: 50,
     })
@@ -43,122 +44,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Загрузить новое фото (JSON: { driverId, orderId, type, url, description })
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { driverId, orderId, type, url, description } = body
+// Загрузка фото водителем — POST /api/photos/upload (multipart, файл + OCR).
+//
+// Раньше здесь принимался JSON с url вида data:image/...;base64 — «фото»
+// складывалось прямо в базу, не было ни файла, ни распознавания, ни события
+// рейса. Такой путь убран: фото обязано быть файлом на диске, а чек — попадать
+// в расходы рейса. Поэтому у этого обработчика остались только чтение и
+// удаление своих фото.
 
-    if (!driverId || !type || !url) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "driverId, type и url обязательны",
-        },
-        { status: 400 },
-      )
-    }
-
-    const validTypes = [
-      "cargo_before",
-      "cargo_after",
-      "receipt",
-      "waybill",
-      "damage",
-      "document",
-    ]
-
-    if (!validTypes.includes(type)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Неверный тип фото. Допустимые: ${validTypes.join(", ")}`,
-        },
-        { status: 400 },
-      )
-    }
-
-    const photo = await prisma.photo.create({
-      data: {
-        driverId,
-        orderId: orderId || null,
-        type,
-        url,
-        description: description || null,
-      },
-    })
-
-    // Событие в таймлайне рейса (если фото привязано к заказу с маршрутом)
-    try {
-      let routeId: string | null = null
-      let vehicleId: string | null = null
-
-      if (orderId) {
-        const order = await prisma.order.findUnique({
-          where: { id: orderId },
-          select: {
-            routeId: true,
-            assignedVehicleId: true,
-          },
-        })
-        if (order?.routeId) {
-          routeId = order.routeId
-          vehicleId = order.assignedVehicleId ?? null
-        }
-      }
-
-      if (routeId) {
-        await prisma.routeEvent.create({
-          data: {
-            routeId,
-            driverId,
-            vehicleId,
-            orderId: orderId || null,
-            type: "photo",
-            status: type,
-            latitude: null,
-            longitude: null,
-            address: null,
-            data: description ? JSON.stringify({ description }) : null,
-          },
-        })
-      }
-    } catch (e) {
-      console.error("[Photos POST] routeEvent error:", e)
-    }
-
-    // Создаём уведомление для логиста
-    await prisma.notification.create({
-      data: {
-        userId: "logist",
-        userRole: "logist",
-        type: "new_photo",
-        title: "Новое фото от водителя",
-        message: `Водитель загрузил фото: ${type}`,
-        driverId,
-        orderId: orderId || null,
-        photoId: photo.id,
-        priority: type === "damage" ? "high" : "normal",
-      },
-    })
-
-    return NextResponse.json({
-      success: true,
-      photo,
-    })
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error"
-    console.error("[Photos POST] Error:", message)
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 },
-    )
-  }
-}
-
-// Удалить фото
 export async function DELETE(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
@@ -170,8 +69,24 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.photo.delete({
-      where: { id },
+    const photo = await prisma.photo.findFirst({
+      where: scopedWhere(org.organizationId, { id }),
+      select: { id: true, driverId: true },
+    })
+
+    if (!photo) {
+      return NextResponse.json(
+        { success: false, error: "Фото не найдено" },
+        { status: 404 },
+      )
+    }
+
+    if (photo.driverId !== auth.value.driver.id) {
+      return forbidden("Можно удалять только свои фото")
+    }
+
+    await prisma.photo.deleteMany({
+      where: scopedWhere(org.organizationId, { id }),
     })
 
     return NextResponse.json({ success: true })

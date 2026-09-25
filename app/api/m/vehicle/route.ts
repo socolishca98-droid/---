@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 // GET — список доступных машин
-export async function GET(req: NextRequest) {
+export async function GET(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const vehicles = await prisma.vehicle.findMany({
+      where: scopedWhere(org.organizationId, {}),
       orderBy: { plate: "asc" },
     })
 
     // Получаем информацию о привязанных водителях
     const drivers = await prisma.driver.findMany({
-      where: {
+      where: scopedWhere(org.organizationId, {
         vehicleId: { not: null },
-      },
+      }),
       select: {
         id: true,
         name: true,
@@ -42,26 +51,33 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — водитель выбирает машину
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
+// POST — водитель выбирает машину (привязывает её к себе)
+export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
-    const { driverId, vehicleId } = body as {
-      driverId?: string
+  // Водитель может привязать машину только к себе
+  const driverId = auth.value.driver.id
+
+  try {
+    const body = await request.json()
+
+    const { vehicleId } = body as {
       vehicleId?: string
     }
 
-    if (!driverId || !vehicleId) {
+    if (!vehicleId) {
       return NextResponse.json(
-        { success: false, error: "driverId и vehicleId обязательны" },
+        { success: false, error: "vehicleId обязателен" },
         { status: 400 }
       )
     }
 
     // Проверяем что машина существует и доступна
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id: vehicleId },
+    const vehicle = await prisma.vehicle.findFirst({
+      where: scopedWhere(org.organizationId, { id: vehicleId }),
     })
 
     if (!vehicle) {
@@ -78,14 +94,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Обновляем водителя
-    const driver = await prisma.driver.update({
-      where: { id: driverId },
-      data: {
-        vehicleId: vehicleId,
-        vehiclePlate: vehicle.plate,
-        vehicleType: vehicle.type,
-      },
+    // Машина может быть закреплена только за одним водителем: связь хранится
+    // в Driver.vehicleId (единственный источник правды, задача 2).
+    const occupant = await findVehicleOccupant(prisma, vehicleId, driverId, org.organizationId)
+    if (occupant) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Машина уже закреплена за ${occupant.name || "другим водителем"}`,
+        },
+        { status: 409 }
+      )
+    }
+
+    // Единый путь записи: Driver.vehicleId + кэш номера/типа из данных машины
+    await linkDriverToVehicle(prisma, driverId, vehicleId, org.organizationId)
+    const driver = await prisma.driver.findFirstOrThrow({
+      where: scopedWhere(org.organizationId, { id: driverId }),
     })
 
     return NextResponse.json({

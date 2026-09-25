@@ -49,7 +49,7 @@ export function ChatMessages({ messages, currentUserId }: ChatMessagesProps) {
   const groupedMessages: { date: string; messages: ChatMessage[] }[] = []
   let currentDate = ""
 
-  messages.forEach((msg) => {
+  messages.forEach((msg: any) => {
     const date = formatDate(msg.createdAt)
     if (date !== currentDate) {
       currentDate = date
@@ -61,7 +61,7 @@ export function ChatMessages({ messages, currentUserId }: ChatMessagesProps) {
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-      {groupedMessages.map((group, gi) => (
+      {groupedMessages.map((group: any, gi: any) => (
         <div key={gi}>
           {/* Date separator */}
           <div className="flex items-center justify-center mb-4">
@@ -72,7 +72,7 @@ export function ChatMessages({ messages, currentUserId }: ChatMessagesProps) {
 
           {/* Messages */}
           <div className="space-y-2">
-            {group.messages.map((msg) => {
+            {group.messages.map((msg: any) => {
               const isOwn = msg.senderId === currentUserId || msg.senderRole === "logist"
               const isImportant = msg.isImportant || msg.type === "alert"
 

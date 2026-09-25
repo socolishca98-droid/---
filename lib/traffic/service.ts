@@ -10,6 +10,15 @@ export type TrafficRouteResult = {
   generatedAtMs: number
   expiresAtMs: number
   segments: TrafficSegment[]
+  /**
+   * Сводка по маршруту целиком.
+   * Есть только там, где провайдер действительно умеет считать пробки
+   * (Яндекс.Маршрутизация): «сколько всего минут добавила дорога».
+   * У демо-провайдера сводки нет — иначе демо-данные выглядели бы измерением.
+   */
+  summary?: { delayMin: number; ratio: number }
+  /** true — данные сгенерированы для демонстрации, а не получены от сервиса пробок. */
+  mock?: boolean
 }
 
 const DEFAULT_TTL_MS = 120_000
@@ -257,6 +266,8 @@ export async function getRouteTraffic(params: {
 
   const provider = (process.env.TRAFFIC_PROVIDER || "mock").toLowerCase()
   let segments: TrafficSegment[] = []
+  let summary: { delayMin: number; ratio: number } | undefined
+  const isMock = provider === "mock"
 
   if (provider === "mock") {
     segments = buildMockTrafficSegments(routeId, nowMs)
@@ -282,6 +293,7 @@ export async function getRouteTraffic(params: {
     const severityBase = clamp((ratio - 1) / 0.8, 0, 1)
 
     segments = buildSegmentsFromDelay(routeId, nowMs, severityBase, delayMin)
+    summary = { delayMin, ratio: Number(ratio.toFixed(3)) }
   } else {
     throw new Error(`Traffic provider '${provider}' is not configured`)
   }
@@ -292,6 +304,8 @@ export async function getRouteTraffic(params: {
     generatedAtMs: nowMs,
     expiresAtMs: nowMs + ttlMs,
     segments,
+    ...(summary ? { summary } : {}),
+    ...(isMock ? { mock: true } : {}),
   }
 
   cache.set(routeId, result)

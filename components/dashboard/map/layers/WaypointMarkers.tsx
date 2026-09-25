@@ -41,17 +41,17 @@ export function WaypointMarkers({
   useEffect(() => {
     if (!map) return
 
-    markersRef.current.forEach((m) => m.remove())
+    markersRef.current.forEach((m: any) => m.remove())
     markersRef.current = []
 
     if (!enabled) return
 
     let num = 1
 
-    routes.forEach((route) => {
+    routes.forEach((route: any) => {
       if (!route.waypoints) return
 
-      route.waypoints.forEach((wp) => {
+      route.waypoints.forEach((wp: any) => {
         if (!wp.position || wp.type === "driver") return
 
         const style = POINT_STYLES[wp.type as keyof typeof POINT_STYLES]
@@ -97,7 +97,7 @@ export function WaypointMarkers({
     })
 
     return () => {
-      markersRef.current.forEach((m) => m.remove())
+      markersRef.current.forEach((m: any) => m.remove())
       markersRef.current = []
     }
   }, [map, routes, enabled])

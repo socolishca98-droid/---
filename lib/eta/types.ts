@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ETA Engine Types
  */
 
@@ -68,6 +68,15 @@ export interface RiskFactors {
 
 export interface ETACalculation {
   success: boolean;
+  /**
+   * Откуда взялись цифры:
+   *  - "osrm"     — реальный маршрут по дорогам (OSRM);
+   *  - "fallback" — OSRM недоступен, прикидка по прямой с коэффициентом 1.3;
+   *  - "error"    — посчитать не удалось вовсе.
+   * Без этого поля отличить измерение от прикидки было нельзя: оба случая
+   * возвращали success: true.
+   */
+  source?: "osrm" | "fallback" | "error";
   durationBase: number;
   durationWithTraffic: number;
   distance: number;

@@ -1,7 +1,10 @@
 // app/api/dashboard/routes/route.ts
 
-import { NextResponse } from "next/server"
+import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
 
 const OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 
@@ -73,7 +76,7 @@ async function getOSRMRoute(points: Point[]): Promise<{
   if (points.length < 2) return null
 
   try {
-    const coords = points.map((p) => `${p.lng},${p.lat}`).join(";")
+    const coords = points.map((p: any) => `${p.lng},${p.lat}`).join(";")
     const url = `${OSRM_URL}/${coords}?overview=full&geometries=geojson&steps=false`
 
     const res = await fetch(url, { 
@@ -133,11 +136,18 @@ function generateSmoothCurve(points: Point[]): [number, number][] {
   return result
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+
+
   try {
     // ========== ЛОГИКА БАЗЫ ==========
+    // Настройки базы — свои у каждой организации (раньше была одна на всю БД, id = "default")
     const settings = await prisma.fleetSettings.findFirst({
-      where: { id: "default" },
+      where: scopedWhere(__org.organizationId),
     })
 
     let base: {
@@ -193,10 +203,11 @@ export async function GET() {
 
     // ========== ПОЛУЧЕНИЕ ЗАКАЗОВ ==========
     const activeOrders = await prisma.order.findMany({
-      where: {
-        status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
+      where: scopedWhere(__org.organizationId, {
+        // заказы в работе: канон — lib/orders/stages.ts
+        status: { in: [...OCCUPYING_ORDER_STATUSES] },
         assignedDriverId: { not: null },
-      },
+      }),
       orderBy: { createdAt: "asc" },
     })
 
@@ -229,13 +240,13 @@ export async function GET() {
     }
 
     // Получаем водителей
-    const driverIds = [...new Set([...groups.values()].map((g) => g.driverId))]
+    const driverIds = [...new Set([...groups.values()].map((g: any) => g.driverId))]
     const drivers = await prisma.driver.findMany({
-      where: {
+      where: scopedWhere(__org.organizationId, {
         id: { in: driverIds },
         latitude: { not: null },
         longitude: { not: null },
-      },
+      }),
       select: {
         id: true,
         name: true,
@@ -260,7 +271,7 @@ export async function GET() {
     let colorIndex = 0
 
     for (const [routeKey, group] of groups.entries()) {
-      const driver = drivers.find((d) => d.id === group.driverId)
+      const driver = drivers.find((d: any) => d.id === group.driverId)
       if (!driver?.latitude || !driver?.longitude) continue
 
       const driverPos: Point = { lat: driver.latitude, lng: driver.longitude }
@@ -330,13 +341,12 @@ export async function GET() {
         durationMin = osrmRoute.duration
       } else {
         coordinates = generateSmoothCurve(points)
-        distanceKm = ordersSorted.reduce((sum, o) => sum + (o.distance || 0), 0)
+        distanceKm = ordersSorted.reduce((sum: any, o: any) => sum + (o.distance || 0), 0)
       }
 
-      const totalPrice = ordersSorted.reduce((sum, o) => sum + (o.price || 0), 0)
-      const mainStatus = ordersSorted.some((o) =>
-        ["in_transit", "loading", "unloading"].includes(o.status)
-      )
+      const totalPrice = ordersSorted.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
+      // Статус для маркера на карте: едет ли хотя бы один заказ рейса
+      const mainStatus = ordersSorted.some((o: any) => isOrderMoving(o.status))
         ? "in_transit"
         : "confirmed"
 
@@ -357,7 +367,7 @@ export async function GET() {
         waypoints,
         // Цвет маршрута из премиальной палитры
         color: ROUTE_COLORS[colorIndex++ % ROUTE_COLORS.length],
-        orders: ordersSorted.map((o) => ({
+        orders: ordersSorted.map((o: any) => ({
           id: o.id,
           from: o.routeFrom,
           to: o.routeTo,

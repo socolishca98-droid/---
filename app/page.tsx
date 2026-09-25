@@ -1,41 +1,32 @@
-// app/page.tsx
+/**
+ * / — точка входа.
+ *
+ * Серверный компонент: смотрит на подписанный сессионный токен в httpOnly-cookie
+ * и отправляет пользователя в его контур. Неавторизованный — на /login.
+ * middleware делает то же самое раньше (это страховка и единое поведение,
+ * если middleware отключён или путь не попал в matcher).
+ */
 
-"use client"
+import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
+import { DRIVER_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
+import { verifySessionToken } from "@/lib/auth/token"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { LoginForm } from "@/components/login-form"
-import { Loader2 } from "lucide-react"
+export const dynamic = "force-dynamic"
 
-export default function HomePage() {
-  const { user, isLoading } = useAuth()
-  const router = useRouter()
+export default async function HomePage() {
+  const cookieStore = await cookies()
 
-  useEffect(() => {
-    // Если уже залогинен (логист/админ) — ведём на дашборд
-    if (!isLoading && user) {
-      router.push("/dashboard")
-    }
-  }, [user, isLoading, router])
+  try {
+    const staff = await verifySessionToken(cookieStore.get(STAFF_COOKIE)?.value)
+    if (staff && staff.kind === "staff") redirect("/dashboard")
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    const driver = await verifySessionToken(cookieStore.get(DRIVER_COOKIE)?.value)
+    if (driver && driver.kind === "driver") redirect("/m")
+  } catch {
+    // Нет AUTH_SECRET или токен не читается — отправляем на вход,
+    // а настоящий ответ даст сервер авторизации
   }
 
-  // Пока редирект не отработал — просто спиннер
-  if (user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
-  // Нет пользователя — показываем форму логина логиста/админа
-  return <LoginForm />
+  redirect("/login")
 }

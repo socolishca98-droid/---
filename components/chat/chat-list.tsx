@@ -26,15 +26,12 @@ interface ChatListProps {
 export function ChatList({ drivers, messages, selectedDriverId, onSelectDriver }: ChatListProps) {
   // Get last message and unread count for each driver
   const getDriverChatInfo = (driverId: string) => {
-    const driverMessages = messages.filter(
-      (m) => m.senderId === driverId || m.recipientId === driverId
+    const driverMessages = messages.filter((m: any) => m.senderId === driverId || m.recipientId === driverId
     )
     const lastMessage = driverMessages[driverMessages.length - 1]
-    const unreadCount = driverMessages.filter(
-      (m) => m.senderId === driverId && !m.isRead
+    const unreadCount = driverMessages.filter((m: any) => m.senderId === driverId && !m.isRead
     ).length
-    const hasImportant = driverMessages.some(
-      (m) => m.senderId === driverId && !m.isRead && m.isImportant
+    const hasImportant = driverMessages.some((m: any) => m.senderId === driverId && !m.isRead && m.isImportant
     )
     return { lastMessage, unreadCount, hasImportant }
   }
@@ -56,11 +53,11 @@ export function ChatList({ drivers, messages, selectedDriverId, onSelectDriver }
 
   return (
     <div className="space-y-1">
-      {sortedDrivers.map((driver) => {
+      {sortedDrivers.map((driver: any) => {
         const { lastMessage, unreadCount, hasImportant } = getDriverChatInfo(driver.id)
         const initials = driver.name
           .split(" ")
-          .map((n) => n[0])
+          .map((n: any) => n[0])
           .join("")
         const isSelected = selectedDriverId === driver.id
 

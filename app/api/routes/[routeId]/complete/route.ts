@@ -1,48 +1,99 @@
 // app/api/routes/[routeId]/complete/route.ts
+// Завершение рейса: закрывает незавершённые точки (с force), переводит Route
+// в статус completed, фиксирует время финиша и итоги, освобождает водителя
+// и машину, пишет событие в таймлайн рейса.
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+
+import {
+  canDriverAccessRoute,
+  forbidden,
+  requireAnySession,
+} from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
+import {
+  changeRouteStatus,
+  ensureRouteRow,
+  recalcRoute,
+  routeOrdersOrderBy,
+  serializeRoute,
+} from "@/lib/routes/service"
 
 type RouteParams = {
   params: Promise<{ routeId: string }>
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const { routeId } = await params
-
     if (!routeId) {
       return NextResponse.json(
         { success: false, error: "Route ID is required" },
-        { status: 400 }
+        { status: 400 },
       )
+    }
+
+    // Водитель может завершить только свой рейс
+    if (!(await canDriverAccessRoute(auth.value, routeId))) {
+      return forbidden("Рейс назначен другому водителю")
     }
 
     const body = await request.json().catch(() => ({}))
-    const { force = false } = body as {
-      driverId?: string
-      force?: boolean
-    }
+    const { force = false } = body as { force?: boolean }
 
-    const orders = await prisma.order.findMany({
-      where: { routeId },
+    let route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
+      include: {
+        orders: {
+          where: scopedWhere(org.organizationId, {}),
+          orderBy: routeOrdersOrderBy,
+        },
+      },
     })
 
-    if (orders.length === 0) {
+    if (!route) {
+      const legacyOrders = await prisma.order.count({
+        where: scopedWhere(org.organizationId, { routeId }),
+      })
+      if (legacyOrders === 0) {
+        return NextResponse.json(
+          { success: false, error: "Маршрут не найден" },
+          { status: 404 },
+        )
+      }
+      // исторический routeId без строки Route — добираем запись
+      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
+      route = await prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
+        include: {
+          orders: {
+            where: scopedWhere(org.organizationId, {}),
+            orderBy: routeOrdersOrderBy,
+          },
+        },
+      })
+    }
+
+    if (!route) {
       return NextResponse.json(
         { success: false, error: "Маршрут не найден" },
-        { status: 404 }
+        { status: 404 },
       )
     }
 
-    const assignedDriverId = orders[0].assignedDriverId
-    const assignedVehicleId = orders[0].assignedVehicleId
+    const orders = route.orders
+    const assignedDriverId = route.driverId
+    const assignedVehicleId = route.vehicleId
 
-    const pendingOrders = orders.filter(
-      (o) => !["delivered", "cancelled", "rejected"].includes(o.status)
+    const pendingOrders = (orders as (RouteOrderLike & { id: string })[]).filter(
+      (o) => !["delivered", "cancelled", "rejected"].includes(o.status),
     )
 
     if (pendingOrders.length > 0 && !force) {
@@ -57,80 +108,56 @@ export async function POST(
             status: o.status,
           })),
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
-    await prisma.$transaction(async (tx) => {
-      // 1. Помечаем сам рейс завершённым
-      await tx.route.updateMany({
-        where: { id: routeId },
-        data: {
-          status: "completed",
-          completedAt: new Date(),
-        },
-      })
+    const now = new Date()
 
+    await prisma.$transaction(async (tx) => {
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
-          where: {
-            id: { in: pendingOrders.map((o) => o.id) },
-          },
-          data: {
-            status: "delivered",
-            updatedAt: new Date(),
-          },
+          where: scopedWhere(org.organizationId, { id: { in: pendingOrders.map((o) => o.id) } }),
+          data: { status: "delivered", deliveredAt: now, updatedAt: now },
         })
       }
 
+      // статус + время финиша + событие в таймлайн
+      const transition = await changeRouteStatus(tx, routeId, {
+        status: "completed",
+        completedAt: now,
+        reason: force && pendingOrders.length > 0 ? "Завершён принудительно" : "Рейс завершён",
+        actorName: auth.value.kind === "driver" ? auth.value.driver.name : auth.value.user.name,
+      }, org.organizationId)
+      if (!transition.ok) throw new Error(transition.error)
+
+      // пересчёт итогов рейса по заказам
+      const summary = await recalcRoute(tx, routeId, org.organizationId)
+
       if (assignedDriverId) {
         const otherActiveOrders = await tx.order.count({
-          where: {
+          where: scopedWhere(org.organizationId, {
             assignedDriverId,
             routeId: { not: routeId },
-            status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
-          },
+            status: { in: [...OCCUPYING_ORDER_STATUSES] },
+          }),
         })
 
         if (otherActiveOrders === 0) {
-          await tx.driver.update({
-            where: { id: assignedDriverId },
+          await tx.driver.updateMany({
+            where: scopedWhere(org.organizationId, { id: assignedDriverId }),
             data: { status: "available" },
           })
         }
 
         await tx.driverShift.updateMany({
-          where: {
-            driverId: assignedDriverId,
-            endedAt: null,
-          },
-          data: {
-            endedAt: new Date(),
-            status: "completed",
-          },
-        })
-      }
-
-      if (assignedVehicleId) {
-        const otherActiveOrders = await tx.order.count({
-          where: {
-            assignedVehicleId,
-            routeId: { not: routeId },
-            status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
-          },
+          where: scopedWhere(org.organizationId, { driverId: assignedDriverId, endedAt: null }),
+          data: { endedAt: now, status: "completed" },
         })
 
-        if (otherActiveOrders === 0) {
-          await tx.vehicle.update({
-            where: { id: assignedVehicleId },
-            data: { status: "available" },
-          })
-        }
-      }
-
-      if (assignedDriverId) {
         await tx.notification.create({
           data: {
+            organizationId: org.organizationId,
             userId: assignedDriverId,
             userRole: "driver",
             type: "route_completed",
@@ -141,34 +168,61 @@ export async function POST(
           },
         })
 
-        await tx.driver.update({
-          where: { id: assignedDriverId },
-          data: {
-            ordersCompleted: { increment: orders.length },
-          },
+        await tx.driver.updateMany({
+          where: scopedWhere(org.organizationId, { id: assignedDriverId }),
+          data: { ordersCompleted: { increment: summary.deliveredOrders } },
         })
+      }
+
+      if (assignedVehicleId) {
+        const otherActiveOrders = await tx.order.count({
+          where: scopedWhere(org.organizationId, {
+            assignedVehicleId,
+            routeId: { not: routeId },
+            status: { in: [...OCCUPYING_ORDER_STATUSES] },
+          }),
+        })
+
+        if (otherActiveOrders === 0) {
+          await tx.vehicle.updateMany({
+            where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
+            data: { status: "available" },
+          })
+        }
       }
     })
 
-    const stats = {
-      ordersCount: orders.length,
-      totalDistance: orders.reduce((sum, o) => sum + (o.distance || 0), 0),
-      totalWeight: orders.reduce((sum, o) => sum + (o.weight || 0), 0),
-      totalRevenue: orders.reduce((sum, o) => sum + (o.price || 0), 0),
-      additionalLoads: orders.filter((o) => o.isAdditionalLoad).length,
-    }
+    const updated = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
+    })
+    const finalOrders = (await prisma.order.findMany({
+      where: scopedWhere(org.organizationId, { routeId }),
+      orderBy: routeOrdersOrderBy,
+    })) as (RouteOrderLike & { id: string })[]
 
     return NextResponse.json({
       success: true,
       message: "Рейс завершён",
-      stats,
+      route: updated ? serializeRoute(updated) : null,
+      stats: {
+        ordersCount: finalOrders.length,
+        totalDistance: finalOrders.reduce((sum, o) => sum + (o.distance || 0), 0),
+        totalWeight: finalOrders.reduce((sum, o) => sum + (o.weight || 0), 0),
+        totalRevenue: finalOrders
+          .filter((o) => o.status !== "cancelled" && o.status !== "rejected")
+          .reduce((sum, o) => sum + (o.price || 0), 0),
+        additionalLoads: finalOrders.filter((o) => o.isAdditionalLoad).length,
+      },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[Route Complete] Error:", message)
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    )
+
+    // доменная ошибка (недопустимый переход статуса) — это 409, а не 500
+    if (/статус|Рейс в статусе|Нельзя перевести/i.test(message)) {
+      return NextResponse.json({ success: false, error: message }, { status: 409 })
+    }
+
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

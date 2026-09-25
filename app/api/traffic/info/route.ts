@@ -1,6 +1,8 @@
 // app/api/traffic/info/route.ts
 
-import { NextResponse } from "next/server"
+import { requireStaffAuth } from "@/lib/api-auth"
+import {requireStaffOrganization} from "@/lib/org"
+import { NextRequest, NextResponse } from "next/server"
 import { MOSCOW_ROAD_GEOMETRIES } from "@/lib/traffic-roads-data"
 
 export const runtime = "nodejs"
@@ -28,7 +30,13 @@ export interface TrafficIncident {
   lane?: string
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+
+
   try {
     // Определяем текущее время в московском часовом поясе (UTC+3)
     const now = new Date()

@@ -2,7 +2,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
@@ -15,6 +15,7 @@ import {
   FileText,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 interface Driver {
   id: string
@@ -59,6 +60,9 @@ const MAINTENANCE_TYPES = [
 export default function MaintenancePage() {
   const router = useRouter()
 
+  // Сессия — серверная (httpOnly-cookie): localStorage со «driver_session»
+  // больше не существует, поэтому страница уводила на логин вместо работы
+  const { driver: session, isLoading: isSessionLoading, updateDriver } = useDriverSession()
   const [driver, setDriver] = useState<Driver | null>(null)
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [description, setDescription] = useState("")
@@ -68,37 +72,40 @@ export default function MaintenancePage() {
   const [serviceName, setServiceName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const loadDriver = useCallback(
+    async (id: string, fallback: Driver) => {
+      try {
+        const res = await fetch(`/api/drivers/${id}`)
+        const data = await res.json()
+
+        if (data.success && data.driver) {
+          setDriver({
+            id: data.driver.id,
+            name: data.driver.name,
+            vehicleId: data.driver.vehicleId,
+            vehiclePlate: data.driver.vehiclePlate,
+          })
+          return
+        }
+      } catch (error) {
+        console.error("Failed to load driver:", error)
+      }
+
+      setDriver(fallback)
+    },
+    [],
+  )
+
   useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (!saved) {
-      router.push("/m/login")
-      return
-    }
+    if (isSessionLoading || !session?.id) return
 
-    try {
-      const parsed = JSON.parse(saved) as Driver
-      if (!parsed?.id) throw new Error("Invalid session")
-
-      fetch(`/api/drivers/${parsed.id}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.driver) {
-            setDriver({
-              id: data.driver.id,
-              name: data.driver.name,
-              vehicleId: data.driver.vehicleId,
-              vehiclePlate: data.driver.vehiclePlate,
-            })
-          } else {
-            setDriver(parsed)
-          }
-        })
-        .catch(() => setDriver(parsed))
-    } catch {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
-  }, [router])
+    void loadDriver(session.id, {
+      id: session.id,
+      name: session.name,
+      vehicleId: session.vehicleId,
+      vehiclePlate: session.vehiclePlate ?? null,
+    })
+  }, [isSessionLoading, session?.id, session?.name, session?.vehicleId, session?.vehiclePlate, loadDriver])
 
   const handleSubmit = async () => {
     if (!driver?.id || !selectedType) {
@@ -151,8 +158,8 @@ export default function MaintenancePage() {
               : `СТО: ${serviceName.trim()}`,
         })
 
-        const updated = { ...driver, status: "maintenance" }
-        localStorage.setItem("driver_session", JSON.stringify(updated))
+        // Состояние водителя хранит сервер: обновляем сессию и локальные данные
+        updateDriver({ status: "maintenance" })
 
         router.push("/m")
       } else {
@@ -168,7 +175,7 @@ export default function MaintenancePage() {
     }
   }
 
-  if (!driver) {
+  if (!driver || isSessionLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
@@ -176,7 +183,7 @@ export default function MaintenancePage() {
     )
   }
 
-  const selectedTypeInfo = MAINTENANCE_TYPES.find((t) => t.id === selectedType)
+  const selectedTypeInfo = MAINTENANCE_TYPES.find((t: any) => t.id === selectedType)
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white pb-8">
@@ -205,7 +212,7 @@ export default function MaintenancePage() {
             Тип работ
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {MAINTENANCE_TYPES.map((type) => {
+            {MAINTENANCE_TYPES.map((type: any) => {
               const isSelected = selectedType === type.id
               return (
                 <button

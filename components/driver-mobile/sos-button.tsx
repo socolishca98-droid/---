@@ -5,7 +5,6 @@ import { AlertTriangle, Loader2, Phone, X } from "lucide-react"
 import { toast } from "sonner"
 
 interface Props {
-  driverId: string
   orderId?: string
 }
 
@@ -49,7 +48,7 @@ const sosOptions = [
   },
 ]
 
-export function SosButton({ driverId, orderId }: Props) {
+export function SosButton({ orderId }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
 
@@ -77,7 +76,7 @@ export function SosButton({ driverId, orderId }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          driverId,
+          // driverId не передаём: SOS привязывается к водителю из сессии
           orderId,
           type,
           message,

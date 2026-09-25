@@ -1,4 +1,5 @@
-// prisma/schema.prisma
+// prisma/schema.prisma - Default SQLite for dev, see schema.postgres.prisma for production
+// P2-1: To use PostgreSQL, copy schema.postgres.prisma over schema.prisma or set DATABASE_PROVIDER=postgresql and use that file
 
 generator client {
   provider = "prisma-client-js"
@@ -13,22 +14,6 @@ datasource db {
 // СИСТЕМА ПОЛЬЗОВАТЕЛЕЙ И АВТОРИЗАЦИЯ
 // ============================================
 
-model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String?
-  passwordHash String
-  salt         String
-  role         String    @default("logist") // admin | logist
-  status       String    @default("pending_approval") // pending_approval | active | deactivated
-  approvedBy   String?
-  approvedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  @@index([status])
-  @@index([role])
-}
 
 // ============================================
 // ATI.SU ИНТЕГРАЦИЯ
@@ -36,6 +21,9 @@ model User {
 
 model AtiScanConfig {
   id               String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name             String    @default("default")
   cities           String    @default("[]")
   radius           Int       @default(200)
@@ -46,6 +34,8 @@ model AtiScanConfig {
   lastScanAt       DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
+  @@index([organizationId])
 }
 
 model AtiCache {
@@ -109,21 +99,71 @@ model GeoCache {
 // МАРШРУТЫ И РЕЙСЫ
 // ============================================
 
+/// Рейс: один водитель + одна машина + один или несколько заказов.
+/// Раньше «маршрут» был просто строкой routeId в заказах — ни статуса,
+/// ни времени, ни итогов рейса хранить было негде.
+/// Допустимые значения status: planned | active | in_transit | completed | cancelled
+/// Расход рейса (задача 7): топливо, платные дороги, ремонт, прочее.
+///
+/// Сумма берётся либо из чека (распознаётся OCR, человек подтверждает),
+/// либо вводится руками. Расход привязан к рейсу, поэтому итог рейса —
+/// это заработок минус расходы, а не отдельная таблица для бухгалтера.
+model RouteExpense {
+  id             String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeId        String
+  route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// fuel | toll | repair | other
+  type           String   @default("fuel")
+  amount         Int
+  /// Литры для топлива: из них считается цена литра
+  liters         Float?
+  /// Показание одометра с чека — из него видно фактический пробег
+  odometer       Int?
+  vendor         String?
+  spentAt        DateTime @default(now())
+  photoId        String?
+  photo          Photo?   @relation(fields: [photoId], references: [id], onDelete: SetNull)
+  note           String?
+  /// ocr — сумма распознана с фото и подтверждена человеком, manual — введена руками
+  source         String   @default("manual")
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([routeId])
+  @@index([orderId])
+  @@index([organizationId])
+  @@index([spentAt])
+}
+
 model Route {
   id            String       @id @default(cuid())
-  name          String?      // Например "Рейс #101: Москва — Тверь — СПб"
-  status        String       @default("planned") // planned | active | in_transit | completed | cancelled
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Человекочитаемое название, например «Рейс: Ярославль — Иваново — СПб»
+  name          String?
+  status        String       @default("planned")
   driverId      String?
   driver        Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicleId     String?
   vehicle       Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  /// Фактическое время начала и конца рейса
   startedAt     DateTime?
   completedAt   DateTime?
-  totalDistance Int?         // км
-  totalCost     Int?         // руб
-  fuelExpense   Int?         // руб
-  cargoWeight   Int?         // кг
-  cargoVolume   Float?       // м3
+  /// Одометр на старте и на финише — из них считается фактический пробег
+  startOdometer Int?
+  endOdometer   Int?
+  /// Итоги рейса: км, расходы руб, топливо руб, вес кг, объём м3
+  totalDistance Int?
+  totalCost     Int?
+  fuelExpense   Int?
+  cargoWeight   Int?
+  cargoVolume   Float?
   notes         String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -131,10 +171,14 @@ model Route {
   orders        Order[]
   stages        RouteStage[]
   events        RouteEvent[]
+  expenses      RouteExpense[]
+  photos        Photo[]
 
   @@index([status])
   @@index([driverId])
   @@index([vehicleId])
+  @@index([createdAt])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -143,6 +187,9 @@ model Route {
 
 model Order {
   id                String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   source            String
   sourceId          String?
   routeFrom         String
@@ -163,9 +210,22 @@ model Order {
   dueDate           DateTime?
   clientName        String?
   clientContact     String
+  /// Устаревшее поле: модель ClientFirm была задумана, но так и не появилась.
+  /// Клиенты живут в модели Client, связь — clientId ниже.
   clientFirmId      String?
+  /// Карточка клиента (задача 5). Заполняется при импорте базы, привязке
+  /// заказа к клиенту или взятии груза в работу. Может быть пустой: старые
+  /// заказы знают клиента только по имени (clientName).
+  clientId          String?
+  client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  expenses          RouteExpense[]
   deadline          DateTime
-  status            String    @default("new")
+  // Канон жизненного цикла — lib/orders/stages.ts:
+  //   search → negotiation → agreed → in_route → documents → assigned → control → delivered
+  //   (+ cancelled / rejected / expired). Прежние значения («new», «confirmed»,
+  //   «in_transit», «loading», …) принимаются при чтении как легас и переносятся
+  //   скриптом scripts/migrate-order-stages.ts (по умолчанию сухой прогон).
+  status            String    @default("search")
   priority          String    @default("needs_clarification")
   aiScore           Int       @default(50)
   aiReason          String?
@@ -176,8 +236,23 @@ model Order {
   assignedVehicleId String?
   vehicle           Vehicle?  @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
 
+  /// Рейс, в который собран заказ (одна машина может везти несколько заказов)
   routeId           String?
   route             Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
+
+  // ── Процесс заказа (Задача 2: Поиск → Согласование → Маршрут → Документы → Назначение → Контроль)
+  // Строка накопленной базы ATI, из которой заказ взят в работу.
+  // Заказ рождается кнопкой «Взять в работу» (POST /api/orders/from-cache),
+  // а не в момент оформления рейса. В рамках организации один груз берётся один раз.
+  atiCacheId        String?
+  takenAt           DateTime?
+  takenById         String?
+  // Согласование: цена, о которой договорились, состояние переговоров и когда
+  // напомнить себе продолжить. Лента переговоров — модель OrderNegotiation.
+  agreedPrice       Int?
+  negotiationStatus String    @default("new")
+  nextFollowUpAt    DateTime?
+  negotiations      OrderNegotiation[]
 
   // Догруз
   isAdditionalLoad  Boolean   @default(false)
@@ -189,8 +264,17 @@ model Order {
   rejectionReason   String?
   routeSequence     Int?
 
+  /// Момент фактической доставки (статус delivered/выгрузка). От него считаются
+  /// отсрочка платежа, отчёты «в срок» и история рейсов.
+  deliveredAt       DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  /// Фото, сигналы SOS и точки маршрута, относящиеся к заказу
+  photos     Photo[]
+  sosAlerts  SosAlert[]
+  stages     RouteStage[]
+  routeEvents RouteEvent[]
 
   @@index([status])
   @@index([priority])
@@ -199,19 +283,61 @@ model Order {
   @@index([routeId, routeSequence])
   @@index([assignedDriverId, status])
   @@index([assignedVehicleId, status])
+  @@index([clientId])
   @@index([proposedToDriver])
+  @@index([organizationId])
+  @@index([status, organizationId])
+  @@index([negotiationStatus])
+  @@index([nextFollowUpAt])
+  // Один и тот же груз из общей базы ATI может взять каждая организация,
+  // но внутри организации — один раз (NULL не участвует в уникальности,
+  // поэтому ручные заказы без atiCacheId не конфликтуют).
+  @@unique([organizationId, atiCacheId])
 }
 
 /// Водитель
 /// Допустимые значения status: available, busy, maintenance, offline
+
+// Лента согласования заказа: переговоры, заметки, торг по цене, звонки и письма.
+// Записи «price_change» и «status_change» создаются автоматически при изменении
+// цены или статуса заказа — история не теряется и не ведётся вручную.
+model OrderNegotiation {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // note | price_offer | price_change | call | email | document | status_change
+  kind           String
+  text           String?
+  // Предложенная/итоговая сумма для записей торга
+  priceOffer     Int?
+  authorId       String?
+  authorName     String?
+  createdAt      DateTime      @default(now())
+
+  @@index([orderId])
+  @@index([organizationId])
+  @@index([orderId, createdAt])
+}
+
 model Driver {
   id              String            @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name            String
-  phone           String            @unique
+  /// Телефон — логин водителя в мобильном приложении, поэтому уникальный
+  phone           String    @unique
+  /// Единственное место, где хранится связь водитель<->машина.
+  /// (Раньше она была продублирована в Vehicle.driverId и расходилась.)
   vehicleId       String?
-  vehicle         Vehicle?          @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  vehicleType     String
-  vehiclePlate    String
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  /// Кэш для списков и уведомлений; синхронизируется с Vehicle при любом
+  /// назначении через lib/fleet/assignment.ts — руками не менять.
+  /// Может быть пусто: водитель есть, машины у него ещё нет.
+  vehicleType     String?
+  vehiclePlate    String?
   currentLocation String?
   latitude        Float?
   longitude       Float?
@@ -236,15 +362,22 @@ model Driver {
   stages          RouteStage[]
   events          RouteEvent[]
 
+  /// Учётная запись для входа в мобильное приложение (роль driver)
+  user            User?
+
   @@index([status])
   @@index([vehicleId])
+  @@index([organizationId])
 }
 
 /// Транспортное средство
 /// Допустимые значения status: available, in_use, maintenance
 model Vehicle {
   id                  String           @id @default(cuid())
-  plate               String           @unique
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plate               String
   type                String
   brand               String?
   model               String?
@@ -254,7 +387,7 @@ model Vehicle {
   length              Float?
   width               Float?
   height              Float?
-  features            String           @default("[]")
+  features            String    @default("[]")
   /// Статус ТС: available | in_use | maintenance
   status              String           @default("available")
   lastMaintenanceDate DateTime?
@@ -273,6 +406,13 @@ model Vehicle {
   events              RouteEvent[]
 
   @@index([status])
+  @@index([organizationId])
+
+  /// Госномер уникален внутри организации: одна и та же машина может быть
+  /// в двух разных автопарках под разными владельцами
+  @@unique([organizationId, plate])
+  @@index([plate])
+
 }
 
 // ============================================
@@ -281,6 +421,9 @@ model Vehicle {
 
 model DriverShift {
   id                      String       @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   driverId                String
   driver                  Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
   startedAt               DateTime     @default(now())
@@ -299,10 +442,14 @@ model DriverShift {
   @@index([driverId])
   @@index([status])
   @@index([startedAt])
+  @@index([organizationId])
 }
 
 model ShiftEvent {
   id        String      @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shiftId   String
   shift     DriverShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   type      String
@@ -314,6 +461,7 @@ model ShiftEvent {
 
   @@index([shiftId])
   @@index([type])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -322,9 +470,13 @@ model ShiftEvent {
 
 model SosAlert {
   id          String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   driverId    String
   driver      Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
+  order       Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   type        String
   message     String?
   latitude    Float
@@ -340,6 +492,7 @@ model SosAlert {
 
   @@index([driverId])
   @@index([status])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -348,6 +501,9 @@ model SosAlert {
 
 model Notification {
   id        String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId    String
   userRole  String
   type      String
@@ -367,6 +523,7 @@ model Notification {
   @@index([isRead])
   @@index([priority])
   @@index([routeId])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -375,6 +532,9 @@ model Notification {
 
 model ChatMessage {
   id              String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   senderId        String
   senderRole      String
   senderName      String
@@ -392,6 +552,7 @@ model ChatMessage {
   @@index([recipientId])
   @@index([isImportant])
   @@index([createdAt])
+  @@index([organizationId])
 }
 
 // ============================================
@@ -400,11 +561,18 @@ model ChatMessage {
 
 model Photo {
   id          String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   url         String
   type        String
   driverId    String
   driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// Рейс, к которому относится фото: чек на топливо или накладная рейса
+  routeId     String?
+  route       Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
   description String?
   ocrText     String?
   ocrData     String?
@@ -412,7 +580,10 @@ model Photo {
 
   @@index([driverId])
   @@index([orderId])
+  @@index([routeId])
   @@index([type])
+  @@index([organizationId])
+  expenses    RouteExpense[]
 }
 
 // ============================================
@@ -421,6 +592,9 @@ model Photo {
 
 model MaintenanceLog {
   id          String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicleId   String
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   driverId    String?
@@ -440,15 +614,41 @@ model MaintenanceLog {
   @@index([vehicleId])
   @@index([driverId])
   @@index([status])
+  @@index([organizationId])
 }
 
 model FleetSettings {
-  id          String   @id @default("default")
+  /// Исторически запись была одна на всю базу (id = "default").
+  /// Теперь настройки свои у каждой организации.
+  id          String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parkName    String   @default("Наш Автопарк")
   baseAddress String?
   baseLat     Float?
   baseLng     Float?
+  // ── Реквизиты перевозчика для печатных документов (задача 3, пункт 3) ──
+  // Свои у каждой организации: ТТН, путевой лист и договор-заявка печатаются
+  // от её имени. Пустое поле печатается как строка для заполнения от руки,
+  // документ не подставляет чужие данные.
+  legalName      String?
+  inn            String?
+  kpp            String?
+  ogrn           String?
+  legalAddress   String?
+  phone          String?
+  email          String?
+  bankName       String?
+  bankBic        String?
+  bankAccount    String?
+  signerName     String?
+  signerPosition String?
   updatedAt   DateTime @updatedAt
+
+  @@index([organizationId])
+  @@unique([organizationId])
+
 }
 
 // ============================================
@@ -457,13 +657,17 @@ model FleetSettings {
 
 model RouteStage {
   id             String    @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId        String
-  route          Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   driverId       String?
-  driver         Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  driver         Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicleId      String?
-  vehicle        Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  vehicle        Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   type           String   // loading | driving | unloading | rest | other
   status         String    @default("planned") // planned | active | completed | cancelled
   sequence       Int?
@@ -479,13 +683,18 @@ model RouteStage {
   @@index([vehicleId])
   @@index([type])
   @@index([status])
+  @@index([organizationId])
 }
 
 model RouteEvent {
   id        String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId   String
   route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   driverId  String
   driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
   vehicleId String?
@@ -504,4 +713,229 @@ model RouteEvent {
   @@index([vehicleId])
   @@index([type])
   @@index([createdAt])
+  @@index([organizationId])
+}
+
+// ============================================
+// АВТОРИЗАЦИЯ: ПОЛЬЗОВАТЕЛИ И СЕССИИ
+// ============================================
+
+/// Учётная запись человека, который входит в систему.
+/// роли: admin | logist | driver
+/// статусы: pending (ожидает одобрения) | active (доступ разрешён) | suspended (доступ закрыт)
+/// Для роли driver обязателен phone и связь с Driver, email может отсутствовать.
+/// Для ролей admin/logist обязателен email.
+// ============================================
+// ОРГАНИЗАЦИИ (МУЛЬТИТЕНАНТНОСТЬ)
+// ============================================
+
+/// Организация = компания-клиент (автопарк). Все бизнес-данные принадлежат
+/// ровно одной организации; пересечение данных между организациями запрещено.
+/// Общие для всех остаются только технические кэши: GeoCache, AtiCache, AtiSession.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  /// Название, приведённое к нижнему регистру и без лишних пробелов.
+  /// Нужно, чтобы «ООО Ромашка» и «ооо ромашка » не стали двумя компаниями:
+  /// SQLite не поддерживает регистронезависимое сравнение в Prisma.
+  nameKey   String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  drivers           Driver[]
+  vehicles          Vehicle[]
+  orders            Order[]
+  routeExpenses    RouteExpense[]
+  clients           Client[]
+  orderNegotiations OrderNegotiation[]
+  routes            Route[]
+  routeStages       RouteStage[]
+  routeEvents       RouteEvent[]
+  photos            Photo[]
+  maintenanceLogs   MaintenanceLog[]
+  chatMessages      ChatMessage[]
+  notifications     Notification[]
+  sosAlerts         SosAlert[]
+  driverShifts      DriverShift[]
+  shiftEvents       ShiftEvent[]
+  fleetSettings     FleetSettings[]
+  atiScanConfigs    AtiScanConfig[]
+  auditLogs         AuditLog[]
+  inviteCodes       InviteCode[]
+
+  @@index([name])
+}
+
+// ---------------------------------------------------------------------------
+// Клиентская база (задача 5)
+// ---------------------------------------------------------------------------
+/// Карточка клиента: контакты, реквизиты и условия работы.
+/// Заказы ссылаются на неё через Order.clientId; у заказа остаются поля
+/// clientName/clientContact как «снимок» на момент заказа — если карточку
+/// потом поправят, уже оформленные заказы не изменятся задним числом.
+model Client {
+  id             String        @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Название так, как его ввёл человек («ООО Ромашка»)
+  name           String
+  /// Название, приведённое к сравнимому виду (см. lib/clients/normalize.ts).
+  /// По нему ищутся дубли при импорте: «ООО "Ромашка"» и «ромашка» — один клиент.
+  /// Уникален внутри организации.
+  nameKey        String
+  inn            String?
+  kpp            String?
+  address        String?
+  contactName    String?
+  phone          String?
+  email          String?
+  /// Условия работы: форма оплаты, НДС, отсрочка в днях
+  paymentType    String?
+  vatType        String?
+  deferredDays   Int?
+  notes          String?
+  /// manual — заведён вручную, import — пришёл из файла клиентской базы
+  source         String        @default("manual")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  orders         Order[]
+
+  @@unique([organizationId, nameKey])
+  @@index([organizationId])
+  @@index([name])
+}
+
+/// Инвайт-код: единственный способ присоединиться к существующей организации.
+/// Код многоразовый, со сроком действия и ролью, которую получит сотрудник.
+/// Создаёт и отзывает коды админ организации; заявки по коду он же одобряет.
+model InviteCode {
+  id             String   @id @default(cuid())
+  /// Значение, которое вводят при регистрации. Хранится открыто, но угадать его нельзя: 24 символа
+  code           String   @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Роль, которую получит сотрудник после одобрения: admin | logist
+  role           String   @default("logist")
+  /// Кто из админов создал код
+  createdById    String
+  /// null = бессрочный
+  expiresAt      DateTime?
+  /// null = без ограничения по числу использований
+  maxUses        Int?
+  usedCount      Int      @default(0)
+  /// Отзыв кода: после него регистрация по нему невозможна
+  revokedAt      DateTime?
+  revokedById    String?
+  createdAt      DateTime @default(now())
+
+  /// Кто зарегистрировался по этому коду
+  users          User[]
+
+  @@index([organizationId])
+  @@index([code])
+  @@index([organizationId, revokedAt])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Email — уникальный идентификатор входа для admin/logist
+  email        String?  @unique
+  /// Телефон — уникальный идентификатор входа для driver
+  phone        String?  @unique
+  name         String
+  /// Хэш пароля (scrypt, hex). Проверяется на сервере, наружу никогда не отдаётся
+  passwordHash String
+  /// Соль пароля (hex, 16 байт). Хранится отдельно от хэша
+  passwordSalt String
+  role         String   @default("logist")
+  status       String   @default("pending")
+
+  /// Ссылка на карточку водителя (только для role = "driver")
+  driverId     String?  @unique
+  driver       Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  /// Инвайт-код, по которому человек присоединился к организации (если был)
+  inviteCodeId String?
+  inviteCode   InviteCode? @relation(fields: [inviteCodeId], references: [id], onDelete: SetNull)
+
+  /// Кто одобрил регистрацию
+  approvedById String?
+  approvedBy   User?    @relation("UserApprovals", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvals    User[]   @relation("UserApprovals")
+  approvedAt   DateTime?
+
+  /// Блокировка доступа (увольнение). Запись не удаляется — доступ можно восстановить
+  suspendedAt   DateTime?
+  suspendReason String?
+  restoredAt    DateTime?
+  restoredById  String?
+
+  mustChangePassword Boolean  @default(false)
+  lastLoginAt        DateTime?
+  failedLoginCount   Int      @default(0)
+  lockedUntil        DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  sessions  Session[]
+
+  @@index([status])
+  @@index([role])
+  @@index([role, status])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([inviteCodeId])
+}
+
+/// Серверная сессия. id = jti подписанного токена в httpOnly-cookie.
+/// Удаление/отзыв строки немедленно закрывает доступ — это настоящий серверный выход.
+model Session {
+  id         String    @id
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  revokeReason String?
+  lastSeenAt DateTime?
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+/// Журнал административных действий (кто, что, над кем, с какого IP).
+/// Записывается через lib/audit.ts; читается через GET /api/admin/audit.
+model AuditLog {
+  id          String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorId     String
+  actorEmail  String?
+  /// approve | deactivate | activate | change_role | invite_create | invite_revoke | login | create | update | delete
+  action      String
+  targetId    String?
+  targetType  String   @default("user")
+  targetEmail String?
+  /// JSON с деталями (старая/новая роль, причина и т.п.)
+  metadata    String?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([organizationId])
 }

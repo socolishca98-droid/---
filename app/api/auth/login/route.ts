@@ -1,93 +1,91 @@
-// app/api/auth/login/route.ts
+/**
+ * POST /api/auth/login — вход сотрудника (admin / logist).
+ *
+ * Пароль проверяется НА СЕРВЕРЕ против хэша в базе (scrypt + соль).
+ * Успех → строка Session в БД + подписанный токен в httpOnly-cookie.
+ * Логика проверки общая с входом водителя: lib/auth/login.ts.
+ */
+
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
-import { verifyPassword, signJwt, setStaffAuthCookie } from "@/lib/auth-server"
-import { ensureDbInitialized } from "@/lib/db-init"
+import { authenticateWithPassword } from "@/lib/auth/login"
+import { sessionCookie } from "@/lib/auth/session"
 
-export async function POST(req: NextRequest) {
+import { STAFF_ROLES } from "@/lib/auth/constants"
+import {
+  buildRateLimitHeaders,
+  checkRateLimit,
+  getClientIp,
+  recordFailure,
+  resetRateLimit,
+} from "@/lib/rate-limiter"
+
+export const dynamic = "force-dynamic"
+
+export async function POST(request: NextRequest) {
+  let body: { email?: unknown; password?: unknown }
   try {
-    await ensureDbInitialized()
+    body = await request.json()
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Некорректное тело запроса" },
+      { status: 400 },
+    )
+  }
 
-    const body = await req.json()
-    const { email, password } = body as { email?: string; password?: string }
+  const identifier = String(body.email ?? "")
+  const rateLimitKey = `auth-login:${getClientIp(request)}:${identifier.toLowerCase()}`
+  const rateLimit = checkRateLimit(rateLimitKey)
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Слишком много неудачных попыток (входа). Повторите через 15 минут",
+        code: "rate_limited",
+      },
+      { status: 429, headers: buildRateLimitHeaders(rateLimit) },
+    )
+  }
 
-    if (!email || !password) {
-      return NextResponse.json(
-        { success: false, error: "Укажите email и пароль" },
-        { status: 400 }
-      )
-    }
-
-    const cleanEmail = email.trim().toLowerCase()
-    const user = await prisma.user.findUnique({
-      where: { email: cleanEmail },
+  try {
+    const result = await authenticateWithPassword({
+      identifier,
+      password: String(body.password ?? ""),
+      expectedRoles: STAFF_ROLES,
+      kind: "staff",
+      request,
     })
 
-    if (!user) {
+    if (!result.ok) {
+      const afterFailure = recordFailure(rateLimitKey)
       return NextResponse.json(
-        { success: false, error: "Неверный email или пароль" },
-        { status: 401 }
-      )
-    }
-
-    const isValid = verifyPassword(password, user.salt, user.passwordHash)
-    if (!isValid) {
-      return NextResponse.json(
-        { success: false, error: "Неверный email или пароль" },
-        { status: 401 }
-      )
-    }
-
-    // Проверка статуса пользователя
-    if (user.status === "pending_approval") {
-      return NextResponse.json(
+        { success: false, error: result.error, code: result.code },
         {
-          success: false,
-          error: "Ваша регистрация ожидает одобрения администратором/логистом. Доступ будет открыт после подтверждения.",
-          status: "pending_approval",
+          status: afterFailure.allowed ? result.status : 429,
+          headers: buildRateLimitHeaders(afterFailure),
         },
-        { status: 403 }
       )
     }
 
-    if (user.status === "deactivated") {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Ваш аккаунт деактивирован. Для восстановления доступа обратитесь к руководителю.",
-          status: "deactivated",
-        },
-        { status: 403 }
-      )
-    }
-
-    // Создаем подписанный токен
-    const token = signJwt({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name || user.email,
-    })
+    resetRateLimit(rateLimitKey)
 
     const response = NextResponse.json({
       success: true,
-      token,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name || user.email,
-        role: user.role,
-        status: user.status,
+        id: result.userId,
+        name: result.name,
+        email: result.email,
+        role: result.role,
+        mustChangePassword: result.mustChangePassword,
       },
     })
-
-    setStaffAuthCookie(response, token)
+    response.cookies.set(sessionCookie(result.session.cookieName, result.session.token))
     return response
-  } catch (error: any) {
-    console.error("[Auth Login] Error:", error)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    console.error("[auth/login] error:", message)
     return NextResponse.json(
-      { success: false, error: error.message || "Ошибка сервера при входе" },
-      { status: 500 }
+      { success: false, error: "Не удалось выполнить вход. Попробуйте ещё раз" },
+      { status: 500 },
     )
   }
 }

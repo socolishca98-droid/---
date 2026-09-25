@@ -8,7 +8,6 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { Loader2 } from "lucide-react"
 import dynamic from "next/dynamic"
 
 const DashboardMap = dynamic(
@@ -16,8 +15,21 @@ const DashboardMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-full w-full bg-[#0a0a0a] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      // Карта грузится отдельным куском: пока её нет, показываем тёмный контур
+      // с мягкой пульсацией — так переход с других страниц не «мигает» белым
+      <div className="h-full w-full bg-[#0a0a0a] p-6">
+        <div className="flex h-full flex-col gap-4">
+          <div className="flex gap-3">
+            <div className="skeleton-shimmer h-9 w-56 rounded-lg opacity-30" />
+            <div className="skeleton-shimmer h-9 w-32 rounded-lg opacity-20" />
+          </div>
+          <div className="skeleton-shimmer flex-1 rounded-2xl opacity-15" />
+          <div className="flex gap-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="skeleton-shimmer h-20 flex-1 rounded-xl opacity-20" />
+            ))}
+          </div>
+        </div>
       </div>
     ),
   },
@@ -36,8 +48,9 @@ export default function DashboardPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#09090b]">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      // Тот же тёмный контур, что и у карты: экран не светлеет при входе
+      <div className="min-h-screen w-screen bg-[#09090b] p-6">
+        <div className="skeleton-shimmer h-full min-h-[70vh] rounded-2xl opacity-15" />
       </div>
     )
   }

@@ -24,8 +24,15 @@ import {
   Gauge,
   Calendar,
   User,
+  History,
+  Clock,
 } from "lucide-react"
+import {
+  VehicleHistoryDialog,
+  type VehicleAssignment,
+} from "@/components/fleet/vehicle-history-dialog"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { safeJsonParse } from "@/lib/safe-json"
 
 interface Vehicle {
@@ -61,6 +68,10 @@ interface Vehicle {
 
 interface VehicleCardProps {
   vehicle: Vehicle
+  /** История назначений водителей (задача 4) — из GET /api/fleet/insights. */
+  assignments?: VehicleAssignment[]
+  /** Сколько дней машина без рейса (0 — работает; undefined — данных нет). */
+  idleDays?: number
   onEdit?: (vehicle: Vehicle) => void
   onDelete?: (id: string) => void
   onAssignDriver?: (vehicle: Vehicle) => void
@@ -70,6 +81,8 @@ interface VehicleCardProps {
 
 export function VehicleCard({
   vehicle,
+  assignments = [],
+  idleDays,
   onEdit,
   onDelete,
   onAssignDriver,
@@ -77,6 +90,8 @@ export function VehicleCard({
   onRefresh,
 }: VehicleCardProps) {
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const confirm = useConfirm()
 
   // ✅ ИСПРАВЛЕНО: безопасный парсинг features
   const features = safeJsonParse<string[]>(vehicle.features, [])
@@ -121,7 +136,13 @@ export function VehicleCard({
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Удалить ТС ${vehicle.plate}?`)) return
+    const ok = await confirm({
+      title: `Удалить ТС ${vehicle.plate}?`,
+      description: "Машина исчезнет из автопарка. История рейсов сохранится.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
 
     setIsDeleting(true)
     try {
@@ -199,7 +220,7 @@ export function VehicleCard({
   const needsMaintenance = nextMaintenanceDays !== null && nextMaintenanceDays <= 7
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-all">
+    <Card className="card-interactive overflow-hidden">
       <div className="p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
@@ -231,6 +252,17 @@ export function VehicleCard({
                   {getStatusIcon(vehicle.status)}
                   <span className="ml-1.5">{getStatusLabel(vehicle.status)}</span>
                 </Badge>
+                {typeof idleDays === "number" && idleDays > 0 ? (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    <Clock className="h-3 w-3 mr-1" />
+                    без рейса{" "}
+                    {idleDays < 7
+                      ? `${idleDays} дн.`
+                      : idleDays < 31
+                        ? `${Math.floor(idleDays / 7)} нед.`
+                        : `${Math.floor(idleDays / 30)} мес.`}
+                  </Badge>
+                ) : null}
               </div>
               <p className="text-sm text-muted-foreground">
                 {vehicle.brand} {vehicle.model} {vehicle.year ? `• ${vehicle.year}` : ""}
@@ -240,7 +272,13 @@ export function VehicleCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" disabled={isDeleting}>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={isDeleting}
+                aria-label="Действия с машиной"
+                title="Действия с машиной"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -251,6 +289,13 @@ export function VehicleCard({
                   Редактировать
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem onClick={() => setShowHistory(true)}>
+                <History className="h-4 w-4 mr-2" />
+                История назначений
+                {assignments.length > 0 ? (
+                  <span className="ml-2 text-xs text-muted-foreground">{assignments.length}</span>
+                ) : null}
+              </DropdownMenuItem>
               {onAssignDriver && (
                 <DropdownMenuItem onClick={() => onAssignDriver(vehicle)}>
                   <UserPlus className="h-4 w-4 mr-2" />
@@ -378,7 +423,7 @@ export function VehicleCard({
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Особенности</p>
             <div className="flex flex-wrap gap-2">
-              {features.map((feature, idx) => (
+              {features.map((feature: any, idx: any) => (
                 <Badge key={idx} variant="secondary" className="text-xs">
                   {feature}
                 </Badge>
@@ -387,6 +432,14 @@ export function VehicleCard({
           </div>
         )}
       </div>
+
+      <VehicleHistoryDialog
+        open={showHistory}
+        onOpenChange={setShowHistory}
+        plate={vehicle.plate}
+        assignments={assignments}
+        currentDriverName={vehicle.driver?.name ?? null}
+      />
     </Card>
   )
 }

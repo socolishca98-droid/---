@@ -4,19 +4,31 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-export async function GET(_req: NextRequest) {
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
+
+export async function GET(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
   try {
     const [drivers, vehicles, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({
+        where: scopedWhere(org.organizationId, {}),
         orderBy: { name: "asc" },
       }),
       prisma.vehicle.findMany({
+        where: scopedWhere(org.organizationId, {}),
         orderBy: [{ status: "asc" }, { plate: "asc" }],
       }),
       prisma.driverShift.findMany({
-        where: { endedAt: null },
+        where: scopedWhere(org.organizationId, { endedAt: null }),
         select: {
           id: true,
           driverId: true,
@@ -25,9 +37,9 @@ export async function GET(_req: NextRequest) {
         },
       }),
       prisma.order.findMany({
-        where: {
+        where: scopedWhere(org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
-        },
+        }),
         select: {
           id: true,
           status: true,
@@ -38,8 +50,17 @@ export async function GET(_req: NextRequest) {
       }),
     ])
 
-    const shiftByDriver = new Map(
-      activeShifts.map((s) => [s.driverId, s]),
+    type ActiveShift = {
+      id: string
+      driverId: string
+      status: string
+      lastStatusChangeAt: Date | null
+    }
+
+    const shiftByDriver = new Map<string, ActiveShift>(
+      (activeShifts as ActiveShift[])
+        .filter((s) => Boolean(s.driverId))
+        .map((s) => [s.driverId, s]),
     )
 
     const activeOrdersByDriver = new Map<string, typeof activeOrders>()
@@ -66,12 +87,18 @@ export async function GET(_req: NextRequest) {
       let uiStatus: string
       if (d.status === "maintenance") {
         uiStatus = "maintenance"
-      } else if (shift?.status) {
-        // Статус из мобильного приложения водителя
-        uiStatus = shift.status
       } else if (hasActiveOrder) {
-        uiStatus = "busy"
-      } else if (d.status === "offline") {
+        const shiftStatus = shift?.status
+        if (
+          shiftStatus === "driving" ||
+          shiftStatus === "loading" ||
+          shiftStatus === "unloading"
+        ) {
+          uiStatus = shiftStatus
+        } else {
+          uiStatus = "busy"
+        }
+      } else if (!shift) {
         uiStatus = "offline"
       } else {
         uiStatus = "available"
@@ -127,6 +154,8 @@ export async function GET(_req: NextRequest) {
         }
       }
 
+      // закрепление машины хранится на стороне водителя (Driver.vehicleId);
+      // Vehicle.driverId удалён из схемы (задача 2)
       const driver = driversOut.find((d) => d.vehicleId === v.id)
 
       return {
@@ -143,6 +172,8 @@ export async function GET(_req: NextRequest) {
               status: driver.status,
             }
           : null,
+        // производное поле — форма ответа для клиентов не меняется
+        driverId: driver?.id ?? null,
       }
     })
 
@@ -168,12 +199,12 @@ export async function GET(_req: NextRequest) {
 
     const [activeOrdersCount, completedToday, totalOrders] = await Promise.all([
       prisma.order.count({
-        where: { status: { in: ACTIVE_ORDER_STATUSES as any } },
+        where: scopedWhere(org.organizationId, { status: { in: ACTIVE_ORDER_STATUSES as any } }),
       }),
       prisma.order.count({
-        where: { status: "delivered", updatedAt: { gte: todayStart } },
+        where: scopedWhere(org.organizationId, { status: "delivered", updatedAt: { gte: todayStart } }),
       }),
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(org.organizationId, {}) }),
     ])
 
     return NextResponse.json({

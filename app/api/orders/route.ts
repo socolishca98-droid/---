@@ -1,19 +1,28 @@
-// app/api/orders/route.ts
-
+// app/api/orders/route.ts - P0 secured + P1-6 zod
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { createOrderSchema, zodErrorResponse } from "@/lib/validators"
+import { linkOrderToClientByName } from "@/lib/clients/service"
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireStaffAuth(request)
+    if (auth.error) return auth.error
+    const org = requireStaffOrganization(auth.user)
+    if (!org.ok) return org.response
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const driverId = searchParams.get("driverId")
     const routeId = searchParams.get("routeId")
-    const limit = parseInt(searchParams.get("limit") || "100", 10)
+    const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10), 200)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
 
+    // Фильтры из query; организация добавляется отдельно в каждом запросе —
+    // её нельзя ни снять, ни подменить параметром.
     const where: any = {}
-
     if (status) {
       if (status.includes(",")) {
         where.status = { in: status.split(",") }
@@ -21,26 +30,17 @@ export async function GET(request: NextRequest) {
         where.status = status
       }
     }
-
-    if (driverId) {
-      where.assignedDriverId = driverId
-    }
-
-    if (routeId) {
-      where.routeId = routeId
-    }
+    if (driverId) where.assignedDriverId = driverId
+    if (routeId) where.routeId = routeId
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
-        where,
-        orderBy: [
-          { routeSequence: "asc" },
-          { createdAt: "desc" },
-        ],
+        where: scopedWhere(org.organizationId, where),
+        orderBy: [{ routeSequence: "asc" }, { createdAt: "desc" }],
         take: limit,
         skip: offset,
       }),
-      prisma.order.count({ where }),
+      prisma.order.count({ where: scopedWhere(org.organizationId, where) }),
     ])
 
     return NextResponse.json({
@@ -53,17 +53,27 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("[Orders API] GET Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message, orders: [] },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: error.message, orders: [] }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    
+    const auth = await requireStaffAuth(request)
+    if (auth.error) return auth.error
+    const org = requireStaffOrganization(auth.user)
+    if (!org.ok) return org.response
+
+    const rawBody = await request.json().catch(() => null)
+    if (!rawBody) {
+      return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 })
+    }
+
+    const parsed = createOrderSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
+    }
+
     const {
       source = "manual",
       sourceId,
@@ -80,22 +90,80 @@ export async function POST(request: NextRequest) {
       assignedDriverId,
       assignedVehicleId,
       routeId,
-    } = body
+      requirements,
+      atiCacheId,
+      agreedPrice,
+      negotiationStatus,
+      nextFollowUpAt,
+    } = parsed.data
 
-    if (!routeFrom || !routeTo) {
-      return NextResponse.json(
-        { success: false, error: "routeFrom и routeTo обязательны" },
-        { status: 400 }
-      )
+    // Заказ на строку накопленной базы может быть у организации только один
+    if (atiCacheId) {
+      const taken = await prisma.order.findFirst({
+        where: scopedWhere(org.organizationId, { atiCacheId }),
+        select: { id: true },
+      })
+      if (taken) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Этот груз уже взят в работу",
+            code: "already_taken",
+            orderId: taken.id,
+          },
+          { status: 409 },
+        )
+      }
     }
 
-    const order = await prisma.$transaction(async (tx) => {
+    // Назначить можно только своего водителя и свою машину
+    if (assignedDriverId) {
+      const driver = await prisma.driver.findFirst({
+        where: scopedWhere(org.organizationId, { id: assignedDriverId }),
+        select: { id: true },
+      })
+      if (!driver) {
+        return NextResponse.json(
+          { success: false, error: "Водитель не найден" },
+          { status: 404 },
+        )
+      }
+    }
+    if (assignedVehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
+        select: { id: true },
+      })
+      if (!vehicle) {
+        return NextResponse.json(
+          { success: false, error: "Машина не найдена" },
+          { status: 404 },
+        )
+      }
+    }
+    // Рейс из тела запроса тоже проверяется: заказ своей организации
+    // не должен ссылаться на рейс другой компании
+    if (routeId) {
+      const ownRoute = await prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: routeId }),
+        select: { id: true },
+      })
+      if (!ownRoute) {
+        return NextResponse.json(
+          { success: false, error: "Рейс не найден" },
+          { status: 404 },
+        )
+      }
+    }
+
+    const order = await prisma.$transaction(async (tx: any) => {
       let finalRouteId = routeId
       if (!finalRouteId && (assignedDriverId || assignedVehicleId)) {
         finalRouteId = `route_${Date.now()}`
         await tx.route.create({
           data: {
             id: finalRouteId,
+            organizationId: org.organizationId,
             name: `Рейс: ${routeFrom} — ${routeTo}`,
             status: "active",
             driverId: assignedDriverId || null,
@@ -109,6 +177,7 @@ export async function POST(request: NextRequest) {
 
       const created = await tx.order.create({
         data: {
+          organizationId: org.organizationId,
           source,
           sourceId,
           routeFrom,
@@ -120,24 +189,31 @@ export async function POST(request: NextRequest) {
           price: price || 0,
           clientName,
           clientContact: clientContact || "",
-          deadline: deadline ? new Date(deadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          status: assignedDriverId ? "confirmed" : "new",
+          deadline: deadline ? new Date(deadline as any) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          // Этап заказа определяется тем, что уже известно (канон — lib/orders/stages.ts):
+          // назначен водитель → «Назначение», заказ в рейсе → «Маршрут»,
+          // иначе заказ, заведённый вручную, начинается с «Согласования».
+          status: assignedDriverId ? "assigned" : finalRouteId ? "in_route" : "negotiation",
           assignedDriverId,
           assignedVehicleId,
           routeId: finalRouteId,
+          requirements: requirements || null,
+          atiCacheId: atiCacheId || null,
+          agreedPrice: agreedPrice ?? null,
+          negotiationStatus: negotiationStatus ?? "new",
+          nextFollowUpAt: nextFollowUpAt ?? null,
         },
       })
 
       if (assignedDriverId) {
         await tx.driver.updateMany({
-          where: { id: assignedDriverId },
+          where: scopedWhere(org.organizationId, { id: assignedDriverId }),
           data: { status: "busy" },
         })
       }
-
       if (assignedVehicleId) {
         await tx.vehicle.updateMany({
-          where: { id: assignedVehicleId },
+          where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
           data: { status: "in_use" },
         })
       }
@@ -145,12 +221,19 @@ export async function POST(request: NextRequest) {
       return created
     })
 
+    // Клиентская база (задача 5): если карточка этого клиента уже есть,
+    // заказ сразу попадает в его историю. Нет карточки — не выдумываем её.
+    if (clientName) {
+      await linkOrderToClientByName({
+        organizationId: org.organizationId,
+        orderId: order.id,
+        clientName,
+      })
+    }
+
     return NextResponse.json({ success: true, order })
   } catch (error: any) {
     console.error("[Orders API] POST Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

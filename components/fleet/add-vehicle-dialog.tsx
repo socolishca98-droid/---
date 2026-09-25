@@ -76,7 +76,7 @@ export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDia
     setFormData((prev) => ({
       ...prev,
       features: prev.features.includes(feature)
-        ? prev.features.filter((f) => f !== feature)
+        ? prev.features.filter((f: any) => f !== feature)
         : [...prev.features, feature],
     }))
   }
@@ -129,7 +129,7 @@ export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDia
                   <SelectValue placeholder="Выберите тип" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vehicleTypes.map((type) => (
+                  {vehicleTypes.map((type: any) => (
                     <SelectItem key={type} value={type}>
                       {type}
                     </SelectItem>

@@ -72,7 +72,7 @@ export function TrafficPlanningPanel({
 
   const arterials = trafficInfo?.arterials || []
   const incidents = trafficInfo?.incidents || []
-  const congestedArterials = arterials.filter((a) => a.severity === "critical" || a.severity === "heavy" || a.delayMinutes > 0)
+  const congestedArterials = arterials.filter((a: any) => a.severity === "critical" || a.severity === "heavy" || a.delayMinutes > 0)
 
   // Цвета плашки общего статуса
   const statusBadge = isCritical
@@ -365,7 +365,7 @@ export function TrafficPlanningPanel({
                 </span>
               </div>
             ) : (
-              congestedArterials.map((arterial) => {
+              congestedArterials.map((arterial: any) => {
                 const isCrit = arterial.severity === "critical"
                 const isHvy = arterial.severity === "heavy"
 
@@ -426,7 +426,7 @@ export function TrafficPlanningPanel({
                 </span>
               </div>
             ) : (
-              incidents.map((inc) => {
+              incidents.map((inc: any) => {
                 const isAcc = inc.type === "accident"
                 return (
                   <div

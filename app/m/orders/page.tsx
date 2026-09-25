@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import Link from "next/link"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import {
   Loader2,
   MapPin,
@@ -33,30 +34,15 @@ interface Order {
 type Tab = "active" | "history"
 
 export default function DriverOrdersPage() {
-  const router = useRouter()
-
-  const [driver, setDriver] = useState<DriverSession | null>(null)
+  // Сессия водителя — серверная (httpOnly-cookie): страница раньше читала
+  // «driver_session» из localStorage, которой после задачи 1 не существует,
+  // и любой вход заканчивался возвратом на экран логина
+  const { driver } = useDriverSession()
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [historyOrders, setHistoryOrders] = useState<Order[]>([])
   const [tab, setTab] = useState<Tab>("active")
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
-
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (!saved) {
-      router.push("/m/login")
-      return
-    }
-    try {
-      const parsed = JSON.parse(saved) as DriverSession
-      if (!parsed?.id) throw new Error("Invalid session")
-      setDriver(parsed)
-    } catch {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
-  }, [router])
 
   const fetchOrders = useCallback(async (showRefresh = false) => {
     if (!driver?.id) return
@@ -122,10 +108,60 @@ export default function DriverOrdersPage() {
           className: "bg-emerald-500/15 text-emerald-400",
         }
       case "in_transit":
+      case "control":
         return {
           label: "В пути",
           icon: Clock,
           className: "bg-orange-500/15 text-orange-400",
+        }
+      // канон этапов заказа — lib/orders/stages.ts
+      case "search":
+        return {
+          label: "Поиск",
+          icon: Clock,
+          className: "bg-slate-500/15 text-slate-300",
+        }
+      case "negotiation":
+        return {
+          label: "Согласование",
+          icon: Clock,
+          className: "bg-amber-500/15 text-amber-400",
+        }
+      case "agreed":
+        return {
+          label: "Согласован",
+          icon: CheckCircle2,
+          className: "bg-cyan-500/15 text-cyan-400",
+        }
+      case "in_route":
+        return {
+          label: "В рейсе",
+          icon: Clock,
+          className: "bg-blue-500/15 text-blue-400",
+        }
+      case "documents":
+        return {
+          label: "Документы",
+          icon: Package,
+          className: "bg-violet-500/15 text-violet-400",
+        }
+      case "assigned":
+        return {
+          label: "Назначен",
+          icon: CheckCircle2,
+          className: "bg-emerald-500/15 text-emerald-400",
+        }
+      case "rejected":
+        return {
+          label: "Отклонён",
+          icon: XCircle,
+          className: "bg-red-500/15 text-red-400",
+        }
+      case "expired":
+        return {
+          label: "Просрочен",
+          icon: XCircle,
+          className: "bg-slate-500/15 text-slate-300",
         }
       default:
         return {
@@ -215,15 +251,15 @@ export default function DriverOrdersPage() {
             </p>
           </div>
         ) : (
-          orders.map((order) => {
+          orders.map((order: any) => {
             const statusInfo = getStatusInfo(order.status)
             const StatusIcon = statusInfo.icon
 
             return (
-              <button
+              <Link
                 key={order.id}
-                onClick={() => router.push(`/m/orders/${order.id}`)}
-                className="w-full bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4 text-left active:scale-[0.99] transition-transform hover:border-gray-700"
+                href={`/m/orders/${order.id}`}
+                className="block w-full bg-[#1a1a1f] border border-gray-800 rounded-2xl p-4 text-left active:scale-[0.99] transition-transform hover:border-gray-700"
               >
                 {/* Верхняя часть: груз + статус */}
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -280,7 +316,7 @@ export default function DriverOrdersPage() {
                     <ChevronRight className="h-4 w-4 text-gray-600" />
                   </div>
                 </div>
-              </button>
+              </Link>
             )
           })
         )}

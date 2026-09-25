@@ -3,6 +3,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
+import { ensureRouteRow, recalcRoute } from "@/lib/routes/service"
+
 type RouteParams = {
   params: Promise<{ routeId: string }>
 }
@@ -11,6 +16,10 @@ export async function POST(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
   try {
     const { routeId } = await params
 
@@ -37,27 +46,49 @@ export async function POST(
       insertAfterOrderId,
     } = body
 
-    const existingOrders = await prisma.order.findMany({
-      where: {
-        routeId,
-        status: { in: ["confirmed", "in_transit", "loading", "unloading"] },
-      },
-      orderBy: { routeSequence: "asc" },
+    const route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId }),
+      select: { id: true, status: true, driverId: true, vehicleId: true },
     })
 
-    if (existingOrders.length === 0) {
+    const existingOrders = (await prisma.order.findMany({
+      where: scopedWhere(org.organizationId, {
+        routeId,
+        status: { in: [...OCCUPYING_ORDER_STATUSES] },
+      }),
+      orderBy: { routeSequence: "asc" },
+    })) as (RouteOrderLike & {
+      id: string
+      assignedDriverId: string | null
+      assignedVehicleId: string | null
+      routeSequence: number | null
+    })[]
+
+    if (!route && existingOrders.length === 0) {
       return NextResponse.json(
         { success: false, error: "Активный маршрут не найден" },
         { status: 404 }
       )
     }
 
-    const driverId = existingOrders[0].assignedDriverId
-    const vehicleId = existingOrders[0].assignedVehicleId
+    if (route?.status === "cancelled" || route?.status === "completed") {
+      return NextResponse.json(
+        { success: false, error: "Рейс закрыт — догруз добавить нельзя" },
+        { status: 409 }
+      )
+    }
+
+    // исторический routeId без строки Route — добираем запись
+    if (!route) {
+      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
+    }
+
+    const driverId = route?.driverId ?? existingOrders[0]?.assignedDriverId ?? null
+    const vehicleId = route?.vehicleId ?? existingOrders[0]?.assignedVehicleId ?? null
 
     if (vehicleId) {
-      const vehicle = await prisma.vehicle.findUnique({
-        where: { id: vehicleId },
+      const vehicle = await prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: vehicleId }),
         select: { capacity: true },
       })
 
@@ -89,10 +120,10 @@ export async function POST(
         routeSequence = insertAfterOrder.routeSequence + 1
 
         await prisma.order.updateMany({
-          where: {
+          where: scopedWhere(org.organizationId, {
             routeId,
             routeSequence: { gte: routeSequence },
-          },
+          }),
           data: {
             routeSequence: { increment: 1 },
           },
@@ -103,8 +134,11 @@ export async function POST(
     const newOrder = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
+          organizationId: org.organizationId,
           source: atiCacheId ? "ATI" : "manual",
           sourceId: atiCacheId || null,
+          // связь со строкой накопленной базы ATI (Order.atiCacheId)
+          atiCacheId: atiCacheId || null,
           routeId,
           routeFrom,
           routeTo,
@@ -114,7 +148,9 @@ export async function POST(
           price: price || 0,
           clientName,
           clientContact: clientContact || "",
-          status: proposeToDriver ? "proposed" : "confirmed",
+          // догруз сразу в рейсе; предложение водителю — отдельный флаг proposedToDriver
+          // (канон этапов заказа — lib/orders/stages.ts)
+          status: "in_route",
           isAdditionalLoad: true,
           addedToRouteAt: new Date(),
           proposedToDriver: proposeToDriver,
@@ -126,18 +162,13 @@ export async function POST(
         },
       })
 
-      if (atiCacheId) {
-        await tx.atiCache
-          .update({
-            where: { id: atiCacheId },
-            data: { status: "imported" },
-          })
-          .catch(() => {})
-      }
+      // Общая таблица AtiCache намеренно не меняется: это накопленная база всей
+      // платформы, пометка «imported» спрятала бы груз от других организаций.
 
       if (driverId) {
         await tx.notification.create({
           data: {
+            organizationId: org.organizationId,
             userId: driverId,
             userRole: "driver",
             type: proposeToDriver ? "load_proposal" : "load_added",
@@ -153,9 +184,13 @@ export async function POST(
       return order
     })
 
+    // итоги и имя рейса пересчитываются по его заказам
+    const summary = await recalcRoute(prisma, routeId, org.organizationId)
+
     return NextResponse.json({
       success: true,
       order: newOrder,
+      summary,
       message: proposeToDriver ? "Догруз предложен водителю" : "Догруз добавлен к маршруту",
     })
   } catch (error) {

@@ -97,7 +97,7 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
     }
   }
 
-  const filteredLoads = atiLoads.filter((load) => {
+  const filteredLoads = atiLoads.filter((load: any) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
     return (
@@ -286,7 +286,7 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredLoads.map((load) => {
+                  {filteredLoads.map((load: any) => {
                     const fits = canAddLoad(load.weight)
                     const isSelected = selectedLoad?.id === load.id
 

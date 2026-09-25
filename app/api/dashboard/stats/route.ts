@@ -1,8 +1,17 @@
 // app/api/dashboard/stats/route.ts
-import { NextResponse } from "next/server"
+import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+
+
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -17,37 +26,54 @@ export async function GET() {
       activeRoutes,
       completedRoutes,
     ] = await Promise.all([
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(__org.organizationId) }),
       prisma.order.count({
-        where: {
-          status: { in: ["active", "in_transit", "loading", "unloading", "assigned"] },
-        },
+        where: scopedWhere(__org.organizationId, {
+          // заказы в работе: канон — lib/orders/stages.ts
+          status: { in: [...OCCUPYING_ORDER_STATUSES] },
+        }),
       }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: "delivered",
           updatedAt: { gte: today },
-        },
+        }),
       }),
       prisma.order.aggregate({
         _sum: { price: true },
-        where: { status: { in: ["delivered", "in_transit", "active"] } },
+        where: scopedWhere(__org.organizationId, {
+          // выручка = доставленные + те, что ещё в работе
+          status: { in: [...OCCUPYING_ORDER_STATUSES, "delivered"] },
+        }),
       }),
-      prisma.vehicle.findMany({ select: { status: true } }),
-      prisma.driver.findMany({ select: { status: true, latitude: true, longitude: true } }),
-      prisma.route.count({ where: { status: { in: ["active", "in_progress", "in_transit"] } } }),
-      prisma.route.count({ where: { status: "completed" } }),
+      prisma.vehicle.findMany({
+        where: scopedWhere(__org.organizationId),
+        select: { status: true },
+      }),
+      prisma.driver.findMany({
+        where: scopedWhere(__org.organizationId),
+        select: { status: true, latitude: true, longitude: true },
+      }),
+      prisma.route.count({
+        where: scopedWhere(__org.organizationId, {
+          status: { in: ["active", "in_transit"] },
+        }),
+      }),
+      prisma.route.count({
+        where: scopedWhere(__org.organizationId, { status: "completed" }),
+      }),
     ])
 
+
     const totalVehicles = vehicles.length
-    const availableVehicles = vehicles.filter((v) => v.status === "available").length
-    const inUseVehicles = vehicles.filter((v) => v.status === "in_use" || v.status === "busy").length
-    const maintenanceVehicles = vehicles.filter((v) => v.status === "maintenance").length
+    const availableVehicles = vehicles.filter((v: any) => v.status === "available").length
+    const inUseVehicles = vehicles.filter((v: any) => v.status === "in_use" || v.status === "busy").length
+    const maintenanceVehicles = vehicles.filter((v: any) => v.status === "maintenance").length
 
     const totalDrivers = drivers.length
-    const busyDrivers = drivers.filter((d) => d.status === "busy" || d.status === "driving").length
-    const availableDrivers = drivers.filter((d) => d.status === "available").length
-    const onlineDrivers = drivers.filter((d) => d.status !== "offline").length
+    const busyDrivers = drivers.filter((d: any) => d.status === "busy" || d.status === "driving").length
+    const availableDrivers = drivers.filter((d: any) => d.status === "available").length
+    const onlineDrivers = drivers.filter((d: any) => d.status !== "offline").length
 
     const vehicleUtilization = totalVehicles > 0 ? Math.round((inUseVehicles / totalVehicles) * 100) : 0
 

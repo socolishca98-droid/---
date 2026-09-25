@@ -33,7 +33,7 @@ export async function fetchOSRMRoute(
 
   const coordinates = [
     `${origin.lng},${origin.lat}`,
-    ...waypoints.map((wp) => `${wp.lng},${wp.lat}`),
+    ...waypoints.map((wp: any) => `${wp.lng},${wp.lat}`),
     `${destination.lng},${destination.lat}`
   ].join(";");
 

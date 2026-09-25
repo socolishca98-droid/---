@@ -1,18 +1,30 @@
 // app/api/drivers/locations/route.ts
 
-import { NextResponse } from "next/server"
+import { requireStaffAuth } from "@/lib/api-auth"
+import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-const ACTIVE_ORDER_STATUSES = ["confirmed", "in_transit", "loading", "unloading"] as const
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+
+
   try {
     const [allDrivers, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({
+        where: scopedWhere(__org.organizationId),
         orderBy: { name: "asc" },
       }),
       prisma.driverShift.findMany({
-        where: { endedAt: null },
+        where: scopedWhere(__org.organizationId, { endedAt: null }),
         select: {
           id: true,
           driverId: true,
@@ -22,10 +34,10 @@ export async function GET() {
         },
       }),
       prisma.order.findMany({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
           assignedDriverId: { not: null },
-        },
+        }),
         select: {
           id: true,
           status: true,
@@ -39,11 +51,11 @@ export async function GET() {
     ])
 
     const shiftMap = new Map(
-      activeShifts.map((s) => [s.driverId, s]),
+      activeShifts.map((s: any) => [s.driverId, s]),
     )
 
     const orderMap = new Map<string, (typeof activeOrders)[number]>()
-    activeOrders.forEach((o) => {
+    activeOrders.forEach((o: any) => {
       if (o.assignedDriverId && !orderMap.has(o.assignedDriverId)) {
         orderMap.set(o.assignedDriverId, o)
       }
@@ -51,8 +63,8 @@ export async function GET() {
 
     const now = Date.now()
 
-    const drivers = allDrivers.map((driver) => {
-      const shift = shiftMap.get(driver.id)
+    const drivers = allDrivers.map((driver: any) => {
+      const shift = shiftMap.get(driver.id) as any
       const order = orderMap.get(driver.id)
 
       const hasActiveOrder = !!order
@@ -60,9 +72,9 @@ export async function GET() {
       let uiStatus: string
       if (driver.status === "maintenance") {
         uiStatus = "maintenance"
-      } else if (shift?.status) {
+      } else if ((shift as any)?.status) {
         // Статус берется напрямую из мобильного приложения водителя (смена)
-        uiStatus = shift.status
+        uiStatus = (shift as any).status
       } else if (hasActiveOrder) {
         uiStatus = "busy"
       } else if (driver.status === "offline") {
@@ -72,8 +84,8 @@ export async function GET() {
       }
 
       let statusDuration = 0
-      if (shift?.lastStatusChangeAt) {
-        statusDuration = Math.floor((now - shift.lastStatusChangeAt.getTime()) / 1000)
+      if ((shift as any)?.lastStatusChangeAt) {
+        statusDuration = Math.floor((now - (shift as any).lastStatusChangeAt.getTime()) / 1000)
       }
 
       return {
@@ -89,15 +101,15 @@ export async function GET() {
         vehicleType: driver.vehicleType,
         currentLocation: driver.currentLocation,
         hasOrder: hasActiveOrder,
-        routeFrom: order?.routeFrom || null,
-        routeTo: order?.routeTo || null,
-        cargoType: order?.cargoType || null,
-        orderPrice: order?.price || null,
+        routeFrom: (order as any)?.routeFrom || null,
+        routeTo: (order as any)?.routeTo || null,
+        cargoType: (order as any)?.cargoType || null,
+        orderPrice: (order as any)?.price || null,
       }
     })
 
-    const online = drivers.filter((d) => d.status !== "offline" && d.latitude != null).length
-    const inRoute = drivers.filter((d) =>
+    const online = drivers.filter((d: any) => d.status !== "offline" && d.latitude != null).length
+    const inRoute = drivers.filter((d: any) =>
       ["driving", "in_transit", "loading", "unloading", "busy"].includes(d.status),
     ).length
 
@@ -106,21 +118,21 @@ export async function GET() {
 
     const [completedToday, newToday, totalOrders, activeOrdersCount] = await Promise.all([
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: "delivered",
           updatedAt: { gte: todayStart },
-        },
+        }),
       }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           createdAt: { gte: todayStart },
-        },
+        }),
       }),
-      prisma.order.count(),
+      prisma.order.count({ where: scopedWhere(__org.organizationId) }),
       prisma.order.count({
-        where: {
+        where: scopedWhere(__org.organizationId, {
           status: { in: ACTIVE_ORDER_STATUSES as any },
-        },
+        }),
       }),
     ])
 

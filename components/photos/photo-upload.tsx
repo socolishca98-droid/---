@@ -1,25 +1,69 @@
 "use client"
 
+// components/photos/photo-upload.tsx
+//
+// Загрузка фотографий (задача 7).
+//
+// Раньше здесь была имитация: файл оставался blob:-ссылкой в браузере, а тип и
+// данные «распознавания» подбирались случайным числом. Ни в галерее, ни в
+// истории рейса этих фото не было.
+//
+// Теперь файл уходит на сервер (POST /api/photos/upload, multipart): сервер
+// кладёт его в public/uploads, создаёт запись фото и, если это чек или
+// накладная, сразу распознаёт локальным OCR. Тип выбирает человек — сервер
+// принимает только известные типы, а «уверенность классификации» больше не
+// выдумывается.
+
 import type React from "react"
-import { useState, useCallback } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Upload, Camera, X, Loader2, Check, AlertCircle, Bot } from "lucide-react"
+import { Upload, Camera, X, Loader2, Check, AlertCircle, ScanLine, Cloud } from "lucide-react"
+import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
+import { fetchJsonCached } from "@/lib/client-cache"
 
-// Локальные типы (в lib/types их нет)
-export type PhotoType = "cargo_before" | "cargo_after" | "damage" | "receipt" | "waybill"
+export type PhotoType =
+  | "cargo_before"
+  | "cargo_after"
+  | "damage"
+  | "receipt"
+  | "waybill"
+  | "document"
 
-export interface PhotoUpload {
+/** Результат загрузки: фото уже создано на сервере, OCR — если был. */
+export interface PhotoUploadResult {
+  photo: { id: string; url: string; type: string; orderId?: string | null; routeId?: string | null }
+  ocr: {
+    kind?: string
+    total?: number | null
+    liters?: number | null
+    number?: string | null
+    vendor?: string | null
+    date?: string | null
+  } | null
+  warnings: string[]
+}
+
+export interface PhotoUploadItem {
+  id: string
   file: File
   preview: string
-  status: "pending" | "analyzing" | "done" | "error"
-  result?: any // используем any для результата, чтобы не конфликтовать с Photo
+  type: PhotoType
+  status: "pending" | "uploading" | "done" | "error" | "queued"
+  error?: string
+  result?: PhotoUploadResult
 }
 
 interface PhotoUploadProps {
-  onUpload: (photos: PhotoUpload[]) => void
+  /** Вызывается после «Сохранить»: фото уже на сервере, родителю нужно перечитать список */
+  onUpload: (uploads: PhotoUploadItem[]) => void
+  /** Рейс, к которому привязываются фото (если открыто из карточки рейса) */
+  routeId?: string | null
+  orderId?: string | null
+  /** Водитель для штабной загрузки: сервер требует его явно */
+  driverId?: string | null
 }
 
 const photoTypeLabels: Record<PhotoType, string> = {
@@ -28,100 +72,205 @@ const photoTypeLabels: Record<PhotoType, string> = {
   damage: "Повреждения",
   receipt: "Чек",
   waybill: "Накладная",
+  document: "Документ",
 }
 
-export function PhotoUpload({ onUpload }: PhotoUploadProps) {
-  const [uploads, setUploads] = useState<PhotoUpload[]>([])
+const PHOTO_TYPES = Object.keys(photoTypeLabels) as PhotoType[]
+
+function ocrSummary(result: PhotoUploadResult): string | null {
+  const ocr = result.ocr
+  if (!ocr) return null
+
+  if (ocr.total) {
+    const parts = [`${ocr.total.toLocaleString("ru-RU")} ₽`]
+    if (ocr.liters) parts.push(`${ocr.liters} л`)
+    if (ocr.vendor) parts.push(ocr.vendor)
+    return `Распознано: ${parts.join(" · ")}`
+  }
+
+  if (ocr.number) return `Накладная № ${ocr.number}`
+  if (ocr.kind) return "Документ распознан"
+
+  return null
+}
+
+export function PhotoUpload({ onUpload, routeId, orderId, driverId }: PhotoUploadProps) {
+  const [uploads, setUploads] = useState<PhotoUploadItem[]>([])
   const [isDragging, setIsDragging] = useState(false)
+  /** Тип, с которым добавляются новые файлы: чаще всего это кузов после погрузки */
+  const [defaultType, setDefaultType] = useState<PhotoType>("cargo_after")
 
-  const handleFiles = useCallback(
-    async (files: FileList) => {
-      const newUploads: PhotoUpload[] = Array.from(files).map((file) => ({
-        file,
-        preview: URL.createObjectURL(file),
-        status: "pending" as const,
-      }))
+  // Штабная загрузка: серверу нужно знать, чьё это фото, — логист выбирает водителя
+  const [driverOptions, setDriverOptions] = useState<Array<{ id: string; name: string | null }>>([])
+  const [staffDriverId, setStaffDriverId] = useState("")
 
-      setUploads((prev) => [...prev, ...newUploads])
+  useEffect(() => {
+    if (driverId) return
 
-      for (let i = 0; i < newUploads.length; i++) {
-        const index = uploads.length + i
-
-        setUploads((prev) =>
-          prev.map((u, idx) => (idx === index ? { ...u, status: "analyzing" } : u)),
+    let cancelled = false
+    // Тот же справочник, что и на других страницах: второй раз — из кеша
+    fetchJsonCached<{ success?: boolean; drivers?: any[] }>("/api/drivers")
+      .then((data) => {
+        if (cancelled || !data?.success || !Array.isArray(data.drivers)) return
+        setDriverOptions(
+          data.drivers.map((driver: any) => ({ id: driver.id, name: driver.name ?? null })),
         )
+      })
+      .catch(() => {
+        /* список водителей не критичен: фото можно загрузить из карточки рейса */
+      })
 
-        await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000))
+    return () => {
+      cancelled = true
+    }
+  }, [driverId])
 
-        const types: PhotoType[] = ["cargo_before", "cargo_after", "receipt", "waybill", "damage"]
-        const detectedType = types[Math.floor(Math.random() * types.length)]
-        const isReceipt = detectedType === "receipt" || detectedType === "waybill"
+  const effectiveDriverId = driverId || staffDriverId
 
+  // Очередь может отправить фото сама: тогда помечаем запись загруженной,
+  // чтобы логист видел правду, и просим родителя перечитать галерею
+  useEffect(() => {
+    const queue = getPhotoQueue()
+    if (!queue) return
+
+    return queue.onUploaded((item) => {
+      setUploads((prev) => {
+        const index = prev.findIndex((entry) => entry.file.name === item.fileName)
+        if (index === -1) return prev
+
+        const next = [...prev]
+        next[index] = { ...next[index], status: "done", error: undefined }
+        return next
+      })
+
+      onUpload([])
+    })
+  }, [onUpload])
+
+  const uploadOne = useCallback(
+    async (item: PhotoUploadItem) => {
+      setUploads((prev) =>
+        prev.map((entry) =>
+          entry.id === item.id ? { ...entry, status: "uploading", error: undefined } : entry,
+        ),
+      )
+
+      if (!effectiveDriverId) {
         setUploads((prev) =>
-          prev.map((u, idx) =>
-            idx === index
-              ? {
-                  ...u,
-                  status: "done",
-                  result: {
-                    id: `upload-${Date.now()}-${idx}`,
-                    orderId: "",
-                    type: detectedType,
-                    url: u.preview,
-                    uploadedBy: "current-user",
-                    uploadedAt: new Date(),
-                    aiClassification: {
-                      detectedType,
-                      confidence: 0.85 + Math.random() * 0.14,
-                      description: isReceipt
-                        ? "Документ успешно распознан. Данные извлечены."
-                        : "Фото классифицировано. Состояние зафиксировано.",
-                    },
-                    ...(isReceipt && {
-                      ocrData: {
-                        amount: Math.floor(1000 + Math.random() * 5000),
-                        date: new Date().toISOString().split("T")[0],
-                        purpose: detectedType === "receipt" ? "Топливо" : "ТТН",
-                        vendor: "Распознанный поставщик",
-                      },
-                    }),
-                  },
-                }
-              : u,
+          prev.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, status: "error", error: "Выберите водителя" }
+              : entry,
           ),
         )
+        return false
+      }
+
+      try {
+        // Единый путь загрузки: сразу на сервер, а если связь пропала — в очередь
+        // (IndexedDB), откуда фото уйдёт само. Файл не теряется на полпути.
+        const outcome = await uploadPhotoOrQueue({
+          blob: item.file,
+          fileName: item.file.name || "photo.jpg",
+          photoType: item.type,
+          orderId: orderId ?? null,
+          routeId: routeId ?? null,
+          // Штабная загрузка требует водителя явно, водительская берёт его из сессии
+          driverId: effectiveDriverId,
+        })
+
+        if (outcome.queued) {
+          // Не ошибка: фото уже сохранено и уйдёт при появлении связи
+          setUploads((prev) =>
+            prev.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, status: "queued", error: outcome.error || undefined }
+                : entry,
+            ),
+          )
+          return false
+        }
+
+        if (!outcome.sent) {
+          throw new Error(outcome.error || "Не удалось загрузить фото")
+        }
+
+        const result: PhotoUploadResult = {
+          photo: outcome.photo as PhotoUploadResult["photo"],
+          ocr: (outcome.ocr as PhotoUploadResult["ocr"]) ?? null,
+          warnings: outcome.warnings ?? [],
+        }
+
+        setUploads((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id ? { ...entry, status: "done", result, error: undefined } : entry,
+          ),
+        )
+
+        return true
+      } catch (error: any) {
+        setUploads((prev) =>
+          prev.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, status: "error", error: error?.message || "Ошибка загрузки" }
+              : entry,
+          ),
+        )
+        return false
       }
     },
-    [uploads.length],
+    [effectiveDriverId, orderId, routeId],
+  )
+
+  const handleFiles = useCallback(
+    (files: FileList) => {
+      const added: PhotoUploadItem[] = Array.from(files).map((file, index) => ({
+        id: `${Date.now()}-${index}-${file.name}`,
+        file,
+        preview: URL.createObjectURL(file),
+        type: defaultType,
+        status: "pending",
+      }))
+
+      setUploads((prev) => [...prev, ...added])
+    },
+    [defaultType],
   )
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
+    (event: React.DragEvent) => {
+      event.preventDefault()
       setIsDragging(false)
-      if (e.dataTransfer.files.length) {
-        handleFiles(e.dataTransfer.files)
-      }
+      if (event.dataTransfer.files.length) handleFiles(event.dataTransfer.files)
     },
     [handleFiles],
   )
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
+  const uploadAll = useCallback(async () => {
+    // Последовательно: распознавание нагружает процессор, десяток параллельных OCR
+    // на одном сервере — плохая идея
+    for (const item of uploads) {
+      if (item.status === "pending" || item.status === "error") {
+        await uploadOne(item)
+      }
+    }
+  }, [uploads, uploadOne])
+
+  const removeUpload = (id: string) => {
+    setUploads((prev) => prev.filter((entry) => entry.id !== id))
   }
 
-  const handleDragLeave = () => {
-    setIsDragging(false)
-  }
-
-  const removeUpload = (index: number) => {
-    setUploads((prev) => prev.filter((_, i) => i !== index))
-  }
+  const done = useMemo(() => uploads.filter((entry) => entry.status === "done"), [uploads])
+  // Кнопка «Загрузить все» — только для тех, что ещё не уходили; записи «ждёт
+  // связи» отправляет очередь сама, вручную их повторять нельзя (будет дубль)
+  const waiting = useMemo(
+    () => uploads.filter((entry) => entry.status === "pending" || entry.status === "error"),
+    [uploads],
+  )
 
   const handleSave = () => {
-    const completedUploads = uploads.filter((u) => u.status === "done")
-    onUpload(completedUploads)
+    if (!done.length) return
+    onUpload(done)
     setUploads([])
   }
 
@@ -134,102 +283,199 @@ export function PhotoUpload({ onUpload }: PhotoUploadProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Тип для новых файлов: чеки и накладные распознаются сразу */}
+        <div className="flex flex-wrap gap-2">
+          {PHOTO_TYPES.map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setDefaultType(type)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                defaultType === type
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border hover:bg-secondary/60"
+              }`}
+            >
+              {photoTypeLabels[type]}
+            </button>
+          ))}
+        </div>
+
+        {!driverId && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Чьё фото:</span>
+            <select
+              value={staffDriverId}
+              onChange={(event) => setStaffDriverId(event.target.value)}
+              className="h-8 rounded-lg border border-border bg-background px-2 text-xs"
+            >
+              <option value="">— выберите водителя —</option>
+              {driverOptions.map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {driver.name ?? "Водитель"}
+                </option>
+              ))}
+            </select>
+            {driverOptions.length === 0 && (
+              <span className="text-amber-600">
+                Водителей нет — загрузите фото из карточки рейса
+              </span>
+            )}
+          </div>
+        )}
+
         <div
           onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+          onDragOver={(event) => {
+            event.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
             isDragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
           }`}
         >
           <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground mb-2">Перетащите фото сюда или</p>
+          <p className="text-sm text-muted-foreground mb-2">
+            Перетащите фото сюда или выберите файлы — тип:{" "}
+            <b className="text-foreground">{photoTypeLabels[defaultType]}</b>
+          </p>
           <label>
             <input
               type="file"
               multiple
               accept="image/*"
               className="hidden"
-              onChange={(e) => e.target.files && handleFiles(e.target.files)}
+              onChange={(event) => {
+                if (event.target.files) handleFiles(event.target.files)
+                event.target.value = ""
+              }}
             />
             <Button variant="outline" size="sm" asChild>
               <span className="cursor-pointer">Выберите файлы</span>
             </Button>
           </label>
           <p className="text-xs text-muted-foreground mt-4">
-            ИИ автоматически определит тип: кузов, чеки или накладные
+            Чек и накладную распознаёт локальный OCR — сумма и номер появятся здесь и попадут в
+            расходы рейса
           </p>
         </div>
 
         {uploads.length > 0 && (
           <div className="space-y-3">
-            {uploads.map((upload, index) => (
-              <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+            {uploads.map((upload) => (
+              <div
+                key={upload.id}
+                className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50"
+              >
                 <div className="h-16 w-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                  <img
-                    src={upload.preview || "/placeholder.svg"}
-                    alt="Preview"
-                    className="h-full w-full object-cover"
-                  />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={upload.preview} alt="Превью" className="h-full w-full object-cover" />
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={upload.type}
+                      onChange={(event) =>
+                        setUploads((prev) =>
+                          prev.map((entry) =>
+                            entry.id === upload.id
+                              ? { ...entry, type: event.target.value as PhotoType }
+                              : entry,
+                          ),
+                        )
+                      }
+                      disabled={upload.status === "uploading" || upload.status === "done"}
+                      className="h-7 rounded-lg border border-border bg-background px-2 text-xs"
+                    >
+                      {PHOTO_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {photoTypeLabels[type]}
+                        </option>
+                      ))}
+                    </select>
+
                     {upload.status === "pending" && <Badge variant="secondary">Ожидание</Badge>}
-                    {upload.status === "analyzing" && (
+                    {upload.status === "uploading" && (
                       <Badge variant="secondary" className="bg-primary/20 text-primary">
                         <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        Анализ...
+                        Загрузка и распознавание…
                       </Badge>
                     )}
-                    {upload.status === "done" && upload.result && (
-                      <>
-                        <Badge variant="secondary" className="bg-success/20 text-success">
-                          <Check className="h-3 w-3 mr-1" />
-                          {photoTypeLabels[upload.result.type as PhotoType]}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {Math.round((upload.result.aiClassification?.confidence || 0) * 100)}% уверенность
-                        </span>
-                      </>
+                    {upload.status === "done" && (
+                      <Badge variant="secondary" className="bg-success/20 text-success">
+                        <Check className="h-3 w-3 mr-1" />
+                        Загружено
+                      </Badge>
+                    )}
+                    {upload.status === "queued" && (
+                      <Badge variant="secondary" className="bg-sky-500/20 text-sky-500">
+                        <Cloud className="h-3 w-3 mr-1" />
+                        Ждёт связи — отправится сам
+                      </Badge>
                     )}
                     {upload.status === "error" && (
                       <Badge variant="destructive">
                         <AlertCircle className="h-3 w-3 mr-1" />
-                        Ошибка
+                        {upload.error || "Ошибка"}
                       </Badge>
+                    )}
+
+                    {(upload.status === "pending" || upload.status === "error") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => void uploadOne(upload)}
+                      >
+                        Загрузить
+                      </Button>
                     )}
                   </div>
 
-                  {upload.status === "analyzing" && <Progress value={66} className="h-1" />}
+                  {upload.status === "uploading" && <Progress value={60} className="h-1" />}
 
-                  {upload.status === "done" && upload.result?.aiClassification && (
-                    <p className="text-xs text-muted-foreground truncate">
-                      {upload.result.aiClassification.description}
-                    </p>
-                  )}
-
-                  {upload.status === "done" && upload.result?.ocrData && (
-                    <div className="flex items-center gap-2 mt-1 text-xs">
-                      <Bot className="h-3 w-3 text-primary" />
-                      <span className="text-primary font-medium">
-                        {upload.result.ocrData.amount?.toLocaleString()} ₽
-                      </span>
-                      <span className="text-muted-foreground">— {upload.result.ocrData.purpose}</span>
-                    </div>
+                  {upload.status === "done" && upload.result && (
+                    <>
+                      <p className="text-xs text-muted-foreground truncate">{upload.file.name}</p>
+                      {ocrSummary(upload.result) && (
+                        <p className="flex items-center gap-1.5 text-xs text-primary">
+                          <ScanLine className="h-3 w-3" />
+                          {ocrSummary(upload.result)}
+                        </p>
+                      )}
+                      {upload.result.warnings.length > 0 && (
+                        <p className="text-xs text-amber-600">
+                          {upload.result.warnings.join("; ")}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
-                <Button variant="ghost" size="icon" className="flex-shrink-0" onClick={() => removeUpload(index)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="flex-shrink-0"
+                  onClick={() => removeUpload(upload.id)}
+                >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             ))}
 
-            {uploads.some((u) => u.status === "done") && (
+            {waiting.length > 0 && (
+              <Button variant="outline" className="w-full" onClick={() => void uploadAll()}>
+                <Upload className="h-4 w-4 mr-2" />
+                Загрузить все ({waiting.length})
+              </Button>
+            )}
+
+            {done.length > 0 && (
               <Button className="w-full bg-primary text-primary-foreground" onClick={handleSave}>
                 <Check className="h-4 w-4 mr-2" />
-                Сохранить {uploads.filter((u) => u.status === "done").length} фото
+                Сохранить {done.length} фото
               </Button>
             )}
           </div>

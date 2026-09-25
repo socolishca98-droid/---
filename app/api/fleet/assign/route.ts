@@ -1,11 +1,33 @@
 // app/api/fleet/assign/route.ts
+//
+// Закрепление машины за водителем.
+// Задача 2: связь «водитель ↔ машина» хранится один раз — в Driver.vehicleId.
+// Поле Vehicle.driverId удалено из схемы, а кэш Driver.vehicleType/vehiclePlate
+// пишется только через lib/fleet/assignment (единый путь записи).
+//
+// POST   /api/fleet/assign?{driverId, vehicleId} — закрепить
+// DELETE /api/fleet/assign?driverId=…             — снять машину с водителя
+// DELETE /api/fleet/assign?vehicleId=…            — отвязать машину от всех водителей
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import {
+  findVehicleOccupant,
+  linkDriverToVehicle,
+  unlinkVehicle,
+} from "@/lib/fleet/assignment"
+
 export async function POST(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
-    const body = await request.json()
+    const body = await request.json().catch(() => ({}))
     const { driverId, vehicleId } = body as {
       driverId?: string
       vehicleId?: string
@@ -18,12 +40,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const [driver, vehicle, currentAssignedDriver] = await Promise.all([
-      prisma.driver.findUnique({ where: { id: driverId } }),
-      prisma.vehicle.findUnique({ where: { id: vehicleId } }),
+    const [driver, vehicle] = await Promise.all([
       prisma.driver.findFirst({
-        where: { vehicleId, id: { not: driverId } },
+        where: scopedWhere(org.organizationId, { id: driverId }),
         select: { id: true, name: true },
+      }),
+      prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: vehicleId }),
+        select: { id: true, plate: true, type: true },
       }),
     ])
 
@@ -41,37 +65,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (currentAssignedDriver) {
+    const occupant = await findVehicleOccupant(prisma, vehicleId, driverId, org.organizationId)
+    if (occupant) {
       return NextResponse.json(
         {
           success: false,
-          error: `Машина уже закреплена за водителем ${currentAssignedDriver.name}`,
+          error: `Машина уже закреплена за ${occupant.name || "другим водителем"}`,
         },
         { status: 400 },
       )
     }
 
-    // Если за этим водителем была другая машина, просто перезаписываем vehicleId
-    await prisma.driver.update({
-      where: { id: driverId },
-      data: {
-        vehicleId,
-        vehiclePlate: vehicle.plate,
-        vehicleType: vehicle.type,
-      },
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error("[Fleet Assign] Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Ошибка назначения водителя" },
-      { status: 500 },
+    const assignment = await prisma.$transaction((tx) =>
+      linkDriverToVehicle(tx, driverId, vehicleId, org.organizationId),
     )
+
+    return NextResponse.json({ success: true, assignment })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Ошибка назначения водителя"
+    console.error("[Fleet Assign] Error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const { searchParams } = new URL(request.url)
     const driverId = searchParams.get("driverId")
@@ -84,24 +106,19 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    if (driverId) {
-      await prisma.driver.update({
-        where: { id: driverId },
-        data: { vehicleId: null },
-      })
-    } else if (vehicleId) {
-      await prisma.driver.updateMany({
-        where: { vehicleId },
-        data: { vehicleId: null },
-      })
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      if (driverId) {
+        // снимаем машину с водителя: обнуляется и кэш номера/типа
+        return linkDriverToVehicle(tx, driverId, null, org.organizationId)
+      }
+      const unlinked = await unlinkVehicle(tx, vehicleId as string, org.organizationId)
+      return { vehicleId: vehicleId as string, unlinkedDrivers: unlinked }
+    })
 
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error("[Fleet Unassign] Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Ошибка отвязки" },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: true, result })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Ошибка отвязки"
+    console.error("[Fleet Unassign] Error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

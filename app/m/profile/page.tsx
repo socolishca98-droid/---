@@ -2,9 +2,11 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import Link from "next/link"
+import { useDriverSession } from "@/hooks/use-driver-session"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   Loader2,
   Phone,
@@ -43,37 +45,22 @@ interface DriverStats {
 }
 
 export default function MobileProfilePage() {
-  const router = useRouter()
+  const confirm = useConfirm()
+  // Сессия — серверная (httpOnly-cookie), а не запись в localStorage:
+  // раньше страница читала «driver_session», которой после задачи 1 больше
+  // не существует, и любой вход заканчивался возвратом на экран логина
+  const { driver: session, isLoading: isSessionLoading, logout } = useDriverSession()
   const [driver, setDriver] = useState<DriverProfile | null>(null)
   const [stats, setStats] = useState<DriverStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Загрузка профиля
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (!saved) {
-      router.push("/m/login")
-      return
-    }
-
-    try {
-      const session = JSON.parse(saved) as { id: string }
-      if (!session?.id) throw new Error("Invalid session")
-      fetchProfile(session.id)
-    } catch {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
-  }, [router])
-
-  const fetchProfile = async (driverId: string) => {
+  const fetchProfile = useCallback(async (driverId: string) => {
     try {
       const driverRes = await fetch(`/api/drivers/${driverId}`)
       const driverData = await driverRes.json()
 
       if (driverData.success && driverData.driver) {
-        setDriver(driverData.driver)
-        localStorage.setItem("driver_session", JSON.stringify(driverData.driver))
+        setDriver(driverData.driver as DriverProfile)
       }
 
       const ordersRes = await fetch(
@@ -93,13 +80,42 @@ export default function MobileProfilePage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
-  const handleLogout = () => {
-    if (confirm("Выйти из аккаунта?")) {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
+  useEffect(() => {
+    if (isSessionLoading) return
+    if (session?.id) void fetchProfile(session.id)
+  }, [isSessionLoading, session?.id, fetchProfile])
+
+  // Пока профиль не догрузился, показываем данные из сессии — без пустого экрана
+  const shown: DriverProfile | null =
+    driver ??
+    (session
+      ? {
+          id: session.id,
+          name: session.name,
+          phone: session.phone ?? "",
+          vehicleType: session.vehicleType,
+          vehiclePlate: session.vehiclePlate,
+          status: session.status ?? "active",
+          rating: session.rating ?? 5,
+          ordersCompleted: session.ordersCompleted ?? 0,
+          licenseNumber: session.licenseNumber ?? undefined,
+          licenseExpiry: session.licenseExpiry ?? undefined,
+          medicalExpiry: session.medicalExpiry ?? undefined,
+          hiredAt: session.hiredAt ?? undefined,
+        }
+      : null)
+
+  const handleLogout = async () => {
+    const ok = await confirm({
+      title: "Выйти из аккаунта?",
+      description: "Чтобы вернуться к рейсам, нужно будет снова войти по телефону и паролю.",
+      confirmLabel: "Выйти",
+    })
+    if (!ok) return
+
+    await logout()
   }
 
   const formatDate = (dateString?: string) => {
@@ -120,7 +136,7 @@ export default function MobileProfilePage() {
     return new Date(dateString) < new Date()
   }
 
-  if (isLoading) {
+  if (isSessionLoading || !shown) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
@@ -128,17 +144,9 @@ export default function MobileProfilePage() {
     )
   }
 
-  if (!driver) {
-    return (
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center text-white">
-        <p className="text-gray-400">Ошибка загрузки профиля</p>
-      </div>
-    )
-  }
-
-  const initials = driver.name
+  const initials = shown.name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: any) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase()
@@ -152,13 +160,13 @@ export default function MobileProfilePage() {
             {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold truncate">{driver.name}</h1>
+            <h1 className="text-xl font-bold truncate">{shown.name}</h1>
             <a
-              href={`tel:${driver.phone}`}
+              href={`tel:${shown.phone}`}
               className="text-gray-400 text-sm flex items-center gap-1.5 mt-1 hover:text-gray-300"
             >
               <Phone className="h-4 w-4" />
-              {driver.phone}
+              {shown.phone}
             </a>
           </div>
         </div>
@@ -168,13 +176,13 @@ export default function MobileProfilePage() {
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/15 border border-yellow-500/30 rounded-full">
             <Star className="h-4 w-4 text-yellow-500" />
             <span className="text-sm font-medium text-yellow-500">
-              {driver.rating?.toFixed(1) || "5.0"}
+              {shown.rating?.toFixed(1) || "5.0"}
             </span>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-500/30 rounded-full">
             <Award className="h-4 w-4 text-emerald-500" />
             <span className="text-sm font-medium text-emerald-500">
-              {driver.ordersCompleted || 0} рейсов
+              {shown.ordersCompleted || 0} рейсов
             </span>
           </div>
         </div>
@@ -190,10 +198,10 @@ export default function MobileProfilePage() {
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-500">Автомобиль</p>
               <p className="font-bold text-lg">
-                {driver.vehiclePlate || "Не назначен"}
+                {shown.vehiclePlate || "Не назначен"}
               </p>
-              {driver.vehicleType && (
-                <p className="text-sm text-gray-400">{driver.vehicleType}</p>
+              {shown.vehicleType && (
+                <p className="text-sm text-gray-400">{shown.vehicleType}</p>
               )}
             </div>
           </div>
@@ -267,22 +275,22 @@ export default function MobileProfilePage() {
                   Водительское удостоверение
                 </p>
                 <p className="font-medium">
-                  {driver.licenseNumber || "Не указано"}
+                  {shown.licenseNumber || "Не указано"}
                 </p>
               </div>
-              {driver.licenseExpiry && (
+              {shown.licenseExpiry && (
                 <div
                   className={`text-right ${
-                    isExpired(driver.licenseExpiry)
+                    isExpired(shown.licenseExpiry)
                       ? "text-red-400"
-                      : isExpiringSoon(driver.licenseExpiry)
+                      : isExpiringSoon(shown.licenseExpiry)
                       ? "text-yellow-400"
                       : "text-gray-500"
                   }`}
                 >
                   <p className="text-xs">до</p>
                   <p className="text-sm font-medium">
-                    {formatDate(driver.licenseExpiry)}
+                    {formatDate(shown.licenseExpiry)}
                   </p>
                 </div>
               )}
@@ -295,34 +303,34 @@ export default function MobileProfilePage() {
                   Медицинская справка
                 </p>
                 <p className="font-medium">
-                  {driver.medicalExpiry ? "Действует" : "Не указана"}
+                  {shown.medicalExpiry ? "Действует" : "Не указана"}
                 </p>
               </div>
-              {driver.medicalExpiry && (
+              {shown.medicalExpiry && (
                 <div
                   className={`text-right ${
-                    isExpired(driver.medicalExpiry)
+                    isExpired(shown.medicalExpiry)
                       ? "text-red-400"
-                      : isExpiringSoon(driver.medicalExpiry)
+                      : isExpiringSoon(shown.medicalExpiry)
                       ? "text-yellow-400"
                       : "text-gray-500"
                   }`}
                 >
                   <p className="text-xs">до</p>
                   <p className="text-sm font-medium">
-                    {formatDate(driver.medicalExpiry)}
+                    {formatDate(shown.medicalExpiry)}
                   </p>
                 </div>
               )}
             </div>
 
             {/* Дата приёма */}
-            {driver.hiredAt && (
+            {shown.hiredAt && (
               <div className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-400">В компании с</p>
                   <p className="font-medium">
-                    {formatDate(driver.hiredAt)}
+                    {formatDate(shown.hiredAt)}
                   </p>
                 </div>
                 <Calendar className="h-5 w-5 text-gray-600" />
@@ -332,36 +340,45 @@ export default function MobileProfilePage() {
         </div>
 
         {/* Предупреждения */}
-        {(isExpiringSoon(driver.licenseExpiry) ||
-          isExpiringSoon(driver.medicalExpiry) ||
-          isExpired(driver.licenseExpiry) ||
-          isExpired(driver.medicalExpiry)) && (
+        {(isExpiringSoon(shown.licenseExpiry) ||
+          isExpiringSoon(shown.medicalExpiry) ||
+          isExpired(shown.licenseExpiry) ||
+          isExpired(shown.medicalExpiry)) && (
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium text-yellow-400">Внимание</p>
               <p className="text-sm text-yellow-500/80 mt-1">
-                {isExpired(driver.licenseExpiry) && "ВУ просрочено. "}
-                {isExpired(driver.medicalExpiry) && "Мед. справка просрочена. "}
-                {!isExpired(driver.licenseExpiry) &&
-                  isExpiringSoon(driver.licenseExpiry) &&
+                {isExpired(shown.licenseExpiry) && "ВУ просрочено. "}
+                {isExpired(shown.medicalExpiry) && "Мед. справка просрочена. "}
+                {!isExpired(shown.licenseExpiry) &&
+                  isExpiringSoon(shown.licenseExpiry) &&
                   "Срок ВУ скоро истекает. "}
-                {!isExpired(driver.medicalExpiry) &&
-                  isExpiringSoon(driver.medicalExpiry) &&
+                {!isExpired(shown.medicalExpiry) &&
+                  isExpiringSoon(shown.medicalExpiry) &&
                   "Срок мед. справки скоро истекает."}
               </p>
             </div>
           </div>
         )}
 
+        {/* Моя машина: выбор и смена своей машины в рейсе */}
+        <Link
+          href="/m/vehicle"
+          className="w-full py-4 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-2xl font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+        >
+          <Truck className="h-5 w-5 text-sky-400" />
+          {shown.vehiclePlate ? `Моя машина: ${shown.vehiclePlate}` : "Выбрать машину"}
+        </Link>
+
         {/* Кнопка: ТО / ремонт */}
-        <button
-          onClick={() => router.push("/m/maintenance")}
+        <Link
+          href="/m/maintenance"
           className="w-full py-4 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-2xl font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
         >
           <Wrench className="h-5 w-5 text-amber-400" />
           ТО / ремонт
-        </button>
+        </Link>
 
         {/* Выход */}
         <button

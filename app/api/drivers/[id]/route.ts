@@ -2,7 +2,16 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-
+import {
+  forbidden,
+  isSelfOrStaff,
+  requireAnySession,
+  requireStaff,
+  revokeAllSessions,
+} from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
+import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 // ✅ Добавлен 'offline' в список разрешённых статусов
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 type DriverStatus = typeof ALLOWED_DRIVER_STATUSES[number]
@@ -13,9 +22,14 @@ type RouteParams = {
 
 // GET /api/drivers/[id]
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireAnySession(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const { id } = await params
 
@@ -26,8 +40,13 @@ export async function GET(
       )
     }
 
-    const driver = await prisma.driver.findUnique({
-      where: { id },
+    // Водитель читает только свою карточку
+    if (!isSelfOrStaff(auth.value, id)) {
+      return forbidden("Недостаточно прав для просмотра этой карточки водителя")
+    }
+
+    const driver = await prisma.driver.findFirst({
+      where: scopedWhere(org.organizationId, { id }),
     })
 
     if (!driver) {
@@ -53,6 +72,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const { id } = await params
 
@@ -69,8 +93,6 @@ export async function PATCH(
       phone,
       status,
       vehicleId,
-      vehicleType,
-      vehiclePlate,
       licenseNumber,
       licenseExpiry,
       medicalExpiry,
@@ -82,8 +104,6 @@ export async function PATCH(
       phone?: string
       status?: string
       vehicleId?: string | null
-      vehicleType?: string
-      vehiclePlate?: string
       licenseNumber?: string | null
       licenseExpiry?: string | null
       medicalExpiry?: string | null
@@ -108,9 +128,6 @@ export async function PATCH(
       data.status = status
     }
 
-    if (vehicleId !== undefined) data.vehicleId = vehicleId
-    if (vehicleType !== undefined) data.vehicleType = vehicleType
-    if (vehiclePlate !== undefined) data.vehiclePlate = vehiclePlate
     if (licenseNumber !== undefined) data.licenseNumber = licenseNumber
     if (licenseExpiry !== undefined) {
       data.licenseExpiry = licenseExpiry ? new Date(licenseExpiry) : null
@@ -122,27 +139,67 @@ export async function PATCH(
     if (latitude !== undefined) data.latitude = latitude
     if (longitude !== undefined) data.longitude = longitude
 
-    const driver = await prisma.driver.update({
-      where: { id },
-      data,
+    // Закрепление машины пишется только через единый путь (задача 2):
+    // Driver.vehicleId — источник правды, vehicleType/vehiclePlate — кэш,
+    // который заполняется из данных машины, а не из тела запроса.
+    // Править можно только водителя своей организации
+    const existingDriver = await prisma.driver.findFirst({
+      where: scopedWhere(org.organizationId, { id }),
+      select: { id: true },
     })
+    if (!existingDriver) {
+      return NextResponse.json(
+        { success: false, error: "Driver not found" },
+        { status: 404 }
+      )
+    }
+
+    let driver
+    if (vehicleId !== undefined) {
+      await prisma.$transaction(async (tx) => {
+        await tx.driver.updateMany({
+          where: scopedWhere(org.organizationId, { id }),
+          data,
+        })
+        await linkDriverToVehicle(tx, id, vehicleId, org.organizationId)
+      })
+      driver = await prisma.driver.findFirstOrThrow({
+        where: scopedWhere(org.organizationId, { id }),
+      })
+    } else {
+      driver = await prisma.driver.updateMany({
+        where: scopedWhere(org.organizationId, { id }),
+        data,
+      }).then(() =>
+        prisma.driver.findFirstOrThrow({
+          where: scopedWhere(org.organizationId, { id }),
+        })
+      )
+    }
 
     return NextResponse.json({ success: true, driver })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Driver PATCH error"
+    // повтор телефона (Driver.phone @unique) → 409 с понятным текстом
+    const friendly = friendlyDbError(error)
+    const message = friendly || (error instanceof Error ? error.message : "Driver PATCH error")
     console.error("[Driver] PATCH Error:", message)
     return NextResponse.json(
       { success: false, error: message },
-      { status: 500 }
+      { status: friendly ? friendlyDbErrorStatus(error) : 500 }
     )
   }
 }
 
 // DELETE /api/drivers/[id]
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteParams
 ) {
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
   try {
     const { id } = await params
 
@@ -153,8 +210,42 @@ export async function DELETE(
       )
     }
 
-    await prisma.driver.delete({
-      where: { id },
+    // Удалить можно только водителя своей организации
+    const existingDriver = await prisma.driver.findFirst({
+      where: scopedWhere(org.organizationId, { id }),
+      select: { id: true },
+    })
+    if (!existingDriver) {
+      return NextResponse.json(
+        { success: false, error: "Driver not found" },
+        { status: 404 }
+      )
+    }
+
+    // Доступ водителя закрываем вместе с карточкой: иначе учётка останется
+    // активной, а войти по ней будет нельзя (связь с Driver обнулится)
+    const linkedUser = await prisma.user.findFirst({
+      where: scopedWhere(org.organizationId, { driverId: id }),
+      select: { id: true, name: true },
+    })
+    if (linkedUser) {
+      // org-audit: ok — учётка найдена выше внутри организации вызывающего
+      await prisma.user.update({
+        where: { id: linkedUser.id },
+        data: {
+          status: "suspended",
+          suspendedAt: new Date(),
+          suspendReason: `Карточка водителя «${linkedUser.name}» удалена`,
+        },
+      })
+      await revokeAllSessions(linkedUser.id, "Карточка водителя удалена")
+    }
+
+    // Машина отвязывается автоматически: связь хранится в Driver.vehicleId
+    // и удаляется вместе с карточкой водителя (поле Vehicle.driverId удалено
+    // из схемы в задаче 2).
+    await prisma.driver.deleteMany({
+      where: scopedWhere(org.organizationId, { id }),
     })
 
     return NextResponse.json({ success: true })

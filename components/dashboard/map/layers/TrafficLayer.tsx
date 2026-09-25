@@ -91,7 +91,7 @@ function getRouteSegments(route: RouteData, trafficInfo?: TrafficRouteInfo): Tra
   }
 
   // Детерминированный генератор на основе ID маршрута
-  const numId = route.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const numId = route.id.split("").reduce((acc: any, char: any) => acc + char.charCodeAt(0), 0)
   const segments: TrafficSegment[] = []
 
   // 1 сильная пробка на маршруте
@@ -185,7 +185,7 @@ export function TrafficLayer({
     const arterialsList: TrafficLevelInfo["arterials"] = []
     const incidentsList: TrafficLevelInfo["incidents"] = []
 
-    routes.forEach((route) => {
+    routes.forEach((route: any) => {
       const segments = getRouteSegments(route, trafficByRouteId?.[route.id])
       const totalPoints = route.coordinates?.length || 0
       if (totalPoints < 2) return
@@ -326,7 +326,7 @@ export function TrafficLayer({
 
     const group = L.layerGroup([])
 
-    routes.forEach((route) => {
+    routes.forEach((route: any) => {
       const coords = route.coordinates
       if (!coords || coords.length < 2) return
 

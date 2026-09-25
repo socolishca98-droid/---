@@ -174,7 +174,7 @@ function GeoSelect({
 
       {isOpen && options.length > 0 && (
         <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-          {options.map((geo) => (
+          {options.map((geo: any) => (
             <div
               key={geo.id}
               className="px-3 py-2.5 hover:bg-accent cursor-pointer text-sm transition-colors"
@@ -237,6 +237,8 @@ export function AtiSearchPanel() {
   const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null)
   const [loadingContact, setLoadingContact] = useState(false)
   const [showResultDialog, setShowResultDialog] = useState(false)
+  /** Грузы, которые наша организация уже взяла в работу (заказ создан). */
+  const [takenIds, setTakenIds] = useState<Set<string>>(() => new Set())
 
   // ==================== ЗАГРУЗКА ДАННЫХ БАЗЫ ====================
   const loadDatabase = useCallback(async () => {
@@ -421,7 +423,12 @@ export function AtiSearchPanel() {
     }
   }
 
-  // ==================== ВЗЯТЬ ГРУЗ ====================
+  // ==================== ВЗЯТЬ ГРУЗ В РАБОТУ ====================
+  /**
+   * «Взять» создаёт заказ организации на этапе «Поиск» (POST /api/orders/from-cache).
+   * Груз при этом остаётся в общей базе: его могут взять другие организации,
+   * а у нас появляется карточка заказа с согласованием и историей.
+   */
   const handleTakeLoad = async (load: LoadItem): Promise<void> => {
     setSelectedLoad(load)
     setContactInfo(null)
@@ -429,7 +436,7 @@ export function AtiSearchPanel() {
     setShowResultDialog(true)
 
     try {
-      const res = await fetch("/api/ati/import", {
+      const res = await fetch("/api/orders/from-cache", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -441,47 +448,45 @@ export function AtiSearchPanel() {
       const data = (await res.json()) as {
         success?: boolean
         error?: string
-        expired?: boolean
-        alreadyImported?: boolean
-        contact?: {
+        code?: string
+        message?: string
+        order?: {
+          id: string
+          status: string
+          statusLabel?: string
+          stage?: string | null
+        }
+        contacts?: {
           phone?: string | null
           name?: string | null
+          email?: string | null
           firmName?: string | null
           firmId?: string | null
-          email?: string | null
         }
       }
 
       if (data.success) {
         setContactInfo({
-          phone: data.contact?.phone ?? load.contactPhone,
-          name: data.contact?.name ?? load.contactName,
-          firmName: data.contact?.firmName ?? load.firmName,
-          firmId: data.contact?.firmId ?? load.firmId,
+          phone: data.contacts?.phone ?? load.contactPhone,
+          name: data.contacts?.name ?? load.contactName,
+          firmName: data.contacts?.firmName ?? load.firmName,
+          firmId: data.contacts?.firmId ?? load.firmId,
         })
-
-        // Убираем груз из списков "новых"
-        setSearchResults((prev) => prev.filter((l) => l.id !== load.id))
-        setDbData((prev) =>
-          prev
-            ? {
-                ...prev,
-                items: prev.items.filter((l) => l.id !== load.id),
-                total: Math.max(0, prev.total - 1),
-              }
-            : null,
-        )
+        setTakenIds((prev) => new Set(prev).add(load.id))
         void loadStats()
+        toast.success(data.message || "Груз взят в работу")
       } else {
         setShowResultDialog(false)
 
-        if (data.expired) {
-          toast.warning(
-            data.error ||
-              "Груз на ATI.su уже неактуален или был снят отправителем",
-          )
+        if (data.code === "already_taken") {
+          setTakenIds((prev) => new Set(prev).add(load.id))
+          toast.message("Груз уже взят в работу", {
+            description: "Заказ есть во вкладке «Мои заказы» — откройте его карточку",
+          })
+        } else if (res.status === 410) {
+          toast.warning(data.error || "Груз снят или неактуален — взять в работу нельзя")
         } else {
-          toast.error(data.error || "Ошибка импорта груза")
+          toast.error(data.error || "Не удалось взять груз в работу")
         }
       }
     } catch {
@@ -520,19 +525,29 @@ export function AtiSearchPanel() {
         onValueChange={(val) => setActiveTab(val as "search" | "database")}
         className="w-full"
       >
+        {/* Источник заказов по умолчанию — своя накопленная база (её наполняют
+            сканы по расписанию). Живой запрос на ATI.su — отдельная явная опция. */}
         <TabsList className="grid w-full grid-cols-2 h-12">
-          <TabsTrigger value="search" className="gap-2 text-base">
-            <Search className="h-4 w-4" />
-            Поиск грузов
-          </TabsTrigger>
           <TabsTrigger value="database" className="gap-2 text-base">
             <Database className="h-4 w-4" />
-            База ({stats?.new || 0})
+            Своя база ({stats?.new || 0})
+          </TabsTrigger>
+          <TabsTrigger value="search" className="gap-2 text-base">
+            <Search className="h-4 w-4" />
+            Живой поиск ATI
           </TabsTrigger>
         </TabsList>
 
-        {/* Вкладка поиска */}
+        {/* Вкладка живого поиска ATI */}
         <TabsContent value="search" className="space-y-6 mt-6">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+            <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <p className="text-amber-800 dark:text-amber-300">
+              Живой запрос уходит на ati.su и тратит лимиты токена. Основной
+              источник грузов — своя накопленная база (вкладка «Своя база»): её
+              наполняют плановые сканы, и поиск по ней мгновенный.
+            </p>
+          </div>
           <Card className="border-l-4 border-l-primary">
             <CardContent className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
@@ -631,11 +646,12 @@ export function AtiSearchPanel() {
 
           <div className="space-y-3">
             {searchResults.length > 0 ? (
-              searchResults.map((load) => (
+              searchResults.map((load: any) => (
                 <LoadCard
                   key={load.id}
                   load={load}
                   onTake={() => void handleTakeLoad(load)}
+                  taken={takenIds.has(load.id)}
                 />
               ))
             ) : (
@@ -840,18 +856,19 @@ export function AtiSearchPanel() {
 
           {loading ? (
             <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: 5 }).map((_: any, i: any) => (
                 <Skeleton key={i} className="h-32 w-full" />
               ))}
             </div>
           ) : dbData?.items.length ? (
             <>
               <div className="space-y-3">
-                {dbData.items.map((load) => (
+                {dbData.items.map((load: any) => (
                   <LoadCard
                     key={load.id}
                     load={load}
                     onTake={() => void handleTakeLoad(load)}
+                  taken={takenIds.has(load.id)}
                   />
                 ))}
               </div>
@@ -923,9 +940,7 @@ export function AtiSearchPanel() {
               ) : (
                 <CheckCircle className="h-5 w-5 text-green-500" />
               )}
-              {loadingContact
-                ? "Загрузка..."
-                : "Груз добавлен в песочницу"}
+              {loadingContact ? "Загрузка..." : "Груз взят в работу"}
             </DialogTitle>
             {selectedLoad && (
               <DialogDescription>
@@ -1000,9 +1015,10 @@ export function AtiSearchPanel() {
                 <div className="flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                   <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-blue-700 dark:text-blue-400">
-                    Груз добавлен в песочницу (вкладка &quot;Мои
-                    заказы&quot;). Там вы можете собрать маршрут и
-                    назначить водителя.
+                    Создан заказ на этапе &quot;Поиск&quot; — он виден во
+                    вкладке &quot;Мои заказы&quot;. Проведите согласование
+                    (переговоры и торг по цене), затем заказ можно взять на
+                    холст песочницы и собрать рейс.
                   </p>
                 </div>
               </div>
@@ -1035,9 +1051,12 @@ export function AtiSearchPanel() {
 function LoadCard({
   load,
   onTake,
+  taken = false,
 }: {
   load: LoadItem
   onTake: () => void
+  /** Груз уже взят нашей организацией в работу (заказ создан). */
+  taken?: boolean
 }) {
   const pricePerKm =
     load.distance > 0 && load.price > 0
@@ -1110,7 +1129,13 @@ function LoadCard({
                 </div>
               )}
             </div>
-            <Button onClick={onTake}>Взять</Button>
+            {taken ? (
+              <Button variant="outline" disabled title="Заказ уже создан — смотрите «Мои заказы»">
+                В работе
+              </Button>
+            ) : (
+              <Button onClick={onTake}>Взять в работу</Button>
+            )}
           </div>
         </div>
 

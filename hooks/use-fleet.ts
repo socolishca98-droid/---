@@ -1,6 +1,19 @@
 // hooks/use-fleet.ts
+//
+// Автопарк (машины, водители, сводка) — один запрос /api/fleet на страницу.
+//
+// Данные идут через клиентский кеш: переход «Автопарк → Водители → снова
+// Автопарк» рисуется сразу из памяти и тихо обновляется в фоне. После
+// изменений (добавили машину, удалили водителя) кеш принудительно сбрасывается,
+// чтобы в списке не осталось старого состояния.
+//
+// Важно: все функции возвращаются стабильными (useCallback). Иначе эффект
+// страницы вида `useEffect(..., [getAvailableVehicles])` перезапускался бы на
+// каждом рендере и зацикливал перерисовку при открытом диалоге.
 
-import { useState, useEffect, useCallback } from "react"
+import { useCallback } from "react"
+
+import { invalidateCache, useCachedJson } from "@/lib/client-cache"
 
 interface FleetStats {
   vehicleStats: {
@@ -23,95 +36,102 @@ interface FleetStats {
   }
 }
 
-interface FleetData {
-  drivers: any[]
-  vehicles: any[]
-  stats: FleetStats | null
+interface FleetPayload {
+  success?: boolean
+  drivers?: unknown[]
+  vehicles?: unknown[]
+  stats?: FleetStats | null
+  error?: string
 }
 
+const FLEET_URL = "/api/fleet"
+
+// Пустые массивы-константы: ссылка не меняется между рендерами,
+// значит и зависящие от неё колбэки остаются стабильными
+const NO_DRIVERS: any[] = []
+const NO_VEHICLES: any[] = []
+
 export function useFleet() {
-  const [data, setData] = useState<FleetData>({
-    drivers: [],
-    vehicles: [],
-    stats: null,
-  })
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isLoading, isRevalidating, error, reload } = useCachedJson<FleetPayload>(FLEET_URL)
 
+  const drivers = (data?.drivers ?? NO_DRIVERS) as any[]
+  const vehicles = (data?.vehicles ?? NO_VEHICLES) as any[]
+  const stats = (data?.stats ?? null) as FleetStats | null
+
+  /** Обновление после изменения: сбрасываем кеш и перезапрашиваем. */
   const fetchAll = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/fleet")
-      const json = await res.json()
-      if (!json.success) {
-        throw new Error(json.error || "Failed to load fleet")
-      }
+    invalidateCache(FLEET_URL)
+    // Машина ушла в рейс или водитель сменил статус — справочник водителей
+    // (его читают чат, фото и страница «Водители») тоже стал неактуален
+    invalidateCache("/api/drivers")
+    await reload({ force: true })
+  }, [reload])
 
-      setData({
-        drivers: json.drivers || [],
-        vehicles: json.vehicles || [],
-        stats: json.stats || null,
+  const addDriver = useCallback(
+    async (driverData: any) => {
+      const res = await fetch("/api/drivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(driverData),
       })
-    } catch (e: any) {
-      console.error("useFleet error:", e)
-      setError(e.message || "Unknown error")
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error)
+      await fetchAll()
+      // result.driver — карточка; result.credentials — временный пароль для входа
+      // в приложение водителя (показывается один раз); result.warning — если учётку
+      // создать не удалось
+      return result
+    },
+    [fetchAll],
+  )
 
-  useEffect(() => {
-    fetchAll()
-  }, [fetchAll])
+  const deleteDriver = useCallback(
+    async (id: string) => {
+      const res = await fetch(`/api/drivers/${id}`, { method: "DELETE" })
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error)
+      await fetchAll()
+    },
+    [fetchAll],
+  )
 
-  const addDriver = async (driverData: any) => {
-    const res = await fetch("/api/drivers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(driverData),
-    })
-    const result = await res.json()
-    if (!result.success) throw new Error(result.error)
-    await fetchAll()
-    return result.driver
-  }
+  const addVehicle = useCallback(
+    async (vehicleData: any) => {
+      const res = await fetch("/api/vehicles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vehicleData),
+      })
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error)
+      await fetchAll()
+      return result.vehicle
+    },
+    [fetchAll],
+  )
 
-  const deleteDriver = async (id: string) => {
-    const res = await fetch(`/api/drivers/${id}`, { method: "DELETE" })
-    const result = await res.json()
-    if (!result.success) throw new Error(result.error)
-    await fetchAll()
-  }
+  const deleteVehicle = useCallback(
+    async (id: string) => {
+      const res = await fetch(`/api/vehicles/${id}`, { method: "DELETE" })
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error)
+      await fetchAll()
+    },
+    [fetchAll],
+  )
 
-  const addVehicle = async (vehicleData: any) => {
-    const res = await fetch("/api/vehicles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(vehicleData),
-    })
-    const result = await res.json()
-    if (!result.success) throw new Error(result.error)
-    await fetchAll()
-    return result.vehicle
-  }
-
-  const deleteVehicle = async (id: string) => {
-    const res = await fetch(`/api/vehicles/${id}`, { method: "DELETE" })
-    const result = await res.json()
-    if (!result.success) throw new Error(result.error)
-    await fetchAll()
-  }
-
-  const getAvailableVehicles = async () => {
-    return data.vehicles.filter((v) => v.status === "available" && !v.driverId)
-  }
+  const getAvailableVehicles = useCallback(async () => {
+    // машина свободна, если за ней не закреплён водитель
+    // (связь хранится в Driver.vehicleId; driverId в ответе — производное поле)
+    return vehicles.filter((v) => v.status === "available" && !v.driver && !v.driverId)
+  }, [vehicles])
 
   return {
-    drivers: data.drivers,
-    vehicles: data.vehicles,
-    stats: data.stats,
+    drivers,
+    vehicles,
+    stats,
     isLoading,
+    isRevalidating,
     error,
     refresh: fetchAll,
     addDriver,

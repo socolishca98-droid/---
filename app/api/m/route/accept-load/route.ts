@@ -3,25 +3,36 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
+import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { logRouteEvent } from "@/lib/routes/service"
+
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
+  // Водитель отвечает только за себя: driverId из сессии, а не из тела запроса
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json()
-    const { orderId, driverId, accept, rejectionReason } = body as {
+    const { orderId, accept, rejectionReason } = body as {
       orderId: string
-      driverId: string
       accept: boolean
       rejectionReason?: string
     }
 
-    if (!orderId || !driverId) {
+    if (!orderId) {
       return NextResponse.json(
-        { success: false, error: "orderId и driverId обязательны" },
+        { success: false, error: "orderId обязателен" },
         { status: 400 },
       )
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: scopedWhere(org.organizationId, { id: orderId }),
     })
 
     if (!order) {
@@ -46,8 +57,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (accept) {
-      await prisma.order.update({
-        where: { id: orderId },
+      await prisma.order.updateMany({
+        where: scopedWhere(org.organizationId, { id: orderId }),
         data: {
           status: "confirmed",
           proposedToDriver: false,
@@ -58,19 +69,14 @@ export async function POST(request: NextRequest) {
       // Событие "догруз принят"
       try {
         if (order.routeId) {
-          await prisma.routeEvent.create({
-            data: {
-              routeId: order.routeId,
-              driverId,
-              vehicleId: order.assignedVehicleId || null,
-              orderId: order.id,
-              type: "status",
-              status: "load_accepted",
-              latitude: null,
-              longitude: null,
-              address: null,
-              data: null,
-            },
+          await logRouteEvent(prisma, {
+            organizationId: org.organizationId,
+            routeId: order.routeId,
+            driverId,
+            vehicleId: order.assignedVehicleId || null,
+            orderId: order.id,
+            type: "status",
+            status: "load_accepted",
           })
         }
       } catch (e) {
@@ -83,8 +89,8 @@ export async function POST(request: NextRequest) {
       })
     } else {
       await prisma.$transaction(async (tx) => {
-        await tx.order.update({
-          where: { id: orderId },
+        await tx.order.updateMany({
+          where: scopedWhere(org.organizationId, { id: orderId }),
           data: {
             status: "rejected",
             proposedToDriver: false,
@@ -95,6 +101,7 @@ export async function POST(request: NextRequest) {
 
         await tx.notification.create({
           data: {
+            organizationId: org.organizationId,
             userId: "logist",
             userRole: "logist",
             type: "load_rejected",
@@ -110,21 +117,15 @@ export async function POST(request: NextRequest) {
       // Событие "догруз отклонён"
       try {
         if (order.routeId) {
-          await prisma.routeEvent.create({
-            data: {
-              routeId: order.routeId,
-              driverId,
-              vehicleId: order.assignedVehicleId || null,
-              orderId: order.id,
-              type: "status",
-              status: "load_rejected",
-              latitude: null,
-              longitude: null,
-              address: null,
-              data: rejectionReason
-                ? JSON.stringify({ rejectionReason })
-                : null,
-            },
+          await logRouteEvent(prisma, {
+            organizationId: org.organizationId,
+            routeId: order.routeId,
+            driverId,
+            vehicleId: order.assignedVehicleId || null,
+            orderId: order.id,
+            type: "status",
+            status: "load_rejected",
+            data: rejectionReason ? JSON.stringify({ rejectionReason }) : null,
           })
         }
       } catch (e) {

@@ -19,6 +19,9 @@ import {
   Check,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
+import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 // Этот экспорт всё равно оставим для надёжности
 export const dynamic = "force-dynamic"
@@ -125,10 +128,11 @@ function mapContextToCategory(context: PhotoContext): PhotoCategory {
 
 // Внутренний компонент с логикой
 function PhotoPageContent() {
+  const confirm = useConfirm()
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [driver, setDriver] = useState<DriverSession | null>(null)
+  const { driver } = useDriverSession()
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -140,20 +144,8 @@ function PhotoPageContent() {
   const [showOrderPicker, setShowOrderPicker] = useState(false)
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
 
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as DriverSession
-        if (!parsed?.id) throw new Error("Invalid session")
-        setDriver(parsed)
-      } catch {
-        router.push("/m/login")
-      }
-    } else {
-      router.push("/m/login")
-    }
-  }, [router])
+  // Сессия — серверная (httpOnly-cookie): localStorage со «driver_session»
+  // после задачи 1 пуст, поэтому раньше эта страница сразу уводила на логин
 
   useEffect(() => {
     const ctxRaw = searchParams?.get("context") ?? "generic"
@@ -185,7 +177,7 @@ function PhotoPageContent() {
         const allHistory = historyData.orders as Order[]
         const now = new Date()
         const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
-        recent = allHistory.filter((o) => {
+        recent = allHistory.filter((o: any) => {
           if (!o.createdAt) return false
           return new Date(o.createdAt) >= twoWeeksAgo
         })
@@ -227,54 +219,90 @@ function PhotoPageContent() {
     }
   }, [driver?.id, fetchOrders, fetchPhotos])
 
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = (e) => reject(e)
-      reader.readAsDataURL(file)
-    })
-  }
+  // Очередь может отправить фото сама (связь вернулась) — тогда список
+  // обновляем без участия водителя, а о распознанном чеке сообщаем тостом
+  useEffect(() => {
+    const queue = getPhotoQueue()
+    if (!queue) return
 
+    const unsubscribe = queue.onUploaded((_item, result) => {
+      void fetchPhotos()
+
+      const ocr = result.ocr as { total?: number | null } | null
+      if (ocr?.total) {
+        toast.success(`Чек распознан: ${ocr.total.toLocaleString("ru-RU")} ₽`, {
+          description: "Расход можно записать в карточке рейса",
+        })
+      } else {
+        toast.success("Фото из очереди загружено")
+      }
+    })
+
+    return unsubscribe
+  }, [fetchPhotos])
+
+  /**
+   * Загрузка фото (задача 7).
+   *
+   * Раньше файл превращался в data:image/...;base64 и целиком уезжал в базу —
+   * ни файла на диске, ни распознавания чека, ни события рейса. Теперь файл
+   * уходит на сервер (multipart), чек и накладная распознаются на месте, а
+   * если связи нет — фото кладётся в очередь и уходит само, когда связь
+   * вернётся: чек, снятый на трассе, не теряется.
+   */
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files?.length || !driver?.id) return
 
     setIsUploading(true)
 
-    let successCount = 0
+    let sentCount = 0
+    let queuedCount = 0
+    let recognizedSum = 0
 
     for (const file of Array.from(files)) {
       try {
-        const dataUrl = await readFileAsDataUrl(file)
-
-        const res = await fetch("/api/m/photos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driverId: driver.id,
-            orderId: selectedOrder?.id ?? null,
-            type: selectedCategory,
-            url: dataUrl,
-            description: null,
-          }),
+        const result = await uploadPhotoOrQueue({
+          blob: file,
+          fileName: file.name || "photo.jpg",
+          photoType: selectedCategory,
+          orderId: selectedOrder?.id ?? null,
         })
 
-        const data = await res.json()
-        if (data.success && data.photo) {
-          setPhotos((prev) => [data.photo as Photo, ...prev])
-          successCount++
+        if (result.sent) {
+          sentCount++
+
+          // Чек: сервер уже распознал сумму — показываем её водителю
+          const ocr = result.ocr as { total?: number | null; number?: string | null } | null
+          if (selectedCategory === "receipt" && ocr?.total) recognizedSum += ocr.total
+
+          if (selectedCategory === "waybill" && ocr?.number) {
+            toast.success(`Накладная № ${ocr.number} распознана`, {
+              description: "Документ привязан к заказу",
+            })
+          }
+        } else if (result.queued) {
+          queuedCount++
         } else {
-          console.error("Upload failed:", data.error)
+          toast.error(result.error || "Не удалось загрузить фото")
         }
       } catch (error) {
         console.error("Upload failed:", error)
+        toast.error("Не удалось загрузить фото")
       }
     }
 
-    if (successCount > 0) {
-      toast.success(`Загружено ${successCount} фото`, {
+    if (sentCount > 0) {
+      toast.success(`Загружено фото: ${sentCount}`, {
         icon: <Check className="h-4 w-4" />,
+        description: recognizedSum > 0 ? `Чек распознан: ${recognizedSum.toLocaleString("ru-RU")} ₽` : undefined,
+      })
+      await fetchPhotos()
+    }
+
+    if (queuedCount > 0) {
+      toast.info(`Фото сохранено: ${queuedCount}`, {
+        description: "Связи нет — фото уйдёт само, когда появится сеть",
       })
     }
 
@@ -283,7 +311,13 @@ function PhotoPageContent() {
   }
 
   const handleDelete = async (photoId: string) => {
-    if (!confirm("Удалить фото?")) return
+    const ok = await confirm({
+      title: "Удалить фото?",
+      description: "Снимок исчезнет и из галереи, и из истории рейса.",
+      confirmLabel: "Удалить",
+      destructive: true,
+    })
+    if (!ok) return
 
     try {
       const res = await fetch(`/api/m/photos?id=${photoId}`, {
@@ -291,7 +325,7 @@ function PhotoPageContent() {
       })
       const data = await res.json()
       if (data.success) {
-        setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+        setPhotos((prev) => prev.filter((p: any) => p.id !== photoId))
         setPreviewPhoto(null)
         toast.success("Фото удалено")
       } else {
@@ -304,7 +338,7 @@ function PhotoPageContent() {
   }
 
   const getCategoryInfo = (type: string) => {
-    return CATEGORIES.find((c) => c.id === type) || CATEGORIES[0]
+    return CATEGORIES.find((c: any) => c.id === type) || CATEGORIES[0]
   }
 
   if (!driver) {
@@ -373,7 +407,7 @@ function PhotoPageContent() {
             Тип фото
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {CATEGORIES.map((cat) => {
+            {CATEGORIES.map((cat: any) => {
               const isSelected = selectedCategory === cat.id
               return (
                 <button
@@ -459,7 +493,7 @@ function PhotoPageContent() {
               Загруженные фото
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {photos.map((photo) => {
+              {photos.map((photo: any) => {
                 const catInfo = getCategoryInfo(photo.type)
                 return (
                   <button
@@ -537,7 +571,7 @@ function PhotoPageContent() {
                   <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
                     Активные рейсы
                   </div>
-                  {activeOrders.map((order) => (
+                  {activeOrders.map((order: any) => (
                     <button
                       key={order.id}
                       onClick={() => {
@@ -562,7 +596,7 @@ function PhotoPageContent() {
                   <div className="px-4 py-2 bg-[#0c0c0e] text-xs text-gray-500 uppercase tracking-wider">
                     Недавние (14 дней)
                   </div>
-                  {recentOrders.map((order) => (
+                  {recentOrders.map((order: any) => (
                     <button
                       key={order.id}
                       onClick={() => {

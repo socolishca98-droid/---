@@ -1,32 +1,28 @@
 // app/api/ati/import/route.ts
-import { NextRequest, NextResponse } from "next/server"
-import { importAtiLoadToOrder } from "@/lib/ati-client"
+//
+// Совместимый вход для прежних клиентов: «импорт груза» больше не помечает общую
+// базу ATI (иначе груз исчезал у других организаций), а берёт груз в работу —
+// создаёт заказ своей организации на этапе «Поиск».
+//
+// Канонический эндпоинт — POST /api/orders/from-cache; этот роут просто вызывает
+// его, чтобы не держать две копии одной логики.
+
+import { NextRequest } from "next/server"
+
+import { requireStaff } from "@/lib/auth/session"
+import { requireOrganization } from "@/lib/org"
+import { POST as takeFromCache } from "@/app/api/orders/from-cache/route"
+
+export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json().catch(() => ({}))
-    const { cacheId, fetchContacts } = body as {
-      cacheId?: string
-      fetchContacts?: boolean
-    }
+  // Доступ проверяется и здесь, и в основном роуте: старый адрес не должен
+  // становиться лазейкой в обход сессии.
+  const auth = await requireStaff(request)
+  if (!auth.ok) return auth.response
 
-    if (!cacheId) {
-      return NextResponse.json(
-        { success: false, error: "cacheId required" },
-        { status: 400 }
-      )
-    }
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
 
-    const result = await importAtiLoadToOrder(cacheId, {
-      fetchContacts: !!fetchContacts,
-    })
-
-    return NextResponse.json(result)
-  } catch (error: any) {
-    console.error("[ATI Import] Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Import failed" },
-      { status: 500 }
-    )
-  }
+  return takeFromCache(request)
 }

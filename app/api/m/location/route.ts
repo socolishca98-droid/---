@@ -3,52 +3,53 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-const ACTIVE_ORDER_STATUSES = [
-  "confirmed",
-  "in_transit",
-  "loading",
-  "unloading",
-] as const
+import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { logRouteEvent } from "@/lib/routes/service"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
-async function getActiveOrderForDriver(driverId: string) {
+// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
+// (канон жизненного цикла заказа — lib/orders/stages.ts)
+const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
+
+async function getActiveOrderForDriver(driverId: string, organizationId: string) {
   return prisma.order.findFirst({
-    where: {
+    where: scopedWhere(organizationId, {
       assignedDriverId: driverId,
       status: { in: ACTIVE_ORDER_STATUSES as any },
-    },
+    }),
     orderBy: { createdAt: "asc" },
   })
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
+  // Водитель отправляет только свою позицию: driverId из тела запроса больше не принимается
+  const driverId = auth.value.driver.id
+
   try {
     const body = await request.json().catch(() => ({}))
-    
-    // Поддержка обоих вариантов именования
-    const driverId = body.driverId
+
+    // Поддержка обоих вариантов именования координат
     const lat = typeof body.lat === "number" ? body.lat : body.latitude
     const lng = typeof body.lng === "number" ? body.lng : body.longitude
 
-    if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
+    if (typeof lat !== "number" || typeof lng !== "number") {
       return NextResponse.json(
-        { success: false, error: "driverId, lat, lng required" },
+        { success: false, error: "lat и lng обязательны" },
         { status: 400 },
       )
     }
 
-    const driver = await prisma.driver.findUnique({
-      where: { id: driverId },
-    })
+    // Карточка водителя гарантированно существует — её проверила сессия
 
-    if (!driver) {
-      return NextResponse.json(
-        { success: false, error: "Driver not found" },
-        { status: 404 },
-      )
-    }
-
-    const updated = await prisma.driver.update({
-      where: { id: driverId },
+    // updateMany с фильтром организации: чужую карточку водителя не изменить
+    await prisma.driver.updateMany({
+      where: scopedWhere(org.organizationId, { id: driverId }),
       data: {
         latitude: lat,
         longitude: lng,
@@ -56,24 +57,24 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const updated = await prisma.driver.findFirstOrThrow({
+      where: scopedWhere(org.organizationId, { id: driverId }),
+    })
+
     // Пишем событие локации в таймлайн (если есть активный маршрут)
     // Опционально можно писать не каждую точку, а раз в N минут/метров
     try {
-      const activeOrder = await getActiveOrderForDriver(driverId)
+      const activeOrder = await getActiveOrderForDriver(driverId, org.organizationId)
       if (activeOrder?.routeId) {
-        await prisma.routeEvent.create({
-          data: {
-            routeId: activeOrder.routeId,
-            driverId,
-            vehicleId: updated.vehicleId || null,
-            orderId: activeOrder.id,
-            type: "location",
-            status: null,
-            latitude: lat,
-            longitude: lng,
-            address: null,
-            data: null,
-          },
+        await logRouteEvent(prisma, {
+          organizationId: org.organizationId,
+          routeId: activeOrder.routeId,
+          driverId,
+          vehicleId: updated.vehicleId || null,
+          orderId: activeOrder.id,
+          type: "location",
+          latitude: lat,
+          longitude: lng,
         })
       }
     } catch (e) {

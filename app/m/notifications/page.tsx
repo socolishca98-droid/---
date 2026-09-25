@@ -14,33 +14,16 @@ import {
   BellOff,
 } from "lucide-react"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import { toast } from "sonner"
-
-interface DriverSession {
-  id: string
-  name: string
-}
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 export default function DriverNotificationsPage() {
+  const confirm = useConfirm()
   const router = useRouter()
-  const [driver, setDriver] = useState<DriverSession | null>(null)
-
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (!saved) {
-      router.push("/m/login")
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as DriverSession
-      if (!parsed?.id) throw new Error("Invalid session")
-      setDriver(parsed)
-    } catch {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
-  }, [router])
+  // Сессия — серверная (httpOnly-cookie): раньше здесь читалась запись
+  // «driver_session» из localStorage, которой больше не существует
+  const { driver } = useDriverSession()
 
   const {
     notifications,
@@ -63,7 +46,7 @@ export default function DriverNotificationsPage() {
   )
 
   const handleNotificationPress = (id: string) => {
-    const n = notifications.find((x) => x.id === id)
+    const n = notifications.find((x: any) => x.id === id)
     if (!n) return
 
     markAsRead(id)
@@ -77,14 +60,23 @@ export default function DriverNotificationsPage() {
       router.push("/m/chat")
     } else if (action.kind === "openOrder" && action.orderId) {
       router.push(`/m/orders/${action.orderId}`)
+    } else if (action.kind === "openRoute") {
+      // рейс целиком виден на главном экране водителя
+      router.push("/m")
     }
   }
 
-  const handleClearAll = () => {
-    if (confirm("Удалить все уведомления?")) {
-      clearAll()
-      toast.success("Уведомления очищены")
-    }
+  const handleClearAll = async () => {
+    const ok = await confirm({
+      title: "Удалить все уведомления?",
+      description: "Список уведомлений очистится. Пропущенные задачи останутся в рейсе.",
+      confirmLabel: "Очистить",
+      destructive: true,
+    })
+    if (!ok) return
+
+    clearAll()
+    toast.success("Уведомления очищены")
   }
 
   const formatTime = (iso: string) => {
@@ -190,7 +182,7 @@ export default function DriverNotificationsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {sortedNotifications.map((n) => {
+            {sortedNotifications.map((n: any) => {
               const isUnread = !n.isRead
 
               return (

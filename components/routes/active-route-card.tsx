@@ -22,9 +22,12 @@ import {
   AlertCircle,
   Sparkles,
   Loader2,
+  FileText,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   Dialog,
   DialogContent,
@@ -33,6 +36,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { RouteOptimizer, type RouteOptimizerOrder } from "@/components/routes/route-optimizer"
+import { RouteCrewDialog } from "@/components/routes/route-crew-dialog"
+import { RouteDocumentsDialog } from "@/components/routes/route-documents-dialog"
+import { RouteTripDialog } from "@/components/routes/route-trip-dialog"
 import {
   calculateAllCoefficients,
   calculateRiskFactors,
@@ -42,6 +48,27 @@ import {
   type RiskLevel,
 } from "@/lib/eta"
 import { RouteTimeline } from "@/components/routes/route-timeline"
+import {
+  isOrderClosed,
+  isOrderMoving,
+  normalizeOrderStatus,
+  orderStatusLabel,
+} from "@/lib/orders/stages"
+import dynamic from "next/dynamic"
+
+// leaflet работает только в браузере, поэтому карта подключается лениво
+const RouteSegmentsMap = dynamic(
+  () => import("@/components/routes/route-segments-map").then((mod) => mod.RouteSegmentsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[320px] items-center justify-center rounded-lg border bg-muted/30 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Загрузка карты…
+      </div>
+    ),
+  },
+)
 
 interface RouteData {
   id: string
@@ -116,11 +143,18 @@ function buildRouteEtaPreview(route: RouteData): RouteEtaPreview | null {
 
 export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCardProps) {
   const [expanded, setExpanded] = useState(false)
+  /** Карта грузится по требованию: за ней стоят внешние запросы (Nominatim/OSRM) */
+  const [showMap, setShowMap] = useState(false)
 
   const [showOptimizer, setShowOptimizer] = useState(false)
+  const [showCrew, setShowCrew] = useState(false)
+  const [showDocuments, setShowDocuments] = useState(false)
+  /** Карточка рейса: хронология, расходы, документы и итог (задача 7) */
+  const [showTrip, setShowTrip] = useState(false)
   const [applyingOptimizer, setApplyingOptimizer] = useState(false)
   const [isCompleting, setIsCompleting] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const confirm = useConfirm()
 
   const progress =
     route.ordersCount > 0 ? Math.round((route.completedOrders / route.ordersCount) * 100) : 0
@@ -158,7 +192,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
     setApplyingOptimizer(true)
     try {
-      const orderSequence = orderedOrderIds.map((orderId, idx) => ({
+      const orderSequence = orderedOrderIds.map((orderId: any, idx: any) => ({
         orderId,
         sequence: startSeq + idx,
       }))
@@ -188,9 +222,13 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const handleCompleteRoute = async () => {
     if (isCompleting || isCancelling) return
 
-    if (!window.confirm("Завершить рейс? Все незавершённые точки будут помечены как 'доставлено'.")) {
-      return
-    }
+    const ok = await confirm({
+      title: "Завершить рейс?",
+      description:
+        "Все незавершённые точки будут помечены как «доставлено», машина и водитель освободятся.",
+      confirmLabel: "Завершить рейс",
+    })
+    if (!ok) return
 
     setIsCompleting(true)
     try {
@@ -218,13 +256,14 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
   const handleCancelRoute = async () => {
     if (isCancelling || isCompleting) return
 
-    if (
-      !window.confirm(
-        "Отменить рейс? Все заказы в маршруте будут помечены как 'cancelled', водитель и ТС освободятся.",
-      )
-    ) {
-      return
-    }
+    const ok = await confirm({
+      title: "Отменить рейс?",
+      description:
+        "Заказы в маршруте получат статус «отменён», машина и водитель освободятся. Вернуть рейс в работу будет нельзя.",
+      confirmLabel: "Отменить рейс",
+      destructive: true,
+    })
+    if (!ok) return
 
     setIsCancelling(true)
     try {
@@ -249,7 +288,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
   return (
     <>
-      <Card className="overflow-hidden">
+      <Card className="card-interactive overflow-hidden">
         <CardContent className="p-0">
           <div
             className="p-4 cursor-pointer hover:bg-accent/50 transition-colors"
@@ -311,7 +350,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                     <span>{route.driverName}</span>
                   </div>
 
-                  <div className="mt-3 flex items-center_gap-4 flex text-sm">
+                  <div className="mt-3 flex items-center gap-4 text-sm">
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                       {route.totalDistance} км
@@ -378,6 +417,51 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                     </Button>
                   )}
 
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowCrew(true)
+                    }}
+                    disabled={isCompleting || isCancelling}
+                    title="Назначить машину и водителя на рейс"
+                  >
+                    <Truck className="h-3.5 w-3.5 mr-2" />
+                    Экипаж
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowDocuments(true)
+                    }}
+                    disabled={isCompleting || isCancelling}
+                    title="Печать накладных, путевого листа и заявок по рейсу"
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-2" />
+                    Документы
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowTrip(true)
+                    }}
+                    disabled={isCompleting || isCancelling}
+                    title="Хронология, расходы, фото и итог рейса"
+                  >
+                    <TrendingUp className="h-3.5 w-3.5 mr-2" />
+                    Рейс
+                  </Button>
+
                   {canOptimize && (
                     <Button
                       size="sm"
@@ -411,6 +495,31 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
 
           {expanded && (
             <div className="border-t px-4 py-3 bg-muted/30 space-y-4">
+              {/* Один рейс — одна линия: заказы показаны цветными сегментами */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    Маршрут на карте
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowMap((value) => !value)}
+                  >
+                    {showMap ? "Скрыть карту" : "Показать карту"}
+                  </Button>
+                </div>
+                {showMap ? (
+                  <RouteSegmentsMap routeId={route.id} />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Каждый заказ рейса — свой цвет на общей линии. Координаты
+                    городов и дорога запрашиваются только при открытии карты.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                   <Route className="h-4 w-4" />
@@ -425,9 +534,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                         "flex items-center gap-3 p-3 rounded-lg border",
                         order.status === "delivered"
                           ? "bg-green-500/5 border-green-500/20"
-                          : order.status === "in_transit" ||
-                              order.status === "loading" ||
-                              order.status === "unloading"
+                          : isOrderMoving(order.status)
                             ? "bg-orange-500/5 border-orange-500/20"
                             : "bg-background border-border",
                       )}
@@ -437,9 +544,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                           "w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold",
                           order.status === "delivered"
                             ? "bg-green-500 text-white"
-                            : order.status === "in_transit" ||
-                                order.status === "loading" ||
-                                order.status === "unloading"
+                            : isOrderMoving(order.status)
                               ? "bg-orange-500 text-white"
                               : "bg-muted text-muted-foreground",
                         )}
@@ -477,23 +582,22 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                         <span className="font-medium text-green-600">
                           {(order.price || 0).toLocaleString()} ₽
                         </span>
+                        {/* Подпись точки — из канона этапов заказа
+                            (lib/orders/stages.ts): прежние значения приводятся сами */}
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {order.status === "delivered" && "Доставлено"}
-                          {order.status === "in_transit" && "В пути"}
-                          {order.status === "loading" && "Погрузка"}
-                          {order.status === "unloading" && "Выгрузка"}
-                          {order.status === "confirmed" && "Ожидает"}
-                          {order.status === "proposed" && (
-                            <span className="text-amber-500 flex items-center gap-1">
+                          {isOrderMoving(order.status) ? (
+                            <span className="text-orange-500 flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              Ждёт ответ
+                              {orderStatusLabel(order.status)}
                             </span>
-                          )}
-                          {order.status === "rejected" && (
+                          ) : isOrderClosed(order.status) &&
+                            normalizeOrderStatus(order.status) !== "delivered" ? (
                             <span className="text-red-500 flex items-center gap-1">
                               <AlertCircle className="h-3 w-3" />
-                              Отклонён
+                              {orderStatusLabel(order.status)}
                             </span>
+                          ) : (
+                            orderStatusLabel(order.status)
                           )}
                         </div>
                       </div>
@@ -552,6 +656,29 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
           )}
         </CardContent>
       </Card>
+
+      <RouteTripDialog
+        routeId={route.id}
+        open={showTrip}
+        onOpenChange={setShowTrip}
+        onChanged={onRefresh}
+      />
+
+      <RouteDocumentsDialog
+        routeId={route.id}
+        ordersCount={route.orders?.length ?? 0}
+        open={showDocuments}
+        onOpenChange={setShowDocuments}
+      />
+
+      <RouteCrewDialog
+        routeId={route.id}
+        open={showCrew}
+        onOpenChange={setShowCrew}
+        currentDriverId={route.driverId}
+        currentVehicleId={route.vehicleId}
+        onAssigned={onRefresh}
+      />
 
       <Dialog open={showOptimizer} onOpenChange={setShowOptimizer}>
         <DialogContent className="max-w-5xl">

@@ -10,6 +10,8 @@ import { SosButton } from "@/components/driver-mobile/sos-button"
 import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
 import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { useConfirm } from "@/components/ui/confirm-dialog"
+import { isOrderClosed, isOrderMoving } from "@/lib/orders/stages"
 import {
   Loader2,
   Truck,
@@ -24,6 +26,7 @@ import {
   ChevronRight,
   Locate,
   WifiOff,
+  Camera,
   Wifi,
   AlertCircle,
   Home,
@@ -35,6 +38,7 @@ import {
   Flag,
 } from "lucide-react"
 import { toast } from "sonner"
+import { getPhotoQueue } from "@/lib/offline/photo-queue"
 
 // ... (оставляем все константы IDLE_STATUSES, TRIP_STATUSES, интерфейсы без изменений)
 
@@ -157,6 +161,7 @@ type GpsStatus = "inactive" | "searching" | "active" | "error"
 let geoPermissionToastShown = false
 
 export default function MobileHomePage() {
+  const confirm = useConfirm()
   const router = useRouter()
 
   // ✅ Используем централизованный хук вместо ручного парсинга
@@ -173,6 +178,34 @@ export default function MobileHomePage() {
   const [isGoingToBase, setIsGoingToBase] = useState(false)
   const [tripStarted, setTripStarted] = useState(false)
   const [completingRoute, setCompletingRoute] = useState(false)
+  /** Связь и очередь фото: водитель видит, что чек не потерян, а ждёт сети */
+  const [isOnline, setIsOnline] = useState(true)
+  const [pendingPhotos, setPendingPhotos] = useState(0)
+
+  // Офлайн-индикатор и число фото, ждущих отправки. Раньше это показывала
+  // шапка MobileHeader, но её никто не подключал: водитель про отсутствие
+  // связи не знал, хотя фото при этом молча копились в очереди.
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine)
+    updateOnline()
+
+    window.addEventListener("online", updateOnline)
+    window.addEventListener("offline", updateOnline)
+
+    const queue = getPhotoQueue()
+    let unsubscribe: (() => void) | undefined
+
+    if (queue) {
+      void queue.pendingCount().then(setPendingPhotos)
+      unsubscribe = queue.subscribe((items) => setPendingPhotos(items.length))
+    }
+
+    return () => {
+      window.removeEventListener("online", updateOnline)
+      window.removeEventListener("offline", updateOnline)
+      unsubscribe?.()
+    }
+  }, [])
 
   const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const dataIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -185,11 +218,13 @@ export default function MobileHomePage() {
     if (!driver?.id) return
 
     try {
-      const [shiftRes, orderRes, maintenanceRes, proposedRes] = await Promise.all([
+      // Всё — из водительских эндпоинтов (requireDriver по сессии).
+      // Штабные /api/drivers/[id]/active-order и /api/orders водительская
+      // сессия не проходит: экран оставался пустым.
+      const [shiftRes, routeRes, maintenanceRes] = await Promise.all([
         fetch(`/api/m/shift?driverId=${driver.id}`),
-        fetch(`/api/drivers/${driver.id}/active-order`),
+        fetch("/api/m/route"),
         fetch(`/api/m/maintenance?driverId=${driver.id}`),
-        fetch(`/api/orders?driverId=${driver.id}&status=proposed`),
       ])
 
       const shiftData = await shiftRes.json()
@@ -197,26 +232,48 @@ export default function MobileHomePage() {
         setShift(shiftData.shift || null)
       }
 
-      const orderData = await orderRes.json()
-      if (orderData.success) {
-        const order = orderData.order || null
-        setActiveOrder(order)
-        setAllRouteOrders(orderData.allRouteOrders || [])
-        if (order && ["in_transit", "loading", "unloading"].includes(order.status)) {
-          setTripStarted(true)
-        } else {
-          setTripStarted(false)
-        }
+      const routeData = await routeRes.json()
+      if (routeData.success) {
+        // Точки рейса — это и есть заказы водителя по порядку объезда
+        const points: ActiveOrder[] = (routeData.route?.points || []).map((point: any) => ({
+          id: point.id,
+          routeFrom: point.from,
+          routeTo: point.to,
+          distance: point.distanceKm ?? 0,
+          cargoType: point.cargoType,
+          price: point.price ?? undefined,
+          clientName: point.clientName ?? undefined,
+          status: point.status,
+          routeId: routeData.route?.id,
+          isAdditionalLoad: point.isAdditionalLoad,
+        }))
+
+        setAllRouteOrders(points)
+
+        // Текущая точка — первая незакрытая
+        const currentPoint = points.find((point) => !isOrderClosed(point.status)) || null
+        setActiveOrder(currentPoint)
+
+        // Рейс начат, если заказ в движении (канон — lib/orders/stages.ts,
+        // прежние «in_transit»/«loading»/«unloading» приводятся к «control»)
+        setTripStarted(Boolean(currentPoint && isOrderMoving(currentPoint.status)))
+
+        setProposedLoads(
+          (routeData.proposedLoads || []).map((load: any) => ({
+            id: load.id,
+            routeFrom: load.routeFrom,
+            routeTo: load.routeTo,
+            distance: load.distanceKm ?? 0,
+            weight: load.weight ?? 0,
+            price: load.price ?? 0,
+            cargoType: load.cargoType,
+          })),
+        )
       }
 
       const maintenanceData = await maintenanceRes.json()
       if (maintenanceData.success) {
         setActiveMaintenance(maintenanceData.maintenance || null)
-      }
-
-      const proposedData = await proposedRes.json()
-      if (proposedData.success) {
-        setProposedLoads(proposedData.orders || [])
       }
     } catch (error) {
       console.error("[Mobile] Failed to fetch data:", error)
@@ -395,7 +452,13 @@ export default function MobileHomePage() {
   const endShift = async () => {
     if (!driver?.id || !shift) return
 
-    if (!confirm("Завершить смену?")) return
+    const okShift = await confirm({
+      title: "Завершить смену?",
+      description: "Смена закроется, а рейс останется за вами — открыть смену можно снова.",
+      confirmLabel: "Завершить",
+      destructive: true,
+    })
+    if (!okShift) return
 
     setIsChangingStatus(true)
 
@@ -445,16 +508,16 @@ export default function MobileHomePage() {
     setIsChangingStatus(true)
 
     try {
-      const res = await fetch(`/api/orders/${activeOrder.id}`, {
+      const res = await fetch(`/api/m/orders/${activeOrder.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "in_transit" }),
+        body: JSON.stringify({ status: "control" }),
       })
 
       const data = await res.json()
       if (data.success) {
         setTripStarted(true)
-        setActiveOrder((prev) => (prev ? { ...prev, status: "in_transit" } : prev))
+        setActiveOrder((prev) => (prev ? { ...prev, status: "control" } : prev))
 
         toast.success("Рейс начат", {
           description: `${activeOrder.routeFrom} → ${activeOrder.routeTo}`,
@@ -480,10 +543,15 @@ export default function MobileHomePage() {
     }
   }
 
+  /**
+   * Состояние рейса водителя (погрузка/выгрузка/в пути) — детальнее, чем этап
+   * заказа, поэтому в заказе все три означают «на контроле». Подробное
+   * состояние сохраняется в статусе самого водителя (POST /api/m/shift).
+   */
   const mapTripStatusToOrderStatus = (statusId: string): string | undefined => {
-    if (statusId === "loading") return "loading"
-    if (statusId === "unloading") return "unloading"
-    if (statusId === "driving") return "in_transit"
+    if (statusId === "loading") return "control"
+    if (statusId === "unloading") return "control"
+    if (statusId === "driving") return "control"
     return undefined
   }
 
@@ -522,7 +590,7 @@ export default function MobileHomePage() {
         const newOrderStatus = mapTripStatusToOrderStatus(statusId)
         if (activeOrder?.id && newOrderStatus) {
           try {
-            await fetch(`/api/orders/${activeOrder.id}`, {
+            await fetch(`/api/m/orders/${activeOrder.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ status: newOrderStatus }),
@@ -559,7 +627,7 @@ export default function MobileHomePage() {
             },
           })
         } else {
-          const statusMeta = TRIP_STATUSES.find((s) => s.id === statusId)
+          const statusMeta = TRIP_STATUSES.find((s: any) => s.id === statusId)
           toast.success(`Статус: ${statusMeta?.label || statusId}`)
         }
 
@@ -633,16 +701,18 @@ export default function MobileHomePage() {
   const completeRoute = async () => {
     if (!activeOrder?.routeId || !driver?.id) return
 
-    const pendingCount = allRouteOrders.filter(
-      (o) => !["delivered", "cancelled", "rejected"].includes(o.status)
+    const pendingCount = allRouteOrders.filter((o: any) => !["delivered", "cancelled", "rejected"].includes(o.status)
     ).length
 
-    const confirmMessage =
-      pendingCount > 1
-        ? `Завершить рейс? Все ${pendingCount} точек будут отмечены как доставленные.`
-        : "Завершить рейс?"
-
-    if (!confirm(confirmMessage)) return
+    const okRoute = await confirm({
+      title: "Завершить рейс?",
+      description:
+        pendingCount > 1
+          ? `Незакрытых точек: ${pendingCount}. Все они будут отмечены как доставленные.`
+          : "Рейс закроется, машина освободится для следующего задания.",
+      confirmLabel: "Завершить рейс",
+    })
+    if (!okRoute) return
 
     setCompletingRoute(true)
 
@@ -695,7 +765,7 @@ export default function MobileHomePage() {
 
       const data = await res.json()
       if (data.success) {
-        setProposedLoads((prev) => prev.filter((l) => l.id !== orderId))
+        setProposedLoads((prev) => prev.filter((l: any) => l.id !== orderId))
         toast.success(accept ? "Догруз принят" : "Догруз отклонён")
         await fetchData()
       } else {
@@ -743,7 +813,7 @@ export default function MobileHomePage() {
     return `${m} м`
   }
 
-  const currentTripStatus = TRIP_STATUSES.find((s) => s.id === shift?.status) || TRIP_STATUSES[0]
+  const currentTripStatus = TRIP_STATUSES.find((s: any) => s.id === shift?.status) || TRIP_STATUSES[0]
 
   // ✅ Показываем загрузку пока проверяется сессия
   if (isSessionLoading || isDataLoading) {
@@ -769,7 +839,7 @@ export default function MobileHomePage() {
   const routeProgress =
     allRouteOrders.length > 0
       ? Math.round(
-          (allRouteOrders.filter((o) => o.status === "delivered").length /
+          (allRouteOrders.filter((o: any) => o.status === "delivered").length /
             allRouteOrders.length) *
             100
         )
@@ -811,6 +881,26 @@ export default function MobileHomePage() {
                 </div>
               )}
 
+              {!isOnline && (
+                <span
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  title="Нет связи: действия отправятся, когда сеть вернётся"
+                >
+                  <WifiOff className="h-3 w-3" />
+                  Офлайн
+                </span>
+              )}
+
+              {pendingPhotos > 0 && (
+                <span
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                  title="Фото ждут отправки и уйдут сами"
+                >
+                  <Camera className="h-3 w-3" />
+                  {pendingPhotos}
+                </span>
+              )}
+
               <DriverNotificationsBell driverId={driver.id} />
 
               <button
@@ -829,7 +919,7 @@ export default function MobileHomePage() {
         {/* ... */}
       </main>
 
-      {shift && !isOnMaintenance && <SosButton driverId={driver.id} orderId={activeOrder?.id} />}
+      {shift && !isOnMaintenance && <SosButton orderId={activeOrder?.id} />}
 
       <BottomNav />
     </div>

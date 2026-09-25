@@ -1,0 +1,48 @@
+{
+  "//": "Компиляция чистых модулей (авторизация, модель рейсов) в CommonJS, чтобы их можно было тестировать в Node без Next.js и без Prisma. Результат кладётся в .test-build (в git не попадает).",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "outDir": "../.test-build",
+    "rootDir": "..",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "../lib/auth/constants.ts",
+    "../lib/auth/access.ts",
+    "../lib/auth/token.ts",
+    "../lib/auth/startup.ts",
+    "../lib/auth/password.ts",
+    "../lib/routes/model.ts",
+    "../lib/orders/stages.ts",
+    "../lib/routes/optimizer.ts",
+    "../lib/fleet/insights.ts",
+    "../lib/payments/summary.ts",
+    "../lib/ocr/parse.ts",
+    "../lib/trips/history.ts",
+    "../lib/clients/normalize.ts",
+    "../lib/clients/stats.ts",
+    "../lib/clients/import.ts",
+    "../lib/documents/types.ts",
+    "../lib/documents/build.ts",
+    "../lib/ati/scan-profile.ts",
+    "../lib/reports/aggregate.ts",
+    "../lib/reports/insights.ts",
+    "../lib/offline/photo-queue.ts",
+    "../lib/api-docs/endpoints.ts",
+    "../lib/auth/refresh-policy.ts",
+    "../lib/client-cache-core.ts"
+  ]
+}

@@ -83,12 +83,12 @@ export function useMapData(): UseMapDataReturn {
     lastTrafficFetchAtRef.current = now
 
     const payloadRoutes = routesList
-      .filter((r) => Array.isArray(r.coordinates) && r.coordinates.length >= 2)
-      .map((r) => ({
+      .filter((r: any) => Array.isArray(r.coordinates) && r.coordinates.length >= 2)
+      .map((r: any) => ({
         routeId: r.id,
         coordinates: downsampleCoordinates(r.coordinates, TRAFFIC_MAX_POINTS).filter(isLatLng),
       }))
-      .filter((r) => r.routeId && r.coordinates.length >= 2)
+      .filter((r: any) => r.routeId && r.coordinates.length >= 2)
 
     if (payloadRoutes.length === 0) return
 
@@ -176,7 +176,7 @@ export function useMapData(): UseMapDataReturn {
         setBase(rData.base || null)
         setBaseWarning(rData.warning || null)
 
-        const totalKm = routesList.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
+        const totalKm = routesList.reduce((sum: any, r: any) => sum + (r.totalDistance || 0), 0)
         setTotalActiveKm(totalKm)
 
         // не блокируем основной UI — трафик отдельно

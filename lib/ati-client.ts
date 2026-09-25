@@ -41,7 +41,7 @@ const CITIES = [
   { id: 71, atiId: 71, name: "Калининград", region: "Калининградская область", priority: 0 },
 ]
 
-const HUB_IDS_PRIORITY_1 = CITIES.filter((c) => c.priority === 1).map((c) => c.atiId)
+const HUB_IDS_PRIORITY_1 = CITIES.filter((c: any) => c.priority === 1).map((c: any) => c.atiId)
 const ALL_HUB_IDS = HUB_IDS_PRIORITY_1
 
 type ScanMode = "fast" | "normal" | "deep"
@@ -54,6 +54,11 @@ interface ScanFilters {
   minPricePerKm?: number
   maxWeight?: number
   minWeight?: number
+  /**
+   * Нужные типы кузова («тент», «изотермический», «рефрижератор»).
+   * ATI не фильтрует по типу кузова в запросе, поэтому отбираем по ответу.
+   */
+  truckTypes?: string[]
 }
 
 interface ModeConfig {
@@ -157,6 +162,14 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
     if (filters.maxPrice && price > filters.maxPrice) return false
     if (filters.minPricePerKm && pricePerKm < filters.minPricePerKm) return false
   }
+
+  // Тип кузова: ATI отдаёт его в truck.carTypes — фильтруем по ответу
+  if (filters.truckTypes && filters.truckTypes.length > 0) {
+    const carTypes: string[] = Array.isArray(item.truck?.carTypes) ? item.truck.carTypes : []
+    const haystack = carTypes.join(" ").toLowerCase()
+    const wanted = filters.truckTypes.some((type) => haystack.includes(String(type).toLowerCase()))
+    if (!wanted) return false
+  }
   return true
 }
 
@@ -246,9 +259,15 @@ export async function scanAtiLoads(params?: any) {
   const customFilters: ScanFilters = params?.filters || DEFAULT_FILTERS
   globalSeenIds = new Set()
 
-  const hubsBase = HUB_IDS_PRIORITY_1
-  const cityLimit = cfg.cityLimit ?? hubsBase.length
+  // Города профиля расписания (AtiScanConfig.cities) важнее списка хабов:
+  // именно они решают, что сканировать по расписанию
+  const profileCities: number[] = Array.isArray(params?.cityIds)
+    ? params.cityIds.filter((id: unknown) => Number.isFinite(Number(id))).map(Number)
+    : []
+  const hubsBase = profileCities.length > 0 ? profileCities : HUB_IDS_PRIORITY_1
+  const cityLimit = profileCities.length > 0 ? hubsBase.length : (cfg.cityLimit ?? hubsBase.length)
   const hubsToScan = hubsBase.slice(0, cityLimit)
+  const scanRadius = Number.isFinite(Number(params?.radius)) ? Number(params.radius) : 100
 
   try {
     // Ручной поиск
@@ -265,7 +284,7 @@ export async function scanAtiLoads(params?: any) {
       const cityId = hubsToScan[i]
 
       try {
-        const { loads, requests } = await scanCity(cityId, cfg, customFilters)
+        const { loads, requests } = await scanCity(cityId, cfg, customFilters, scanRadius)
         totalRequests += requests
         totalFound += loads.length
 
@@ -297,6 +316,7 @@ async function scanCity(
   cityId: number,
   cfg: ModeConfig,
   filters: ScanFilters,
+  radius = 100,
 ): Promise<{ loads: any[]; requests: number }> {
   const allLoads: any[] = []
   let requests = 0
@@ -315,7 +335,7 @@ async function scanCity(
             from: {
               id: cityId,
               type: 1,
-              radius: 100,
+              radius,
               exact_only: false,
             },
           }
@@ -529,71 +549,12 @@ async function saveToCache(rawLoads: any[]): Promise<any[]> {
 }
 
 // =============================================================================
-// ПРОВЕРКА АКТУАЛЬНОСТИ ГРУЗА НА ATI (временно пропускаем)
-// =============================================================================
-
-async function checkAtiLoadActual(_atiLoadId: string): Promise<boolean> {
-  // Ранее здесь был запрос к /loads/{id}, который часто давал 404.
-  // Пока пропускаем проверку, чтобы не блокировать импорт.
-  return true
-}
-
-// =============================================================================
 // ПОЛУЧЕНИЕ КОНТАКТОВ ФИРМЫ (ТОЛЬКО ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ)
 // =============================================================================
-
-async function fetchFirmContacts(firmId: string | number) {
-  if (!ATI_TOKEN) {
-    return {
-      phone: null as string | null,
-      name: null as string | null,
-      email: null as string | null,
-    }
-  }
-
-  try {
-    const res = await fetch(`https://api.ati.su/v1.0/firms/${firmId}`, {
-      headers: {
-        Authorization: `Bearer ${ATI_TOKEN}`,
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(5000),
-    })
-
-    if (!res.ok) {
-      return { phone: null, name: null, email: null }
-    }
-
-    const firmData = await res.json()
-    let phone: string | null = null
-    let name: string | null = null
-    let email: string | null = null
-
-    if (Array.isArray(firmData.contacts) && firmData.contacts.length > 0) {
-      const contact = firmData.contacts[0]
-      if (contact?.name) name = contact.name
-
-      if (Array.isArray(contact?.phones)) {
-        const phones = contact.phones
-          .map((p: any) => p.number || p.phone)
-          .filter(Boolean)
-        if (phones.length > 0) phone = phones.join(", ")
-      }
-
-      if (Array.isArray(contact?.emails)) {
-        email = contact.emails[0]?.email || null
-      }
-    }
-
-    if (!phone && firmData.phone) phone = firmData.phone
-    if (!name && firmData.contact_name) name = firmData.contact_name
-
-    return { phone, name, email }
-  } catch (error) {
-    console.error("[fetchFirmContacts] Error:", error)
-    return { phone: null, name: null, email: null }
-  }
-}
+// Реализация живёт в lib/ati/contacts.ts — модуле без Prisma, чтобы его можно
+// было импортировать из роутов, не тянущих клиент базы.
+export { fetchFirmContacts } from "./ati/contacts"
+export type { FirmContacts } from "./ati/contacts"
 
 // =============================================================================
 // ПОИСК ПО ЛОКАЛЬНОЙ БАЗЕ
@@ -660,7 +621,7 @@ export async function getAtiCache(params: any) {
 
   if (minPricePerKm) {
     const minPpk = Number(minPricePerKm) || 0
-    items = items.filter((item) => {
+    items = items.filter((item: any) => {
       const distance = item.distance || 0
       const price = item.price || 0
       if (!distance || !price) return false
@@ -683,9 +644,19 @@ export async function getAtiCache(params: any) {
 
 export async function getAtiStats() {
   const total = await prisma.atiCache.count()
-  const imported = await prisma.atiCache.count({ where: { status: "imported" } })
+  // «Взято в работу» — строки общей базы, на которые организации завели заказ
+  // (Order.atiCacheId), плюс легас-строки, помеченные прежним «импортом».
+  const legacyImported = await prisma.atiCache.count({ where: { status: "imported" } })
+  // org-audit: manual — счётчик по ОБЩЕЙ базе грузов: считаем, сколько строк взято
+  // любыми организациями; сами данные организаций в ответ не попадают
+  const takenOrders = await prisma.order.findMany({
+    where: { atiCacheId: { not: null } },
+    select: { atiCacheId: true },
+    distinct: ["atiCacheId"],
+  })
+  const imported = takenOrders.length + legacyImported
   const expired = await prisma.atiCache.count({ where: { status: "expired" } })
-  const fresh = total - imported - expired
+  const fresh = Math.max(0, total - imported - expired)
 
   const now = new Date()
   const soonThreshold = new Date(now.getTime() + 6 * 60 * 60 * 1000) // 6 часов
@@ -747,95 +718,16 @@ export async function cleanExpiredCache() {
 }
 
 // =============================================================================
-// ИМПОРТ ГРУЗА В ПЕСОЧНИЦУ (БЕЗ создания Order)
+// ВЗЯТЬ ГРУЗ В РАБОТУ
 // =============================================================================
-
-export async function importAtiLoadToOrder(
-  cacheId: string,
-  opts?: { fetchContacts?: boolean },
-) {
-  try {
-    const cache = await prisma.atiCache.findUnique({
-      where: { id: cacheId },
-    })
-
-    if (!cache) {
-      return { success: false, error: "Запись в кэше не найдена" }
-    }
-
-    const atiLoadId = cache.atiLoadId
-    if (!atiLoadId) {
-      return { success: false, error: "У записи нет atiLoadId" }
-    }
-
-    // Уже импортирован? Возвращаем то, что есть
-    if (cache.status === "imported") {
-      return {
-        success: true,
-        cacheId,
-        alreadyImported: true,
-        contact: {
-          phone: cache.contactPhone,
-          name: cache.contactName,
-          email: null,
-          firmName: cache.firmName,
-          firmId: cache.firmId ? String(cache.firmId) : null,
-        },
-      }
-    }
-
-    // Проверка актуальности (пока всегда true)
-    const actual = await checkAtiLoadActual(atiLoadId)
-    if (!actual) {
-      await prisma.atiCache.update({
-        where: { id: cacheId },
-        data: { status: "expired" },
-      })
-      return {
-        success: false,
-        expired: true,
-        error: "Груз на ATI.su уже неактуален или снят",
-        cacheId,
-      }
-    }
-
-    // Получаем контакты фирмы (по запросу)
-    let contactPhone: string | null = cache.contactPhone || null
-    let contactName: string | null = cache.contactName || null
-    let contactEmail: string | null = null
-
-    if (opts?.fetchContacts && (!contactPhone || !contactName) && cache.firmId) {
-      const { phone, name, email } = await fetchFirmContacts(cache.firmId)
-      contactPhone = contactPhone || phone
-      contactName = contactName || name
-      contactEmail = contactEmail || email
-    }
-
-    await prisma.atiCache.update({
-      where: { id: cacheId },
-      data: {
-        status: "imported",
-        contactPhone,
-        contactName,
-      },
-    })
-
-    return {
-      success: true,
-      cacheId,
-      contact: {
-        phone: contactPhone,
-        name: contactName,
-        email: contactEmail,
-        firmName: cache.firmName,
-        firmId: cache.firmId ? String(cache.firmId) : null,
-      },
-    }
-  } catch (error: any) {
-    console.error("[importAtiLoadToOrder] Error:", error)
-    return { success: false, error: error.message || "Ошибка импорта" }
-  }
-}
+//
+// Прежняя функция importAtiLoadToOrder удалена намеренно: она помечала строку
+// ОБЩЕЙ таблицы AtiCache как «imported», из-за чего груз исчезал из базы у всех
+// остальных организаций, а заказ так и не создавался.
+//
+// Теперь «взять в работу» = POST /api/orders/from-cache: создаёт заказ своей
+// организации на этапе «Поиск» и не меняет общую базу. Связь заказа со строкой
+// базы хранится в Order.atiCacheId (уникально в рамках организации).
 
 // =============================================================================
 // ЭКСПОРТЫ

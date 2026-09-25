@@ -1,4 +1,6 @@
 // app/api/ati/geo/route.ts
+import { requireStaffAuth } from "@/lib/api-auth"
+import {requireStaffOrganization} from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { getCitiesList } from "@/lib/ati-client"
 
@@ -11,6 +13,12 @@ interface GeoOption {
 }
 
 export async function GET(request: NextRequest) {
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+
+
   const { searchParams } = new URL(request.url)
   const query = searchParams.get("q")?.toLowerCase().trim()
 

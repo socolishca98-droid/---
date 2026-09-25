@@ -91,7 +91,7 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
 
   const initials = driver.name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: any) => n[0])
     .join("")
     .slice(0, 2)
 
@@ -112,7 +112,7 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
   return (
     <Card
       className={cn(
-        "hover:border-primary/50 transition-colors",
+        "card-interactive hover:border-primary/50",
         isOnMaintenance && "border-amber-200 bg-amber-50/10",
       )}
     >
@@ -150,7 +150,13 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label="Действия с водителем"
+                title="Действия с водителем"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>

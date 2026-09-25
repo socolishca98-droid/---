@@ -83,13 +83,13 @@ export function useRouteAnimation({
       for (const route of routesRef.current) {
         if (!route.coordinates || route.coordinates.length < 2) continue
 
-        const points = route.coordinates.map((c) => {
+        const points = route.coordinates.map((c: any) => {
           const p = map.latLngToContainerPoint([c[0], c[1]])
           return { x: p.x, y: p.y }
         })
 
         const bounds = map.getBounds()
-        if (!route.coordinates.some((c) => bounds.contains([c[0], c[1]]))) continue
+        if (!route.coordinates.some((c: any) => bounds.contains([c[0], c[1]]))) continue
 
         const start = points[0]
         const end = points[points.length - 1]

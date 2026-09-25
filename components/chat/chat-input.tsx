@@ -43,7 +43,13 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
       <div className="flex items-end gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 flex-shrink-0"
+              aria-label="Прикрепить фото или документ"
+              title="Прикрепить фото или документ"
+            >
               <Paperclip className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
@@ -77,6 +83,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         <Button
           size="icon"
           className="h-10 w-10 flex-shrink-0"
+          aria-label="Отправить сообщение"
+          title="Отправить сообщение"
           onClick={handleSend}
           disabled={disabled || !message.trim()}
         >

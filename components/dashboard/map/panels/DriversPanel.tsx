@@ -41,8 +41,7 @@ export function DriversPanel({
   const filteredDrivers = useMemo(() => {
     if (!searchQuery.trim()) return drivers
     const q = searchQuery.toLowerCase()
-    return drivers.filter(
-      (d) =>
+    return drivers.filter((d: any) =>
         d.name.toLowerCase().includes(q) ||
         (d.vehiclePlate && d.vehiclePlate.toLowerCase().includes(q)) ||
         (d.routeTo && d.routeTo.toLowerCase().includes(q))
@@ -101,7 +100,7 @@ export function DriversPanel({
             {drivers.length === 0 ? "Нет активных водителей" : "Ничего не найдено"}
           </div>
         ) : (
-          filteredDrivers.map((driver) => {
+          filteredDrivers.map((driver: any) => {
             const status = STATUS_CONFIG[driver.status] || STATUS_CONFIG.offline
             const isActive = ACTIVE_STATUSES.includes(driver.status)
             const isSelected = selectedDriverId === driver.id
@@ -138,7 +137,7 @@ export function DriversPanel({
                     >
                       {driver.name
                         .split(" ")
-                        .map((n) => n[0])
+                        .map((n: any) => n[0])
                         .join("")
                         .slice(0, 2)}
                     </div>

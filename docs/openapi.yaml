@@ -1,0 +1,539 @@
+openapi: 3.0.3
+info:
+  title: Loginex TMS API
+  description: |
+    API для диспетчерской системы Loginex TMS.
+    - Auth: серверные сессии в БД. В cookie — подписанный HMAC-SHA256 токен с jti = id строки Session
+      (loginex_staff_session для сотрудников, loginex_driver_session для водителей).
+      Отзыв строки Session немедленно закрывает доступ.
+    - Роли: admin | logist (кабинет), driver (мобильное приложение).
+      driverId и принадлежность организации берутся из сессии, а не из тела запроса.
+    - Rate limiting: 5 попыток / 15 мин для auth
+    - CSRF: double-submit cookie loginex_csrf + header x-csrf-token
+    - Validation: Zod, 400 с details.issues
+  version: 1.0.0
+  contact:
+    name: Loginex TMS
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://loginex.example.com
+    description: Production
+
+tags:
+  - name: Auth
+  - name: Drivers
+  - name: Vehicles
+  - name: Orders
+  - name: Routes
+  - name: Admin
+  - name: Fleet
+  - name: Chat
+  - name: Mobile
+
+paths:
+  /api/auth/session:
+    get:
+      tags: [Auth]
+      summary: Текущая сессия (кто вошёл)
+      description: |
+        Возвращает пользователя или водителя из проверенной сессии.
+        Параметр kind=staff|driver выбирает контур; без kind — сотрудник.
+      parameters:
+        - in: query
+          name: kind
+          schema: { type: string, enum: [staff, driver] }
+          required: false
+      responses:
+        '200':
+          description: Данные текущей сессии
+        '401':
+          description: Нет активной сессии
+
+  /api/auth/users:
+    get:
+      tags: [Admin]
+      summary: Пользователи и заявки на регистрацию (admin)
+      responses:
+        '200':
+          description: Список пользователей
+        '401':
+          description: Не авторизован
+        '403':
+          description: Недостаточно прав (нужен admin)
+
+  /api/auth/users/{id}:
+    patch:
+      tags: [Admin]
+      summary: Одобрить заявку / заблокировать / восстановить / сменить роль (admin)
+      description: Действие пишется в AuditLog.
+      parameters:
+        - in: path
+          name: id
+          schema: { type: string }
+          required: true
+      responses:
+        '200':
+          description: Пользователь обновлён
+        '400':
+          description: Некорректное действие
+        '403':
+          description: Недостаточно прав
+
+  /api/auth/csrf:
+    get:
+      tags: [Auth]
+      summary: Get CSRF token
+      responses:
+        '200':
+          description: CSRF token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  csrfToken:
+                    type: string
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Staff login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: admin@loginex.ru
+                password:
+                  type: string
+                  example: "<пароль пользователя>"
+                  description: Пароль не хранится в документации — его задаёт владелец учётной записи
+      responses:
+        '200':
+          description: Logged in, sets cookies
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Invalid credentials
+        '429':
+          description: Rate limited
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register new user (pending approval)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Registered
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email exists
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout staff
+      responses:
+        '200':
+          description: Logged out
+
+  /api/m/login:
+    post:
+      tags: [Mobile]
+      summary: Driver login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, organization]
+              properties:
+                phone:
+                  type: string
+                  example: "+79161234567"
+                organization:
+                  type: string
+                  example: "АИ Логистика"
+      responses:
+        '200':
+          description: Driver logged in
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: Driver not found
+
+  /api/drivers:
+    get:
+      tags: [Drivers]
+      summary: List drivers
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Drivers list
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Drivers]
+      summary: Create driver
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDriver'
+      responses:
+        '200':
+          description: Created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/vehicles:
+    get:
+      tags: [Vehicles]
+      summary: List vehicles
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Vehicles
+    post:
+      tags: [Vehicles]
+      summary: Create vehicle
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVehicle'
+      responses:
+        '200':
+          description: Created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Orders
+    post:
+      tags: [Orders]
+      summary: Create order
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrder'
+      responses:
+        '200':
+          description: Created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/routes:
+    get:
+      tags: [Routes]
+      summary: List routes
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Routes
+    post:
+      tags: [Routes]
+      summary: Create route
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                driverId:
+                  type: string
+                vehicleId:
+                  type: string
+                totalDistance:
+                  type: number
+                orders:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/admin/audit:
+    get:
+      tags: [Admin]
+      summary: Audit logs (admin only)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: action
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Logs
+
+  /api/fleet/assign:
+    post:
+      tags: [Fleet]
+      summary: Assign vehicle/driver to orders
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleId]
+              properties:
+                vehicleId:
+                  type: string
+                driverId:
+                  type: string
+                orderIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Assigned
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/chat:
+    get:
+      tags: [Chat]
+      summary: List chat messages
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Messages
+    post:
+      tags: [Chat]
+      summary: Send message
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  maxLength: 2000
+                recipientId:
+                  type: string
+                type:
+                  type: string
+                isImportant:
+                  type: boolean
+      responses:
+        '200':
+          description: Sent
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: loginex_token
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, dispatcher, manager, viewer]
+        status:
+          type: string
+
+    CreateDriver:
+      type: object
+      required: [name, phone]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        phone:
+          type: string
+          minLength: 10
+        vehicleId:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, on_route, sick]
+
+    CreateVehicle:
+      type: object
+      required: [plate, type, capacity]
+      properties:
+        plate:
+          type: string
+          maxLength: 20
+        type:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+        year:
+          type: integer
+        volume:
+          type: number
+        length:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+
+    CreateOrder:
+      type: object
+      required: [routeFrom, routeTo]
+      properties:
+        routeFrom:
+          type: string
+          maxLength: 200
+        routeTo:
+          type: string
+          maxLength: 200
+        distance:
+          type: number
+        weight:
+          type: number
+        cargoType:
+          type: string
+        clientContact:
+          type: string
+        clientName:
+          type: string
+        price:
+          type: number
+        deadline:
+          type: string
+          format: date-time
+
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+                example: Validation failed
+              details:
+                type: object
+                properties:
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: array
+                          items:
+                            type: string
+                        message:
+                          type: string
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+                example: Unauthorized

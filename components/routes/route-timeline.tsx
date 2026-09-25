@@ -203,10 +203,6 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
   const [loading, setLoading] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
 
-  // Фото подгружаем отдельно, так как в событии может не быть URL
-  // (В идеале нужно джойнить таблицу Photo на бэке, но пока сделаем лениво)
-  const [photosMap, setPhotosMap] = useState<Record<string, string>>({})
-
   useEffect(() => {
     if (!routeId) return
 
@@ -231,16 +227,6 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
             )
           setEvents(list)
 
-          // Ищем события фото без URL и пытаемся их подтянуть
-          // (это временный хак, лучше бы бэк сразу отдавал URL)
-          const photoEvents = list.filter(
-            (e: any) => e.type === "photo" && !photosMap[e.id],
-          )
-          if (photoEvents.length > 0) {
-            // Тут можно сделать запрос за фото, если API позволяет фильтровать по дате/типу
-            // Пока просто оставим заглушку или используем URL если он был в data
-            // (В data мы сохраняем description, но URL там может и не быть)
-          }
         }
       } catch (e) {
         console.error("[RouteTimeline] load error:", e)
@@ -260,7 +246,7 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
 
   const groupedEvents = useMemo(() => {
     const groups: Record<string, RouteEventDto[]> = {}
-    events.forEach((e) => {
+    events.forEach((e: any) => {
       const dateKey = formatDate(e.createdAt)
       if (!groups[dateKey]) groups[dateKey] = []
       groups[dateKey].push(e)
@@ -299,12 +285,13 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
           </div>
 
           <div className="space-y-4 pl-4 border-l border-border/50 ml-4">
-            {dayEvents.map((e) => {
+            {dayEvents.map((e: any) => {
               const config = getEventConfig(e.type, e.status)
               const Icon = config.icon
               const eventData = parseEventData(e.data)
 
-              // Если в data есть url (например, мы начали его туда писать), берем его
+              // Загрузка фото кладёт в data { photoId, photoType, url } — показываем
+              // снимок прямо в хронологии, чтобы логист видел его без перехода
               const imageUrl = eventData?.url || null
 
               return (
