@@ -97,6 +97,25 @@ test("внутренние переходы ведут на существующ
   assert.deepEqual(broken, [], `ссылки без страницы: ${broken.join(", ")}`)
 })
 
+test("ключевые страницы не остаются без единой ссылки", () => {
+  // Мёртвая ссылка — не единственная болезнь: страница может существовать и
+  // работать, но попасть на неё нельзя. Так было с /m/vehicle (выбор машины
+  // у водителя) и /drivers (полный список водителей).
+  const sources = collectSources(root).map((file) => fs.readFileSync(file, "utf-8"))
+  const blob = sources.join("\n")
+
+  const mustBeReachable = ["/drivers", "/m/vehicle", "/reports", "/photos", "/organization"]
+
+  for (const route of mustBeReachable) {
+    const referenced =
+      blob.includes(`"${route}"`) ||
+      blob.includes(`'${route}'`) ||
+      blob.includes("`" + route) ||
+      blob.includes(`href="${route}"`)
+    assert.ok(referenced, `на ${route} никто не ссылается — страница недостижима`)
+  }
+})
+
 test("в приложении есть ожидаемые разделы", () => {
   for (const route of ["/login", "/m/login", "/dashboard", "/orders", "/routes", "/reports"]) {
     assert.ok(pages.has(route), `нет страницы ${route}`)

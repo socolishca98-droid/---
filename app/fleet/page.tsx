@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -297,7 +298,19 @@ export default function FleetPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="drivers" className="mt-0">
+            <TabsContent value="drivers" className="mt-0 space-y-4">
+              {/* Здесь — карточки экипажей для быстрых действий. Полный разбор
+                  (сводка по статусам, рейтинги, поиск по госномеру, добавление
+                  водителя) живёт на отдельной странице /drivers; на неё не было
+                  ни одной ссылки, и раздел был недостижим */}
+              <div className="flex justify-end">
+                <Link
+                  href="/drivers"
+                  className="text-sm text-primary hover:underline"
+                >
+                  Все водители: статусы, рейтинги, добавление →
+                </Link>
+              </div>
               <div className="stagger-in grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredDrivers.map((driver: any) => {
                   const vehicle = vehicles.find((v: any) => v.id === driver.vehicleId)
