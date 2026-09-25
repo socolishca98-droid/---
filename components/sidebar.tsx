@@ -200,8 +200,10 @@ export function Sidebar() {
             </div>
           )}
 
+          {/* Ссылка ведёт на существующую страницу: раньше здесь был /settings,
+              которого нет в приложении — «Настройки» открывали 404 */}
           <Link
-            href="/settings"
+            href="/organization"
             className={cn(
               "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground transition-[background-color,color,transform] duration-200 ease-out hover:translate-x-0.5 group",
             )}
