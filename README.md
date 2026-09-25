@@ -113,7 +113,7 @@ npm run db:migrate-orgs
 | `npm run dev` | дев-сервер на `:3000` (Turbopack), доступен по сети |
 | `npm run build` / `npm start` | прод-сборка и запуск |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | все тесты: unit + vitest + изоляция организаций |
+| `npm test` | все тесты: unit + vitest + изоляция организаций (работают сразу после клонирования, Prisma Client для них не нужен) |
 | `npm run test:unit` | `tests/*.test.mjs` (node:test), 258 проверок |
 | `npm run test:vitest` | `__tests__/**` (vitest) |
 | `npm run test:isolation` | витрина мультитенантности: 214 проверок |
@@ -188,6 +188,7 @@ docs/           документация: безопасность, схема, 
 | Порт занят (`EADDRINUSE`) | запустите `npx next dev -p 3001`, либо закрыть процесс на `:3000` |
 | Вход не пускает: 403 «нет организации» | не выполнен `npm run seed:auth` (он создаёт организацию и привязывает к ней администратора) |
 | Пустые списки грузов ATI | не заданы `ATI_CLIENT_ID` / `ATI_TOKEN` — интеграция выключена, это норма для локальной разработки |
+| `npm run typecheck` показывает ~62 ошибки вида «Parameter implicitly has an 'any' type» в `app/api/*` | не сгенерирован Prisma Client — типы Prisma неизвестны, поэтому колбэки транзакций без типов. Выполните `npm run db:generate` |
 | Кириллица в консоли Windows выглядит кракозябрами | `chcp 65001` в cmd или используйте PowerShell 7 / Windows Terminal |
 
 ## 10. Безопасность (важно)
