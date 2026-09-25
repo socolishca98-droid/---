@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 // Этот экспорт всё равно оставим для надёжности
 export const dynamic = "force-dynamic"
@@ -129,7 +130,7 @@ function PhotoPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [driver, setDriver] = useState<DriverSession | null>(null)
+  const { driver } = useDriverSession()
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -141,20 +142,8 @@ function PhotoPageContent() {
   const [showOrderPicker, setShowOrderPicker] = useState(false)
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
 
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as DriverSession
-        if (!parsed?.id) throw new Error("Invalid session")
-        setDriver(parsed)
-      } catch {
-        router.push("/m/login")
-      }
-    } else {
-      router.push("/m/login")
-    }
-  }, [router])
+  // Сессия — серверная (httpOnly-cookie): localStorage со «driver_session»
+  // после задачи 1 пуст, поэтому раньше эта страница сразу уводила на логин
 
   useEffect(() => {
     const ctxRaw = searchParams?.get("context") ?? "generic"

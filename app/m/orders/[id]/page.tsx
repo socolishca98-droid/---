@@ -40,6 +40,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
+import { useDriverSession } from "@/hooks/use-driver-session"
 
 interface Order {
   id: string
@@ -124,6 +125,10 @@ export default function OrderDetailsPage() {
   const params = useParams()
   const orderId = params?.id as string
 
+  // Без сессии водителя карточка не откроется (сервер ответит 401) — сразу
+  // отправляем на вход, а не показываем ошибку загрузки
+  const { isAuthenticated, isLoading: isSessionLoading } = useDriverSession()
+
   const [order, setOrder] = useState<Order | null>(null)
   const [summary, setSummary] = useState<TripSummary | null>(null)
   const [expenses, setExpenses] = useState<TripExpense[]>([])
@@ -176,6 +181,11 @@ export default function OrderDetailsPage() {
     },
     [orderId],
   )
+
+  useEffect(() => {
+    if (isSessionLoading) return
+    if (!isAuthenticated) router.replace("/m/login")
+  }, [isSessionLoading, isAuthenticated, router])
 
   useEffect(() => {
     void load()

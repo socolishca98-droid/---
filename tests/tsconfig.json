@@ -40,6 +40,7 @@
     "../lib/ati/scan-profile.ts",
     "../lib/reports/aggregate.ts",
     "../lib/reports/insights.ts",
-    "../lib/offline/photo-queue.ts"
+    "../lib/offline/photo-queue.ts",
+    "../lib/api-docs/endpoints.ts"
   ]
 }

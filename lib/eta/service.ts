@@ -51,13 +51,11 @@ export async function calculateETA(
   if (request.useCache !== false) {
     const cached = getFromCache(cacheKey);
     if (cached) {
-      console.log("[ETA] Cache hit");
       return cached;
     }
   }
 
   try {
-    console.log("[ETA] Fetching route from OSRM...");
     const osrmResponse = await fetchOSRMRoute(origin, destination, waypoints, {
       steps: true,
       overview: "full"
@@ -104,10 +102,6 @@ export async function calculateETA(
       saveToCache(cacheKey, result);
     }
 
-    console.log("[ETA] Done:", {
-      distance: `${distanceKm.toFixed(1)} km`,
-      risk: riskFactors.level
-    });
     return result;
   } catch (error) {
     console.error("[ETA] Error, using fallback:", error);

@@ -1,9 +1,10 @@
 // app/m/vehicle/page.tsx
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import {
   Truck,
   Check,
@@ -27,34 +28,19 @@ interface Vehicle {
 
 export default function VehicleSelectPage() {
   const router = useRouter()
+  // Сессия водителя — серверная (httpOnly-cookie). Раньше страница искала
+  // «driverSession» в localStorage: после перехода на серверные сессии такой
+  // записи нет, поэтому выбор машины был недоступен вовсе
+  const { driver, isLoading: isSessionLoading, refresh, updateDriver } = useDriverSession()
+  const driverId = driver?.id ?? null
+
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [driverId, setDriverId] = useState<string | null>(null)
   const [currentVehicleId, setCurrentVehicleId] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Получаем driverId из localStorage
-    const stored = localStorage.getItem("driverSession")
-    if (stored) {
-      try {
-        const session = JSON.parse(stored)
-        setDriverId(session.driverId || session.id)
-      } catch {
-        router.push("/m/login")
-        return
-      }
-    } else {
-      router.push("/m/login")
-      return
-    }
-
-    loadVehicles()
-    loadCurrentVehicle()
-  }, [router])
-
-  const loadVehicles = async () => {
+  const loadVehicles = useCallback(async () => {
     try {
       const res = await fetch("/api/m/vehicle")
       const data = await res.json()
@@ -66,16 +52,11 @@ export default function VehicleSelectPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
 
-  const loadCurrentVehicle = async () => {
-    const stored = localStorage.getItem("driverSession")
-    if (!stored) return
-
+  const loadCurrentVehicle = useCallback(async (id: string) => {
     try {
-      const session = JSON.parse(stored)
-      const did = session.driverId || session.id
-      const res = await fetch(`/api/drivers/${did}`)
+      const res = await fetch(`/api/drivers/${id}`)
       const data = await res.json()
       if (data.success && data.driver?.vehicleId) {
         setCurrentVehicleId(data.driver.vehicleId)
@@ -84,7 +65,13 @@ export default function VehicleSelectPage() {
     } catch (e) {
       console.error("Failed to load current vehicle:", e)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (isSessionLoading || !driverId) return
+    void loadVehicles()
+    void loadCurrentVehicle(driverId)
+  }, [isSessionLoading, driverId, loadVehicles, loadCurrentVehicle])
 
   const handleSelect = async (vehicleId: string) => {
     if (!driverId) return
@@ -102,15 +89,14 @@ export default function VehicleSelectPage() {
       const data = await res.json()
 
       if (data.success) {
-        // Обновляем сессию
-        const stored = localStorage.getItem("driverSession")
-        if (stored) {
-          const session = JSON.parse(stored)
-          session.vehicleId = vehicleId
-          session.vehiclePlate = data.vehicle?.plate
-          session.vehicleType = data.vehicle?.type
-          localStorage.setItem("driverSession", JSON.stringify(session))
-        }
+        // Обновляем сессию на сервере (cookie) и локально, чтобы шапка и
+        // главная сразу показали новую машину
+        updateDriver({
+          vehicleId: vehicleId,
+          vehiclePlate: data.vehicle?.plate,
+          vehicleType: data.vehicle?.type,
+        })
+        void refresh()
 
         setCurrentVehicleId(vehicleId)
         
@@ -156,7 +142,7 @@ export default function VehicleSelectPage() {
     return false
   }
 
-  if (isLoading) {
+  if (isLoading || isSessionLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />

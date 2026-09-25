@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import {
   ChevronLeft,
   Phone,
@@ -33,25 +34,13 @@ export default function DriverChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const [driver, setDriver] = useState<Driver | null>(null)
+  // Сессия — серверная (httpOnly-cookie): читать «driver_session» из
+  // localStorage бессмысленно, такой записи после задачи 1 не существует
+  const { driver } = useDriverSession()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
-
-  // Авторизация
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (saved) {
-      try {
-        setDriver(JSON.parse(saved))
-      } catch {
-        router.push("/m/login")
-      }
-    } else {
-      router.push("/m/login")
-    }
-  }, [router])
 
   // Загрузка сообщений
   const fetchMessages = useCallback(async () => {

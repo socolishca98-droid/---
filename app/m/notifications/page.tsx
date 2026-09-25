@@ -14,33 +14,14 @@ import {
   BellOff,
 } from "lucide-react"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import { toast } from "sonner"
-
-interface DriverSession {
-  id: string
-  name: string
-}
 
 export default function DriverNotificationsPage() {
   const router = useRouter()
-  const [driver, setDriver] = useState<DriverSession | null>(null)
-
-  useEffect(() => {
-    const saved = localStorage.getItem("driver_session")
-    if (!saved) {
-      router.push("/m/login")
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as DriverSession
-      if (!parsed?.id) throw new Error("Invalid session")
-      setDriver(parsed)
-    } catch {
-      localStorage.removeItem("driver_session")
-      router.push("/m/login")
-    }
-  }, [router])
+  // Сессия — серверная (httpOnly-cookie): раньше здесь читалась запись
+  // «driver_session» из localStorage, которой больше не существует
+  const { driver } = useDriverSession()
 
   const {
     notifications,

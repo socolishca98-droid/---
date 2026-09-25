@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Locate,
   WifiOff,
+  Camera,
   Wifi,
   AlertCircle,
   Home,
@@ -36,6 +37,7 @@ import {
   Flag,
 } from "lucide-react"
 import { toast } from "sonner"
+import { getPhotoQueue } from "@/lib/offline/photo-queue"
 
 // ... (оставляем все константы IDLE_STATUSES, TRIP_STATUSES, интерфейсы без изменений)
 
@@ -174,6 +176,34 @@ export default function MobileHomePage() {
   const [isGoingToBase, setIsGoingToBase] = useState(false)
   const [tripStarted, setTripStarted] = useState(false)
   const [completingRoute, setCompletingRoute] = useState(false)
+  /** Связь и очередь фото: водитель видит, что чек не потерян, а ждёт сети */
+  const [isOnline, setIsOnline] = useState(true)
+  const [pendingPhotos, setPendingPhotos] = useState(0)
+
+  // Офлайн-индикатор и число фото, ждущих отправки. Раньше это показывала
+  // шапка MobileHeader, но её никто не подключал: водитель про отсутствие
+  // связи не знал, хотя фото при этом молча копились в очереди.
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine)
+    updateOnline()
+
+    window.addEventListener("online", updateOnline)
+    window.addEventListener("offline", updateOnline)
+
+    const queue = getPhotoQueue()
+    let unsubscribe: (() => void) | undefined
+
+    if (queue) {
+      void queue.pendingCount().then(setPendingPhotos)
+      unsubscribe = queue.subscribe((items) => setPendingPhotos(items.length))
+    }
+
+    return () => {
+      window.removeEventListener("online", updateOnline)
+      window.removeEventListener("offline", updateOnline)
+      unsubscribe?.()
+    }
+  }, [])
 
   const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const dataIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -838,6 +868,26 @@ export default function MobileHomePage() {
                   {gpsStatus === "inactive" && <WifiOff className="h-3 w-3" />}
                   <span>GPS</span>
                 </div>
+              )}
+
+              {!isOnline && (
+                <span
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  title="Нет связи: действия отправятся, когда сеть вернётся"
+                >
+                  <WifiOff className="h-3 w-3" />
+                  Офлайн
+                </span>
+              )}
+
+              {pendingPhotos > 0 && (
+                <span
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                  title="Фото ждут отправки и уйдут сами"
+                >
+                  <Camera className="h-3 w-3" />
+                  {pendingPhotos}
+                </span>
               )}
 
               <DriverNotificationsBell driverId={driver.id} />

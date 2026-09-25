@@ -113,7 +113,8 @@ paths:
                   example: admin@loginex.ru
                 password:
                   type: string
-                  example: demo_dev_only
+                  example: "<пароль пользователя>"
+                  description: Пароль не хранится в документации — его задаёт владелец учётной записи
       responses:
         '200':
           description: Logged in, sets cookies

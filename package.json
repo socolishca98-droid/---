@@ -24,6 +24,7 @@
     "verify:security": "node scripts/verify-security.mjs",
     "verify:task2": "node scripts/verify-task2.mjs",
     "verify:orgs": "node scripts/verify-organizations.mjs",
+    "check:api": "node scripts/check-api-calls.mjs",
     "audit:orgs": "node scripts/audit-org-isolation.mjs",
     "build:safe": "prisma generate --schema=./prisma/schema.prisma || echo \"prisma generate skipped (offline)\"; next build",
     "postinstall": "prisma generate || echo \"prisma generate failed - will retry on build\"",

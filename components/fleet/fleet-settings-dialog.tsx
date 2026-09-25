@@ -154,7 +154,6 @@ export function FleetSettingsDialog({ open, onOpenChange, currentSettings, onSuc
       toast.success("Настройки сохранены")
       
       if (data.geocodeResult) {
-        console.log('[Settings] Geocode result:', data.geocodeResult)
       }
       
       onSuccess()

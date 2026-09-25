@@ -1,93 +1,162 @@
-// app/docs/page.tsx - P2-4 API docs page
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+// app/docs/page.tsx — документация API для сотрудников
+//
+// Раньше эта страница была подделкой: светлый лист на тёмном приложении, а
+// внутри — вручную вписанный кусок спецификации, ссылки на несуществующие
+// файлы (`/docs/openapi.yaml`, `/docs/swagger` — 404), пароль администратора
+// открытым текстом и устаревшие счётчики тестов. Такая «документация» врёт
+// сразу после первого изменения в коде.
+//
+// Теперь источник правды — сам код: страница сканирует каталог `app/api`,
+// читает HTTP-методы из обработчиков и строит список эндпоинтов. Ничего
+// вписывать руками не нужно, список не может разойтись с приложением.
+// Машинночитаемая спецификация (docs/openapi.yaml) отдаётся через /api/docs
+// и здесь показывается честно: сколько путей в ней описано из существующих.
+
+import fs from "node:fs"
+import path from "node:path"
 import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+
+import {
+  collectEndpoints,
+  groupEndpoints,
+  readOpenApiSummary,
+} from "@/lib/api-docs/endpoints"
 
 export const dynamic = "force-dynamic"
 
 export default function DocsPage() {
+  const endpoints = collectEndpoints(path.join(process.cwd(), "app", "api"))
+  const groups = groupEndpoints(endpoints)
+  const spec = readOpenApiSummary(undefined, endpoints)
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Loginex TMS API Docs</h1>
-        <Card>
+    <div className="min-h-screen p-6">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">API Loginex TMS</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Список составлен из кода приложения: каждый пункт — существующий обработчик.
+            Изменения в роутах появляются здесь сами, вписывать вручную нечего.
+          </p>
+        </div>
+
+        <Card className="surface-glass">
           <CardHeader>
-            <CardTitle>OpenAPI Spec</CardTitle>
+            <CardTitle>Машинночитаемая спецификация</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-muted-foreground">
-              Полная спецификация API в формате OpenAPI 3.0. Скачайте файл или откройте через Swagger UI.
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex flex-wrap gap-4">
+              <Link href="/api/docs" className="text-primary underline">
+                /api/docs
+              </Link>
+              <span className="text-muted-foreground">
+                {spec
+                  ? `${spec.title} ${spec.version}: описано путей — ${spec.routes} (${spec.covered} из них есть в коде), методов — ${spec.methods}; в приложении эндпоинтов — ${endpoints.length}`
+                  : "спецификация не найдена"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Спецификация не обязана описывать всё сразу: непокрытые эндпоинты перечислены
+              ниже по фактическому коду. При расхождении верен код.
             </p>
-            <div className="flex gap-4">
-              <Link href="/api/docs" className="text-blue-600 underline">
-                /api/docs (YAML)
-              </Link>
-              <Link href="/docs/swagger" className="text-blue-600 underline">
-                Swagger UI (если настроен)
-              </Link>
-            </div>
-            <div className="bg-gray-900 text-gray-100 p-4 rounded text-sm overflow-auto">
-              <pre>{`openapi: 3.0.3
-info:
-  title: Loginex TMS API
-  version: 1.0.0
-servers:
-  - url: http://localhost:3000
-
-Основные эндпоинты:
-- GET  /api/auth/csrf - CSRF-токен (double-submit cookie)
-- POST /api/auth/login - вход сотрудника (httpOnly-cookie с подписанной сессией)
-- POST /api/auth/logout - выход: отзыв сессии в БД + очистка cookie
-- GET  /api/auth/session - кто сейчас вошёл (?kind=staff|driver)
-- POST /api/auth/register - заявка на регистрацию (ожидает одобрения админа)
-- GET  /api/auth/users - список пользователей и заявок
-- PATCH /api/auth/users/[id] - одобрить / заблокировать / восстановить / сменить роль
-- POST /api/m/login - вход водителя (телефон + пароль)
-- GET  /api/drivers - список водителей; POST - создать (заводит логист)
-- GET/POST /api/vehicles, /api/orders, /api/routes
-- GET/PATCH /api/routes/[routeId], /api/routes/[routeId]/events, .../add-load, .../complete
-- GET/POST /api/m/orders, /api/m/shift, /api/m/location, /api/m/sos
-- GET/DELETE /api/m/photos - фото водителя; загрузка файла: POST /api/photos/upload (multipart + распознавание)
-- GET/POST /api/routes/[routeId]/expenses, /api/m/expenses - расходы рейса
-- GET  /api/admin/audit - журнал административных действий
-- POST /api/fleet/assign - назначение машины на рейс
-- GET/POST /api/chat
-
-Security:
-- Сессии в БД: подписанный httpOnly-cookie, отзыв сессии = немедленный выход
-- Роли: admin | logist (кабинет), driver (мобильное приложение)
-- driverId/organizationId берутся только из проверенной сессии, не из тела запроса
-- Rate limiting 5/15min на входе
-- CSRF double-submit cookie для изменяющих запросов к /api/*
-- Zod-валидация: 400 с деталями
-`}</pre>
-            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="surface-glass">
           <CardHeader>
-            <CardTitle>Быстрый старт</CardTitle>
+            <CardTitle>Правила доступа</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p><strong>Логист:</strong> admin@loginex.ru / demo_dev_only</p>
-            <p><strong>Водитель:</strong> +7 (916) 123-45-67 / АИ Логистика</p>
-            <p><strong>CSRF:</strong> GET /api/auth/csrf → cookie loginex_csrf + header x-csrf-token</p>
-            <p><strong>Rate limit:</strong> 6-й запрос за 15 мин → 429 Retry-After 900</p>
-            <p><strong>Validation:</strong> невалидный body → 400 {`{success:false, error:"Validation failed", details:{issues}}`}</p>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              Все данные ограничены организацией из сессии: <b>organizationId</b> берётся из
+              подписанного токена, а не из тела запроса или параметров URL.
+            </p>
+            <p>
+              Роли: <b>admin</b> и <b>logist</b> — кабинет, <b>driver</b> — мобильный контур{" "}
+              <code>/api/m/*</code>. Автор фото, водитель рейса и принадлежность заказа
+              проверяются на сервере; чужие идентификаторы не подделываются.
+            </p>
+            <p>
+              Очередь загрузки фото в мобильном контуре (IndexedDB) шлёт файл после возвращения
+              связи — фото чека не теряется на трассе.
+            </p>
           </CardContent>
         </Card>
 
-        <Card>
+        {endpoints.length === 0 && (
+          <Card className="surface-glass border-amber-500/40">
+            <CardHeader>
+              <CardTitle className="text-base">Список пуст</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Исходники роутов не найдены рядом с приложением (такое бывает при запуске из
+              собранного бандла). Тогда смотрите спецификацию:{" "}
+              <Link href="/api/docs" className="text-primary underline">
+                /api/docs
+              </Link>
+              .
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="space-y-4">
+          {[...groups.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([group, list]) => (
+              <Card key={group} className="surface-glass">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <span className="font-mono text-primary">/api/{group}</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {list.length}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  {list.map((endpoint) => (
+                    <div
+                      key={`${endpoint.method} ${endpoint.route}`}
+                      className="flex items-center gap-3 text-sm py-0.5"
+                    >
+                      <span
+                        className={`font-mono text-[11px] w-16 shrink-0 ${
+                          endpoint.method === "GET"
+                            ? "text-emerald-500"
+                            : endpoint.method === "DELETE"
+                              ? "text-rose-500"
+                              : "text-amber-500"
+                        }`}
+                      >
+                        {endpoint.method}
+                      </span>
+                      <code className="font-mono text-xs text-muted-foreground break-all">
+                        {endpoint.route}
+                      </code>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
+        </div>
+
+        <Card className="surface-glass">
           <CardHeader>
-            <CardTitle>Документация</CardTitle>
+            <CardTitle>Разработчику</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <ul className="list-disc pl-5 text-sm space-y-1">
-              <li><Link href="/docs/openapi.yaml" className="text-blue-600 underline">docs/openapi.yaml</Link> — полная OpenAPI спецификация</li>
-              <li>docs/postgres-migration.md — миграция на PostgreSQL</li>
-              <li>docs/prompt-next.md — roadmap P0-P2</li>
-              <li>__tests__/ — тесты vitest (28 passed)</li>
-            </ul>
+          <CardContent className="space-y-1 text-sm text-muted-foreground">
+            <p>
+              <code>npm test</code> — типовые, изоляционные и юнит-тесты расчётов.
+            </p>
+            <p>
+              <code>npm run audit:orgs</code> — проверка, что каждый бизнес-запрос ограничен
+              организацией.
+            </p>
+            <p>
+              <code>docs/prompt-next.md</code> — журнал изменений по задачам: что сделано,
+              почему именно так и что осталось.
+            </p>
           </CardContent>
         </Card>
       </div>
