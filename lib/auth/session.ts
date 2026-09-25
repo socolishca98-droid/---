@@ -51,8 +51,9 @@ export interface DriverIdentity {
   /// Название организации — для показа в интерфейсе
   organizationName: string | null
   vehicleId: string | null
-  vehicleType: string
-  vehiclePlate: string
+  /// Кэш машины водителя; пусто, если машина ещё не назначена
+  vehicleType: string | null
+  vehiclePlate: string | null
   status: string
   rating: number
   ordersCompleted: number

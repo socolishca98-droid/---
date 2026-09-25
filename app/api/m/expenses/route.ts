@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
-import { logRouteEvent } from "@/lib/routes/service"
+import { logRouteEvent, refreshRouteCosts } from "@/lib/routes/service"
 import { EXPENSE_TYPES, buildTripSummary, groupExpensesByType } from "@/lib/trips/history"
 
 export const dynamic = "force-dynamic"
@@ -118,6 +118,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Некорректное тело запроса" }, { status: 400 })
     }
 
+    // Лишние поля отбиваем: опечатка в имени («амount») иначе молча теряется,
+    // и водитель считает, что расход записан
+    const allowed = ["type", "amount", "liters", "odometer", "vendor", "photoId", "note", "source"]
+    const unknown = Object.keys(body).filter((key) => !allowed.includes(key))
+    if (unknown.length > 0) {
+      return NextResponse.json(
+        { success: false, error: `Неизвестные поля расхода: ${unknown.join(", ")}` },
+        { status: 400 },
+      )
+    }
+
     const route = (await prisma.route.findFirst({
       where: scopedWhere(org.organizationId, {
         driverId,
@@ -155,6 +166,11 @@ export async function POST(request: NextRequest) {
         ? null
         : Number(body.liters)
 
+    const odometer =
+      typeof body.odometer === "number" && Number.isInteger(body.odometer) && body.odometer > 0
+        ? body.odometer
+        : null
+
     const photoId = typeof body.photoId === "string" && body.photoId ? body.photoId : null
     if (photoId) {
       // Фото должно быть своим: чужой чек не прикладываем
@@ -174,10 +190,7 @@ export async function POST(request: NextRequest) {
         type,
         amount: Math.round(amount),
         liters: liters !== null && Number.isFinite(liters) ? liters : null,
-        odometer:
-          typeof body.odometer === "number" && Number.isInteger(body.odometer) && body.odometer > 0
-            ? body.odometer
-            : null,
+        odometer,
         vendor: typeof body.vendor === "string" ? body.vendor.slice(0, 120) : null,
         spentAt: new Date(),
         photoId,
@@ -203,6 +216,32 @@ export async function POST(request: NextRequest) {
       type: "expense",
       data: JSON.stringify({ expenseId: expense.id, expenseType: type, amount: expense.amount }),
     })
+
+    // Показание одометра с чека — это фактический пробег рейса: первое
+    // значение становится началом, следующие — концом. Из него считаются
+    // путевой лист и отчёты «сколько прошла машина».
+    if (odometer) {
+      const routeRow = (await prisma.route.findFirst({
+        where: scopedWhere(org.organizationId, { id: route.id }),
+        select: { startOdometer: true, endOdometer: true },
+      })) as { startOdometer: number | null; endOdometer: number | null } | null
+
+      const startOdometer = routeRow?.startOdometer ?? null
+      const endOdometer = routeRow?.endOdometer ?? null
+      const patch: Record<string, number> = {}
+      if (routeRow && startOdometer === null) patch.startOdometer = odometer
+      else if (routeRow && (endOdometer === null || odometer > endOdometer)) {
+        patch.endOdometer = odometer
+      }
+
+      if (Object.keys(patch).length > 0) {
+        // org-audit: ok — рейс найден выше через scopedWhere(organizationId)
+        await prisma.route.update({ where: { id: route.id }, data: patch })
+      }
+    }
+
+    // Итоги рейса видны и водителю, и логисту — пересчитываем сразу
+    await refreshRouteCosts(prisma, route.id, org.organizationId)
 
     return NextResponse.json({ success: true, expense })
   } catch (error) {

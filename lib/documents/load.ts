@@ -66,6 +66,13 @@ function requisitesFromSettings(
  * Документы рейса для печати.
  * `kinds` — выбранные галочками виды (ТТН / путевой лист / договор-заявка).
  */
+/** Фактический пробег рейса по одометрам: оба значения нужны и конец > начала. */
+function tripDistanceKm(start: number | null | undefined, end: number | null | undefined): number | null {
+  if (typeof start !== "number" || typeof end !== "number") return null
+  const diff = end - start
+  return diff > 0 ? diff : null
+}
+
 export async function loadRouteDocuments(params: {
   organizationId: string
   routeId: string
@@ -84,6 +91,8 @@ export async function loadRouteDocuments(params: {
       completedAt: true,
       createdAt: true,
       totalDistance: true,
+      startOdometer: true,
+      endOdometer: true,
       totalCost: true,
       fuelExpense: true,
       cargoWeight: true,
@@ -170,6 +179,9 @@ export async function loadRouteDocuments(params: {
     completedAt: route.completedAt ?? null,
     createdAt: route.createdAt ?? new Date(),
     totalDistanceKm: route.totalDistance ?? null,
+    // Путевой лист требует факт, а не план: если водитель записал одометр
+    // (начало и конец рейса), показываем реальный пробег
+    tripDistanceKm: tripDistanceKm(route.startOdometer, route.endOdometer),
     totalCostRub: route.totalCost ?? null,
     fuelExpenseRub: route.fuelExpense ?? null,
     cargoWeightKg: route.cargoWeight ?? null,

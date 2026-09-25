@@ -247,7 +247,7 @@ curl -sk -X PATCH https://localhost:3000/api/routes/<routeId> \
 | `app/api/drivers/route.ts`, `app/api/drivers/[id]/route.ts` | `vehicleType`/`vehiclePlate` из запроса больше не принимаются — кэш считается из машины |
 | `app/api/vehicles/[id]/route.ts` | После правки машины обновляется кэш водителя; при удалении — водитель отвязывается целиком |
 | `app/api/m/vehicle/route.ts` | Водитель не может занять чужую машину (409); запись через единый путь |
-| `app/api/m/{location,photos,sos}/route.ts`, `app/api/m/route/accept-load/route.ts`, `app/m/route/events/route.ts` | События рейса через `logRouteEvent` (иначе FK на `Route` отбивал бы запись) |
+| `app/api/m/{location,photos,sos}/route.ts`, `app/api/m/route/accept-load/route.ts`, `app/api/m/route/events/route.ts` | События рейса через `logRouteEvent` (иначе FK на `Route` отбивал бы запись) |
 | `app/routes/page.tsx` | Читает `GET /api/routes` вместо группировки 500 заказов в браузере |
 | `lib/auth/session.ts` | `canDriverAccessRoute` проверяет `Route.driverId`, а не «все ли заказы мои» |
 | `hooks/use-fleet.ts` | Свободная машина определяется по `driver`/производному `driverId` |

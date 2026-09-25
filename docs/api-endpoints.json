@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T05:17:57.277Z",
+  "generatedAt": "2026-09-25T18:55:50.795Z",
   "endpoints": [
     {
       "method": "GET",
@@ -357,6 +357,11 @@
       "group": "m"
     },
     {
+      "method": "POST",
+      "route": "/api/m/route/events",
+      "group": "m"
+    },
+    {
       "method": "GET",
       "route": "/api/m/shift",
       "group": "m"
@@ -390,6 +395,16 @@
       "method": "POST",
       "route": "/api/m/vehicle",
       "group": "m"
+    },
+    {
+      "method": "GET",
+      "route": "/api/notifications",
+      "group": "notifications"
+    },
+    {
+      "method": "POST",
+      "route": "/api/notifications",
+      "group": "notifications"
     },
     {
       "method": "GET",

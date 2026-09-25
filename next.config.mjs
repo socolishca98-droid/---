@@ -11,6 +11,11 @@ const nextConfig = {
     unoptimized: true,
   },
   reactStrictMode: true,
+  // tesseract.js запускает воркер из своей папки в node_modules. Внутри
+  // сборки Next (standalone/трейсинг) путь к воркеру ломается — «Cannot find
+  // module .../tesseract.js/src/worker-script/node/index.js». Поэтому пакет
+  // оставляем внешним: он подключается из node_modules как есть.
+  serverExternalPackages: ["tesseract.js"],
   experimental: {
     optimizePackageImports: ['lucide-react', '@dnd-kit/core', '@dnd-kit/sortable'],
   },

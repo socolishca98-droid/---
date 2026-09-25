@@ -90,7 +90,7 @@ import { GET as mMaintenanceGet } from "@/app/api/m/maintenance/route"
 import { GET as mPhotosGet } from "@/app/api/m/photos/route"
 import { POST as mMaintenancePost } from "@/app/api/m/maintenance/route"
 import { POST as mAcceptLoadPost } from "@/app/api/m/route/accept-load/route"
-import { POST as mRouteEventsPost } from "@/app/m/route/events/route"
+import { POST as mRouteEventsPost } from "@/app/api/m/route/events/route"
 
 let world: World
 /** Cookie админа организации А */

@@ -143,7 +143,10 @@ export type DocumentRoute = {
   startedAt: Date | null
   completedAt: Date | null
   createdAt: Date
+  /** Пробег по плану (сумма плеч заказов) */
   totalDistanceKm: number | null
+  /** Фактический пробег: разница одометров рейса, если водитель их записал */
+  tripDistanceKm: number | null
   totalCostRub: number | null
   fuelExpenseRub: number | null
   cargoWeightKg: number | null

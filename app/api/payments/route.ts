@@ -20,6 +20,7 @@ import {
   isOverdueRow,
   normalizePaymentType,
   overdueReminderText,
+  paymentDueDate,
   type PaymentRow,
   type ReminderInfo,
 } from "@/lib/payments/summary"
@@ -43,7 +44,7 @@ const ORDER_SELECT = {
   status: true,
   createdAt: true,
   deadline: true,
-  completedAt: true,
+  deliveredAt: true,
   price: true,
   agreedPrice: true,
   paymentType: true,
@@ -208,8 +209,15 @@ export async function PATCH(request: NextRequest) {
 
     const existing = (await prisma.order.findFirst({
       where: scopedWhere(org.organizationId, { id: orderId }),
-      select: { id: true, createdAt: true, price: true, agreedPrice: true },
-    })) as { id: string; createdAt: Date; price: number | null; agreedPrice: number | null } | null
+      select: { id: true, createdAt: true, deliveredAt: true, deadline: true, price: true, agreedPrice: true },
+    })) as {
+      id: string
+      createdAt: Date
+      deliveredAt: Date | null
+      deadline: Date | null
+      price: number | null
+      agreedPrice: number | null
+    } | null
 
     if (!existing) {
       return NextResponse.json({ success: false, error: "Заказ не найден" }, { status: 404 })
@@ -271,12 +279,17 @@ export async function PATCH(request: NextRequest) {
           )
         }
         data.deferredDays = days
-        // срок оплаты пересчитываем от даты заказа: так его и понимает
-        // бухгалтерия, когда отсрочка меняется задним числом
+        // Срок оплаты считается той же функцией, что и в списке платежей:
+        // сначала дата доставки, затем срок по заказу, затем дата оформления.
+        // Иначе список и сохранённый срок показывали бы разные даты.
         if (!("dueDate" in body)) {
-          const due = new Date(existing.createdAt)
-          due.setDate(due.getDate() + days)
-          data.dueDate = days > 0 ? due : null
+          data.dueDate = days > 0 ? paymentDueDate({
+            id: existing.id,
+            deliveredAt: existing.deliveredAt,
+            deadline: existing.deadline,
+            createdAt: existing.createdAt,
+            deferredDays: days,
+          }) : null
         }
       }
     }

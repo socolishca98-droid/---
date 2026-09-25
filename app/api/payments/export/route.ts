@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         status: true,
         createdAt: true,
         deadline: true,
-        completedAt: true,
+        deliveredAt: true,
         price: true,
         agreedPrice: true,
         paymentType: true,

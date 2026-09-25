@@ -265,16 +265,38 @@ describe("условия и отметка оплаты (PATCH /api/payments)", 
     expect(reset.data.order.paidAt).toBeNull()
   })
 
-  it("отсрочка пересчитывает срок оплаты от даты заказа", async () => {
-    const orderId = seedOrder("mine", { price: 50000, createdAt: new Date("2026-09-01T10:00:00") })
+  it("отсрочка считает срок так же, как список платежей: доставка → срок заказа → оформление", async () => {
+    // 1) есть фактическая доставка — срок считаем от неё
+    const delivered = seedOrder("mine", {
+      price: 50000,
+      createdAt: new Date("2026-09-01T10:00:00"),
+      deadline: new Date("2026-09-05T10:00:00"),
+      deliveredAt: new Date("2026-09-10T10:00:00"),
+    })
 
-    const { data } = await patchPayment(cookieA, { orderId, deferredDays: 14 })
+    const byDelivery = await patchPayment(cookieA, { orderId: delivered, deferredDays: 14 })
 
-    expect(data.order.deferredDays).toBe(14)
-    expect(new Date(data.order.dueDate).toISOString().slice(0, 10)).toBe("2026-09-15")
+    expect(byDelivery.data.order.deferredDays).toBe(14)
+    expect(new Date(byDelivery.data.order.dueDate).toISOString().slice(0, 10)).toBe("2026-09-24")
+
+    // сохранённый срок и то, что показывает список платежей, — одна и та же дата
+    const list = await listPayments(cookieA, "?tab=all")
+    const row = list.data.orders.find((item: { id: string }) => item.id === delivered)
+    expect(new Date(row.dueDate).toISOString().slice(0, 10)).toBe("2026-09-24")
+
+    // 2) доставки ещё не было — берём срок по заказу
+    const planned = seedOrder("mine2", {
+      price: 50000,
+      createdAt: new Date("2026-09-01T10:00:00"),
+      deadline: new Date("2026-09-05T10:00:00"),
+      deliveredAt: null,
+    })
+
+    const byDeadline = await patchPayment(cookieA, { orderId: planned, deferredDays: 14 })
+    expect(new Date(byDeadline.data.order.dueDate).toISOString().slice(0, 10)).toBe("2026-09-19")
 
     // снятие отсрочки убирает и срок
-    const cleared = await patchPayment(cookieA, { orderId, deferredDays: null })
+    const cleared = await patchPayment(cookieA, { orderId: delivered, deferredDays: null })
     expect(cleared.data.order.dueDate).toBeNull()
   })
 

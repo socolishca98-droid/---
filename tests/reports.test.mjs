@@ -47,7 +47,8 @@ function order(overrides = {}) {
     id: pick(overrides, "id", "order-1"),
     status: pick(overrides, "status", "delivered"),
     createdAt: pick(overrides, "createdAt", new Date("2026-09-10T09:00:00")),
-    completedAt: pick(overrides, "completedAt", new Date("2026-09-12T18:00:00")),
+    // дата доставки: по ней заказ относят к периоду отчёта
+    deliveredAt: pick(overrides, "deliveredAt", new Date("2026-09-12T18:00:00")),
     deadline: pick(overrides, "deadline", null),
     price: pick(overrides, "price", 100000),
     agreedPrice: pick(overrides, "agreedPrice", null),
@@ -144,16 +145,16 @@ test("предыдущий период — такой же длины и вст
 })
 
 test("заказ относят к периоду по дате доставки, незакрытый — по дате оформления", () => {
-  const delivered = order({ completedAt: new Date("2026-09-12T18:00:00") })
+  const delivered = order({ deliveredAt: new Date("2026-09-12T18:00:00") })
   assert.equal(orderAttributionDate(delivered).getDate(), 12)
 
-  const open = order({ status: "in_route", completedAt: null, createdAt: new Date("2026-09-20T09:00:00") })
+  const open = order({ status: "in_route", deliveredAt: null, createdAt: new Date("2026-09-20T09:00:00") })
   assert.equal(orderAttributionDate(open).getDate(), 20)
 
   // Оформлен давно, а довезён в этом месяце — считается по доставке
   const long = order({
     createdAt: new Date("2026-08-20T09:00:00"),
-    completedAt: new Date("2026-09-05T12:00:00"),
+    deliveredAt: new Date("2026-09-05T12:00:00"),
   })
   assert.equal(orderAttributionDate(long).getDate(), 5)
 })
@@ -243,10 +244,10 @@ test("разбивка по дням складывает выручку и ра
   const period = buildPeriod("7d", { now: NOW })
   const series = buildSeries(
     [
-      order({ createdAt: new Date("2026-09-24T09:00:00"), completedAt: new Date("2026-09-24T20:00:00"), price: 50000 }),
-      order({ id: "o2", createdAt: new Date("2026-09-25T09:00:00"), completedAt: new Date("2026-09-25T20:00:00"), price: 70000 }),
+      order({ createdAt: new Date("2026-09-24T09:00:00"), deliveredAt: new Date("2026-09-24T20:00:00"), price: 50000 }),
+      order({ id: "o2", createdAt: new Date("2026-09-25T09:00:00"), deliveredAt: new Date("2026-09-25T20:00:00"), price: 70000 }),
       // Вне периода — в отчёт не попадает
-      order({ id: "o3", createdAt: new Date("2026-09-01T09:00:00"), completedAt: new Date("2026-09-01T20:00:00"), price: 999999 }),
+      order({ id: "o3", createdAt: new Date("2026-09-01T09:00:00"), deliveredAt: new Date("2026-09-01T20:00:00"), price: 999999 }),
     ],
     [expense({ spentAt: new Date("2026-09-25T08:00:00"), amount: 12000 })],
     period,
@@ -303,7 +304,7 @@ test("заказы: статусы, средний чек, своевремен�
     order({
       price: 100000,
       distance: 800,
-      completedAt: new Date("2026-09-10T18:00:00"),
+      deliveredAt: new Date("2026-09-10T18:00:00"),
       deadline: new Date("2026-09-11T00:00:00"),
     }),
     order({
@@ -311,7 +312,7 @@ test("заказы: статусы, средний чек, своевремен�
       status: "cancelled",
       price: 50000,
       distance: 200,
-      completedAt: new Date("2026-09-11T18:00:00"),
+      deliveredAt: new Date("2026-09-11T18:00:00"),
       deadline: new Date("2026-09-11T10:00:00"),
     }),
     order({
@@ -319,7 +320,7 @@ test("заказы: статусы, средний чек, своевремен�
       status: "control",
       price: 60000,
       distance: 300,
-      completedAt: null,
+      deliveredAt: null,
       deadline: null,
       routeFrom: "Казань",
       routeTo: "Москва",
@@ -469,7 +470,7 @@ test("оплаты: получено, отсрочка, ожидание, про
         isPaid: true,
         paidAt: new Date("2026-09-20T12:00:00"),
         price: 100000,
-        completedAt: new Date("2026-09-10T12:00:00"),
+        deliveredAt: new Date("2026-09-10T12:00:00"),
       }),
       order({ id: "p2", price: 50000, dueDate: new Date("2026-09-01T00:00:00"), isPaid: false, clientName: "Василёк" }),
       order({ id: "p3", price: 30000, dueDate: new Date("2026-10-20T00:00:00"), isPaid: false, clientName: "Ромашка" }),
@@ -497,7 +498,7 @@ test("отсрочка считается от даты доставки, а н�
         id: "d1",
         price: 40000,
         isPaid: false,
-        completedAt: new Date("2026-09-20T12:00:00"),
+        deliveredAt: new Date("2026-09-20T12:00:00"),
         deferredDays: 30,
       }),
     ],
@@ -519,13 +520,13 @@ function fullInput() {
       order({
         id: "o1",
         price: 100000,
-        completedAt: new Date("2026-09-20T18:00:00"),
+        deliveredAt: new Date("2026-09-20T18:00:00"),
         deadline: new Date("2026-09-21T00:00:00"),
       }),
       order({
         id: "o2",
         price: 80000,
-        completedAt: new Date("2026-09-23T18:00:00"),
+        deliveredAt: new Date("2026-09-23T18:00:00"),
         deadline: new Date("2026-09-23T00:00:00"),
         clientId: "c2",
         clientName: "Василёк",
@@ -537,14 +538,14 @@ function fullInput() {
       order({
         id: "o3",
         price: 60000,
-        completedAt: new Date("2026-09-15T18:00:00"),
+        deliveredAt: new Date("2026-09-15T18:00:00"),
         createdAt: new Date("2026-09-12T09:00:00"),
         clientId: "c1",
         clientName: "Ромашка",
         routeId: "route-3",
       }),
       // Вне обоих периодов
-      order({ id: "o4", price: 999999, completedAt: new Date("2026-07-01T18:00:00") }),
+      order({ id: "o4", price: 999999, deliveredAt: new Date("2026-07-01T18:00:00") }),
     ],
     routes: [
       route({
@@ -644,7 +645,7 @@ test("разбор: просрочка, убыточный рейс и зави�
           clientName: "Ромашка",
           isPaid: false,
           dueDate: new Date("2026-08-01T00:00:00"),
-          completedAt: new Date("2026-07-20T12:00:00"),
+          deliveredAt: new Date("2026-07-20T12:00:00"),
           createdAt: new Date("2026-07-15T12:00:00"),
         }),
       ],

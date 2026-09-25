@@ -118,7 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
           where: scopedWhere(org.organizationId, { id: { in: pendingOrders.map((o) => o.id) } }),
-          data: { status: "delivered", updatedAt: now },
+          data: { status: "delivered", deliveredAt: now, updatedAt: now },
         })
       }
 

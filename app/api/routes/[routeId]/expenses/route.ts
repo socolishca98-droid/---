@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { refreshRouteCosts } from "@/lib/routes/service"
 import { EXPENSE_TYPES, groupExpensesByType } from "@/lib/trips/history"
 
 export const dynamic = "force-dynamic"
@@ -231,7 +232,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    return NextResponse.json({ success: true, expense })
+    // Итоги рейса (totalCost/fuelExpense) пересчитываются сразу: иначе в
+    // карточке рейса, отчётах и путевом листе останутся старые нули
+    const costs = await refreshRouteCosts(prisma, routeId, org.organizationId)
+
+    return NextResponse.json({ success: true, expense, costs })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось сохранить расход"
     console.error("[Route expenses] POST error:", message)

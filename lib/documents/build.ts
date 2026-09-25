@@ -320,7 +320,7 @@ export function buildWaybill(route: DocumentRoute, carrier: CarrierRequisites): 
       {
         title: "Итоги рейса (заполняется по возвращении)",
         fields: [
-          { label: "Пробег, км", value: route.totalDistanceKm ? String(route.totalDistanceKm) : null },
+          { label: "Пробег, км", value: String(route.tripDistanceKm ?? route.totalDistanceKm ?? "") || null },
           { label: "Груз, всего", value: formatWeight(totalWeight) },
           { label: "Стоимость перевозок", value: totalPrice > 0 ? formatMoney(totalPrice) : null },
           { label: "Расход топлива", value: formatMoney(route.fuelExpenseRub) },

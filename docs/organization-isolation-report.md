@@ -109,7 +109,7 @@
 | `app/api/traffic/info/route.ts` | GET | `requireStaffAuth` | да | 0 | — | изолирован |
 | `app/api/vehicles/[id]/route.ts` | GET, PATCH, DELETE | `requireStaffAuth` | да | 6 | `vehicle`, `driver` | изолирован |
 | `app/api/vehicles/route.ts` | GET, POST | `requireStaffAuth` | да | 3 | `vehicle` | изолирован |
-| `app/m/route/events/route.ts` | POST | `requireDriver` | да | 7 | `route`, `order`, `vehicle`, `routeStage`, `routeEvent` | изолирован |
+| `app/api/m/route/events/route.ts` | POST | `requireDriver` | да | 7 | `route`, `order`, `vehicle`, `routeStage`, `routeEvent` | изолирован |
 
 ## Проверено вручную (маркер «org-audit: manual»)
 
@@ -202,7 +202,7 @@
 | `app/api/m/sos/route.ts` | `orderId` из тела запроса писался в сигнал и уведомление без проверки — в данных организации А появлялась ссылка на заказ организации Б | заказ проверяется в организации водителя → 404, в записи идёт проверенный id |
 | `app/api/orders/[id]/route.ts` (PATCH) | **массовое присваивание**: тело раскладывалось как `...other` и целиком шло в `order.update({ data })` — вместе с `organizationId`, то есть свой заказ можно было перенести в чужую организацию | явный белый список редактируемых полей; служебные и платёжные поля — 400 с указанием, что платежи меняются в `/api/payments`; неизвестные поля — 400 |
 | `app/api/orders/route.ts` (POST), `app/api/orders/[id]/route.ts` (PATCH) | `routeId` из тела запроса писался в заказ без проверки — заказ организации А ссылался бы на рейс организации Б | рейс проверяется в организации вызывающего → 404 |
-| `app/m/route/events/route.ts` | `orderId`, `vehicleId`, `stageId` из тела запроса писались в событие рейса без проверки — чужие id всплывали в таймлайне (`/api/routes/:id/events` отдаёт строку события целиком) | все три ссылки проверяются в организации водителя → 404 |
+| `app/api/m/route/events/route.ts` | `orderId`, `vehicleId`, `stageId` из тела запроса писались в событие рейса без проверки — чужие id всплывали в таймлайне (`/api/routes/:id/events` отдаёт строку события целиком) | все три ссылки проверяются в организации водителя → 404 |
 | `app/api/m/maintenance/route.ts` (POST) | исполнитель (`driverId`) из тела запроса писался в запись ТО без проверки, если машина была указана | водитель проверяется в организации вызывающего → 404 |
 | `scripts/audit-org-isolation.mjs` | аудит смотрел только `app/**/route.ts` и верил маркеру «ok» на слово | добавлен слой `lib/**`, проверка маркеров, поиск `organizationId` из запроса, отдельный список «manual» |
 | `lib/api/driver-mobile.ts`, `lib/api/fleet.ts`, `app/debug/page.tsx` | мёртвый код с 14 неизолированными запросами и страница отладки без авторизации | удалены (живой аналог — `/api/ati/debug-dump` под гардом) |

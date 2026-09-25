@@ -22,6 +22,21 @@ export type OcrResult = {
   /** Сколько секунд заняло распознавание — видно в интерфейсе. */
   durationMs: number
   languages: string[]
+  /**
+   * Распознавание не состоялось (таймаут, воркер не поднялся).
+   * Это не ошибка данных: фото уже сохранено, человек просто введёт поля руками.
+   */
+  failed?: boolean
+  error?: string
+}
+
+/**
+ * Предел ожидания распознавания. OCR не должен держать загрузку фото:
+ * если tesseract не ответил за отведённое время, отдаём честный отказ.
+ */
+export function ocrTimeoutMs(): number {
+  const raw = Number(process.env.OCR_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw > 0 ? raw : 60_000
 }
 
 export type OcrInput = string | Buffer | Uint8Array
@@ -84,34 +99,76 @@ async function getWorker(): Promise<WorkerLike> {
   return workerPromise
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label}: превышено время ожидания (${Math.round(ms / 1000)} с)`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * Распознаёт текст на изображении.
  *
  * Пустой текст — это не ошибка: на плохом фото OCR честно возвращает пустоту,
  * а решение, что делать дальше (ввести сумму вручную), принимает человек.
+ *
+ * Ошибка распознавания (нет воркера, таймаут) тоже не роняет загрузку фото:
+ * возвращаем результат с `failed: true` и причиной — фото уже сохранено.
  */
 export async function recognizeImage(input: OcrInput): Promise<OcrResult> {
   const startedAt = Date.now()
+  const timeoutMs = ocrTimeoutMs()
 
-  const worker = await getWorker()
-  const result = await worker.recognize(input)
+  try {
+    const worker = await withTimeout(getWorker(), timeoutMs, "OCR: запуск распознавания")
+    const result = await withTimeout(worker.recognize(input), timeoutMs, "OCR: распознавание фото")
 
-  return {
-    text: String(result?.data?.text || "")
-      .replace(/\u00a0/g, " ")
-      .trim(),
-    confidence: typeof result?.data?.confidence === "number" ? result.data.confidence : 0,
-    provider: "tesseract",
-    durationMs: Date.now() - startedAt,
-    languages: languages(),
+    return {
+      text: String(result?.data?.text || "")
+        .replace(/\u00a0/g, " ")
+        .trim(),
+      confidence: typeof result?.data?.confidence === "number" ? result.data.confidence : 0,
+      provider: "tesseract",
+      durationMs: Date.now() - startedAt,
+      languages: languages(),
+    }
+  } catch (error: any) {
+    // Воркер мог остаться в нерабочем состоянии — рвём его, чтобы следующая
+    // попытка подняла новый, а не ждала тот же сломанный.
+    await shutdownOcr().catch(() => {})
+    return {
+      text: "",
+      confidence: 0,
+      provider: "tesseract",
+      durationMs: Date.now() - startedAt,
+      languages: languages(),
+      failed: true,
+      error: error?.message || String(error),
+    }
   }
 }
 
 /** Закрывает воркер: нужен в тестах и при аккуратном завершении процесса. */
 export async function shutdownOcr(): Promise<void> {
-  if (!workerPromise) return
-  const worker = await workerPromise.catch(() => null)
+  const pending = workerPromise
+  if (!pending) return
   workerPromise = null
+
+  // Ждать создание воркера нельзя: если tesseract застрял (например, в
+  // песочнице нет сети для загрузки языковых данных), его промис не
+  // завершится никогда — и «уборка» повесила бы сам запрос. Даём секунду и
+  // идём дальше: если воркер всё-таки поднялся, он будет закрыт.
+  const worker = await Promise.race([
+    pending.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+  ])
   if (worker) await worker.terminate().catch(() => {})
 }
 

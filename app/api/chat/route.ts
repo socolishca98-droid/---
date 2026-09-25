@@ -1,6 +1,6 @@
 // app/api/chat/route.ts - P1-6 zod
 
-import { requireStaffAuth } from "@/lib/api-auth"
+import { requireAnyAuth, requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -33,16 +33,34 @@ function detectImportance(text: string): { isImportant: boolean; reason: string 
 }
 
 export async function GET(request: NextRequest) {
-  const __auth = await requireStaffAuth(request)
-  if (__auth.error) return __auth.error
-  const __org = requireStaffOrganization(__auth.user)
-  if (!__org.ok) return __org.response
+  // Чат ведут обе стороны: логист со штабной страницы /chat и водитель с /m/chat.
+  // У водителя фильтр жёсткий — он видит только свою переписку, какие бы
+  // параметры ни пришли в запросе.
+  const auth = await requireAnyAuth(request)
+  if (auth.error) return auth.error
 
   try {
     const { searchParams } = new URL(request.url)
-    const driverId = searchParams.get('driverId')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50') || 50, 1), 200)
     const where: any = {}
+
+    if (auth.type === 'driver') {
+      const driverId = auth.driver.id
+      const organizationId = auth.driver.organizationId
+      const messages = await prisma.chatMessage.findMany({
+        where: scopedWhere(organizationId, {
+          OR: [{ senderId: driverId }, { recipientId: driverId }],
+        }),
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+      })
+      return NextResponse.json({ success: true, messages })
+    }
+
+    const __org = requireStaffOrganization(auth.user)
+    if (!__org.ok) return __org.response
+
+    const driverId = searchParams.get('driverId')
     if (driverId) {
       where.OR = [{ senderId: driverId }, { recipientId: driverId }]
     }
@@ -72,10 +90,8 @@ const chatPostSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  const __auth = await requireStaffAuth(request)
-  if (__auth.error) return __auth.error
-  const __org = requireStaffOrganization(__auth.user)
-  if (!__org.ok) return __org.response
+  const auth = await requireAnyAuth(request)
+  if (auth.error) return auth.error
 
   try {
     const rawBody = await request.json().catch(() => null)
@@ -88,25 +104,50 @@ export async function POST(request: NextRequest) {
     }
 
     const { content, type = 'text', attachmentUrl } = parsed.data
-    const recipientId = (parsed.data as any).recipientId || (parsed.data as any).driverId || null
 
     // Отправитель — всегда из проверенной сессии: подписать сообщение чужим
     // именем нельзя, даже если тело запроса утверждает обратное.
-    const senderId = __org.userId
-    const senderRole = __org.role
-    const senderName = __auth.user.name
+    let organizationId: string
+    let senderId: string
+    let senderRole: string
+    let senderName: string
+    let recipientId: string | null
 
-    // Получатель-водитель должен быть из той же организации
-    if (recipientId) {
-      const recipient = await prisma.driver.findFirst({
-        where: scopedWhere(__org.organizationId, { id: recipientId }),
-        select: { id: true },
-      })
-      if (!recipient) {
+    if (auth.type === 'driver') {
+      // Сообщение водителя адресовано штабу: получателя из тела не берём,
+      // иначе водитель мог бы писать другим водителям чужих данных не видя.
+      if (!auth.driver.organizationId) {
         return NextResponse.json(
-          { success: false, error: "Получатель не найден" },
-          { status: 404 },
+          { success: false, error: "Учётная запись не привязана к организации" },
+          { status: 403 },
         )
+      }
+      organizationId = auth.driver.organizationId
+      senderId = auth.driver.id
+      senderRole = 'driver'
+      senderName = auth.driver.name
+      recipientId = null
+    } else {
+      const __org = requireStaffOrganization(auth.user)
+      if (!__org.ok) return __org.response
+      organizationId = __org.organizationId
+      senderId = __org.userId
+      senderRole = __org.role
+      senderName = auth.user.name
+      recipientId = (parsed.data as any).recipientId || (parsed.data as any).driverId || null
+
+      // Получатель-водитель должен быть из той же организации
+      if (recipientId) {
+        const recipient = await prisma.driver.findFirst({
+          where: scopedWhere(organizationId, { id: recipientId }),
+          select: { id: true },
+        })
+        if (!recipient) {
+          return NextResponse.json(
+            { success: false, error: "Получатель не найден" },
+            { status: 404 },
+          )
+        }
       }
     }
 
@@ -116,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     const message = await prisma.chatMessage.create({
       data: {
-        organizationId: __org.organizationId,
+        organizationId,
         senderId,
         senderRole,
         senderName,

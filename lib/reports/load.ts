@@ -76,8 +76,8 @@ export async function loadReport(
       prisma.order.findMany({
         where: scopedWhere(organizationId, {
           OR: [
-            { completedAt: { gte: previousFrom, lte: period.to } },
-            { completedAt: null, createdAt: { gte: previousFrom, lte: period.to } },
+            { deliveredAt: { gte: previousFrom, lte: period.to } },
+            { deliveredAt: null, createdAt: { gte: previousFrom, lte: period.to } },
           ],
         }),
         orderBy: [{ createdAt: "desc" }],
@@ -86,7 +86,7 @@ export async function loadReport(
           id: true,
           status: true,
           createdAt: true,
-          completedAt: true,
+          deliveredAt: true,
           deadline: true,
           dueDate: true,
           deferredDays: true,
@@ -167,7 +167,7 @@ export async function loadReport(
           id: true,
           status: true,
           createdAt: true,
-          completedAt: true,
+          deliveredAt: true,
           deadline: true,
           dueDate: true,
           deferredDays: true,

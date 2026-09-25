@@ -337,6 +337,8 @@ export async function PATCH(request: NextRequest,
         where: { id },
         data: {
           ...(nextStatus && { status: nextStatus }),
+          // Доставка запоминается временем: от него считается отсрочка платежа
+          ...(nextStatus === "delivered" && { deliveredAt: new Date() }),
           ...(assignedDriverId !== undefined && { assignedDriverId }),
           ...(assignedVehicleId !== undefined && { assignedVehicleId }),
           ...otherFields,

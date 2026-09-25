@@ -21,7 +21,8 @@ export type PaymentOrderInput = {
   status?: string | null
   createdAt?: Date | null
   deadline?: Date | null
-  completedAt?: Date | null
+  /** Фактическая доставка: от неё считаем отсрочку. */
+  deliveredAt?: Date | null
   price?: number | null
   agreedPrice?: number | null
   paymentType?: string | null
@@ -165,7 +166,7 @@ export function paymentDueDate(order: PaymentOrderInput): Date | null {
   const deferred = typeof order.deferredDays === "number" ? order.deferredDays : 0
   if (deferred <= 0) return null
 
-  const base = order.completedAt ?? order.deadline ?? order.createdAt
+  const base = order.deliveredAt ?? order.deadline ?? order.createdAt
   if (!base) return null
 
   const due = new Date(base)

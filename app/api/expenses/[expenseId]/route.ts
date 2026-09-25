@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { refreshRouteCosts } from "@/lib/routes/service"
 
 export const dynamic = "force-dynamic"
 
@@ -38,7 +39,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     // org-audit: ok — расход найден выше через scopedWhere(organizationId)
     await prisma.routeExpense.delete({ where: { id: expenseId } })
 
-    return NextResponse.json({ success: true })
+    // Удалили расход — пересчитываем деньги рейса
+    const costs = await refreshRouteCosts(prisma, expense.routeId, org.organizationId)
+
+    return NextResponse.json({ success: true, costs })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось удалить расход"
     console.error("[Expenses] DELETE error:", message)

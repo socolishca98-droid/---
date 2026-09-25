@@ -59,3 +59,6 @@ prisma/schema.sqlite.prisma
 # загруженные пользователями файлы (фото чеков и накладных): в git не нужны
 public/uploads/*
 !public/uploads/.gitkeep
+
+# Локальный стенд e2e (не коммитится)
+.e2e/

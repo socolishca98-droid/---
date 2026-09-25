@@ -7,9 +7,8 @@
  * захардкоженного «Ивана Логистова», и выполняет настоящий выход:
  * POST /api/auth/logout отзывает сессию в БД и удаляет httpOnly-cookie.
  *
- * Поиск и колокольчик уведомлений — предмет задачи 4 (каркас интерфейса):
- * до её выполнения они не отображаются, чтобы не выдавать нерабочие элементы
- * за работающие.
+ * Колокольчик уведомлений (SOS, новые фото, просрочки, догрузы) — живой:
+ * он берёт данные из GET /api/notifications (см. components/notifications-bell.tsx).
  */
 
 import { useState } from "react"
@@ -36,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { NotificationsBell } from "@/components/notifications-bell"
 import { Badge } from "@/components/ui/badge"
 import { Building2, KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
 import { toast } from "sonner"
@@ -126,6 +126,8 @@ export function Header() {
   return (
     <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-6">
       <div className="flex items-center gap-2 ml-auto">
+        <NotificationsBell />
+
         {user.mustChangePassword && (
           <Badge variant="outline" className="border-amber-500/40 text-amber-500 gap-1.5">
             <KeyRound className="h-3.5 w-3.5" />

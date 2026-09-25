@@ -8,14 +8,14 @@
 // учётной записи — мобильное приложение забирает его из
 // GET /api/m/notifications и показывает в разделе «Уведомления».
 
-type Tx = {
-  user: {
-    findFirst: (args: unknown) => Promise<{ id: string; name: string | null } | null>
-  }
-  notification: {
-    create: (args: unknown) => Promise<unknown>
-  }
-}
+import { prisma } from "@/lib/prisma"
+
+/**
+ * Что нужно от клиента Prisma: обе записи идут либо в транзакции, либо напрямую.
+ * Тип выводим из самого клиента — так подпись не разойдётся с Prisma при
+ * обновлении схемы (раньше здесь была рукописная заглушка с `unknown`).
+ */
+export type NotifyTx = Pick<typeof prisma, "user" | "notification">
 
 export type NotifyDriverParams = {
   organizationId: string
@@ -36,7 +36,10 @@ export type NotifyDriverParams = {
  * приложением), уведомление не создаётся — придумывать получателя нельзя.
  * Возвращает true, если уведомление создано.
  */
-export async function notifyDriverRouteAssigned(tx: Tx, params: NotifyDriverParams): Promise<boolean> {
+export async function notifyDriverRouteAssigned(
+  tx: NotifyTx,
+  params: NotifyDriverParams,
+): Promise<boolean> {
   const { organizationId, driverId, routeId, routeName, ordersCount, actorName } = params
 
   const account = await tx.user.findFirst({

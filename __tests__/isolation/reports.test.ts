@@ -76,7 +76,7 @@ beforeEach(async () => {
     orderA.price = 100000
     orderA.agreedPrice = null
     orderA.distance = 800
-    orderA.completedAt = new Date(PERIOD_FROM.getTime() + 24 * 60 * 60 * 1000)
+    orderA.deliveredAt = new Date(PERIOD_FROM.getTime() + 24 * 60 * 60 * 1000)
     orderA.createdAt = PERIOD_FROM
     orderA.deadline = new Date(PERIOD_FROM.getTime() + 2 * 24 * 60 * 60 * 1000)
     orderA.clientId = null
@@ -90,7 +90,7 @@ beforeEach(async () => {
   if (orderB) {
     orderB.status = "delivered"
     orderB.price = 777777
-    orderB.completedAt = new Date(PERIOD_FROM.getTime() + 24 * 60 * 60 * 1000)
+    orderB.deliveredAt = new Date(PERIOD_FROM.getTime() + 24 * 60 * 60 * 1000)
     orderB.createdAt = PERIOD_FROM
     orderB.clientName = "Чужой клиент"
     orderB.isPaid = false

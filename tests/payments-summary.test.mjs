@@ -73,9 +73,9 @@ test("срок оплаты: явная дата важнее расчёта о�
   )
 })
 
-test("срок оплаты считается от завершения, иначе от срока доставки, иначе от создания", () => {
+test("срок оплаты считается от даты доставки, иначе от срока по заказу, иначе от создания", () => {
   const completed = paymentDueDate(
-    order({ deferredDays: 10, completedAt: new Date("2026-09-10T00:00:00") }),
+    order({ deferredDays: 10, deliveredAt: new Date("2026-09-10T00:00:00") }),
   )
   assert.equal(completed.toISOString().slice(0, 10), "2026-09-20")
 
@@ -184,7 +184,7 @@ test("сводка без оплат: средний срок оплаты — �
 test("должники группируются по клиенту, а без карточки — по нормализованному имени", () => {
   const rows = [
     buildPaymentRow(order({ id: "a", clientId: "c1", client: { id: "c1", name: "ООО Ромашка" }, price: 30000, dueDate: new Date("2026-09-10") }), NOW),
-    buildPaymentRow(order({ id: "b", clientId: "c1", client: { id: "c1", name: "ООО Ромашка" }, price: 20000, dueDate: new Date("2026-09-20"), completedAt: NOW }), NOW),
+    buildPaymentRow(order({ id: "b", clientId: "c1", client: { id: "c1", name: "ООО Ромашка" }, price: 20000, dueDate: new Date("2026-09-20"), deliveredAt: NOW }), NOW),
     buildPaymentRow(order({ id: "c", clientName: 'ООО "Тюльпан"', price: 10000 }), NOW),
     buildPaymentRow(order({ id: "d", clientName: "Тюльпан", price: 5000, dueDate: new Date("2026-09-01") }), NOW),
     buildPaymentRow(order({ id: "e", clientName: "Тюльпан", price: 7000, isPaid: true }), NOW),

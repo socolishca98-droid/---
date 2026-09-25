@@ -77,6 +77,11 @@ export async function recognizeDocumentOnPhoto(params: {
 
   try {
     const ocr = await recognizeImage(fs.readFileSync(filePath))
+    if (ocr.failed) {
+      // Фото уже в хранилище: отдаём причину, а не «пустой» успех, чтобы
+      // интерфейс предложил ввести данные вручную.
+      return { ok: false, error: `Распознавание не удалось: ${ocr.error || "OCR не ответил"}` }
+    }
     const detectedKind = detectDocumentKind(ocr.text)
     const parsed = parseDocument(ocr.text, params.hint ?? undefined)
 

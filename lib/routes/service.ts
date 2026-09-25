@@ -22,7 +22,7 @@ import {
 
 export type RoutesDb = Pick<
   typeof prisma,
-  "route" | "order" | "driver" | "vehicle" | "routeEvent"
+  "route" | "order" | "driver" | "vehicle" | "routeEvent" | "routeExpense"
 >
 
 export const db: RoutesDb = prisma
@@ -123,7 +123,49 @@ export async function recalcRoute(
     },
   })
 
+  // Деньги рейса живут в расходах, а не в заказах: обновляем их тем же вызовом,
+  // чтобы карточка рейса никогда не показывала устаревшие итоги.
+  await refreshRouteCosts(client, routeId, organizationId)
+
   return { ...summary, status, name }
+}
+
+export type RouteCostSummary = {
+  /** Сумма всех расходов рейса */
+  totalCost: number
+  /** Из них топливо — отдельной строкой: так его показывает и путевой лист */
+  fuelExpense: number
+  expensesCount: number
+}
+
+/**
+ * Пересчитывает денежные итоги рейса по его расходам.
+ *
+ * Route.totalCost и Route.fuelExpense раньше никто не заполнял: расходы
+ * водитель записывал, а карточка рейса, отчёты и путевой лист показывали
+ * нули. Теперь итоги пересчитываются при каждом изменении расходов.
+ */
+export async function refreshRouteCosts(
+  client: RoutesDb,
+  routeId: string,
+  organizationId: string | null,
+): Promise<RouteCostSummary> {
+  const expenses = (await client.routeExpense.findMany({
+    where: scopedWhere(organizationId, { routeId }),
+    select: { amount: true, type: true },
+  })) as { amount: number | null; type: string | null }[]
+
+  const totalCost = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0)
+  const fuelExpense = expenses
+    .filter((expense) => (expense.type ?? "fuel") === "fuel")
+    .reduce((sum, expense) => sum + (expense.amount || 0), 0)
+
+  await client.route.updateMany({
+    where: scopedWhere(organizationId, { id: routeId }),
+    data: { totalCost, fuelExpense },
+  })
+
+  return { totalCost, fuelExpense, expensesCount: expenses.length }
 }
 
 export type RouteStatusChange = {
@@ -327,6 +369,8 @@ export type SerializedRoute = {
   completedAt: Date | null
   notes: string | null
   totalDistance: number | null
+  startOdometer: number | null
+  endOdometer: number | null
   totalCost: number | null
   fuelExpense: number | null
   cargoWeight: number | null
@@ -346,6 +390,8 @@ export function serializeRoute(route: {
   completedAt?: Date | null
   notes?: string | null
   totalDistance?: number | null
+  startOdometer?: number | null
+  endOdometer?: number | null
   totalCost?: number | null
   fuelExpense?: number | null
   cargoWeight?: number | null
@@ -365,6 +411,8 @@ export function serializeRoute(route: {
     completedAt: route.completedAt ?? null,
     notes: route.notes ?? null,
     totalDistance: route.totalDistance ?? null,
+    startOdometer: route.startOdometer ?? null,
+    endOdometer: route.endOdometer ?? null,
     totalCost: route.totalCost ?? null,
     fuelExpense: route.fuelExpense ?? null,
     cargoWeight: route.cargoWeight ?? null,

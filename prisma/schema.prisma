@@ -264,6 +264,9 @@ model Order {
   rejectionReason   String?
   routeSequence     Int?
 
+  /// Момент фактической доставки (статус delivered/выгрузка). От него считаются
+  /// отсрочка платежа, отчёты «в срок» и история рейсов.
+  deliveredAt       DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -331,9 +334,10 @@ model Driver {
   vehicleId       String?
   vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   /// Кэш для списков и уведомлений; синхронизируется с Vehicle при любом
-  /// назначении через lib/fleet/assignment.ts — руками не менять
-  vehicleType     String
-  vehiclePlate    String
+  /// назначении через lib/fleet/assignment.ts — руками не менять.
+  /// Может быть пусто: водитель есть, машины у него ещё нет.
+  vehicleType     String?
+  vehiclePlate    String?
   currentLocation String?
   latitude        Float?
   longitude       Float?

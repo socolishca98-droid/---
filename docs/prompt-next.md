@@ -410,7 +410,7 @@ npm run verify:task2         # смоук схемы рейса против dev
   `/api/m/login`, `lib/auth-context.tsx`, `hooks/use-driver-session.ts`.
 - **Вся семантика Задачи 2**: `/api/routes/*`, `/api/fleet/{route,assign,vehicles}`, `/api/drivers*`,
   `/api/vehicles/[id]`, мобильные `/api/m/{location,photos,sos,vehicle,route/accept-load}`,
-  `app/m/route/events`, `app/routes/page.tsx`, `prisma/schema.prisma`, `lib/prisma.ts`,
+  `app/api/m/route/events`, `app/routes/page.tsx`, `prisma/schema.prisma`, `lib/prisma.ts`,
   скрипты миграции `scripts/migrate-task2.ts` и `scripts/verify-task2.mjs`.
 - **Все водительские эндпоинты `/api/m/*`** — в версии, где `driverId` берётся из проверенной сессии,
   а не из query/тела запроса (в ветке hardening этот фикс отсутствовал).

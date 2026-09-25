@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { refreshRouteCosts } from "@/lib/routes/service"
 
 export const dynamic = "force-dynamic"
 
@@ -51,6 +52,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     // org-audit: ok — рейс проверен выше через scopedWhere(organizationId)
     await prisma.routeExpense.delete({ where: { id: expenseId } })
+
+    // Удалили расход — деньги рейса пересчитываем
+    await refreshRouteCosts(prisma, expense.routeId, org.organizationId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

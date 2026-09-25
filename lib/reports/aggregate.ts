@@ -24,7 +24,8 @@ export type ReportOrder = {
   id: string
   status: string
   createdAt: Date
-  completedAt?: Date | null
+  /** Фактическая доставка — от неё заказ относят к периоду */
+  deliveredAt?: Date | null
   deadline?: Date | null
   dueDate?: Date | null
   deferredDays?: number | null
@@ -325,7 +326,7 @@ function inRange(date: Date | null | undefined, from: Date, to: Date): boolean {
 
 /** Дата, по которой заказ относят к периоду. */
 export function orderAttributionDate(order: ReportOrder): Date {
-  return order.completedAt ?? order.createdAt
+  return order.deliveredAt ?? order.createdAt
 }
 
 function routeAttributionDate(route: ReportRoute): Date {
@@ -519,9 +520,9 @@ export function buildOrdersBlock(orders: ReportOrder[]): ReportResult["orders"] 
     byStatus.set(status, group)
   }
 
-  const withDeadline = orders.filter((order) => order.completedAt && order.deadline)
+  const withDeadline = orders.filter((order) => order.deliveredAt && order.deadline)
   const onTimeCount = withDeadline.filter(
-    (order) => (order.completedAt as Date).getTime() <= (order.deadline as Date).getTime(),
+    (order) => (order.deliveredAt as Date).getTime() <= (order.deadline as Date).getTime(),
   ).length
   const lateCount = withDeadline.length - onTimeCount
 
@@ -673,7 +674,7 @@ export function buildDriversBlock(params: {
     row.expensesRub += expensesByRoute.get(route.id) ?? 0
   }
 
-  const withDeadline = orders.filter((order) => order.completedAt && order.deadline)
+  const withDeadline = orders.filter((order) => order.deliveredAt && order.deadline)
 
   for (const row of rows.values()) {
     row.profitRub = row.revenueRub - row.expensesRub
@@ -682,7 +683,7 @@ export function buildDriversBlock(params: {
     const own = withDeadline.filter((order) => order.assignedDriverId === row.driverId)
     if (own.length) {
       const onTime = own.filter(
-        (order) => (order.completedAt as Date).getTime() <= (order.deadline as Date).getTime(),
+        (order) => (order.deliveredAt as Date).getTime() <= (order.deadline as Date).getTime(),
       ).length
       row.onTimePercent = ratio(onTime, own.length, 0)
     }

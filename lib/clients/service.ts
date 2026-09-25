@@ -297,7 +297,9 @@ export async function createClient(params: {
     return { ok: false, code: "invalid", error: "Название клиента обязательно" }
   }
 
-  const nameKey = clientNameKey(data.name)
+  // Название уже проверено выше, но TypeScript этого не видит через спред
+  const name: string = data.name
+  const nameKey = clientNameKey(name)
   if (!nameKey) {
     return { ok: false, code: "invalid", error: "Название состоит только из правовой формы — уточните" }
   }
@@ -315,7 +317,7 @@ export async function createClient(params: {
   }
 
   const client = (await prisma.client.create({
-    data: { ...data, organizationId, nameKey, source: "manual" },
+    data: { ...data, name, organizationId, nameKey, source: "manual" },
     select: CLIENT_SELECT,
   })) as ClientRecord
 
