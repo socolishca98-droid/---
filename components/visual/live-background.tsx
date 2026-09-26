@@ -2,35 +2,35 @@
 
 // components/visual/live-background.tsx
 //
-// Живой фон рабочего места: тёмная геометрия логистики — сетка, три
-// пунктирные дороги между городами и маленькие грузовики, которые едут по
-// этим дорогам.
+// Живой фон рабочего места: тёмная геометрия логистики — сетка, три дороги
+// между городами, редкие расходящиеся кольца на узлах и маленькие грузовики,
+// которые едут по этим дорогам. Фон напоминает, чем занимается программа,
+// и при этом не отвлекает от работы.
 //
 // Как это сделано и почему это никому не мешает:
 // — слой декоративный: aria-hidden, pointer-events: none, z-index: -1;
-// — разметка статичная, дороги рисуются один раз при загрузке модуля;
-//   движение — SMIL animateMotion по трём путям, в JavaScript ни одного кадра;
-// — в мобильном приложении водителя и на печати фон не рендерится вовсе:
-//   там свои экраны и принтер — экономить, так на всём;
-// — скрытая вкладка ставит на паузу то, что можно остановить. SMIL-анимацию
-//   CSS не остановить, поэтому системная настройка «уменьшить движение»
-//   скрывает грузовики целиком (см. .theme-canvas__trucks в globals.css).
+// — разметка статичная, дороги считаются один раз при загрузке модуля;
+// — дорогих перерисовок нет: всё движение держится на transform и opacity,
+//   которые видеокарта применяет к уже готовой картинке;
+// — перерисовываются только грузовики и кольца городов, и они крошечные;
+// — скрытая вкладка ставит всё на паузу: CSS-анимации — через атрибут
+//   data-paused, SMIL — через pauseAnimations() у самого <svg>;
+// — системная настройка «уменьшить движение» останавливает движение полностью;
+// — если машина не справляется (меньше 32 кадров в секунду), фон сам
+//   переходит на более спокойный уровень. Выбор пользователя из меню в шапке
+//   имеет приоритет и сохраняется в localStorage.
 
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
+import {
+  DEFAULT_BACKGROUND_QUALITY,
+  readBackgroundQuality,
+  subscribeBackgroundQuality,
+  type BackgroundQuality,
+} from "@/lib/visual/background-quality"
 
 /** Где фон не нужен: контур водителя и печатные листы документов. */
 const EXCLUDED_PREFIXES = ["/m", "/print"]
-
-/**
- * Движение можно выключить совсем: NEXT_PUBLIC_LIVE_BACKGROUND="off".
- *
- * Фон лежит под панелями с backdrop-filter: blur(), поэтому каждый кадр
- * анимации заставляет браузер заново пересчитывать размытие больших областей.
- * На слабом процессоре это заметно тормозит весь интерфейс — выключатель
- * оставляет ту же картинку (сетку, дороги, города), но без движения.
- */
-const ANIMATED = (process.env.NEXT_PUBLIC_LIVE_BACKGROUND || "on").trim().toLowerCase() !== "off"
 
 type Point = readonly [number, number]
 
@@ -118,6 +118,15 @@ const CITIES: readonly Point[] = [
   [620, 700],
 ]
 
+/** Узлы, от которых расходятся кольца. Их всего четыре на всю карту: редкие и
+ *  спокойные отметки читаются как «здесь идёт погрузка», а не как мигалка. */
+const PING_CITIES: readonly Point[] = [
+  [300, 286],
+  [960, 470],
+  [1300, 556],
+  [620, 700],
+]
+
 /** Грузовики: какой дорогой едут, за сколько проходят круг и с каким сдвигом. */
 const TRUCKS = [
   { road: 0, dur: "58s", begin: "0s" },
@@ -126,25 +135,77 @@ const TRUCKS = [
   { road: 1, dur: "66s", begin: "-52s" },
 ]
 
+/** Минимальный комфортный уровень кадров, ниже которого фон упрощается. */
+const COMFORTABLE_FPS = 32
+
 export function LiveBackground() {
   const pathname = usePathname() || ""
+  const [quality, setQuality] = useState<BackgroundQuality>(DEFAULT_BACKGROUND_QUALITY)
   const [isPaused, setIsPaused] = useState(false)
   const svgRef = useRef<SVGSVGElement | null>(null)
 
+  // Выбор из меню в шапке переживает перезагрузку и виден в соседних вкладках.
   useEffect(() => {
-    if (!ANIMATED) return
+    const stored = readBackgroundQuality()
+    if (stored) setQuality(stored)
+    return subscribeBackgroundQuality(setQuality)
+  }, [])
 
+  // Если машина не вытягивает, фон сам становится спокойнее. Человеческий
+  // выбор не трогаем: если пользователь решил сам, его решение важнее.
+  useEffect(() => {
+    if (readBackgroundQuality()) return
+    if (DEFAULT_BACKGROUND_QUALITY === "off") return
+
+    let raf = 0
+    let frames = 0
+    let startedAt = 0
+
+    const tick = () => {
+      frames += 1
+      const elapsed = performance.now() - startedAt
+
+      if (elapsed < 1200) {
+        raf = requestAnimationFrame(tick)
+        return
+      }
+
+      // Свёрнутая вкладка почти не считает кадры — такой замер ни о чём.
+      if (document.hidden) return
+
+      const fps = (frames * 1000) / elapsed
+      if (fps < COMFORTABLE_FPS) {
+        setQuality((current) => (current === "full" ? "soft" : "off"))
+      }
+    }
+
+    // Сначала даём странице остыть после гидрации, иначе замер поймает загрузку.
+    const timer = window.setTimeout(() => {
+      frames = 0
+      startedAt = performance.now()
+      raf = requestAnimationFrame(tick)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timer)
+      cancelAnimationFrame(raf)
+    }
+  }, [])
+
+  const animated = quality !== "off"
+
+  // SMIL (грузовики) останавливается отдельно: CSS-анимации гасит атрибут
+  // data-paused, а у <svg> для этого есть свои pauseAnimations/unpauseAnimations.
+  useEffect(() => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
 
-    // CSS-анимации останавливает атрибут data-paused, но SMIL он не трогает:
-    // у <svg> есть собственные pauseAnimations/unpauseAnimations. Без них
-    // грузовики продолжали считать кадры в скрытой вкладке.
     const sync = () => {
       setIsPaused(document.hidden)
 
       const svg = svgRef.current
       if (!svg || typeof svg.pauseAnimations !== "function") return
-      if (document.hidden || reduceMotion.matches) {
+
+      if (document.hidden || quality === "off" || reduceMotion.matches) {
         svg.pauseAnimations()
       } else {
         svg.unpauseAnimations()
@@ -158,7 +219,7 @@ export function LiveBackground() {
       document.removeEventListener("visibilitychange", sync)
       reduceMotion.removeEventListener("change", sync)
     }
-  }, [])
+  }, [quality])
 
   const isExcluded = EXCLUDED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
@@ -168,14 +229,23 @@ export function LiveBackground() {
   return (
     <div
       aria-hidden="true"
+      data-quality={quality}
       data-paused={isPaused ? "true" : "false"}
       className="theme-canvas"
     >
+      {animated && (
+        <div className="theme-canvas__aura">
+          <span className="theme-canvas__aura-blob theme-canvas__aura-blob--violet" />
+          <span className="theme-canvas__aura-blob theme-canvas__aura-blob--amber" />
+          <span className="theme-canvas__aura-blob theme-canvas__aura-blob--blue" />
+        </div>
+      )}
+
       <div className="theme-canvas__grid" />
 
       <svg
         ref={svgRef}
-        className={ANIMATED ? "theme-canvas__routes" : "theme-canvas__routes theme-canvas--static"}
+        className="theme-canvas__routes"
         viewBox="0 0 1440 900"
         preserveAspectRatio="xMidYMid slice"
         focusable="false"
@@ -205,7 +275,20 @@ export function LiveBackground() {
           </g>
         ))}
 
-        {ANIMATED && (
+        {animated &&
+          PING_CITIES.map(([cx, cy], index) => (
+            <circle
+              key={`ping-${cx}-${cy}`}
+              className="route-city__ping"
+              cx={cx}
+              cy={cy}
+              r="10"
+              // Кольца расходятся вразнобой: четыре отметки не вспыхивают разом.
+              style={{ animationDelay: `${(index * 11) / 4}s` }}
+            />
+          ))}
+
+        {quality === "full" && (
           <g className="theme-canvas__trucks" fill="currentColor">
             {TRUCKS.map((truck, index) => (
               <g key={`${truck.road}-${truck.dur}-${index}`}>

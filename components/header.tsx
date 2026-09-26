@@ -11,7 +11,7 @@
  * он берёт данные из GET /api/notifications (см. components/notifications-bell.tsx).
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
@@ -37,8 +37,18 @@ import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { Badge } from "@/components/ui/badge"
-import { Building2, KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
+import { Building2, Check, KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
+import {
+  BACKGROUND_QUALITY_LABELS,
+  BACKGROUND_QUALITY_ORDER,
+  DEFAULT_BACKGROUND_QUALITY,
+  readBackgroundQuality,
+  saveBackgroundQuality,
+  subscribeBackgroundQuality,
+  type BackgroundQuality,
+} from "@/lib/visual/background-quality"
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Администратор",
@@ -58,6 +68,17 @@ export function Header() {
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
+
+  // Текущий уровень фона читаем только в браузере: на сервере localStorage нет,
+  // и разметка должна совпадать с серверной.
+  const [backgroundQuality, setBackgroundQuality] =
+    useState<BackgroundQuality>(DEFAULT_BACKGROUND_QUALITY)
+
+  useEffect(() => {
+    const stored = readBackgroundQuality()
+    if (stored) setBackgroundQuality(stored)
+    return subscribeBackgroundQuality(setBackgroundQuality)
+  }, [])
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [repeatPassword, setRepeatPassword] = useState("")
@@ -187,6 +208,27 @@ export function Header() {
               <ShieldCheck className="h-4 w-4" />
               Сменить пароль
             </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+              Фон рабочего стола
+            </DropdownMenuLabel>
+            {BACKGROUND_QUALITY_ORDER.map((option) => (
+              <DropdownMenuItem
+                key={option}
+                className="flex items-center gap-2 cursor-pointer"
+                onSelect={() => saveBackgroundQuality(option)}
+              >
+                <Check
+                  className={cn(
+                    "h-4 w-4",
+                    backgroundQuality === option ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                {BACKGROUND_QUALITY_LABELS[option]}
+              </DropdownMenuItem>
+            ))}
 
             <DropdownMenuSeparator />
 

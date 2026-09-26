@@ -237,6 +237,10 @@
     320px 320px;
   mask-image: radial-gradient(120% 100% at 50% 30%, #000 35%, transparent 88%);
   -webkit-mask-image: radial-gradient(120% 100% at 50% 30%, #000 35%, transparent 88%);
+  /* Дрейф ровно на одну клетку сетки (64px): самый дешёвый из возможных
+     эффектов — двигается уже готовая картинка слоя, перерисовки нет. */
+  will-change: transform;
+  animation: canvas-drift 240s linear infinite;
 }
 
 /* Треки маршрутов */
@@ -248,26 +252,83 @@
   opacity: 0.85;
 }
 
+/* Пунктир дорог статичен, и это осознанно.
+   Раньше он «бежал» через stroke-dashoffset: браузер перерисовывал три пути
+   во весь экран на каждом кадре, а поверх ещё пересчитывалось размытие панелей
+   с backdrop-filter: blur(14px). Полный круг занимал 28–52 секунды — заметить
+   такое движение почти невозможно, а процессор платил за него полностью.
+   Теперь кадры тратятся только на то, что действительно видно: грузовики,
+   «пинги» городов и дыхание цвета. */
 .route-track {
   fill: none;
   stroke: var(--canvas-line);
   stroke-width: 1.4;
   stroke-linecap: round;
   stroke-dasharray: 9 15;
-  animation: route-dash 28s linear infinite;
 }
 
 .route-track--warm {
   stroke: var(--canvas-accent);
   stroke-dasharray: 14 26;
-  animation-duration: 40s;
 }
 
 .route-track--cold {
   stroke: var(--canvas-cold);
   stroke-dasharray: 6 22;
-  animation-duration: 52s;
-  animation-direction: reverse;
+}
+
+/* «Пинг» города: расходящееся кольцо, как отметка на карте логистики.
+   Колец немного и они крошечные, поэтому перерисовка стоит дёшево. */
+.route-city__ping {
+  fill: none;
+  stroke: var(--canvas-city);
+  stroke-width: 1.1;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: city-ping 11s ease-out infinite;
+}
+
+/* Дыхание цвета: три мягких пятна, которые медленно расходятся и гаснут.
+   Анимируются только transform и opacity — такие свойства видеокарта
+   применяет к уже готовой картинке, без перерисовки пикселей. */
+.theme-canvas__aura {
+  position: absolute;
+  inset: -20%;
+}
+
+.theme-canvas__aura-blob {
+  position: absolute;
+  width: 62vmax;
+  height: 62vmax;
+  border-radius: 50%;
+  will-change: transform, opacity;
+  background: radial-gradient(closest-side, var(--aura-color), transparent 72%);
+  animation: aura-breathe var(--aura-duration, 54s) ease-in-out infinite;
+  animation-delay: var(--aura-delay, 0s);
+}
+
+.theme-canvas__aura-blob--violet {
+  --aura-color: oklch(0.42 0.11 288 / 0.3);
+  --aura-duration: 58s;
+  top: -14%;
+  left: -8%;
+}
+
+.theme-canvas__aura-blob--amber {
+  --aura-color: oklch(0.52 0.1 52 / 0.2);
+  --aura-duration: 74s;
+  --aura-delay: -18s;
+  top: -6%;
+  right: -12%;
+}
+
+.theme-canvas__aura-blob--blue {
+  --aura-color: oklch(0.4 0.09 244 / 0.24);
+  --aura-duration: 66s;
+  --aura-delay: -34s;
+  bottom: -18%;
+  left: 22%;
 }
 
 /* Города: точка на стыке дорог с мягким ободком вокруг */
@@ -285,12 +346,22 @@
   color: var(--canvas-truck);
 }
 
-/* Выключатель движения — NEXT_PUBLIC_LIVE_BACKGROUND="off": картинка та же,
-   но без покадровой перерисовки. Это важно на слабых машинах: фон лежит под
-   панелями с backdrop-filter, и каждый кадр заставляет браузер пересчитывать
-   размытие заново. */
-.theme-canvas--static .route-track {
+/* Выключатель движения: фон лежит под панелями с backdrop-filter, и каждый
+   кадр заставляет браузер пересчитывать размытие заново. На слабой машине
+   проще всего остановить всё сразу — картинка при этом остаётся той же. */
+.theme-canvas[data-quality="off"] *,
+.theme-canvas--static * {
   animation: none !important;
+}
+
+.theme-canvas[data-quality="off"] .theme-canvas__aura,
+.theme-canvas--static .theme-canvas__aura {
+  display: none;
+}
+
+/* «Спокойный» режим: остаётся только то, что считается на видеокарте. */
+.theme-canvas[data-quality="soft"] .theme-canvas__trucks {
+  display: none;
 }
 
 /* Виньетка: приглушает фон по краям, чтобы текст всегда читался */
@@ -463,9 +534,41 @@
   }
 }
 
-@keyframes route-dash {
+/* Медленный дрейф сетки на одну клетку — отсюда ощущение, что карта живёт */
+@keyframes canvas-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
   to {
-    stroke-dashoffset: -240;
+    transform: translate3d(64px, 64px, 0);
+  }
+}
+
+/* Пятна цвета расходятся и возвращаются: только transform и opacity */
+@keyframes aura-breathe {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(4vw, 3vh, 0) scale(1.14);
+    opacity: 0.9;
+  }
+}
+
+/* Кольцо от города расходится и гаснет — как отметка на карте маршрутов */
+@keyframes city-ping {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  14% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
   }
 }
 
