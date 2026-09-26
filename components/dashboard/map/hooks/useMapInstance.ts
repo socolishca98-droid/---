@@ -30,19 +30,32 @@ const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 
 /**
  * CARTO с 2025 года требует ключ даже на базовые стили: без него сервер отдаёт
- * картинку «API KEY REQUIRED». Ключ подставляем, только если он задан.
+ * картинку «API KEY REQUIRED». Ключ подставляем, только если он задан и его
+ * ещё нет в шаблоне.
  */
 const CARTO_KEY = (process.env.NEXT_PUBLIC_CARTO_API_KEY || "").trim()
 
-function cartoTiles(style: string): string {
-  const url = `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`
-  return CARTO_KEY ? `${url}?key=${encodeURIComponent(CARTO_KEY)}` : url
+/**
+ * Шаблон тайлов CARTO. По умолчанию — rastertiles/voyager: та самая карта,
+ * на которой собрана подкладка. Переопределяется переменной
+ * NEXT_PUBLIC_CARTO_TILES (например, на dark_all или свой стиль).
+ */
+const CARTO_TILE_TEMPLATE =
+  (process.env.NEXT_PUBLIC_CARTO_TILES || "").trim() ||
+  "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+
+function cartoTiles(): string {
+  const template = CARTO_TILE_TEMPLATE
+  if (!CARTO_KEY) return template
+  // ключ уже есть в шаблоне — не дублируем
+  if (/[?&]key=/.test(template)) return template
+  return `${template}${template.includes("?") ? "&" : "?"}key=${encodeURIComponent(CARTO_KEY)}`
 }
 
-/** Источник по умолчанию — esri: он не требует ключа. */
+/** Источник по умолчанию — carto: основная карта проекта. */
 function resolveTileSource(): MapTileSource {
   const raw = (process.env.NEXT_PUBLIC_MAP_TILES || "").trim().toLowerCase()
-  return raw === "carto" || raw === "osm" ? raw : "esri"
+  return raw === "esri" || raw === "osm" ? raw : "carto"
 }
 
 /** Спутник: снимок плюс границы и подписи поверх, иначе читать нечего. */
@@ -64,11 +77,13 @@ function buildTileLayers(source: MapTileSource, theme: MapTheme): TileLayerSpec[
   }
 
   if (source === "carto") {
+    const url = cartoTiles()
     return [
       {
-        url: cartoTiles("dark_all"),
+        url,
         attribution: "© OpenStreetMap, © CARTO",
-        subdomains: "abcd",
+        // поддомены нужны только старым шаблонам вида {s}.basemaps.cartocdn.com
+        subdomains: url.includes("{s}") ? "abcd" : undefined,
         maxZoom: 20,
         className: theme === "graphite" ? "map-tiles-graphite" : undefined,
       },
@@ -140,8 +155,8 @@ export function useMapInstance({
     const group = L.layerGroup().addTo(mapInstance)
     baseLayersGroupRef.current = group
 
-    // Источник читается из NEXT_PUBLIC_MAP_TILES: esri (по умолчанию, без
-    // ключа) | carto (нужен NEXT_PUBLIC_CARTO_API_KEY) | osm.
+    // Источник читается из NEXT_PUBLIC_MAP_TILES: carto (по умолчанию,
+    // основной картой проекта) | esri | osm. Ключ CARTO — NEXT_PUBLIC_CARTO_API_KEY.
     const source = resolveTileSource()
 
     for (const layer of buildTileLayers(source, newTheme)) {

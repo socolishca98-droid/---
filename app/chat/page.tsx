@@ -2,7 +2,7 @@
 
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -40,6 +40,9 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
+  // Счётчик сбоев подряд: нужен, чтобы не долбить упавший сервер опросом
+  const failuresRef = useRef(0)
+
   // Загрузка водителей
   const fetchDrivers = useCallback(async () => {
     try {
@@ -75,7 +78,9 @@ export default function ChatPage() {
         { ttlMs: 2000 },
       )
       if (data.success) setMessages(data.messages ?? [])
+      failuresRef.current = 0
     } catch (error) {
+      failuresRef.current += 1
       console.error('Failed to fetch messages:', error)
     } finally {
       setIsLoading(false)
@@ -104,10 +109,26 @@ export default function ChatPage() {
     }
   }, [selectedDriverId, fetchMessages])
 
-  // Автообновление сообщений каждые 5 сек
+  // Автообновление сообщений: пока всё в порядке — раз в 5 секунд. После трёх
+  // сбоев подряд уходим на 30 секунд: иначе при лежачем сервере или упавшей
+  // сессии вкладка долбит запросами каждые 5 секунд и выглядит зависшей.
   useEffect(() => {
-    const interval = setInterval(fetchMessages, 5000)
-    return () => clearInterval(interval)
+    let timer: number | undefined
+    let cancelled = false
+
+    const tick = async () => {
+      await fetchMessages()
+      if (cancelled) return
+      const delay = failuresRef.current >= 3 ? 30_000 : 5_000
+      timer = window.setTimeout(tick, delay)
+    }
+
+    void tick()
+
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
   }, [fetchMessages])
 
   // Отправка сообщения

@@ -42,18 +42,30 @@ export default function DriverChatPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
+  // Счётчик сбоев подряд: по нему замедляем опрос, чтобы не долбить упавший сервер
+  const failuresRef = useRef(0)
+  // 401/403 — сессии водителя больше нет: опрос прекращаем, пусть ею занимается
+  // хук сессии, а страница не спамит заведомо неудачными запросами
+  const sessionLostRef = useRef(false)
+
   // Загрузка сообщений
   const fetchMessages = useCallback(async () => {
     if (!driver?.id) return
 
     try {
       const res = await fetch(`/api/chat?driverId=${driver.id}`)
+      if (res.status === 401 || res.status === 403) {
+        sessionLostRef.current = true
+        return
+      }
       const data = await res.json()
 
       if (data.success) {
         setMessages(data.messages)
       }
+      failuresRef.current = 0
     } catch (error) {
+      failuresRef.current += 1
       console.error("Failed to fetch messages:", error)
     } finally {
       setIsLoading(false)
@@ -66,11 +78,29 @@ export default function DriverChatPage() {
     }
   }, [driver?.id, fetchMessages])
 
-  // Автообновление
+  // Автообновление: пока всё в порядке — раз в 5 секунд. После трёх сбоев
+  // подряд уходим на 30 секунд: иначе при лежачем сервере вкладка молотит
+  // запросами каждые 5 секунд и выглядит зависшей.
   useEffect(() => {
     if (!driver?.id) return
-    const interval = setInterval(fetchMessages, 5000)
-    return () => clearInterval(interval)
+
+    let timer: number | undefined
+    let cancelled = false
+
+    const tick = async () => {
+      if (sessionLostRef.current) return
+      await fetchMessages()
+      if (cancelled || sessionLostRef.current) return
+      const delay = failuresRef.current >= 3 ? 30_000 : 5_000
+      timer = window.setTimeout(tick, delay)
+    }
+
+    void tick()
+
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
   }, [driver?.id, fetchMessages])
 
   // Скролл вниз
