@@ -13,6 +13,22 @@ export const mapStyles = `
     outline: none;
   }
 
+  /* === ТАЙЛЫ ПОДКЛАДКИ ===
+     Основной источник — Esri: CARTO с 2025 года требует ключ и без него отдаёт
+     «API KEY REQUIRED». Тема «Графит» отличается от «Тёмной» обесцвечиванием,
+     поэтому слои не сливаются, хотя приходят с одного сервера.
+     Фильтр вешаем на контейнер слоя (leaflet-layer), а не на каждый тайл:
+     так он считается один раз и не мигает при подгрузке плиток. */
+
+  .map-tiles-graphite {
+    filter: saturate(0.12) contrast(1.06) brightness(0.96);
+  }
+
+  /* Тайлы OpenStreetMap светлые — переворачиваем их под тёмный интерфейс */
+  .map-tiles-osm-dark {
+    filter: invert(1) hue-rotate(180deg) saturate(0.4) brightness(0.82) contrast(1.08);
+  }
+
   /* === ТОЧКИ ЗАГРУЗКИ / ВЫГРУЗКИ (Минималистичные неоновые жетоны) === */
   .wp-container {
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));

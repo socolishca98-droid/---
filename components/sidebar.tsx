@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { PRODUCT_NAME } from "@/lib/auth/constants"
 
 /** Какие счётчики может показывать пункт меню. */
 type BadgeKey = "orders" | "chat"
@@ -115,7 +116,7 @@ export function Sidebar() {
                 <Truck className="h-5 w-5 text-primary-foreground" />
               </div>
               <span className="text-lg font-bold text-sidebar-foreground">
-                ГрузоПоток
+                {PRODUCT_NAME}
               </span>
             </Link>
           )}
@@ -236,25 +237,25 @@ export function Sidebar() {
               </div>
             )}
           </Button>
-
-          {/* Кнопка сворачивания */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggle}
-            className="w-full justify-center text-sidebar-foreground/70 hover:text-sidebar-foreground mt-2"
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-5 w-5" />
-            ) : (
-              <>
-                <ChevronLeft className="h-5 w-5 mr-2" />
-                <span>Свернуть</span>
-              </>
-            )}
-          </Button>
         </div>
       </div>
+
+      {/* «Рельс» сворачивания: круглая кнопка на правой кромке панели, а не
+          кнопка внизу — она не спорит с «Выйти» и видна в свёрнутом виде.
+          Ширины панели (256/80 px) и отступы страниц не меняются. */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={isCollapsed ? "Развернуть панель" : "Свернуть панель"}
+        title={isCollapsed ? "Развернуть панель" : "Свернуть панель"}
+        className="absolute -right-3.5 top-5 h-7 w-7 rounded-full border bg-card shadow-md flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        {isCollapsed ? (
+          <ChevronRight className="h-4 w-4" />
+        ) : (
+          <ChevronLeft className="h-4 w-4" />
+        )}
+      </button>
     </aside>
   )
 }

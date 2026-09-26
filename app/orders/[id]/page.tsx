@@ -51,9 +51,11 @@ export default function OrderPage() {
         <main className="p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" asChild>
-                <Link href="/orders" aria-label="К списку заказов">
+              {/* Кнопка подписана: одна иконка-стрелка не объясняла, куда ведёт */}
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/orders" className="gap-2">
                   <ArrowLeft className="h-4 w-4" />
+                  К списку заказов
                 </Link>
               </Button>
               <div>
