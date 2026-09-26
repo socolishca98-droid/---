@@ -285,6 +285,14 @@
   color: var(--canvas-truck);
 }
 
+/* Выключатель движения — NEXT_PUBLIC_LIVE_BACKGROUND="off": картинка та же,
+   но без покадровой перерисовки. Это важно на слабых машинах: фон лежит под
+   панелями с backdrop-filter, и каждый кадр заставляет браузер пересчитывать
+   размытие заново. */
+.theme-canvas--static .route-track {
+  animation: none !important;
+}
+
 /* Виньетка: приглушает фон по краям, чтобы текст всегда читался */
 .theme-canvas__vignette {
   position: absolute;

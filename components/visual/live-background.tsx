@@ -16,11 +16,21 @@
 //   CSS не остановить, поэтому системная настройка «уменьшить движение»
 //   скрывает грузовики целиком (см. .theme-canvas__trucks в globals.css).
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 
 /** Где фон не нужен: контур водителя и печатные листы документов. */
 const EXCLUDED_PREFIXES = ["/m", "/print"]
+
+/**
+ * Движение можно выключить совсем: NEXT_PUBLIC_LIVE_BACKGROUND="off".
+ *
+ * Фон лежит под панелями с backdrop-filter: blur(), поэтому каждый кадр
+ * анимации заставляет браузер заново пересчитывать размытие больших областей.
+ * На слабом процессоре это заметно тормозит весь интерфейс — выключатель
+ * оставляет ту же картинку (сетку, дороги, города), но без движения.
+ */
+const ANIMATED = (process.env.NEXT_PUBLIC_LIVE_BACKGROUND || "on").trim().toLowerCase() !== "off"
 
 type Point = readonly [number, number]
 
@@ -119,14 +129,35 @@ const TRUCKS = [
 export function LiveBackground() {
   const pathname = usePathname() || ""
   const [isPaused, setIsPaused] = useState(false)
+  const svgRef = useRef<SVGSVGElement | null>(null)
 
-  // Скрытая вкладка — пауза: фон не тратит батарею, когда на него не смотрят
   useEffect(() => {
-    const onVisibilityChange = () => setIsPaused(document.hidden)
+    if (!ANIMATED) return
 
-    onVisibilityChange()
-    document.addEventListener("visibilitychange", onVisibilityChange)
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange)
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
+
+    // CSS-анимации останавливает атрибут data-paused, но SMIL он не трогает:
+    // у <svg> есть собственные pauseAnimations/unpauseAnimations. Без них
+    // грузовики продолжали считать кадры в скрытой вкладке.
+    const sync = () => {
+      setIsPaused(document.hidden)
+
+      const svg = svgRef.current
+      if (!svg || typeof svg.pauseAnimations !== "function") return
+      if (document.hidden || reduceMotion.matches) {
+        svg.pauseAnimations()
+      } else {
+        svg.unpauseAnimations()
+      }
+    }
+
+    sync()
+    document.addEventListener("visibilitychange", sync)
+    reduceMotion.addEventListener("change", sync)
+    return () => {
+      document.removeEventListener("visibilitychange", sync)
+      reduceMotion.removeEventListener("change", sync)
+    }
   }, [])
 
   const isExcluded = EXCLUDED_PREFIXES.some(
@@ -143,7 +174,8 @@ export function LiveBackground() {
       <div className="theme-canvas__grid" />
 
       <svg
-        className="theme-canvas__routes"
+        ref={svgRef}
+        className={ANIMATED ? "theme-canvas__routes" : "theme-canvas__routes theme-canvas--static"}
         viewBox="0 0 1440 900"
         preserveAspectRatio="xMidYMid slice"
         focusable="false"
@@ -173,20 +205,22 @@ export function LiveBackground() {
           </g>
         ))}
 
-        <g className="theme-canvas__trucks" fill="currentColor">
-          {TRUCKS.map((truck, index) => (
-            <g key={`${truck.road}-${truck.dur}-${index}`}>
-              <animateMotion
-                dur={truck.dur}
-                begin={truck.begin}
-                repeatCount="indefinite"
-                path={ROAD_PATHS[truck.road].d}
-                rotate="auto"
-              />
-              <use href="#canvas-truck" />
-            </g>
-          ))}
-        </g>
+        {ANIMATED && (
+          <g className="theme-canvas__trucks" fill="currentColor">
+            {TRUCKS.map((truck, index) => (
+              <g key={`${truck.road}-${truck.dur}-${index}`}>
+                <animateMotion
+                  dur={truck.dur}
+                  begin={truck.begin}
+                  repeatCount="indefinite"
+                  path={ROAD_PATHS[truck.road].d}
+                  rotate="auto"
+                />
+                <use href="#canvas-truck" />
+              </g>
+            ))}
+          </g>
+        )}
       </svg>
 
       <div className="theme-canvas__vignette" />
