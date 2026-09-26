@@ -193,8 +193,8 @@
    3. Всё уважает системные настройки: prefers-reduced-motion выключает
       движение, скрытая вкладка — пауза, печать — фон убирается.
 
-   Мотив — геометрия логистики: сетка склада, пунктирные треки маршрутов,
-   точки-узлы и медленно плывущие световые пятна.
+   Мотив — геометрия логистики: сетка склада, три пунктирные дороги между
+   городами и грузовики, которые едут по этим дорогам.
 --------------------------------------------------------------------------- */
 
 :root {
@@ -203,7 +203,8 @@
   --canvas-line: oklch(0.72 0.03 260 / 0.16);
   --canvas-accent: oklch(0.65 0.2 30 / 0.5);
   --canvas-cold: oklch(0.6 0.13 220 / 0.32);
-  --canvas-node: oklch(0.65 0.2 30 / 0.55);
+  --canvas-city: oklch(0.72 0.04 250 / 0.6);
+  --canvas-truck: oklch(0.74 0.05 250 / 0.5);
 }
 
 .theme-canvas {
@@ -218,42 +219,6 @@
     radial-gradient(900px 640px at 92% 4%, oklch(0.34 0.09 40 / 0.26), transparent 72%),
     radial-gradient(1200px 900px at 55% 115%, oklch(0.26 0.06 250 / 0.42), transparent 74%),
     linear-gradient(180deg, oklch(0.135 0.012 260), oklch(0.115 0.012 262) 58%, oklch(0.1 0.014 266));
-}
-
-/* Медленно плывущие световые пятна: без размытия — оно стоит дорого,
-   мягкость даёт сам градиент */
-.theme-canvas__aurora {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0.7;
-  will-change: transform;
-}
-
-.theme-canvas__aurora--a {
-  width: 62vw;
-  height: 62vw;
-  left: -18vw;
-  top: -24vw;
-  background: radial-gradient(circle at 50% 50%, oklch(0.6 0.17 285 / 0.16), transparent 62%);
-  animation: canvas-drift-a 96s cubic-bezier(0.4, 0, 0.6, 1) infinite alternate;
-}
-
-.theme-canvas__aurora--b {
-  width: 54vw;
-  height: 54vw;
-  right: -14vw;
-  top: -8vw;
-  background: radial-gradient(circle at 50% 50%, oklch(0.68 0.19 35 / 0.14), transparent 62%);
-  animation: canvas-drift-b 78s cubic-bezier(0.4, 0, 0.6, 1) infinite alternate;
-}
-
-.theme-canvas__aurora--c {
-  width: 70vw;
-  height: 46vw;
-  left: 18vw;
-  bottom: -26vw;
-  background: radial-gradient(circle at 50% 50%, oklch(0.6 0.12 210 / 0.12), transparent 64%);
-  animation: canvas-drift-c 112s cubic-bezier(0.4, 0, 0.6, 1) infinite alternate;
 }
 
 /* Сетка: два масштаба, к краям растворяется */
@@ -305,40 +270,19 @@
   animation-direction: reverse;
 }
 
-.route-node {
-  fill: none;
-  stroke: var(--canvas-node);
-  stroke-width: 1.3;
+/* Города: точка на стыке дорог с мягким ободком вокруг */
+.route-city {
+  fill: var(--canvas-city);
 }
 
-.route-node--core {
-  fill: var(--canvas-node);
-  stroke: none;
+.route-city__halo {
+  fill: var(--canvas-city);
+  opacity: 0.14;
 }
 
-.route-hub {
-  fill: none;
-  stroke: var(--canvas-line);
-  stroke-width: 1.2;
-}
-
-.theme-canvas__nodes {
-  position: absolute;
-  inset: 0;
-}
-
-.canvas-node {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 1px solid var(--canvas-accent);
-  transform: rotate(45deg);
-  animation: node-pulse 7s ease-in-out infinite;
-}
-
-.canvas-node--soft {
-  border-color: var(--canvas-line);
-  animation-duration: 9s;
+/* Грузовики едут по дорогам силами SMIL (animateMotion). */
+.theme-canvas__trucks {
+  color: var(--canvas-truck);
 }
 
 /* Виньетка: приглушает фон по краям, чтобы текст всегда читался */
@@ -517,45 +461,6 @@
   }
 }
 
-@keyframes node-pulse {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: rotate(45deg) scale(0.85);
-  }
-  50% {
-    opacity: 0.75;
-    transform: rotate(45deg) scale(1.15);
-  }
-}
-
-@keyframes canvas-drift-a {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(6vw, 5vh, 0) scale(1.12);
-  }
-}
-
-@keyframes canvas-drift-b {
-  from {
-    transform: translate3d(0, 0, 0) scale(1.05);
-  }
-  to {
-    transform: translate3d(-5vw, 7vh, 0) scale(0.95);
-  }
-}
-
-@keyframes canvas-drift-c {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(-7vw, -4vh, 0) scale(1.1);
-  }
-}
-
 /* --------------------------------------------------------------------------
    Общая отделка: скроллбары, выделение, фокус
 -------------------------------------------------------------------------- */
@@ -612,14 +517,17 @@ body {
     scroll-behavior: auto;
   }
 
-  .theme-canvas__aurora,
   .route-track,
-  .canvas-node,
   .page-transition,
   .stagger-in > *,
   .rise-in,
   .skeleton-shimmer::after {
     animation: none !important;
+  }
+
+  /* Грузовики движет SMIL — его CSS не остановит, поэтому просто убираем их */
+  .theme-canvas__trucks {
+    display: none;
   }
 
   .nav-progress__bar {

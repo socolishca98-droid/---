@@ -6,6 +6,98 @@ import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "../constants"
 
 export type MapTheme = "dark" | "graphite" | "satellite"
 
+/** Источник тайлов карты: задаётся переменной NEXT_PUBLIC_MAP_TILES. */
+export type MapTileSource = "esri" | "carto" | "osm"
+
+interface TileLayerSpec {
+  url: string
+  attribution?: string
+  opacity?: number
+  className?: string
+  subdomains?: string
+  maxZoom?: number
+}
+
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services"
+
+// Esri отдаёт тёмную «канву» без ключа — поэтому он основной источник.
+const ESRI_DARK_BASE = `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`
+const ESRI_DARK_REFERENCE = `${ESRI}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`
+const ESRI_IMAGERY = `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`
+const ESRI_BOUNDARIES = `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`
+
+const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+
+/**
+ * CARTO с 2025 года требует ключ даже на базовые стили: без него сервер отдаёт
+ * картинку «API KEY REQUIRED». Ключ подставляем, только если он задан.
+ */
+const CARTO_KEY = (process.env.NEXT_PUBLIC_CARTO_API_KEY || "").trim()
+
+function cartoTiles(style: string): string {
+  const url = `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`
+  return CARTO_KEY ? `${url}?key=${encodeURIComponent(CARTO_KEY)}` : url
+}
+
+/** Источник по умолчанию — esri: он не требует ключа. */
+function resolveTileSource(): MapTileSource {
+  const raw = (process.env.NEXT_PUBLIC_MAP_TILES || "").trim().toLowerCase()
+  return raw === "carto" || raw === "osm" ? raw : "esri"
+}
+
+/** Спутник: снимок плюс границы и подписи поверх, иначе читать нечего. */
+const SATELLITE_LAYERS: TileLayerSpec[] = [
+  { url: ESRI_IMAGERY, attribution: "Esri World Imagery", maxZoom: 19 },
+  { url: ESRI_BOUNDARIES, opacity: 0.9, maxZoom: 19 },
+]
+
+/**
+ * Слои темы для источника.
+ *
+ * Тема «Графит» отличается от «Тёмной» фильтром (обесцвечивание), а не адресом:
+ * оба стиля берутся с одного сервера, но визуально не сливаются.
+ * CARTO и OSM спутник не отдают — для него используем Esri Imagery.
+ */
+function buildTileLayers(source: MapTileSource, theme: MapTheme): TileLayerSpec[] {
+  if (theme === "satellite") {
+    return SATELLITE_LAYERS
+  }
+
+  if (source === "carto") {
+    return [
+      {
+        url: cartoTiles("dark_all"),
+        attribution: "© OpenStreetMap, © CARTO",
+        subdomains: "abcd",
+        maxZoom: 20,
+        className: theme === "graphite" ? "map-tiles-graphite" : undefined,
+      },
+    ]
+  }
+
+  if (source === "osm") {
+    return [
+      {
+        url: OSM_TILES,
+        attribution: "© OpenStreetMap",
+        maxZoom: 19,
+        // Тайлы OSM светлые: переворачиваем их в тёмную сторону, а «Графит»
+        // дополнительно обесцвечиваем, чтобы темы различались.
+        className:
+          theme === "graphite"
+            ? "map-tiles-osm-dark map-tiles-graphite"
+            : "map-tiles-osm-dark",
+      },
+    ]
+  }
+
+  const className = theme === "graphite" ? "map-tiles-graphite" : undefined
+  return [
+    { url: ESRI_DARK_BASE, attribution: "Esri Canvas Base", maxZoom: 18, className },
+    { url: ESRI_DARK_REFERENCE, opacity: 0.85, maxZoom: 18, className },
+  ]
+}
+
 interface UseMapInstanceOptions {
   containerRef: React.RefObject<HTMLDivElement | null>
   initialTheme?: MapTheme
@@ -48,63 +140,19 @@ export function useMapInstance({
     const group = L.layerGroup().addTo(mapInstance)
     baseLayersGroupRef.current = group
 
-    if (newTheme === "dark") {
-      // ═══════════════════════════════════════════════════════════════
-      // CARTO DARK MATTER — Ультрастильный тёмный минимализм
-      // ═══════════════════════════════════════════════════════════════
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        {
-          subdomains: "abcd",
-          maxZoom: 19,
-          minZoom: 3,
-          attribution: "CartoDB Dark Matter",
-        }
-      ).addTo(group)
-    } else if (newTheme === "graphite") {
-      // ═══════════════════════════════════════════════════════════════
-      // ESRI CANVAS DARK GRAY — Нейтральный инженерный графит
-      // ═══════════════════════════════════════════════════════════════
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 18,
-          minZoom: 3,
-          attribution: "Esri Canvas Base",
-        }
-      ).addTo(group)
+    // Источник читается из NEXT_PUBLIC_MAP_TILES: esri (по умолчанию, без
+    // ключа) | carto (нужен NEXT_PUBLIC_CARTO_API_KEY) | osm.
+    const source = resolveTileSource()
 
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 18,
-          minZoom: 3,
-          opacity: 0.85,
-        }
-      ).addTo(group)
-    } else if (newTheme === "satellite") {
-      // ═══════════════════════════════════════════════════════════════
-      // SATELLITE HIGH-RES + DARK ROADS/LABELS
-      // ═══════════════════════════════════════════════════════════════
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 19,
-          minZoom: 3,
-          attribution: "Esri Satellite",
-        }
-      ).addTo(group)
-
-      // Дорожная сеть и подписи поверх спутника для максимальной читаемости
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
-        {
-          subdomains: "abcd",
-          maxZoom: 19,
-          minZoom: 3,
-          opacity: 0.9,
-        }
-      ).addTo(group)
+    for (const layer of buildTileLayers(source, newTheme)) {
+      L.tileLayer(layer.url, {
+        attribution: layer.attribution,
+        opacity: layer.opacity,
+        subdomains: layer.subdomains,
+        className: layer.className,
+        maxZoom: layer.maxZoom ?? 19,
+        minZoom: 3,
+      }).addTo(group)
     }
   }, [])
 

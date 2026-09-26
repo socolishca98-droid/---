@@ -14,15 +14,13 @@
 "use client"
 
 import { useEffect } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { Button } from "@/components/ui/button"
 import { AtiSearchPanel } from "@/components/orders/ati-search-panel"
 
 export default function SearchPage() {
@@ -53,21 +51,14 @@ export default function SearchPage() {
       >
         <Header />
         <main className="p-6 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" asChild>
-                <Link href="/orders" aria-label="К заказам">
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold">Поиск грузов</h1>
-                <p className="text-muted-foreground">
-                  Своя накопленная база — основной источник; живой ATI — по
-                  необходимости. «Взять в работу» создаёт заказ на этапе «Поиск».
-                </p>
-              </div>
-            </div>
+          {/* Кнопки «назад» здесь нет намеренно: это раздел бокового меню,
+              а стрелка вела в /orders и путала навигацию. */}
+          <div>
+            <h1 className="text-2xl font-bold">Поиск грузов</h1>
+            <p className="text-muted-foreground">
+              Своя накопленная база — основной источник; живой ATI — по
+              необходимости. «Взять в работу» создаёт заказ на этапе «Поиск».
+            </p>
           </div>
 
           <AtiSearchPanel />

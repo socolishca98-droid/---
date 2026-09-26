@@ -12,23 +12,33 @@ import { AddLoadDialog } from "@/components/routes/add-load-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   Loader2,
   Search,
   RefreshCw,
   Route,
-  CheckCircle2,
   Clock,
   Truck,
   Package,
   TrendingUp,
-  AlertCircle,
+  Gauge,
 } from "lucide-react"
 import { toast } from "sonner"
 import { MOVING_ORDER_STATUSES, type OrderStatus } from "@/lib/orders/stages"
 import { fetchJsonCached, peekCache, invalidateCache } from "@/lib/client-cache"
 import { CardsSkeleton } from "@/components/ui/skeletons"
+
+// ============================================
+// ФОРМАТИРОВАНИЕ
+// ============================================
+
+/** Деньги в сводке: 1 250 000 → «1,3 млн», чтобы строка не разъезжалась. */
+const compactMoney = new Intl.NumberFormat("ru-RU", { notation: "compact" })
+
+/** Тонны свободного места с одним знаком — точность здесь не нужна. */
+function formatTons(kg: number): string {
+  return `${(kg / 1000).toFixed(1)} т`
+}
 
 // ============================================
 // ТИПЫ
@@ -301,95 +311,56 @@ export default function RoutesPage() {
                 «Карта в разработке» только путала — нажималась и ничего не делала. */}
           </div>
 
-          {/* Статистика */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <Route className="h-5 w-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stats.totalRoutes}</p>
-                    <p className="text-xs text-muted-foreground">Всего</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Сводка: одна строка вместо шести карточек — числа читаются
+              быстрее, а под список остаётся больше места.
+              Считается по текущей вкладке, поэтому на «Завершённых»
+              показывает их же цифры. */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-card/60 px-4 py-2.5 text-sm">
+            <div className="flex items-center gap-2">
+              <Route className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">Рейсов</span>
+              <span className="font-semibold tabular-nums">
+                {stats.totalRoutes}
+              </span>
+            </div>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-orange-500/10">
-                    <Truck className="h-5 w-5 text-orange-500" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stats.inProgress}</p>
-                    <p className="text-xs text-muted-foreground">В пути</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2">
+              <Truck className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">в пути</span>
+              <span className="font-semibold tabular-nums">
+                {stats.inProgress}
+              </span>
+            </div>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-yellow-500/10">
-                    <Clock className="h-5 w-5 text-yellow-500" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stats.pending}</p>
-                    <p className="text-xs text-muted-foreground">Ожидание</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">ждут отправки</span>
+              <span className="font-semibold tabular-nums">{stats.pending}</span>
+            </div>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-green-500/10">
-                    <TrendingUp className="h-5 w-5 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {(stats.totalRevenue / 1000).toFixed(0)}К
-                    </p>
-                    <p className="text-xs text-muted-foreground">Выручка</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">свободно</span>
+              <span className="font-semibold tabular-nums">
+                {formatTons(stats.totalCapacity)}
+              </span>
+            </div>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                    <Package className="h-5 w-5 text-purple-500" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {(stats.totalCapacity / 1000).toFixed(1)}т
-                    </p>
-                    <p className="text-xs text-muted-foreground">Свободно</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">выручка</span>
+              <span className="font-semibold tabular-nums">
+                {compactMoney.format(stats.totalRevenue)} ₽
+              </span>
+            </div>
 
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-cyan-500/10">
-                    <AlertCircle className="h-5 w-5 text-cyan-500" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stats.avgUtilization}%</p>
-                    <p className="text-xs text-muted-foreground">Загрузка</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">загрузка</span>
+              <span className="font-semibold tabular-nums">
+                {stats.avgUtilization}%
+              </span>
+            </div>
           </div>
 
           {/* Фильтры и поиск */}
@@ -398,15 +369,11 @@ export default function RoutesPage() {
               value={activeTab}
               onValueChange={(v) => setActiveTab(v as "active" | "completed")}
             >
+              {/* Счётчика в ярлыке нет намеренно: он считался по текущему
+                  списку, поэтому на «Завершённых» показывал ноль. */}
               <TabsList>
-                <TabsTrigger value="active" className="gap-2">
-                  <Clock className="h-4 w-4" />
-                  Активные ({stats.inProgress + stats.pending})
-                </TabsTrigger>
-                <TabsTrigger value="completed" className="gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Завершённые
-                </TabsTrigger>
+                <TabsTrigger value="active">Активные</TabsTrigger>
+                <TabsTrigger value="completed">Завершённые</TabsTrigger>
               </TabsList>
             </Tabs>
 

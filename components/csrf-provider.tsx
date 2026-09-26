@@ -40,18 +40,31 @@ export function CsrfProvider({ children }: { children: React.ReactNode }) {
       const method = init?.method || (typeof input !== "string" && input instanceof Request ? input.method : "GET")
 
       if (shouldAddCsrf(url, method)) {
-        const csrfFromCookie = getCookie("loginex_csrf")
-        if (csrfFromCookie) {
-          const headers = new Headers(init?.headers || (typeof input !== "string" && input instanceof Request ? (input as Request).headers : undefined))
-          if (!headers.has("x-csrf-token")) {
-            headers.set("x-csrf-token", csrfFromCookie)
+        let csrfFromCookie = getCookie("loginex_csrf")
+
+        // Первый запрос после входа уходил без заголовка: cookie ещё нет,
+        // сервер отвечал «Сессия устарела: не прошёл CSRF-токен».
+        // Поэтому сначала дожидаемся токена, а потом отправляем запрос.
+        if (!csrfFromCookie) {
+          try {
+            const tokenResponse = await originalFetch("/api/auth/csrf", {
+              method: "GET",
+              credentials: "include",
+              cache: "no-store",
+            })
+            if (tokenResponse.ok) {
+              csrfFromCookie = getCookie("loginex_csrf")
+            }
+          } catch {
+            // сеть недоступна — отправляем запрос как есть
           }
-          init = { ...init, headers, credentials: init?.credentials || "include" }
-        } else {
-          // If no cookie yet, try to fetch token synchronously? We can't block, but we can attempt to get it
-          // For now, ensure credentials include
-          init = { ...init, credentials: init?.credentials || "include" }
         }
+
+        const headers = new Headers(init?.headers || (typeof input !== "string" && input instanceof Request ? (input as Request).headers : undefined))
+        if (csrfFromCookie && !headers.has("x-csrf-token")) {
+          headers.set("x-csrf-token", csrfFromCookie)
+        }
+        init = { ...init, headers, credentials: init?.credentials || "include" }
       }
 
       return originalFetch(input, init as any)

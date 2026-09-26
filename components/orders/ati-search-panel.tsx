@@ -525,30 +525,24 @@ export function AtiSearchPanel() {
         onValueChange={(val) => setActiveTab(val as "search" | "database")}
         className="w-full"
       >
-        {/* Источник заказов по умолчанию — своя накопленная база (её наполняют
-            сканы по расписанию). Живой запрос на ATI.su — отдельная явная опция. */}
-        <TabsList className="grid w-full grid-cols-2 h-12">
-          <TabsTrigger value="database" className="gap-2 text-base">
-            <Database className="h-4 w-4" />
-            Своя база ({stats?.new || 0})
-          </TabsTrigger>
-          <TabsTrigger value="search" className="gap-2 text-base">
-            <Search className="h-4 w-4" />
-            Живой поиск ATI
-          </TabsTrigger>
-        </TabsList>
+        {/* Вкладки — маленький переключатель источника, а не заголовок
+            страницы. Пояснение — одна строка справа: раньше вместо него висел
+            янтарный баннер-предупреждение на всю ширину. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabsList className="h-9">
+            <TabsTrigger value="database">Своя база · {stats?.new || 0} новых</TabsTrigger>
+            <TabsTrigger value="search">Живой ATI</TabsTrigger>
+          </TabsList>
+
+          <p className="text-xs text-muted-foreground">
+            Основной источник — своя база, её наполняют плановые сканы. Живой
+            запрос уходит на ati.su и тратит лимиты токена.
+          </p>
+        </div>
 
         {/* Вкладка живого поиска ATI */}
         <TabsContent value="search" className="space-y-6 mt-6">
-          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-            <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-            <p className="text-amber-800 dark:text-amber-300">
-              Живой запрос уходит на ati.su и тратит лимиты токена. Основной
-              источник грузов — своя накопленная база (вкладка «Своя база»): её
-              наполняют плановые сканы, и поиск по ней мгновенный.
-            </p>
-          </div>
-          <Card className="border-l-4 border-l-primary">
+          <Card>
             <CardContent className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
                 <div className="lg:col-span-4 space-y-2">
@@ -667,192 +661,189 @@ export function AtiSearchPanel() {
 
         {/* Вкладка базы */}
         <TabsContent value="database" className="space-y-4 mt-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
-                  <div className="flex gap-6 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Всего:</span>
-                      <span className="font-bold ml-1">
-                        {stats?.total || 0}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Новых:</span>
-                      <span className="font-bold text-green-600 ml-1">
-                        {stats?.new || 0}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Взято:</span>
-                      <span className="font-bold text-blue-600 ml-1">
-                        {stats?.imported || 0}
-                      </span>
-                    </div>
+          {/* Одна полоса действий: сводка, поиск, фильтры, обновление, режим
+              сбора и запуск. Раньше это были два ряда внутри карточки, из-за
+              чего половина экрана уходила под обвязку. */}
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-muted-foreground">
+                Всего{" "}
+                <span className="ml-1 font-semibold text-foreground tabular-nums">
+                  {stats?.total || 0}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                новых{" "}
+                <span className="ml-1 font-semibold text-foreground tabular-nums">
+                  {stats?.new || 0}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                взято{" "}
+                <span className="ml-1 font-semibold text-foreground tabular-nums">
+                  {stats?.imported || 0}
+                </span>
+              </span>
+            </div>
+
+            <div className="relative w-48">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Поиск..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+
+            <Button
+              variant={showFilters ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-4 w-4 mr-1.5" />
+              Фильтры
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                void loadDatabase()
+                void loadStats()
+              }}
+              disabled={loading}
+              aria-label="Обновить базу"
+              title="Обновить базу"
+            >
+              <RefreshCw
+                className={cn(
+                  "h-4 w-4",
+                  loading && "animate-spin",
+                )}
+              />
+            </Button>
+
+            <Select
+              value={harvestMode}
+              onValueChange={(v: string) =>
+                setHarvestMode(v as "fast" | "normal" | "deep")
+              }
+            >
+              <SelectTrigger className="w-32 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fast">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-4 w-4" />
+                    Быстрый
                   </div>
-
-                  <div className="flex gap-2 w-full lg:w-auto flex-wrap">
-                    <div className="relative flex-1 lg:w-48">
-                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Поиск..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-
-                    <Button
-                      variant={showFilters ? "secondary" : "outline"}
-                      size="icon"
-                      onClick={() => setShowFilters(!showFilters)}
-                    >
-                      <Filter className="h-4 w-4" />
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        void loadDatabase()
-                        void loadStats()
-                      }}
-                      disabled={loading}
-                    >
-                      <RefreshCw
-                        className={cn(
-                          "h-4 w-4",
-                          loading && "animate-spin",
-                        )}
-                      />
-                    </Button>
-
-                    <Select
-                      value={harvestMode}
-                      onValueChange={(v: string) =>
-                        setHarvestMode(v as "fast" | "normal" | "deep")
-                      }
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fast">
-                          <div className="flex items-center gap-2">
-                            <Gauge className="h-4 w-4 text-yellow-500" />
-                            Быстрый
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="normal">
-                          <div className="flex items-center gap-2">
-                            <Rocket className="h-4 w-4 text-blue-500" />
-                            Обычный
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="deep">
-                          <div className="flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-orange-500" />
-                            Глубокий
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Button
-                      onClick={() => void handleHarvester()}
-                      disabled={harvesting}
-                      className="bg-purple-600 hover:bg-purple-700"
-                    >
-                      {harvesting ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Zap className="h-4 w-4 mr-2" />
-                      )}
-                      Собрать
-                    </Button>
+                </SelectItem>
+                <SelectItem value="normal">
+                  <div className="flex items-center gap-2">
+                    <Rocket className="h-4 w-4" />
+                    Обычный
                   </div>
-                </div>
-
-                {showFilters && (
-                  <div className="border-t pt-4 mt-2">
-                    <div className="flex items-center justify-between mb-3">
-                      <Label className="text-sm font-semibold">
-                        Фильтры
-                      </Label>
-                      {hasActiveFilters && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={clearFilters}
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Сбросить
-                        </Button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Цена от (₽)
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder="10000"
-                          value={dbMinPrice}
-                          onChange={(e) => setDbMinPrice(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Цена до (₽)
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder="100000"
-                          value={dbMaxPrice}
-                          onChange={(e) => setDbMaxPrice(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Расстояние от
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder="100"
-                          value={dbMinDistance}
-                          onChange={(e) => setDbMinDistance(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Расстояние до
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder="1000"
-                          value={dbMaxDistance}
-                          onChange={(e) => setDbMaxDistance(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">
-                          Мин. ₽/км
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder="30"
-                          value={dbMinPricePerKm}
-                          onChange={(e) => setDbMinPricePerKm(e.target.value)}
-                        />
-                      </div>
-                    </div>
+                </SelectItem>
+                <SelectItem value="deep">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Глубокий
                   </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={() => void handleHarvester()}
+              disabled={harvesting}
+            >
+              {harvesting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Zap className="h-4 w-4 mr-2" />
+              )}
+              Собрать
+            </Button>
+          </div>
+
+          {showFilters && (
+            <div className="rounded-lg border bg-card p-3">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-sm font-semibold">
+                  Фильтры
+                </Label>
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Сбросить
+                  </Button>
                 )}
               </div>
-            </CardContent>
-          </Card>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Цена от (₽)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="10000"
+                    value={dbMinPrice}
+                    onChange={(e) => setDbMinPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Цена до (₽)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="100000"
+                    value={dbMaxPrice}
+                    onChange={(e) => setDbMaxPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Расстояние от
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="100"
+                    value={dbMinDistance}
+                    onChange={(e) => setDbMinDistance(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Расстояние до
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="1000"
+                    value={dbMaxDistance}
+                    onChange={(e) => setDbMaxDistance(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    Мин. ₽/км
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="30"
+                    value={dbMinPricePerKm}
+                    onChange={(e) => setDbMinPricePerKm(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {loading ? (
             <div className="space-y-3">
@@ -1064,7 +1055,7 @@ function LoadCard({
       : 0
 
   return (
-    <Card className="hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary">
+    <Card className="card-interactive">
       <CardContent className="p-4">
         <div className="flex flex-col lg:flex-row gap-4 justify-between">
           <div className="flex-1 min-w-0">
@@ -1079,7 +1070,7 @@ function LoadCard({
                 {load.distance} км
               </span>
               {load.loadingDate && (
-                <span className="flex items-center gap-1 text-primary">
+                <span className="flex items-center gap-1">
                   <Calendar className="h-3.5 w-3.5" />
                   {new Date(load.loadingDate).toLocaleDateString("ru-RU")}
                 </span>
@@ -1089,7 +1080,7 @@ function LoadCard({
 
           <div className="lg:border-l lg:pl-4 min-w-[140px]">
             <div className="flex items-center gap-2 font-medium">
-              <Package className="h-4 w-4 text-orange-500" />
+              <Package className="h-4 w-4 text-muted-foreground" />
               {load.cargoType || "Груз"}
             </div>
             <div className="text-sm text-muted-foreground mt-0.5">
@@ -1109,22 +1100,13 @@ function LoadCard({
 
           <div className="flex items-center gap-4 lg:border-l lg:pl-4">
             <div className="text-right">
-              <div className="text-xl font-bold text-green-600">
+              <div className="text-xl font-semibold tabular-nums">
                 {load.price > 0
                   ? `${load.price.toLocaleString()} ₽`
                   : "Договорная"}
               </div>
               {pricePerKm > 0 && (
-                <div
-                  className={cn(
-                    "text-xs font-medium",
-                    pricePerKm >= 45
-                      ? "text-green-600"
-                      : pricePerKm >= 35
-                        ? "text-yellow-600"
-                        : "text-red-500",
-                  )}
-                >
+                <div className="text-xs text-muted-foreground tabular-nums">
                   {pricePerKm} ₽/км
                 </div>
               )}
