@@ -80,7 +80,9 @@ const statusConfig: Record<string, { label: string; color: string }> = {
     color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
   },
   offline: {
-    label: "Не на связи",
+    // uiStatus "offline" означает «нет активной смены» (app/api/fleet/route.ts),
+    // поэтому подписываем честно: связь определяется по GPS-точке, не статусом
+    label: "Не на смене",
     color: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
   },
 }

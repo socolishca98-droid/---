@@ -4,6 +4,8 @@ import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
+import { REVENUE_ORDER_STATUSES } from "@/lib/orders/revenue"
+import { countOnlineDrivers } from "@/lib/fleet/presence"
 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
@@ -23,6 +25,7 @@ export async function GET(request: NextRequest) {
       ordersRevenue,
       vehicles,
       drivers,
+      newTodayOrders,
       activeRoutes,
       completedRoutes,
     ] = await Promise.all([
@@ -42,8 +45,8 @@ export async function GET(request: NextRequest) {
       prisma.order.aggregate({
         _sum: { price: true },
         where: scopedWhere(__org.organizationId, {
-          // выручка = доставленные + те, что ещё в работе
-          status: { in: [...OCCUPYING_ORDER_STATUSES, "delivered"] },
+          // выручка = доставленные + те, что ещё в работе (канон — lib/orders/revenue.ts)
+          status: { in: [...REVENUE_ORDER_STATUSES] },
         }),
       }),
       prisma.vehicle.findMany({
@@ -52,7 +55,14 @@ export async function GET(request: NextRequest) {
       }),
       prisma.driver.findMany({
         where: scopedWhere(__org.organizationId),
-        select: { status: true, latitude: true, longitude: true },
+        select: { status: true, latitude: true, longitude: true, lastGpsUpdate: true },
+      }),
+      // «новых сегодня» — заказы, созданные сегодня. Раньше сюда подставляли
+      // общее число заказов за всё время, и плитка врала.
+      prisma.order.count({
+        where: scopedWhere(__org.organizationId, {
+          createdAt: { gte: today },
+        }),
       }),
       prisma.route.count({
         where: scopedWhere(__org.organizationId, {
@@ -73,7 +83,9 @@ export async function GET(request: NextRequest) {
     const totalDrivers = drivers.length
     const busyDrivers = drivers.filter((d: any) => d.status === "busy" || d.status === "driving").length
     const availableDrivers = drivers.filter((d: any) => d.status === "available").length
-    const onlineDrivers = drivers.filter((d: any) => d.status !== "offline").length
+    // «на связи» — по свежести последней GPS-точки (lib/fleet/presence.ts),
+    // а не по рабочему статусу: «available» не означает, что телефон в сети
+    const onlineDrivers = countOnlineDrivers(drivers)
 
     const vehicleUtilization = totalVehicles > 0 ? Math.round((inUseVehicles / totalVehicles) * 100) : 0
 
@@ -89,7 +101,7 @@ export async function GET(request: NextRequest) {
           total: totalOrders,
           active: activeOrders,
           completedToday: completedTodayOrders,
-          newToday: totalOrders,
+          newToday: newTodayOrders,
         },
         fleet: {
           total: totalVehicles,

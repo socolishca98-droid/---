@@ -1,5 +1,10 @@
 /**
- * Эвристические коэффициенты для имитации трафика
+ * Эвристические коэффициенты для оценки времени в пути.
+ *
+ * Это модельные поправки (час пик, тип груза, длина плеча, день недели), а не
+ * измерения дорожного трафика: настоящие пробки приходят из lib/traffic.
+ * Всё, для чего нет входных данных (например, погода), остаётся нейтральным —
+ * коэффициент 1.0, а не случайное число.
  */
 
 import type { TrafficCoefficients, RiskFactors, RiskLevel, ETARequest } from "./types";
@@ -57,31 +62,32 @@ export function calculateRushHourCoefficient(departureTime: Date): number {
   return 1.0;
 }
 
+/**
+ * Влияние погоды на время в пути.
+ *
+ * Погода учитывается ТОЛЬКО если её реально передали в запросе (поле weather:
+ * "clear" | "rain" | "snow" | "fog" | "storm"). Раньше при отсутствии данных
+ * функция «угадывала» погоду по месяцу через Math.random() и возвращала то
+ * «snow» (1.35), то «fog» (1.2): один и тот же рейс при пересчёте получал
+ * разное ETA, а в рисках появлялось выдуманное «Сложные погодные условия»
+ * (+30 к оценке риска). Это не измерение, а лотерея, поэтому теперь без
+ * входных данных погода нейтральна — condition: "unknown", коэффициент 1.0.
+ *
+ * Нужна настоящая погода — подключите источник и передавайте её в
+ * ETARequest.weather (например, из /api/routes/calculate-eta).
+ */
 export function calculateWeatherCoefficient(
   weather?: string,
-  departureTime?: Date
+  _departureTime?: Date
 ): { coefficient: number; condition: string } {
-  if (weather && WEATHER_MULTIPLIERS[weather]) {
-    return { coefficient: WEATHER_MULTIPLIERS[weather], condition: weather };
+  const known = typeof weather === "string" ? weather.trim().toLowerCase() : "";
+
+  if (known && WEATHER_MULTIPLIERS[known]) {
+    return { coefficient: WEATHER_MULTIPLIERS[known], condition: known };
   }
 
-  const date = departureTime || new Date();
-  const month = date.getMonth();
-
-  if (month === 11 || month === 0 || month === 1) {
-    const random = Math.random();
-    if (random < 0.3) return { coefficient: 1.35, condition: "snow" };
-    if (random < 0.5) return { coefficient: 1.2, condition: "fog" };
-    return { coefficient: 1.1, condition: "clear_cold" };
-  }
-
-  if (month >= 9 || month <= 4) {
-    const random = Math.random();
-    if (random < 0.4) return { coefficient: 1.15, condition: "rain" };
-    if (random < 0.5) return { coefficient: 1.1, condition: "fog" };
-  }
-
-  return { coefficient: 1.0, condition: "clear" };
+  // Данных о погоде нет (или значение не из справочника) — не влияем на ETA
+  return { coefficient: 1.0, condition: "unknown" };
 }
 
 export function calculateCargoCoefficient(cargo?: ETARequest["cargo"]): number {

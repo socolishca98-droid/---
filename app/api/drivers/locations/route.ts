@@ -5,6 +5,8 @@ import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
+import { REVENUE_ORDER_STATUSES } from "@/lib/orders/revenue"
+import { countOnlineDrivers } from "@/lib/fleet/presence"
 
 // Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
 // (канон жизненного цикла заказа — lib/orders/stages.ts)
@@ -108,7 +110,10 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const online = drivers.filter((d: any) => d.status !== "offline" && d.latitude != null).length
+    // «на связи» — по свежести последней GPS-точки (lib/fleet/presence.ts):
+    // координаты могли остаться от вчерашнего рейса, а статус «available»
+    // ничего не говорит о том, что телефон водителя в сети
+    const online = countOnlineDrivers(allDrivers)
     const inRoute = drivers.filter((d: any) =>
       ["driving", "in_transit", "loading", "unloading", "busy"].includes(d.status),
     ).length
@@ -116,7 +121,8 @@ export async function GET(request: NextRequest) {
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
 
-    const [completedToday, newToday, totalOrders, activeOrdersCount] = await Promise.all([
+    const [completedToday, newToday, totalOrders, activeOrdersCount, revenueSum, activeAlerts] =
+      await Promise.all([
       prisma.order.count({
         where: scopedWhere(__org.organizationId, {
           status: "delivered",
@@ -134,6 +140,18 @@ export async function GET(request: NextRequest) {
           status: { in: ACTIVE_ORDER_STATUSES as any },
         }),
       }),
+      // Выручка и тревоги считались настоящими только на дашборде, а сводка
+      // карты получала зашитые нули. Берём те же канонические правила:
+      // выручка — lib/orders/revenue.ts, тревоги — необработанные SOS.
+      prisma.order.aggregate({
+        _sum: { price: true },
+        where: scopedWhere(__org.organizationId, {
+          status: { in: [...REVENUE_ORDER_STATUSES] },
+        }),
+      }),
+      prisma.sosAlert.count({
+        where: scopedWhere(__org.organizationId, { status: "active" }),
+      }),
     ])
 
     return NextResponse.json({
@@ -149,8 +167,8 @@ export async function GET(request: NextRequest) {
           completedToday,
           newToday,
         },
-        revenue: 0,
-        alerts: 0,
+        revenue: revenueSum._sum.price || 0,
+        alerts: activeAlerts,
       },
     })
   } catch (error: any) {

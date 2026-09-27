@@ -42,6 +42,20 @@ export default function DriverChatPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
+  // Контакты диспетчерской СВОЕЙ организации: раньше кнопка звонка вела на
+  // зашитый в разметку номер +79001234567, а под шапкой всегда горело
+  // выдуманное «Онлайн». Берём настоящий телефон из настроек автопарка
+  // (GET /api/m/me → dispatch), а если его нет — кнопку не показываем.
+  const [dispatch, setDispatch] = useState<{
+    parkName: string | null
+    phone: string | null
+  } | null>(null)
+
+  // Срочное сообщение — свой диалог, а не системный prompt(): в мобильных
+  // webview браузерные окна ввода часто заблокированы
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [alertText, setAlertText] = useState("")
+
   // Загрузка сообщений
   const fetchMessages = useCallback(async () => {
     if (!driver?.id) return
@@ -65,6 +79,30 @@ export default function DriverChatPage() {
       fetchMessages()
     }
   }, [driver?.id, fetchMessages])
+
+  useEffect(() => {
+    if (!driver?.id) return
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/m/me", { cache: "no-store" })
+        const data = await res.json().catch(() => null)
+        if (!cancelled && data?.success && data.dispatch) {
+          setDispatch({
+            parkName: data.dispatch.parkName ?? null,
+            phone: data.dispatch.phone ?? null,
+          })
+        }
+      } catch {
+        // не удалось прочитать контакты — просто не показываем кнопку звонка
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [driver?.id])
 
   // Автообновление
   useEffect(() => {
@@ -118,12 +156,17 @@ export default function DriverChatPage() {
     }
   }
 
-  // Срочное сообщение
+  // Срочное сообщение: открываем свой диалог, отправляем как type: "alert"
   const handleSendAlert = () => {
-    const alertText = prompt("Срочное сообщение диспетчеру:")
-    if (alertText?.trim()) {
-      sendMessage(alertText.trim(), "alert")
-    }
+    setAlertText("")
+    setAlertOpen(true)
+  }
+
+  const submitAlert = async () => {
+    const text = alertText.trim()
+    if (!text) return
+    setAlertOpen(false)
+    await sendMessage(text, "alert")
   }
 
   const sendMessage = async (content: string, type: string = "text") => {
@@ -215,8 +258,11 @@ export default function DriverChatPage() {
                 <Headphones className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold">Диспетчерская</p>
-                <p className="text-xs text-emerald-400">Онлайн</p>
+                <p className="font-semibold">{dispatch?.parkName || "Диспетчерская"}</p>
+                {/* Статус присутствия не отслеживается — выдумывать «Онлайн» не нужно */}
+                <p className="text-xs text-gray-500">
+                  {dispatch?.phone || "Телефон диспетчерской не указан"}
+                </p>
               </div>
             </div>
           </div>
@@ -229,12 +275,24 @@ export default function DriverChatPage() {
             >
               <AlertTriangle className="h-5 w-5 text-red-400" />
             </button>
-            <a
-              href="tel:+79001234567"
-              className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
-            >
-              <Phone className="h-5 w-5 text-emerald-400" />
-            </a>
+            {dispatch?.phone ? (
+              <a
+                href={`tel:${dispatch.phone}`}
+                className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
+                title={`Позвонить диспетчеру: ${dispatch.phone}`}
+              >
+                <Phone className="h-5 w-5 text-emerald-400" />
+              </a>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="p-2.5 rounded-xl opacity-40 cursor-not-allowed"
+                title="Телефон диспетчерской не задан в настройках автопарка"
+              >
+                <Phone className="h-5 w-5 text-gray-500" />
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -322,6 +380,55 @@ export default function DriverChatPage() {
           ))
         )}
       </div>
+
+      {/* Срочное сообщение: свой диалог вместо системного prompt() */}
+      {alertOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Срочное сообщение диспетчеру"
+          className="fixed inset-0 z-30 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+          onClick={() => setAlertOpen(false)}
+        >
+          <div
+            className="w-full max-w-md space-y-3 rounded-2xl border border-red-500/30 bg-[#151518] p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 font-semibold text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              Срочное сообщение
+            </div>
+            <p className="text-xs text-gray-400">
+              Диспетчер увидит его как важное в чате и в уведомлениях
+            </p>
+            <textarea
+              autoFocus
+              value={alertText}
+              onChange={(event) => setAlertText(event.target.value)}
+              rows={3}
+              placeholder="Что случилось? Где вы находитесь?"
+              className="w-full resize-none rounded-xl border border-gray-800 bg-[#0f0f12] px-4 py-3 text-white placeholder-gray-500 focus:border-red-500/50 focus:outline-none"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAlertOpen(false)}
+                className="flex-1 rounded-xl bg-gray-800 py-3 text-gray-300 transition-colors hover:bg-gray-700"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={submitAlert}
+                disabled={!alertText.trim()}
+                className="flex-1 rounded-xl bg-red-500 py-3 font-medium text-white transition-colors hover:bg-red-600 disabled:bg-gray-700 disabled:text-gray-500"
+              >
+                Отправить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="sticky bottom-0 bg-[#09090b] border-t border-gray-800 p-3">

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
+import { countOnlineDrivers } from "@/lib/fleet/presence"
 
 // Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
 // (канон жизненного цикла заказа — lib/orders/stages.ts)
@@ -191,7 +192,9 @@ export async function GET(request: NextRequest) {
         ["busy", "driving", "loading", "unloading"].includes(d.status),
       ).length,
       maintenance: driversOut.filter((d) => d.status === "maintenance").length,
-      online: driversOut.filter((d) => d.status !== "offline").length,
+      // «на связи» — по свежей GPS-точке (lib/fleet/presence.ts). Значение
+      // uiStatus "offline" здесь означает «нет активной смены», а не потерю связи
+      online: countOnlineDrivers(driversOut),
     }
 
     const todayStart = new Date()
