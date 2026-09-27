@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T18:55:50.795Z",
+  "generatedAt": "2026-09-27T14:37:25.842Z",
   "endpoints": [
     {
       "method": "GET",
@@ -499,6 +499,11 @@
     {
       "method": "POST",
       "route": "/api/photos/:photoId/ocr",
+      "group": "photos"
+    },
+    {
+      "method": "GET",
+      "route": "/api/photos/file",
       "group": "photos"
     },
     {

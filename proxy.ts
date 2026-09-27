@@ -15,6 +15,9 @@
  *     страница — редирект на экран входа с сохранением ?next=.
  *  4. Вырезает входящие заголовки x-loginex-* (защита от подделки) и проставляет
  *     проверенные значения для обработчиков.
+ *  5. Переписывает /uploads/** на /api/photos/file: фото документов лежат в
+ *     public/uploads, а Next отдаёт всё из public статикой — без сессии и без
+ *     проверки организации. Роут проверяет и то, и другое.
  *
  * Чего middleware НЕ делает (и не может в edge): обращения к базе.
  * Статус пользователя (pending/suspended), отзыв сессии и права на конкретную
@@ -35,9 +38,12 @@ import { AuthSecretError, verifySessionToken, type SessionTokenPayload } from "@
 import { verifyCsrf } from "@/lib/csrf"
 
 export const config = {
-  // Всё, кроме статики Next.js и файлов с расширениями
+  // Всё, кроме статики Next.js и файлов с расширениями. Загрузки добавлены
+  // отдельным пунктом: у них есть расширение (.jpg), поэтому первое правило
+  // их пропускает мимо прокси — а проверять доступ к фото как раз нужно.
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|robots.txt|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|svg|webp|avif|ico|css|js|mjs|cjs|map|txt|json|webmanifest|woff2?|ttf|otf|pdf|mp3|wav|webm|mp4)$).*)",
+    "/uploads/:path*",
   ],
 }
 
@@ -91,6 +97,16 @@ function shouldCheckCsrf(request: NextRequest): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
+
+  // --- Фото документов: статика из public/ не должна уходить наружу ----------
+  // До классификации: путь с расширением .jpg считается там публичным файлом
+  // и был бы отдан как есть — без сессии и без проверки организации.
+  if (pathname.startsWith("/uploads/")) {
+    const target = request.nextUrl.clone()
+    target.pathname = "/api/photos/file"
+    target.search = `?path=${encodeURIComponent(pathname)}`
+    return NextResponse.rewrite(target)
+  }
 
   // CSRF — до проверки авторизации: защищает и вход с регистрацией
   if (shouldCheckCsrf(request)) {

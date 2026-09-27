@@ -137,6 +137,8 @@ test("загрузка фото открыта обеим ролям: прина
   // Фото грузит и логист (из карточки рейса), и водитель (из телефона):
   // сессия проверяется внутри, поэтому middleware не должен резать водителя
   assert.equal(area("/api/photos/upload"), "any")
+  // отдачу файла тоже нельзя отдавать только штабу: фото смотрит и водитель
+  assert.equal(area("/api/photos/file"), "any")
   assert.equal(area("/api/photos"), "staff")
   assert.equal(area("/api/photos/abc123/ocr"), "staff")
 })
