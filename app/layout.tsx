@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import "./globals.css"
-import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { AuthProvider } from "@/lib/auth-context"
 import { SidebarProvider } from "@/lib/sidebar-context"
@@ -41,7 +40,6 @@ export default function RootLayout({
             </SidebarProvider>
           </AuthProvider>
         </CsrfProvider>
-        <Toaster />
         <SonnerToaster richColors position="top-right" />
       </body>
     </html>

@@ -153,7 +153,10 @@ export default function DashboardMap() {
   const closeDriversPanel = useCallback(() => setShowDriversList(false), [])
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#0a0a0f]">
+        // isolate — карта живёт в собственном стековом контексте: её панели и HUD
+    // (z-900…z-1100, чтобы быть выше слоёв Leaflet) не вылезают на уровень
+    // страницы и не перекрывают шапку, сайдбар, диалоги и тосты.
+    <div className="relative isolate h-full w-full overflow-hidden bg-[#0a0a0f]">
       <style jsx global>{mapStyles}</style>
 
       <div ref={mapContainerRef} className="absolute inset-0 z-0" />

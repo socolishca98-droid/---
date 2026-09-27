@@ -9,6 +9,7 @@ import { Loader2, User, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import type { Driver, Vehicle } from "@/lib/types"
+import { formatPhone } from "@/lib/ui/phone"
 
 interface AssignDriverDialogProps {
   vehicle: Vehicle | null
@@ -78,9 +79,19 @@ export function AssignDriverDialog({
     }
   }
 
-  const filtered = drivers.filter((d: any) =>
-      d.name.toLowerCase().includes(search.toLowerCase()) || d.phone.includes(search),
-  )
+  // Номер в базе канонический (79005554433), а ищут его как попало —
+  // «+7 900», «8900», «55-44». Сравниваем и с каноническим, и с читаемым видом.
+  const needle = search.trim().toLowerCase()
+  const digitsNeedle = search.replace(/\D/g, "")
+  const filtered = drivers.filter((d: any) => {
+    const phone = String(d.phone ?? "")
+    return (
+      d.name.toLowerCase().includes(needle) ||
+      phone.toLowerCase().includes(needle) ||
+      (digitsNeedle.length >= 2 && phone.includes(digitsNeedle)) ||
+      (digitsNeedle.length >= 2 && formatPhone(phone).includes(digitsNeedle))
+    )
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -122,7 +133,7 @@ export function AssignDriverDialog({
                     </div>
                     <div>
                       <p className="font-medium text-sm">{driver.name}</p>
-                      <p className="text-xs text-muted-foreground">{driver.phone}</p>
+                      <p className="text-xs text-muted-foreground">{formatPhone(driver.phone)}</p>
                     </div>
                   </div>
                   <Button

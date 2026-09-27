@@ -847,7 +847,11 @@ export default function MobileHomePage() {
 
   // ... (весь JSX остаётся без изменений, так как driver теперь из хука)
   return (
-    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+    <div
+      className={`min-h-screen bg-[#09090b] text-white ${
+        shift && !isOnMaintenance ? "m-nav-pad-sos" : "m-nav-pad"
+      }`}
+    >
       {/* ... весь существующий JSX ... */}
       <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
         <div className="px-4 py-3">

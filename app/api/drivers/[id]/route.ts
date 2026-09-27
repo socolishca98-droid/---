@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
+import { normalizePhone } from "@/lib/auth/constants"
 import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { parseDateValue } from "@/lib/dates"
 // ✅ Добавлен 'offline' в список разрешённых статусов
@@ -116,7 +117,12 @@ export async function PATCH(
     const data: Record<string, unknown> = {}
 
     if (name !== undefined) data.name = name
-    if (phone !== undefined) data.phone = phone
+    // Канонический номер — как при создании: иначе правка телефона возвращает
+    // карточку в состояние «тот же человек, но другой строкой» и ломает вход.
+    if (phone !== undefined) {
+      const normalized = normalizePhone(String(phone))
+      data.phone = normalized.length >= 10 ? normalized : String(phone).trim()
+    }
 
     // ✅ Проверка статуса с поддержкой 'offline'
     if (status !== undefined) {

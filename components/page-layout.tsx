@@ -26,8 +26,9 @@ export function PageLayout({ children, title, description, actions }: PageLayout
         style={{ marginLeft: isCollapsed ? '80px' : '256px' }}
       >
         <Header />
-        <main className="p-6 space-y-6">
-          <div className="flex justify-between items-center">
+        <main className="p-6 space-y-6 isolate">
+          {/* flex-wrap: на узком окне кнопки уходят под заголовок, а не наезжают на него */}
+          <div className="flex flex-wrap justify-between items-center gap-3">
             <div>
               <h1 className="text-2xl font-bold">{title}</h1>
               {description && <p className="text-muted-foreground">{description}</p>}

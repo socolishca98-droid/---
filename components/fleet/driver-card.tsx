@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { formatPhone, telHref } from "@/lib/ui/phone"
 
 interface DriverCardProps {
   driver: Driver & { rawStatus?: string }
@@ -141,11 +142,11 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
                 </Badge>
               </div>
               <a
-                href={`tel:${driver.phone}`}
+                href={`tel:${telHref(driver.phone)}`}
                 className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1 mt-0.5"
               >
                 <Phone className="h-3 w-3" />
-                {driver.phone}
+                {formatPhone(driver.phone)}
               </a>
             </div>
           </div>
@@ -245,7 +246,7 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
             Написать
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <a href={`tel:${driver.phone}`}>
+            <a href={`tel:${telHref(driver.phone)}`} aria-label={`Позвонить: ${formatPhone(driver.phone)}`}>
               <Phone className="h-4 w-4" />
             </a>
           </Button>

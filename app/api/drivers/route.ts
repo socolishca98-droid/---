@@ -109,6 +109,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Номер храним каноническим (только цифры, ведущая 8 → 7): на нём держится
+    // и уникальность карточки (Driver.phone @unique), и вход водителя — учётка
+    // ищется по normalizePhone (lib/auth/login.ts). Иначе одно и то же лицо в
+    // написаниях «+7 900 555-44-33» и «89005554433» считалось бы двумя разными
+    // водителями: вторая карточка создавалась, а войти в неё было нельзя.
+    const normalizedPhone = normalizePhone(phone)
+    const storedPhone = normalizedPhone.length >= 10 ? normalizedPhone : String(phone).trim()
+
     // Срок прав и медосмотра приходит из <input type="date"> строкой
     // «2026-10-05». new Date() прочитал бы её как полночь UTC, и в зонах
     // западнее Гринвича в базу лёг бы предыдущий день (lib/dates.ts).
@@ -125,7 +133,7 @@ export async function POST(request: NextRequest) {
       data: {
         organizationId: org.organizationId,
         name,
-        phone,
+        phone: storedPhone,
         status: "available",
         licenseNumber: licenseNumber || null,
         licenseExpiry: licenseExpiryDate,
@@ -142,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     // Учётка для входа в приложение водителя: одна система доступа на всех.
     // Пароль временный, водитель обязан сменить его при первом входе.
-    const normalizedPhone = normalizePhone(phone)
+    // normalizedPhone посчитан выше — ровно он и лежит в Driver.phone.
     let credentials: { phone: string; temporaryPassword: string } | null = null
     let warning: string | undefined
 
@@ -151,13 +159,21 @@ export async function POST(request: NextRequest) {
       // org-audit: manual — телефон уникален во всей базе намеренно: это проверка логина, а не данные организации
       const existing = await prisma.user.findFirst({
         where: { OR: [{ phone: normalizedPhone }, { driverId: driver.id }] },
-        select: { id: true },
+        select: { id: true, organizationId: true },
       })
 
       if (existing) {
+        // Вход в приложение — один на всю систему: номер принадлежит ровно одной
+        // учётке. Если она чужой организации, перепривязывать её нельзя (иначе
+        // водитель одной компании попал бы в данные другой) — говорим прямо,
+        // что сделать, вместо обещания «войдёт под существующим паролем».
         warning =
-          "Учётка с таким телефоном уже есть — водитель входит под существующим паролем. " +
-          "При необходимости сбросьте пароль в разделе «Сотрудники и доступ»."
+          existing.organizationId === org.organizationId
+            ? "Учётка с таким телефоном уже есть — водитель входит под существующим паролем. " +
+              "При необходимости сбросьте пароль в разделе «Сотрудники и доступ»."
+            : "Этот номер уже занят учётной записью другой организации: вход привязан к одному " +
+              "номеру на всю систему. Карточка водителя создана, но войти в приложение вашей " +
+              "компании под этим номером он не сможет — укажите другой телефон."
       } else {
         const temporaryPassword = generateTemporaryPassword()
         const { hash, salt } = await hashPassword(temporaryPassword)

@@ -218,7 +218,10 @@ export function seedWorld(): World {
     id: world.driverA,
     organizationId: world.orgA,
     name: "Водитель А",
-    phone: "+79000000001",
+    // Номер канонический (только цифры): так его хранят роуты и так приводит
+    // старые строки scripts/migrate-driver-phones.ts. На нём держится и
+    // уникальность карточки, и вход водителя.
+    phone: "79000000001",
     vehicleType: "truck",
     vehiclePlate: "А001АА77",
     vehicleId: world.vehicleA,
@@ -228,7 +231,7 @@ export function seedWorld(): World {
     id: world.driverB,
     organizationId: world.orgB,
     name: "Водитель Б",
-    phone: "+79000000002",
+    phone: "79000000002",
     vehicleType: "truck",
     vehiclePlate: "А001АА77",
     vehicleId: world.vehicleB,
@@ -239,7 +242,7 @@ export function seedWorld(): World {
     id: world.driverUserA,
     organizationId: world.orgA,
     name: "Водитель А",
-    phone: "+79000000001",
+    phone: "79000000001",
     passwordHash: "x",
     passwordSalt: "x",
     role: "driver",
@@ -250,7 +253,7 @@ export function seedWorld(): World {
     id: world.driverUserB,
     organizationId: world.orgB,
     name: "Водитель Б",
-    phone: "+79000000002",
+    phone: "79000000002",
     passwordHash: "x",
     passwordSalt: "x",
     role: "driver",

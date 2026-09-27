@@ -352,7 +352,7 @@ function PhotoPageContent() {
   const hasOrders = activeOrders.length > 0 || recentOrders.length > 0
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+    <div className="min-h-screen bg-[#09090b] text-white m-nav-pad">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
         <div className="px-4 py-3 flex items-center gap-3">

@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { safeJsonParse } from "@/lib/safe-json"
+import { formatPhone } from "@/lib/ui/phone"
 
 interface Vehicle {
   id: string
@@ -335,7 +336,7 @@ export function VehicleCard({
               <span className="text-sm font-medium">Водитель</span>
             </div>
             <p className="text-sm font-semibold">{vehicle.driver.name}</p>
-            <p className="text-xs text-muted-foreground">{vehicle.driver.phone}</p>
+            <p className="text-xs text-muted-foreground">{formatPhone(vehicle.driver.phone)}</p>
           </div>
         )}
 

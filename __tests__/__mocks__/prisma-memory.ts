@@ -603,7 +603,12 @@ function makeDelegate(model: string) {
 
     async updateMany(args: any = {}) {
       const rows = table(model).filter((row) => matches(row, args.where))
-      for (const row of rows) Object.assign(row, applyData(row, args.data || {}))
+      // Настоящая база проверяет уникальность и на updateMany, поэтому сначала
+      // готовим и проверяем все строки, и только потом пишем: updateMany атомарен,
+      // а частичная запись скрыла бы конфликт, который на проде дал бы P2002.
+      const prepared = rows.map((row) => ({ row, next: applyData(row, args.data || {}) }))
+      for (const { row, next } of prepared) assertUnique(model, next, row.id)
+      for (const { row, next } of prepared) Object.assign(row, next)
       return { count: rows.length }
     },
 

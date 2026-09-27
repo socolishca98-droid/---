@@ -7,6 +7,7 @@ import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import Link from "next/link"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { formatPhone, telHref } from "@/lib/ui/phone"
 import {
   Loader2,
   Phone,
@@ -152,7 +153,7 @@ export default function MobileProfilePage() {
     .toUpperCase()
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-white pb-24">
+    <div className="min-h-screen bg-[#09090b] text-white m-nav-pad">
       {/* Header с аватаром */}
       <div className="bg-gradient-to-b from-orange-500/10 to-transparent pt-8 pb-6 px-4">
         <div className="flex items-center gap-4">
@@ -162,11 +163,11 @@ export default function MobileProfilePage() {
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold truncate">{shown.name}</h1>
             <a
-              href={`tel:${shown.phone}`}
+              href={`tel:${telHref(shown.phone)}`}
               className="text-gray-400 text-sm flex items-center gap-1.5 mt-1 hover:text-gray-300"
             >
               <Phone className="h-4 w-4" />
-              {shown.phone}
+              {formatPhone(shown.phone)}
             </a>
           </div>
         </div>

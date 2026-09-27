@@ -22,6 +22,7 @@
     "db:migrate-task2": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/migrate-task2.ts",
     "db:migrate-order-stages": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/migrate-order-stages.ts",
     "db:migrate-orgs": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/migrate-organizations.ts",
+    "db:migrate-driver-phones": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/migrate-driver-phones.ts",
     "verify:security": "node scripts/verify-security.mjs",
     "verify:task2": "node scripts/verify-task2.mjs",
     "verify:orgs": "node scripts/verify-organizations.mjs",
