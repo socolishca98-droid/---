@@ -677,6 +677,9 @@ export default function MobileHomePage() {
       if (data.success) {
         const distanceKm = data.distanceKm as number
         const etaMinutes = data.etaMinutes as number
+        const baseAddress = typeof data.baseAddress === "string" ? data.baseAddress : null
+        const baseLat = typeof data.baseLat === "number" ? data.baseLat : null
+        const baseLng = typeof data.baseLng === "number" ? data.baseLng : null
 
         const formatEta = (min: number) => {
           if (min < 60) return `${min} мин`
@@ -686,10 +689,33 @@ export default function MobileHomePage() {
         }
 
         toast.success("Возврат на базу", {
-          description: `${distanceKm} км • ~${formatEta(etaMinutes)}`,
+          description: `${distanceKm} км • ~${formatEta(etaMinutes)}${
+            baseAddress ? ` • ${baseAddress}` : ""
+          }`,
+          // Знать расстояние полезно, но ехать водитель будет по навигатору —
+          // кнопка ведёт в Яндекс.Карты, как в карточке рейса.
+          action:
+            baseLat !== null &&
+            baseLng !== null &&
+            typeof latitude === "number" &&
+            typeof longitude === "number"
+              ? {
+                  label: "Маршрут",
+                  onClick: () =>
+                    window.open(
+                      `https://yandex.ru/maps/?rtext=${latitude},${longitude}~${baseLat},${baseLng}&rtt=auto`,
+                      "_blank",
+                      "noopener",
+                    ),
+                }
+              : undefined,
         })
       } else {
-        toast.error("Ошибка маршрута")
+        // Показываем причину с сервера: «адрес базы не указан» полезнее,
+        // чем безличное «ошибка маршрута»
+        toast.error(
+          typeof data.error === "string" && data.error ? data.error : "Ошибка маршрута",
+        )
       }
     } catch {
       toast.error("Ошибка")
