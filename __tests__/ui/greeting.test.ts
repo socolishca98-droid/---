@@ -73,11 +73,13 @@ describe("givenName — из того, что лежит в карточке с�
     expect(givenName("dispatcher")).toBeNull()
   })
 
-  it("название организации — не человек: приветствуем без имени", () => {
-    expect(givenName("ИП Фролов Иван Александрович")).toBeNull()
-    expect(givenName("ООО Рассвет")).toBeNull()
-    expect(givenName('ООО "Рассвет"')).toBeNull()
-    expect(givenName("Loginex LLC")).toBeNull()
+  it("учётки двух ролей продукта приветствуются без имени", () => {
+    // организаторы: администратор (ADMIN_NAME по умолчанию), логист, диспетчер
+    expect(givenName("Администратор")).toBeNull()
+    expect(givenName("Логист")).toBeNull()
+    expect(givenName("Диспетчер")).toBeNull()
+    // исполнители: водитель без имени в карточке
+    expect(givenName("Водитель")).toBeNull()
   })
 
   it("инициалы вместо имени — не угадываем", () => {
@@ -88,14 +90,9 @@ describe("givenName — из того, что лежит в карточке с�
   })
 
   it("аббревиатура капсом именем не считается", () => {
-    expect(givenName("ФНС")).toBeNull()
-    expect(givenName("ОПЕРАТОР")).toBeNull()
-  })
-
-  it("служебные учётки, которых раньше не было в списке", () => {
-    expect(givenName("Оператор")).toBeNull()
-    expect(givenName("Поддержка")).toBeNull()
-    expect(givenName("Система")).toBeNull()
+    expect(givenName("ООО")).toBeNull()
+    expect(givenName("ИП Фролов Иван Александрович")).toBeNull()
+    expect(givenName('ООО "Рассвет"')).toBeNull()
   })
 
   it("хвостовая пунктуация не попадает в обращение", () => {
