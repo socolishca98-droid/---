@@ -17,6 +17,7 @@ import L from "leaflet"
 import type { DriverLocation } from "../types"
 import { STATUS_CONFIG, ACTIVE_STATUSES, formatDuration } from "../constants"
 import { escapeHtml, escapeOrDash } from "../html"
+import { formatAgeSeconds } from "@/lib/fleet/presence"
 
 interface DriverMarkersProps {
   map: L.Map | null
@@ -84,6 +85,10 @@ function buildPopup(driver: DriverLocation): string {
     driver.statusDuration && driver.statusDuration > 0
       ? ` (${formatDuration(driver.statusDuration)})`
       : ""
+  // «На связи» должно быть проверяемым: показываем, когда пришла последняя
+  // точка, а не только цвет статуса
+  const age = formatAgeSeconds(driver.gpsAgeSec)
+  const gpsLine = age ? `Точка GPS: ${age}` : "Точка GPS: не получена"
 
   return `
     <div class="popup-content">
@@ -102,6 +107,7 @@ function buildPopup(driver: DriverLocation): string {
         <span class="popup-status-dot" style="background: ${statusInfo.color}"></span>
         <span style="color: ${statusInfo.color}">${escapeHtml(statusInfo.label)}${escapeHtml(duration)}</span>
       </div>
+      <div class="popup-vehicle" style="margin-top:6px">${escapeHtml(gpsLine)}</div>
       ${
         driver.routeFrom
           ? `

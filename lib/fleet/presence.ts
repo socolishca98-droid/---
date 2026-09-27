@@ -63,3 +63,44 @@ export function countOnlineDrivers(
   }
   return total
 }
+
+/** Возраст последней GPS-точки в секундах; null — точки не было (или дата битая). */
+export function gpsAgeSeconds(
+  lastGpsUpdate: GpsTimestamp,
+  now: Date = new Date(),
+): number | null {
+  const age = gpsAgeMs(lastGpsUpdate, now)
+  if (age === null) return null
+  // Метка из будущего (часы устройства спешат) — считаем возраст нулевым,
+  // иначе интерфейс показывал бы «-5 мин назад»
+  return Math.max(0, Math.round(age / 1000))
+}
+
+/**
+ * «только что», «5 мин назад», «3 ч назад», «2 дн назад».
+ *
+ * Возраст берётся готовым числом секунд из API: на клиенте его не нужно
+ * пересчитывать от своих часов, которые могут расходиться с серверными.
+ */
+export function formatAgeSeconds(ageSeconds: number | null | undefined): string | null {
+  if (ageSeconds == null || !Number.isFinite(ageSeconds)) return null
+
+  const seconds = Math.max(0, Math.round(ageSeconds))
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 1) return "только что"
+  if (minutes < 60) return `${minutes} мин назад`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} ч назад`
+
+  const days = Math.floor(hours / 24)
+  return `${days} дн назад`
+}
+
+/** «5 мин назад» прямо из метки времени — для серверной стороны. */
+export function formatGpsAge(
+  lastGpsUpdate: GpsTimestamp,
+  now: Date = new Date(),
+): string | null {
+  return formatAgeSeconds(gpsAgeSeconds(lastGpsUpdate, now))
+}

@@ -13,9 +13,11 @@ import {
   ChevronRight,
   Search,
   CheckCircle2,
+  Satellite,
 } from "lucide-react"
 import type { DriverLocation, DashboardStats } from "../types"
 import { STATUS_CONFIG, ACTIVE_STATUSES, formatDuration } from "../constants"
+import { formatAgeSeconds } from "@/lib/fleet/presence"
 
 interface DriversPanelProps {
   isOpen: boolean
@@ -151,6 +153,21 @@ export function DriversPanel({
                       <div className="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
                         <Truck className="h-3 w-3 text-gray-500" />
                         <span>{driver.vehiclePlate || "Без ТС"}</span>
+                      </div>
+                      {/* Когда пришла последняя точка: счётчик «N online»
+                          становится проверяемым, а не верой на слово */}
+                      <div
+                        className={`text-[10px] flex items-center gap-1 mt-0.5 ${
+                          driver.online ? "text-emerald-400/90" : "text-gray-500"
+                        }`}
+                      >
+                        <Satellite className="h-3 w-3" />
+                        <span>
+                          {(() => {
+                            const age = formatAgeSeconds(driver.gpsAgeSec)
+                            return age ? `Точка: ${age}` : "Точки GPS нет"
+                          })()}
+                        </span>
                       </div>
                     </div>
                   </div>

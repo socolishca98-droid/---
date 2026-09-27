@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 import { REVENUE_ORDER_STATUSES } from "@/lib/orders/revenue"
-import { countOnlineDrivers } from "@/lib/fleet/presence"
+import { countOnlineDrivers, gpsAgeSeconds, isDriverOnline } from "@/lib/fleet/presence"
 
 // Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
 // (канон жизненного цикла заказа — lib/orders/stages.ts)
@@ -64,6 +64,9 @@ export async function GET(request: NextRequest) {
     })
 
     const now = Date.now()
+    // Один и тот же момент для всех: иначе возраст точки у водителей и
+    // счётчик «на связи» считаются от разных мгновенных new Date()
+    const nowDate = new Date(now)
 
     const drivers = allDrivers.map((driver: any) => {
       const shift = shiftMap.get(driver.id) as any
@@ -107,13 +110,18 @@ export async function GET(request: NextRequest) {
         routeTo: (order as any)?.routeTo || null,
         cargoType: (order as any)?.cargoType || null,
         orderPrice: (order as any)?.price || null,
+        // Присутствие объяснимо: вместе с флагом отдаём саму метку и её
+        // возраст, чтобы карта писала «точка 5 мин назад», а не просто «онлайн»
+        lastGpsUpdate: driver.lastGpsUpdate ? driver.lastGpsUpdate.toISOString() : null,
+        gpsAgeSec: gpsAgeSeconds(driver.lastGpsUpdate, nowDate),
+        online: isDriverOnline(driver.lastGpsUpdate, nowDate),
       }
     })
 
     // «на связи» — по свежести последней GPS-точки (lib/fleet/presence.ts):
     // координаты могли остаться от вчерашнего рейса, а статус «available»
     // ничего не говорит о том, что телефон водителя в сети
-    const online = countOnlineDrivers(allDrivers)
+    const online = countOnlineDrivers(allDrivers, nowDate)
     const inRoute = drivers.filter((d: any) =>
       ["driving", "in_transit", "loading", "unloading", "busy"].includes(d.status),
     ).length

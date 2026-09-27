@@ -10,7 +10,10 @@ import {
   GPS_FUTURE_TOLERANCE_MS,
   GPS_ONLINE_WINDOW_MS,
   countOnlineDrivers,
+  formatAgeSeconds,
+  formatGpsAge,
   gpsAgeMs,
+  gpsAgeSeconds,
   isDriverOnline,
 } from "@/lib/fleet/presence"
 
@@ -94,5 +97,43 @@ describe("countOnlineDrivers — счётчик для сводок", () => {
   it("пустой список и пропуски не ломают подсчёт", () => {
     expect(countOnlineDrivers([], NOW)).toBe(0)
     expect(countOnlineDrivers([null, undefined], NOW)).toBe(0)
+  })
+})
+
+describe("gpsAgeSeconds / formatAgeSeconds — возраст точки в понятном виде", () => {
+  it("считает возраст в секундах от метки", () => {
+    expect(gpsAgeSeconds(minutesAgo(5), NOW)).toBe(300)
+    expect(gpsAgeSeconds(NOW, NOW)).toBe(0)
+    expect(gpsAgeSeconds(null, NOW)).toBeNull()
+    expect(gpsAgeSeconds("не дата", NOW)).toBeNull()
+  })
+
+  it("метка из будущего не даёт отрицательный возраст", () => {
+    expect(gpsAgeSeconds(new Date(NOW.getTime() + 60_000), NOW)).toBe(0)
+  })
+
+  it("подпись возраста: минуты, часы, дни", () => {
+    expect(formatAgeSeconds(0)).toBe("только что")
+    expect(formatAgeSeconds(45)).toBe("только что")
+    expect(formatAgeSeconds(60)).toBe("1 мин назад")
+    expect(formatAgeSeconds(5 * 60)).toBe("5 мин назад")
+    expect(formatAgeSeconds(59 * 60 + 59)).toBe("59 мин назад")
+    expect(formatAgeSeconds(60 * 60)).toBe("1 ч назад")
+    expect(formatAgeSeconds(3 * 3600 + 10)).toBe("3 ч назад")
+    expect(formatAgeSeconds(23 * 3600 + 59 * 60)).toBe("23 ч назад")
+    expect(formatAgeSeconds(24 * 3600)).toBe("1 дн назад")
+    expect(formatAgeSeconds(72 * 3600)).toBe("3 дн назад")
+  })
+
+  it("без возраста подписи нет", () => {
+    expect(formatAgeSeconds(null)).toBeNull()
+    expect(formatAgeSeconds(undefined)).toBeNull()
+    expect(formatAgeSeconds(Number.NaN)).toBeNull()
+  })
+
+  it("formatGpsAge — то же самое напрямую из метки", () => {
+    expect(formatGpsAge(minutesAgo(2), NOW)).toBe("2 мин назад")
+    expect(formatGpsAge(minutesAgo(90), NOW)).toBe("1 ч назад")
+    expect(formatGpsAge(null, NOW)).toBeNull()
   })
 })

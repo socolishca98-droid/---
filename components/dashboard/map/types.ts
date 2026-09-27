@@ -56,6 +56,12 @@ export interface DriverLocation {
   cargoType?: string
   orderPrice?: number
   hasOrder?: boolean
+  /** Последняя GPS-точка (ISO) — из неё считается присутствие */
+  lastGpsUpdate?: string | null
+  /** Возраст точки в секундах; null — точки не было */
+  gpsAgeSec?: number | null
+  /** Точка свежая: водитель действительно на связи (lib/fleet/presence.ts) */
+  online?: boolean
 }
 
 export interface DashboardStats {
