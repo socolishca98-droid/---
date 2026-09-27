@@ -2,6 +2,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import { useDriverSession } from "@/hooks/use-driver-session"
@@ -105,12 +106,14 @@ export default function VehicleSelectPage() {
           router.push("/m")
         }, 500)
       } else {
-        alert(data.error || "Ошибка выбора машины")
+        // Ошибка — тостом, как в остальных экранах /m: системные alert()
+        // в мобильных webview часто заблокированы
+        toast.error(data.error || "Ошибка выбора машины")
         setSelectedId(currentVehicleId)
       }
     } catch (e) {
       console.error("Failed to select vehicle:", e)
-      alert("Ошибка соединения")
+      toast.error("Ошибка соединения")
       setSelectedId(currentVehicleId)
     } finally {
       setIsSaving(false)

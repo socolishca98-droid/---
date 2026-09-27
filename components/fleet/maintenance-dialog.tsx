@@ -10,7 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Wrench, Calendar as CalendarIcon } from "lucide-react"
+import { toast } from "sonner"
 import type { Vehicle } from "@/lib/types"
+
+/** Целое число из поля ввода: пусто и мусор → null, а не NaN в теле запроса. */
+function toWholeNumber(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number.parseInt(trimmed.replace(/\s/g, ""), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
 
 interface MaintenanceDialogProps {
   vehicle: Vehicle | null
@@ -90,7 +99,7 @@ export function MaintenanceDialog({ vehicle, open, onOpenChange, onSuccess }: Ma
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             maintenanceId: activeLog.id,
-            cost: cost ? parseInt(cost) : null,
+            cost: toWholeNumber(cost),
           }),
         })
         if (!res.ok) throw new Error("Ошибка завершения")
@@ -104,8 +113,8 @@ export function MaintenanceDialog({ vehicle, open, onOpenChange, onSuccess }: Ma
             vehicleId: vehicle.id,
             type,
             description,
-            mileage: mileage ? parseInt(mileage) : null,
-            cost: cost ? parseInt(cost) : null,
+            mileage: toWholeNumber(mileage),
+            cost: toWholeNumber(cost),
             performer,
             serviceName: performer === 'service' ? serviceName : null,
             status: isPlanned ? "planned" : "in_progress",
@@ -119,7 +128,7 @@ export function MaintenanceDialog({ vehicle, open, onOpenChange, onSuccess }: Ma
       onOpenChange(false)
     } catch (error) {
       console.error(error)
-      alert("Произошла ошибка при сохранении")
+      toast.error("Произошла ошибка при сохранении")
     } finally {
       setLoading(false)
     }
