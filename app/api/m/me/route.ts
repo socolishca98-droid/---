@@ -73,24 +73,26 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Контакты диспетчерской своей организации: в мобильном приложении есть
-    // кнопка «позвонить диспетчеру», и она должна набирать настоящий номер из
-    // настроек автопарка, а не зашитый в разметку (раньше был +79001234567).
+    // Контакты СВОЕГО автопарка: в мобильном приложении есть кнопка звонка
+    // диспетчеру, и она должна набирать настоящий номер из настроек автопарка
+    // (FleetSettings.phone — телефон перевозчика), а не зашитый в разметку
+    // (раньше был +79001234567). Отдельного «телефона диспетчерской» в схеме
+    // нет, поэтому выдумывать его нельзя.
     const fleetSettings = await prisma.fleetSettings.findFirst({
       where: scopedWhere(org.organizationId),
       select: { parkName: true, phone: true }
     })
 
-    const dispatchPhone = (fleetSettings?.phone || "").trim()
+    const fleetPhone = (fleetSettings?.phone || "").trim()
 
     return NextResponse.json({
       success: true,
       driver,
-      dispatch: {
+      fleet: {
         parkName: fleetSettings?.parkName || null,
         // null — номер не задан в настройках автопарка: интерфейс честно
-        // прячет кнопку звонка вместо набора несуществующего номера
-        phone: dispatchPhone ? dispatchPhone : null
+        // делает кнопку звонка неактивной вместо набора несуществующего номера
+        phone: fleetPhone || null
       },
       activeShift: activeShift || null,
       todayStats: {

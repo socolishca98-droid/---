@@ -42,11 +42,11 @@ export default function DriverChatPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
-  // Контакты диспетчерской СВОЕЙ организации: раньше кнопка звонка вела на
-  // зашитый в разметку номер +79001234567, а под шапкой всегда горело
-  // выдуманное «Онлайн». Берём настоящий телефон из настроек автопарка
-  // (GET /api/m/me → dispatch), а если его нет — кнопку не показываем.
-  const [dispatch, setDispatch] = useState<{
+  // Контакты СВОЕГО автопарка: раньше кнопка звонка вела на зашитый в разметку
+  // номер +79001234567, а под шапкой всегда горело выдуманное «Онлайн». Берём
+  // настоящие данные из настроек автопарка (GET /api/m/me → fleet), а если
+  // телефона нет — кнопка звонка неактивна и честно об этом говорит.
+  const [fleet, setFleet] = useState<{
     parkName: string | null
     phone: string | null
   } | null>(null)
@@ -88,10 +88,10 @@ export default function DriverChatPage() {
       try {
         const res = await fetch("/api/m/me", { cache: "no-store" })
         const data = await res.json().catch(() => null)
-        if (!cancelled && data?.success && data.dispatch) {
-          setDispatch({
-            parkName: data.dispatch.parkName ?? null,
-            phone: data.dispatch.phone ?? null,
+        if (!cancelled && data?.success && data.fleet) {
+          setFleet({
+            parkName: data.fleet.parkName ?? null,
+            phone: data.fleet.phone ?? null,
           })
         }
       } catch {
@@ -258,10 +258,10 @@ export default function DriverChatPage() {
                 <Headphones className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold">{dispatch?.parkName || "Диспетчерская"}</p>
+                <p className="font-semibold">{fleet?.parkName || "Диспетчерская"}</p>
                 {/* Статус присутствия не отслеживается — выдумывать «Онлайн» не нужно */}
                 <p className="text-xs text-gray-500">
-                  {dispatch?.phone || "Телефон диспетчерской не указан"}
+                  {fleet?.phone || "Телефон автопарка не указан"}
                 </p>
               </div>
             </div>
@@ -275,11 +275,11 @@ export default function DriverChatPage() {
             >
               <AlertTriangle className="h-5 w-5 text-red-400" />
             </button>
-            {dispatch?.phone ? (
+            {fleet?.phone ? (
               <a
-                href={`tel:${dispatch.phone}`}
+                href={`tel:${fleet.phone}`}
                 className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
-                title={`Позвонить диспетчеру: ${dispatch.phone}`}
+                title={`Позвонить в автопарк: ${fleet.phone}`}
               >
                 <Phone className="h-5 w-5 text-emerald-400" />
               </a>
@@ -288,7 +288,7 @@ export default function DriverChatPage() {
                 type="button"
                 disabled
                 className="p-2.5 rounded-xl opacity-40 cursor-not-allowed"
-                title="Телефон диспетчерской не задан в настройках автопарка"
+                title="Телефон не задан в настройках автопарка"
               >
                 <Phone className="h-5 w-5 text-gray-500" />
               </button>
