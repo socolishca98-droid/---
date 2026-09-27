@@ -431,7 +431,7 @@ export default function DriverChatPage() {
       )}
 
       {/* Input */}
-      <div className="sticky bottom-0 bg-[#09090b] border-t border-gray-800 p-3">
+      <div className="sticky bottom-0 bg-[#09090b] border-t border-gray-800 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <textarea

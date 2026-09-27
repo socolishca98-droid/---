@@ -414,6 +414,16 @@ export const mapStyles = `
     padding: 2px 0;
   }
 
+  /* === СДВИГ КОНТРОЛОВ, КОГДА РАСКРЫТА ПАНЕЛЬ ВОДИТЕЛЕЙ ===
+     Панель занимает 21rem у правого края; на узком окне она и так на всю
+     ширину, поэтому сдвигаем только там, где для кнопок остаётся место. */
+  @media (min-width: 1024px) {
+    .map-drawer-open .leaflet-bottom.leaflet-right {
+      right: 21rem;
+      transition: right 300ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+
   /* === LEAFLET ZOOM CONTROLS (Floating Glass) === */
   .leaflet-control-zoom {
     border: 1px solid rgba(255, 255, 255, 0.08) !important;

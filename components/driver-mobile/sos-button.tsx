@@ -116,7 +116,7 @@ export function SosButton({ orderId }: Props) {
 
       {isOpen && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-end animate-in fade-in slide-in-from-bottom-10">
-          <div className="w-full max-w-md mx-auto bg-[#151518] rounded-t-3xl overflow-hidden">
+          <div className="w-full max-w-md mx-auto bg-[#151518] rounded-t-3xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">

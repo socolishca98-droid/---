@@ -130,8 +130,10 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-3">
+        {/* Navigation: min-h-0 + overflow-y-auto — на невысоком окне список
+            разделов прокручивается, а логотип сверху и блок пользователя снизу
+            остаются на месте. Иначе нижние разделы уезжают за экран. */}
+        <nav className="flex-1 min-h-0 space-y-1 overflow-y-auto overscroll-contain p-3">
           {navigation.map((item) => {
             const isActive = pathname === item.href
             const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0

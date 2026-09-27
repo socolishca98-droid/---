@@ -159,7 +159,12 @@ export default function DashboardMap() {
     <div className="relative isolate h-full w-full overflow-hidden bg-[#0a0a0f]">
       <style jsx global>{mapStyles}</style>
 
-      <div ref={mapContainerRef} className="absolute inset-0 z-0" />
+      <div
+        ref={mapContainerRef}
+        // map-drawer-open — сигнал стилам карты: контролы Leaflet в правом
+        // нижнем углу уезжают влево, когда панель водителей их закрывает
+        className={`absolute inset-0 z-0 ${showDriversList ? "map-drawer-open" : ""}`}
+      />
 
       {/* Мягкая подложка, пока тайлы не приехали: карта не «мигает» чёрным */}
       <div
@@ -220,6 +225,7 @@ export default function DashboardMap() {
       <TrafficPlanningPanel
         isOpen={isTrafficPanelOpen}
         onClose={closeTrafficPanel}
+        driversPanelOpen={showDriversList}
         showTraffic={showTraffic}
         onToggleTraffic={toggleTraffic}
         showEvents={showTrafficEvents}

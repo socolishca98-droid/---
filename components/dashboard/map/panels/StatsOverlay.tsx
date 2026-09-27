@@ -144,7 +144,14 @@ export function StatsOverlay({
       {/* ══════════════════════════════════════════════════════════════════
           ВЕРХНИЙ ХАБ УПРАВЛЕНИЯ (COMMAND BAR HUD)
          ══════════════════════════════════════════════════════════════════ */}
-      <header className="absolute top-4 left-4 right-4 z-[1000] flex items-center justify-between gap-3 pointer-events-none">
+      <header
+        className={`absolute top-4 left-4 z-[1000] flex items-center justify-between gap-3 pointer-events-none transition-[right] duration-300 ease-out ${
+          // Раскрытая панель водителей (w-84 у правого края) иначе ложится
+          // поверх кнопок: стиль карты, список водителей, центрирование,
+          // обновление телеметрии — всё это остаётся доступным.
+          showDriversPanel ? "right-4 lg:right-[22rem]" : "right-4"
+        }`}
+      >
         
         {/* ЛЕВЫЙ МОДУЛЬ: База флота */}
         <div className="flex items-center gap-2 pointer-events-auto shrink-0">
@@ -410,7 +417,11 @@ export function StatsOverlay({
       {/* ══════════════════════════════════════════════════════════════════
           НИЖНИЙ СТАТУС-БАР ТЕЛЕМЕТРИИ (LIVE STATUS BAR)
          ══════════════════════════════════════════════════════════════════ */}
-      <footer className="absolute bottom-4 left-4 right-4 z-[900] pointer-events-none flex items-end justify-between gap-3">
+      <footer
+        className={`absolute bottom-4 left-4 z-[900] pointer-events-none flex items-end justify-between gap-3 transition-[right] duration-300 ease-out ${
+          showDriversPanel ? "right-4 lg:right-[22rem]" : "right-4"
+        }`}
+      >
         {/* Слева: Live статус и телеметрия */}
         <div className="flex items-center gap-2 bg-[#111319]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl px-3.5 py-2 shadow-2xl pointer-events-auto">
           <span className="relative flex h-2 w-2">
@@ -430,7 +441,9 @@ export function StatsOverlay({
           </span>
         </div>
 
-        <div className="flex flex-col items-end gap-2 min-w-0">
+        {/* pb — запас под кнопками зума Leaflet (правый нижний угол):
+            предупреждения не должны их закрывать */}
+        <div className="flex flex-col items-end gap-2 min-w-0 pb-[6.5rem]">
         {/* Города без координат: линия рейса будет короче — говорим об этом прямо */}
         {problems.length > 0 && !problemsDismissed && (
           <aside

@@ -24,6 +24,8 @@ import type { TrafficLevelInfo } from "../layers/TrafficLayer"
 interface TrafficPlanningPanelProps {
   isOpen: boolean
   onClose: () => void
+  /** Панель водителей раскрыта: уезжаем влево, чтобы не оказаться под ней */
+  driversPanelOpen?: boolean
   showTraffic: boolean
   onToggleTraffic: () => void
   showEvents: boolean
@@ -43,6 +45,7 @@ interface TrafficPlanningPanelProps {
 export function TrafficPlanningPanel({
   isOpen,
   onClose,
+  driversPanelOpen = false,
   showTraffic,
   onToggleTraffic,
   showEvents,
@@ -122,7 +125,9 @@ export function TrafficPlanningPanel({
   return (
     <div
       id="traffic-planning-panel"
-      className="absolute top-18 right-4 z-[1050] w-[420px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-6rem)] flex flex-col bg-[#10121a]/98 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-2xl text-white animate-in fade-in slide-in-from-top-3 duration-200 overflow-hidden"
+      className={`absolute top-18 z-[1050] w-[420px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-6rem)] flex flex-col bg-[#10121a]/98 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-2xl text-white animate-in fade-in slide-in-from-top-3 duration-200 overflow-hidden transition-[right] duration-300 ease-out ${
+        driversPanelOpen ? "right-4 lg:right-[22rem]" : "right-4"
+      }`}
     >
       {/* ══════════════════════════════════════════════════════════════════
           ШАПКА ПАНЕЛИ
