@@ -14,6 +14,10 @@ interface UseMapDataReturn {
   isLoading: boolean
   lastUpdate: Date | null
   trafficByRouteId: Record<string, TrafficRouteInfo>
+  /** true — пробки пришли от демо-провайдера (TRAFFIC_PROVIDER=mock) */
+  trafficMock: boolean
+  /** Адреса, координаты которых определить не удалось (карта честно это показывает) */
+  problems: string[]
   refresh: () => Promise<void>
 }
 
@@ -63,6 +67,8 @@ export function useMapData(): UseMapDataReturn {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
 
   const [trafficByRouteId, setTrafficByRouteId] = useState<Record<string, TrafficRouteInfo>>({})
+  const [trafficMock, setTrafficMock] = useState(false)
+  const [problems, setProblems] = useState<string[]>([])
   const lastTrafficFetchAtRef = useRef<number>(0)
   const isMountedRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -105,6 +111,7 @@ export function useMapData(): UseMapDataReturn {
       const data = (await res.json().catch(() => null)) as TrafficBatchResponse | null
       if (isMountedRef.current && data?.success && data.trafficByRouteId) {
         setTrafficByRouteId((prev) => ({ ...prev, ...data.trafficByRouteId! }))
+        setTrafficMock(data.mock === true)
       }
     } catch (error: any) {
       if (error?.name === "AbortError") return
@@ -175,6 +182,7 @@ export function useMapData(): UseMapDataReturn {
         setRoutes(routesList)
         setBase(rData.base || null)
         setBaseWarning(rData.warning || null)
+        setProblems(Array.isArray(rData.problems) ? rData.problems.filter((x: unknown) => typeof x === "string") : [])
 
         const totalKm = routesList.reduce((sum: any, r: any) => sum + (r.totalDistance || 0), 0)
         setTotalActiveKm(totalKm)
@@ -225,6 +233,8 @@ export function useMapData(): UseMapDataReturn {
     isLoading,
     lastUpdate,
     trafficByRouteId,
+    trafficMock,
+    problems,
     refresh: fetchData,
   }
 }

@@ -183,8 +183,9 @@ export default function PhotosPage() {
   }, [user, isLoading, loadPhotos])
 
   if (isLoading || !user) {
+    // Подложка прозрачная: живой фон приложения виден и во время загрузки
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     )

@@ -20,10 +20,19 @@ export type TrafficRouteInfo = {
   generatedAt: string // ISO
   expiresAt: string // ISO
   segments: TrafficSegment[]
+  /**
+   * Сводка по маршруту целиком — есть только там, где провайдер умеет считать
+   * пробки (Яндекс.Маршрутизация). У демо-провайдера её нет.
+   */
+  summary?: { delayMin: number; ratio: number }
+  /** true — данные сгенерированы для демонстрации, а не получены от сервиса пробок. */
+  mock?: boolean
 }
 
 export type TrafficBatchResponse = {
   success: boolean
   trafficByRouteId?: Record<string, TrafficRouteInfo>
+  /** true, хотя бы один рейс получен от демо-провайдера: интерфейс честно это подписывает */
+  mock?: boolean
   error?: string
 }

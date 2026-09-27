@@ -62,6 +62,10 @@ export async function POST(req: NextRequest) {
           generatedAt: new Date(traffic.generatedAtMs).toISOString(),
           expiresAt: new Date(traffic.expiresAtMs).toISOString(),
           segments: traffic.segments,
+          // Сводку и признак демо-данных отдаём наружу: без них интерфейс либо
+          // выдумывал пробки сам, либо показывал демо-данные как измерение.
+          ...(traffic.summary ? { summary: traffic.summary } : {}),
+          ...(traffic.mock ? { mock: true } : {}),
         }
       } catch (e: any) {
         if (debug) {
@@ -72,7 +76,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const base: TrafficBatchResponse = { success: true, trafficByRouteId }
+    const hasMock = Object.values(trafficByRouteId).some((info) => info.mock === true)
+
+    const base: TrafficBatchResponse = {
+      success: true,
+      trafficByRouteId,
+      ...(hasMock ? { mock: true } : {}),
+    }
 
     if (debug) {
       return NextResponse.json({

@@ -1,8 +1,14 @@
 // components/dashboard/map/layers/WaypointMarkers.tsx
+//
+// Точки рейса: погрузка, выгрузка, база.
+//
+// Нумерация — внутри рейса (1, 2, 3…), а не сквозная по всем машинам: логист
+// смотрит на один рейс и сверяет порядок объезда с карточкой рейса.
 
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import type { RouteData } from "../types"
+import { escapeHtml, escapeOrDash } from "../html"
 
 interface WaypointMarkersProps {
   map: L.Map | null
@@ -15,90 +21,125 @@ const POINT_STYLES = {
     color: "#F59E0B",
     bg: "rgba(245, 158, 11, 0.15)",
     arrow: "↓",
-    label: "Погрузка"
+    label: "Погрузка",
   },
   unloading: {
     color: "#10B981",
     bg: "rgba(16, 185, 129, 0.15)",
     arrow: "↑",
-    label: "Выгрузка"
+    label: "Выгрузка",
   },
   base: {
     color: "#FF6B35",
     bg: "rgba(255, 107, 53, 0.15)",
     arrow: "",
-    label: "База"
-  }
+    label: "База",
+  },
+} as const
+
+type PointType = keyof typeof POINT_STYLES
+
+function isValidPosition(value: unknown): value is [number, number] {
+  if (!Array.isArray(value) || value.length !== 2) return false
+  const [lat, lng] = value as [unknown, unknown]
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  )
 }
 
-export function WaypointMarkers({
-  map,
-  routes,
-  enabled,
-}: WaypointMarkersProps): null {
-  const markersRef = useRef<L.Marker[]>([])
+export function WaypointMarkers({ map, routes, enabled }: WaypointMarkersProps): null {
+  const groupRef = useRef<L.LayerGroup | null>(null)
 
   useEffect(() => {
     if (!map) return
 
-    markersRef.current.forEach((m: any) => m.remove())
-    markersRef.current = []
+    if (groupRef.current) {
+      groupRef.current.remove()
+      groupRef.current = null
+    }
 
     if (!enabled) return
 
-    let num = 1
+    const group = L.layerGroup([])
+    const list = Array.isArray(routes) ? routes : []
 
-    routes.forEach((route: any) => {
-      if (!route.waypoints) return
+    for (const route of list) {
+      if (!route || !Array.isArray(route.waypoints)) continue
 
-      route.waypoints.forEach((wp: any) => {
-        if (!wp.position || wp.type === "driver") return
+      let pointNumber = 1
 
-        const style = POINT_STYLES[wp.type as keyof typeof POINT_STYLES]
-        if (!style) return
+      for (const waypoint of route.waypoints) {
+        if (!waypoint || waypoint.type === "driver") continue
+        if (!isValidPosition(waypoint.position)) continue
 
-        const pointNum = wp.type !== "base" ? num++ : null
+        const style = POINT_STYLES[waypoint.type as PointType]
+        if (!style) continue
 
-        const html = `
-          <div class="wp" style="--c: ${style.color}; --bg: ${style.bg}">
-            <div class="wp-dot">
-              ${pointNum !== null ? `<span class="wp-num">${pointNum}</span>` : '⌂'}
-              ${style.arrow ? `<span class="wp-arrow">${style.arrow}</span>` : ''}
-            </div>
-          </div>
-        `
+        const isBase = waypoint.type === "base"
+        const number = isBase ? null : pointNumber++
+        const address = escapeOrDash(waypoint.address, "Адрес не указан")
 
         const icon = L.divIcon({
           className: "wp-container",
-          html,
+          html: `
+            <div class="wp" style="--c: ${style.color}; --bg: ${style.bg}">
+              <div class="wp-dot">
+                ${number !== null ? `<span class="wp-num">${number}</span>` : "⌂"}
+                ${style.arrow ? `<span class="wp-arrow">${style.arrow}</span>` : ""}
+              </div>
+            </div>
+          `,
           iconSize: [32, 32],
           iconAnchor: [16, 16],
-          popupAnchor: [0, -20],
+          popupAnchor: [0, -18],
         })
 
         const popup = `
           <div class="wp-popup">
             <div class="wp-popup-head" style="border-color: ${style.color}">
               <span class="wp-popup-type" style="color: ${style.color}">${style.arrow} ${style.label}</span>
-              ${pointNum ? `<span class="wp-popup-num" style="background: ${style.color}">${pointNum}</span>` : ''}
+              ${
+                number !== null
+                  ? `<span class="wp-popup-num" style="background: ${style.color}">${number}</span>`
+                  : ""
+              }
             </div>
-            <div class="wp-popup-addr">${wp.address}</div>
-            ${route.driverName ? `<div class="wp-popup-info">🚚 ${route.driverName}</div>` : ''}
-            ${route.cargoType ? `<div class="wp-popup-info">📦 ${route.cargoType}</div>` : ''}
+            <div class="wp-popup-addr">${address}</div>
+            ${
+              route.driverName
+                ? `<div class="wp-popup-info">🚚 ${escapeHtml(route.driverName)}</div>`
+                : ""
+            }
+            ${
+              route.cargoType
+                ? `<div class="wp-popup-info">📦 ${escapeHtml(route.cargoType)}</div>`
+                : ""
+            }
           </div>
         `
 
-        const marker = L.marker(wp.position, { icon, zIndexOffset: 200 })
-          .addTo(map)
-          .bindPopup(popup, { className: "wp-popup-wrap", closeButton: false })
+        L.marker(waypoint.position, {
+          icon,
+          zIndexOffset: 200,
+          keyboard: false,
+          riseOnHover: true,
+        })
+          .bindPopup(popup, { className: "wp-popup-wrap", closeButton: false, maxWidth: 260 })
+          .addTo(group)
+      }
+    }
 
-        markersRef.current.push(marker)
-      })
-    })
+    group.addTo(map)
+    groupRef.current = group
 
     return () => {
-      markersRef.current.forEach((m: any) => m.remove())
-      markersRef.current = []
+      group.remove()
+      if (groupRef.current === group) groupRef.current = null
     }
   }, [map, routes, enabled])
 

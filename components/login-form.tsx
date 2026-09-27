@@ -9,9 +9,13 @@
  *
  * Если учётная запись помечена mustChangePassword (создана сид-скриптом или
  * пароль сбросил логист) — после входа показывается обязательная смена пароля.
+ *
+ * Оформление: живой фон приложения (LiveBackground из app/layout.tsx) остаётся
+ * видимым — карточка полупрозрачная, слева брендовая панель с той же
+ * геометрией маршрута, сверху приветствие по времени суток.
  */
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
@@ -25,17 +29,39 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { AlertCircle, KeyRound, Loader2, Lock, ShieldCheck, Truck } from "lucide-react"
+import {
+  AlertCircle,
+  Boxes,
+  KeyRound,
+  Loader2,
+  Lock,
+  MapPinned,
+  ShieldCheck,
+  Truck,
+} from "lucide-react"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
 interface LoginFormProps {
   /** Куда отправить после успешного входа */
   nextPath?: string
 }
 
+/** Что коротко показываем о системе на экране входа. */
+const HIGHLIGHTS: Array<{ icon: typeof Boxes; text: string }> = [
+  { icon: Boxes, text: "Заказы, рейсы и водители в одном окне" },
+  { icon: MapPinned, text: "Живая карта: пробки, ETA и статусы машин" },
+  { icon: ShieldCheck, text: "Документы, оплаты и отчёты без Excel" },
+]
+
 export function LoginForm({ nextPath }: LoginFormProps) {
   const router = useRouter()
   const { login } = useAuth()
+
+  // Приветствие по времени суток считаем на клиенте: серверный рендер и
+  // гидратация не должны расходиться из-за часов.
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => setNow(new Date()), [])
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -106,9 +132,14 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     }
   }
 
+  const eyebrow = now ? formatGreeting(null, now) : "Здравствуйте"
+  const dateLabel = now ? formatHumanDate(now) : undefined
+
   if (needsPasswordChange) {
     return (
       <Shell
+        eyebrow={eyebrow}
+        dateLabel={dateLabel}
         title="Смените пароль"
         description="Учётная запись создана администратором или пароль был сброшен. Придумайте свой пароль, чтобы продолжить"
       >
@@ -166,8 +197,10 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
   return (
     <Shell
+      eyebrow={eyebrow}
+      dateLabel={dateLabel}
       title="Вход в систему"
-      description="Доступ выдается администратором после одобрения заявки"
+      description="Доступ выдаёт администратор после одобрения заявки"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
@@ -219,7 +252,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
         </Button>
       </form>
 
-      <div className="mt-6 pt-4 border-t border-border/50 space-y-3">
+      <div className="mt-6 pt-4 border-t border-border/50 space-y-2.5">
         <p className="text-sm text-muted-foreground text-center">
           Нет учётной записи?{" "}
           <Link href="/register" className="text-primary hover:underline font-medium">
@@ -242,7 +275,7 @@ function ErrorBlock({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg"
+      className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/25 p-3 rounded-xl"
     >
       <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
       <span>{message}</span>
@@ -251,35 +284,118 @@ function ErrorBlock({ message }: { message: string }) {
 }
 
 function Shell({
+  eyebrow,
+  dateLabel,
   title,
   description,
   children,
 }: {
+  /** Приветствие по времени суток: «Доброе утро» */
+  eyebrow: string
+  /** «суббота, 26 сентября» — показываем, когда часы уже известны клиенту */
+  dateLabel?: string
   title: string
   description: string
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background/70 via-background/40 to-primary/10 p-4">
-      <div className="rise-in w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4">
-            <Truck className="h-8 w-8 text-primary-foreground" />
+    // Фон не перекрываем наглухо: за экраном входа работает общий слой
+    // LiveBackground, здесь лишь мягкие световые пятна для контраста.
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
+      <div className="grid w-full max-w-5xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center">
+        {/* Брендовая панель — только на широких экранах */}
+        <div className="stagger-in hidden lg:flex flex-col gap-8">
+          <div className="flex items-center gap-4">
+            <span className="login-mark h-14 w-14 shrink-0">
+              <Truck className="h-7 w-7 text-primary-foreground" />
+            </span>
+            <div>
+              <p className="text-2xl font-bold tracking-tight">{PRODUCT_NAME}</p>
+              <p className="text-sm text-muted-foreground">
+                система управления грузоперевозками
+              </p>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">{PRODUCT_NAME}</h1>
-          <p className="text-muted-foreground flex items-center justify-center gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            система управления грузоперевозками
-          </p>
+
+          {/* Та же геометрия маршрута, что и на фоне: база → рейс → клиент */}
+          <svg
+            className="h-24 w-full max-w-md"
+            viewBox="0 0 420 100"
+            fill="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              className="login-brand__track"
+              d="M18 74 C 90 74, 110 30, 176 34 S 268 78, 336 52 S 386 30, 402 26"
+            />
+            <circle cx="18" cy="74" r="5" stroke="var(--primary)" strokeWidth="1.8" />
+            <circle cx="18" cy="74" r="1.8" fill="var(--primary)" />
+            <circle
+              cx="176"
+              cy="34"
+              r="3"
+              fill="color-mix(in oklab, var(--foreground) 45%, transparent)"
+            />
+            <rect
+              x="396"
+              y="20"
+              width="12"
+              height="12"
+              rx="3"
+              transform="rotate(45 402 26)"
+              stroke="color-mix(in oklab, var(--foreground) 55%, transparent)"
+              strokeWidth="1.6"
+            />
+          </svg>
+
+          <ul className="space-y-3">
+            {HIGHLIGHTS.map((item) => (
+              <li key={item.text} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card/60">
+                  <item.icon className="h-4 w-4 text-primary" />
+                </span>
+                <span className="text-sm leading-relaxed text-muted-foreground">
+                  {item.text}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <Card className="border-border/50 shadow-xl">
-          <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-xl">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </CardHeader>
-          <CardContent>{children}</CardContent>
-        </Card>
+        {/* Карточка входа */}
+        <div className="rise-in mx-auto w-full max-w-md space-y-5">
+          {/* Компактный логотип там, где брендовой панели нет (узкие экраны) */}
+          <div className="flex items-center gap-3 lg:hidden">
+            <span className="login-mark h-11 w-11 shrink-0">
+              <Truck className="h-6 w-6 text-primary-foreground" />
+            </span>
+            <div>
+              <p className="text-xl font-bold leading-tight tracking-tight">{PRODUCT_NAME}</p>
+              <p className="text-xs text-muted-foreground">
+                система управления грузоперевозками
+              </p>
+            </div>
+          </div>
+
+          <Card className="border-border/60 bg-card/85 shadow-2xl shadow-black/40 backdrop-blur-xl">
+            <CardHeader className="space-y-1.5 pb-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                  {eyebrow}
+                </p>
+                {dateLabel && (
+                  <p className="hidden text-[11px] text-muted-foreground sm:block">
+                    {dateLabel}
+                  </p>
+                )}
+              </div>
+              <CardTitle className="text-2xl tracking-tight">{title}</CardTitle>
+              <CardDescription className="leading-relaxed">{description}</CardDescription>
+            </CardHeader>
+            <CardContent>{children}</CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )

@@ -11,7 +11,7 @@
  * он берёт данные из GET /api/notifications (см. components/notifications-bell.tsx).
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
@@ -39,6 +39,7 @@ import { NotificationsBell } from "@/components/notifications-bell"
 import { Badge } from "@/components/ui/badge"
 import { Building2, KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
 import { toast } from "sonner"
+import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Администратор",
@@ -55,6 +56,11 @@ function initials(name: string): string {
 export function Header() {
   const router = useRouter()
   const { user, logout } = useAuth()
+
+  // Часы — только на клиенте: серверный рендер не должен «спорить» с
+  // гидратацией из-за разного времени (приветствие по времени суток).
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => setNow(new Date()), [])
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
@@ -125,6 +131,16 @@ export function Header() {
 
   return (
     <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-6">
+      {/* Приветствие по времени суток: человек видит, что система «знает» его */}
+      <div className="hidden lg:flex flex-col leading-tight min-w-0">
+        <span className="text-sm font-semibold truncate">
+          {now ? formatGreeting(user.name, now) : "Здравствуйте"}
+        </span>
+        <span className="text-xs text-muted-foreground truncate">
+          {now ? formatHumanDate(now) : "\u00a0"}
+        </span>
+      </div>
+
       <div className="flex items-center gap-2 ml-auto">
         <NotificationsBell />
 

@@ -80,8 +80,18 @@
 }
 
 @theme inline {
-  --font-sans: "Inter", "Inter Fallback", sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  /* Шрифты подключаем системные: web-шрифты с внешних CDN в продукт не
+     тянем (лишний запрос, FOUT и зависимость от стороннего сервиса), а
+     локальные .woff2 в репозитории не лежат. Стек подобран так, чтобы
+     кириллица выглядела одинаково ровно на macOS, Windows, Linux и Android. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+    Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial,
+    "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", "Segoe UI Mono",
+    "Roboto Mono", "Noto Sans Mono", "Liberation Mono", Menlo, Consolas,
+    monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -402,6 +412,217 @@
 }
 
 /* --------------------------------------------------------------------------
+   Приветствие после входа (components/visual/welcome-splash.tsx)
+-------------------------------------------------------------------------- */
+
+/* Слой декоративный и короткий: pointer-events: none — приложением можно
+   пользоваться сразу, закрывается кликом или Esc (слушатели на window) */
+.welcome-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 42%, oklch(0.17 0.02 265 / 0.5), oklch(0.11 0.02 265 / 0.86));
+  backdrop-filter: blur(10px) saturate(1.12);
+  animation: welcome-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.welcome-splash--leaving {
+  animation: welcome-out 260ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.welcome-splash__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 36px 24px;
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: 24px;
+  box-shadow: 0 32px 80px -40px oklch(0 0 0 / 0.9);
+  text-align: center;
+  animation: welcome-card-in 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.welcome-splash__route {
+  width: 300px;
+  height: 90px;
+  overflow: visible;
+}
+
+/* Линия маршрута «прорисовывается» штрихом, пока едет точка-грузовик */
+.welcome-splash__track {
+  stroke: color-mix(in oklab, var(--primary) 82%, white 18%);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 340;
+  stroke-dashoffset: 340;
+  animation: welcome-draw 1500ms cubic-bezier(0.32, 0, 0.24, 1) 60ms both;
+}
+
+.welcome-splash__pin {
+  fill: none;
+  stroke: color-mix(in oklab, var(--foreground) 45%, transparent);
+  stroke-width: 1.6;
+}
+
+.welcome-splash__pin--soft {
+  stroke: color-mix(in oklab, var(--primary) 40%, transparent);
+  stroke-dasharray: 3 4;
+}
+
+.welcome-splash__greeting {
+  margin-top: 6px;
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+  animation: rise-in 520ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.welcome-splash__subtitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--foreground) 78%, transparent);
+  animation: rise-in 520ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both;
+}
+
+.welcome-splash__date {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  animation: rise-in 520ms cubic-bezier(0.22, 1, 0.36, 1) 260ms both;
+}
+
+.welcome-splash__bar {
+  width: 220px;
+  height: 3px;
+  margin-top: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+.welcome-splash__bar-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--primary) 55%, white 45%),
+    var(--primary)
+  );
+  animation: welcome-bar 1500ms cubic-bezier(0.32, 0, 0.24, 1) 80ms both;
+}
+
+@keyframes welcome-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes welcome-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes welcome-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes welcome-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes welcome-bar {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Экран входа: брендовая панель и форма
+-------------------------------------------------------------------------- */
+
+/* Тонкая линия маршрута на панели входа — та же геометрия, что и на фоне */
+.login-brand__track {
+  stroke: color-mix(in oklab, var(--primary) 60%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  fill: none;
+  stroke-dasharray: 6 7;
+  animation: login-track-flow 24s linear infinite;
+}
+
+@keyframes login-track-flow {
+  to {
+    stroke-dashoffset: -260;
+  }
+}
+
+.login-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklab, var(--primary) 92%, white 8%),
+    color-mix(in oklab, var(--primary) 62%, oklch(0.4 0.12 30))
+  );
+  box-shadow:
+    0 18px 40px -20px color-mix(in oklab, var(--primary) 70%, transparent),
+    inset 0 1px 0 oklch(1 0 0 / 0.25);
+}
+
+/* Мягкое «дыхание» вокруг логотипа — заметно, но не отвлекает */
+.login-mark::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in oklab, var(--primary) 32%, transparent);
+  animation: login-mark-halo 3.6s ease-in-out infinite;
+}
+
+@keyframes login-mark-halo {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+/* --------------------------------------------------------------------------
    Микровзаимодействия
 -------------------------------------------------------------------------- */
 
@@ -618,8 +839,26 @@ body {
   .page-transition,
   .stagger-in > *,
   .rise-in,
-  .skeleton-shimmer::after {
+  .skeleton-shimmer::after,
+  .welcome-splash,
+  .welcome-splash__card,
+  .welcome-splash__track,
+  .welcome-splash__bar-fill,
+  .welcome-splash__greeting,
+  .welcome-splash__subtitle,
+  .welcome-splash__date,
+  .login-brand__track,
+  .login-mark::after {
     animation: none !important;
+  }
+
+  /* Линия маршрута на экране входа остаётся нарисованной целиком */
+  .welcome-splash__track {
+    stroke-dashoffset: 0;
+  }
+
+  .welcome-splash__bar-fill {
+    transform: scaleX(1);
   }
 
   .nav-progress__bar {
@@ -629,7 +868,8 @@ body {
 
 @media print {
   .theme-canvas,
-  .nav-progress {
+  .nav-progress,
+  .welcome-splash {
     display: none !important;
   }
 

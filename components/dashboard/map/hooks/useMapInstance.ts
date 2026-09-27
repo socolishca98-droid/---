@@ -1,10 +1,72 @@
 // components/dashboard/map/hooks/useMapInstance.ts
+//
+// Экземпляр карты Leaflet и его оформление.
+//
+// Что здесь важно:
+//  — карта создаётся один раз на контейнер и корректно уничтожается (React 19 в
+//    режиме StrictMode монтирует эффекты дважды — без этого Leaflet падал с
+//    «Map container is already initialized»);
+//  — базовые слои (тайлы) собраны в LayerGroup: смена темы меняет один слой,
+//    а не пересоздаёт карту;
+//  — размер контейнера меняется не только при ресайзе окна (сворачивание
+//    бокового меню, открытие панелей), поэтому за контейнером следит
+//    ResizeObserver и честно вызывает invalidateSize() — без него карта
+//    оставалась «серой» и клики попадали не туда;
+//  — canvas для анимации маршрутов больше не создаётся здесь: его рисует
+//    useRouteAnimation в собственном pane карты (см. комментарий там).
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import L from "leaflet"
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "../constants"
 
 export type MapTheme = "dark" | "graphite" | "satellite"
+
+const THEME_STORAGE_KEY = "tms_map_theme"
+const THEMES: MapTheme[] = ["dark", "graphite", "satellite"]
+
+/** Базовые слои для каждой темы: тайлы + подпись прав внизу. */
+const BASE_LAYERS: Record<MapTheme, Array<{ url: string; options: L.TileLayerOptions }>> = {
+  // CARTO Dark Matter — тёмный минимализм, на нём читаются неоновые маршруты
+  dark: [
+    {
+      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      options: {
+        subdomains: "abcd",
+        maxZoom: 19,
+        minZoom: 3,
+        attribution: "© OpenStreetMap · CARTO Dark Matter",
+        crossOrigin: true,
+      },
+    },
+  ],
+  // Esri Canvas Dark Gray — нейтральный инженерный графит
+  graphite: [
+    {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+      options: {
+        maxZoom: 18,
+        minZoom: 3,
+        attribution: "© Esri Canvas Base",
+        crossOrigin: true,
+      },
+    },
+    {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+      options: { maxZoom: 18, minZoom: 3, opacity: 0.85, crossOrigin: true },
+    },
+  ],
+  // Спутник + тёмные подписи дорог поверх снимка
+  satellite: [
+    {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      options: { maxZoom: 19, minZoom: 3, attribution: "© Esri Satellite", crossOrigin: true },
+    },
+    {
+      url: "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
+      options: { subdomains: "abcd", maxZoom: 19, minZoom: 3, opacity: 0.9, crossOrigin: true },
+    },
+  ],
+}
 
 interface UseMapInstanceOptions {
   containerRef: React.RefObject<HTMLDivElement | null>
@@ -12,10 +74,8 @@ interface UseMapInstanceOptions {
 }
 
 interface UseMapInstanceReturn {
-  /** Экземпляр карты (состояние для реактивности) */
+  /** Экземпляр карты (состояние — чтобы слои рисовались после инициализации) */
   map: L.Map | null
-  /** Canvas для анимации */
-  canvasRef: React.MutableRefObject<HTMLCanvasElement | null>
   /** Перелететь к точке */
   flyTo: (position: [number, number], zoom?: number) => void
   /** Вписать все точки в видимую область */
@@ -24,6 +84,12 @@ interface UseMapInstanceReturn {
   theme: MapTheme
   /** Переключить тему оформления карты */
   setTheme: (theme: MapTheme) => void
+  /** Тайлы базового слоя загружены (можно убирать заглушку загрузки) */
+  tilesReady: boolean
+}
+
+function isTheme(value: unknown): value is MapTheme {
+  return typeof value === "string" && (THEMES as string[]).includes(value)
 }
 
 export function useMapInstance({
@@ -32,107 +98,61 @@ export function useMapInstance({
 }: UseMapInstanceOptions): UseMapInstanceReturn {
   const [map, setMap] = useState<L.Map | null>(null)
   const [theme, setThemeState] = useState<MapTheme>(initialTheme)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const initializedRef = useRef(false)
+  const [tilesReady, setTilesReady] = useState(false)
+
+  const mapRef = useRef<L.Map | null>(null)
   const baseLayersGroupRef = useRef<L.LayerGroup | null>(null)
 
-  // Функция применения темы тайлов
-  const applyTheme = useCallback((mapInstance: L.Map, newTheme: MapTheme) => {
-    if (!mapInstance) return
-
-    // Очищаем старые базовые слои
+  const applyTheme = useCallback((instance: L.Map, nextTheme: MapTheme) => {
     if (baseLayersGroupRef.current) {
       baseLayersGroupRef.current.remove()
+      baseLayersGroupRef.current = null
     }
 
-    const group = L.layerGroup().addTo(mapInstance)
+    const group = L.layerGroup()
+    let pending = BASE_LAYERS[nextTheme].length
+
+    for (const layer of BASE_LAYERS[nextTheme]) {
+      const tile = L.tileLayer(layer.url, layer.options)
+      tile.on("load", () => {
+        pending -= 1
+        if (pending <= 0) setTilesReady(true)
+      })
+      tile.on("tileerror", () => {
+        // Сеть может не отвечать (офлайн/прокси) — карта остаётся живой,
+        // просто без подложки: состояние загрузки не должно «залипать»
+        pending -= 1
+        if (pending <= 0) setTilesReady(true)
+      })
+      tile.addTo(group)
+    }
+
+    group.addTo(instance)
     baseLayersGroupRef.current = group
-
-    if (newTheme === "dark") {
-      // ═══════════════════════════════════════════════════════════════
-      // CARTO DARK MATTER — Ультрастильный тёмный минимализм
-      // ═══════════════════════════════════════════════════════════════
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        {
-          subdomains: "abcd",
-          maxZoom: 19,
-          minZoom: 3,
-          attribution: "CartoDB Dark Matter",
-        }
-      ).addTo(group)
-    } else if (newTheme === "graphite") {
-      // ═══════════════════════════════════════════════════════════════
-      // ESRI CANVAS DARK GRAY — Нейтральный инженерный графит
-      // ═══════════════════════════════════════════════════════════════
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 18,
-          minZoom: 3,
-          attribution: "Esri Canvas Base",
-        }
-      ).addTo(group)
-
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 18,
-          minZoom: 3,
-          opacity: 0.85,
-        }
-      ).addTo(group)
-    } else if (newTheme === "satellite") {
-      // ═══════════════════════════════════════════════════════════════
-      // SATELLITE HIGH-RES + DARK ROADS/LABELS
-      // ═══════════════════════════════════════════════════════════════
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 19,
-          minZoom: 3,
-          attribution: "Esri Satellite",
-        }
-      ).addTo(group)
-
-      // Дорожная сеть и подписи поверх спутника для максимальной читаемости
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
-        {
-          subdomains: "abcd",
-          maxZoom: 19,
-          minZoom: 3,
-          opacity: 0.9,
-        }
-      ).addTo(group)
-    }
+    setTilesReady(false)
   }, [])
 
   const setTheme = useCallback(
-    (newTheme: MapTheme) => {
-      setThemeState(newTheme)
-      if (map) {
-        applyTheme(map, newTheme)
-      }
+    (nextTheme: MapTheme) => {
+      setThemeState(nextTheme)
+      if (mapRef.current) applyTheme(mapRef.current, nextTheme)
       try {
-        localStorage.setItem("tms_map_theme", newTheme)
+        localStorage.setItem(THEME_STORAGE_KEY, nextTheme)
       } catch {
-        // ignore
+        // приватный режим браузера — не критично
       }
     },
-    [map, applyTheme]
+    [applyTheme],
   )
 
   useEffect(() => {
-    if (!containerRef.current || initializedRef.current) return
+    const container = containerRef.current
+    if (!container) return
 
-    initializedRef.current = true
-
-    // Загрузка сохраненной темы
     let savedTheme: MapTheme = initialTheme
     try {
-      const stored = localStorage.getItem("tms_map_theme") as MapTheme
-      if (stored === "dark" || stored === "graphite" || stored === "satellite") {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY)
+      if (isTheme(stored)) {
         savedTheme = stored
         setThemeState(stored)
       }
@@ -140,64 +160,66 @@ export function useMapInstance({
       // ignore
     }
 
-    // Инициализация карты
-    const mapInstance = L.map(containerRef.current, {
-      zoomControl: false,
-      attributionControl: false,
-    }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM)
-
-    // Применяем тему
-    applyTheme(mapInstance, savedTheme)
-
-    // Кастомный zoom контрол справа внизу
-    L.control.zoom({ position: "bottomright" }).addTo(mapInstance)
-
-    setMap(mapInstance)
-
-    // Canvas overlay для анимации маршрутов
-    const canvas = document.createElement("canvas")
-    canvas.style.position = "absolute"
-    canvas.style.top = "0"
-    canvas.style.left = "0"
-    canvas.style.pointerEvents = "none"
-    canvas.style.zIndex = "400"
-    containerRef.current.appendChild(canvas)
-    canvasRef.current = canvas
-
-    const resizeCanvas = () => {
-      if (!canvas || !containerRef.current) return
-      canvas.width = containerRef.current.offsetWidth
-      canvas.height = containerRef.current.offsetHeight
+    // Страховка от повторной инициализации того же контейнера (StrictMode,
+    // быстрый перемонтаж): прежний экземпляр уничтожаем сами.
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+      baseLayersGroupRef.current = null
     }
 
-    resizeCanvas()
-    window.addEventListener("resize", resizeCanvas)
-    mapInstance.on("move zoom viewreset", resizeCanvas)
+    const instance = L.map(container, {
+      center: DEFAULT_MAP_CENTER,
+      zoom: DEFAULT_MAP_ZOOM,
+      zoomControl: false,
+      attributionControl: false,
+      preferCanvas: true,
+      // Плавность без «резины»: инерция есть, но карта не улетает за край
+      inertiaDeceleration: 3000,
+      maxBoundsViscosity: 0.6,
+      worldCopyJump: true,
+    })
+
+    mapRef.current = instance
+    applyTheme(instance, savedTheme)
+    L.control.zoom({ position: "bottomright" }).addTo(instance)
+
+    // Размер контейнера меняется при сворачивании меню и открытии панелей
+    const observer = new ResizeObserver(() => {
+      instance.invalidateSize({ animate: false })
+    })
+    observer.observe(container)
+
+    setMap(instance)
 
     return () => {
-      window.removeEventListener("resize", resizeCanvas)
-      mapInstance.remove()
+      observer.disconnect()
+      baseLayersGroupRef.current?.remove()
+      baseLayersGroupRef.current = null
+      instance.remove()
+      mapRef.current = null
       setMap(null)
-      initializedRef.current = false
-      if (canvas.parentNode) canvas.parentNode.removeChild(canvas)
     }
   }, [containerRef, initialTheme, applyTheme])
 
-  const flyTo = useCallback(
-    (position: [number, number], zoom = 14) => {
-      map?.flyTo(position, zoom, { duration: 1.2 })
-    },
-    [map]
-  )
+  const flyTo = useCallback((position: [number, number], zoom = 14) => {
+    mapRef.current?.flyTo(position, zoom, { duration: 1.1 })
+  }, [])
 
-  const fitBounds = useCallback(
-    (points: [number, number][]) => {
-      if (points.length === 0 || !map) return
-      const bounds = L.latLngBounds(points)
-      map.fitBounds(bounds, { padding: [70, 70], maxZoom: 11 })
-    },
-    [map]
-  )
+  const fitBounds = useCallback((points: [number, number][]) => {
+    const instance = mapRef.current
+    if (!instance || points.length === 0) return
+    const valid = points.filter(
+      ([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180,
+    )
+    if (valid.length === 0) return
+    const bounds = L.latLngBounds(valid)
+    if (valid.length === 1) {
+      instance.flyTo(valid[0], 12, { duration: 0.9 })
+      return
+    }
+    instance.fitBounds(bounds, { padding: [80, 80], maxZoom: 11, animate: true })
+  }, [])
 
-  return { map, canvasRef, flyTo, fitBounds, theme, setTheme }
+  return { map, flyTo, fitBounds, theme, setTheme, tilesReady }
 }

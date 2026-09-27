@@ -1,168 +1,85 @@
 // app/api/dashboard/routes/route.ts
+//
+// Рейсы для карты дашборда: нитки маршрутов, точки погрузки/выгрузки, база.
+//
+// Как устроено и почему так:
+//  — координаты городов берём через lib/geo/geocode (постоянный кэш в таблице
+//    GeoCache + пауза между запросами к Nominatim). Раньше эндпоинт ходил в
+//    Nominatim сам на каждом опросе карты (раз в 15 секунд): сервис начинал
+//    отвечать 403, точки пропадали и карта оставалась пустой;
+//  — геометрию дороги берём через lib/geo/route-geometry (кэш в памяти +
+//    склейка одновременных запросов), при недоступности OSRM — плавная кривая
+//    с пометкой source: "line";
+//  — адреса, которые определить не удалось, возвращаем списком problems:
+//    карта честно говорит «город не найден», а не рисует точку в Москве;
+//  — организация — из проверенной сессии, чужие рейсы не отдаются.
 
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
+import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
+import { estimateDurationMin, getRouteGeometry } from "@/lib/geo/route-geometry"
 
-const OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
+export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
-// Дефолтные координаты (Москва) как fallback
+/** Дефолтные координаты (Москва) — только как последний запасной вариант. */
 const DEFAULT_BASE_COORDS: [number, number] = [55.7558, 37.6173]
 
-// Премиальная палитра цветов для маршрутов
+/** Палитра ниток рейсов: цвета не повторяются, пока рейсов меньше восьми. */
 const ROUTE_COLORS = [
-  "#00D4FF", "#7B61FF", "#00FFA3", "#FF6B6B", 
-  "#FFD93D", "#4ECDC4", "#F093FB", "#4FACFE",
+  "#FF6B35",
+  "#00D4FF",
+  "#7B61FF",
+  "#00FFA3",
+  "#FFD93D",
+  "#4ECDC4",
+  "#F093FB",
+  "#4FACFE",
 ]
 
-type Point = { lat: number; lng: number }
-
-interface Waypoint {
+type Waypoint = {
   type: "driver" | "loading" | "unloading" | "base"
   label: string
   address: string
   position: [number, number] | null
 }
 
-async function geocodeAddress(address: string): Promise<Point | null> {
-  if (!address || address.trim().length < 3) return null
-
-  try {
-    const query = address.toLowerCase().includes("росси")
-      ? address
-      : `${address}, Россия`
-
-    const url = new URL("https://nominatim.openstreetmap.org/search")
-    url.searchParams.set("q", query)
-    url.searchParams.set("format", "json")
-    url.searchParams.set("limit", "1")
-    url.searchParams.set("addressdetails", "1")
-    url.searchParams.set("countrycodes", "ru")
-
-    const res = await fetch(url.toString(), {
-      headers: {
-        "User-Agent": "TMS-AI-Logistics/1.0",
-        "Accept-Language": "ru",
-      },
-      signal: AbortSignal.timeout(3500),
-      next: { revalidate: 86400 },
-    })
-
-    if (!res.ok) return null
-
-    const data = await res.json()
-    if (!Array.isArray(data) || data.length === 0) return null
-
-    const lat = parseFloat(data[0].lat)
-    const lng = parseFloat(data[0].lon)
-
-    // Валидация
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90) return null
-
-    return { lat, lng }
-  } catch (error) {
-    console.error("[Geocoding] Error:", error)
-    return null
-  }
+type BasePayload = {
+  name: string
+  address: string
+  coordinates: [number, number]
 }
 
-async function getOSRMRoute(points: Point[]): Promise<{
-  coordinates: [number, number][]
-  distance: number
-  duration: number
-} | null> {
-  if (points.length < 2) return null
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-  try {
-    const coords = points.map((p: any) => `${p.lng},${p.lat}`).join(";")
-    const url = `${OSRM_URL}/${coords}?overview=full&geometries=geojson&steps=false`
-
-    const res = await fetch(url, { 
-      next: { revalidate: 600 },
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) return null
-
-    const data = await res.json()
-    if (data.code !== "Ok" || !data.routes?.[0]) return null
-
-    const route = data.routes[0]
-    const coordinates: [number, number][] = route.geometry.coordinates.map(
-      (c: [number, number]) => [c[1], c[0]] // GeoJSON [lng,lat] -> [lat,lng]
-    )
-
-    return {
-      coordinates,
-      distance: Math.round(route.distance / 1000),
-      duration: Math.round(route.duration / 60),
-    }
-  } catch (error) {
-    console.error("[OSRM] Error:", error)
-    return null
-  }
-}
-
-// Плавная интерполяция для fallback маршрута
-function generateSmoothCurve(points: Point[]): [number, number][] {
-  if (points.length < 2) return []
-
-  const result: [number, number][] = []
-  
-  for (let i = 0; i < points.length - 1; i++) {
-    const from = points[i]
-    const to = points[i + 1]
-    const dx = to.lng - from.lng
-    const dy = to.lat - from.lat
-    const dist = Math.sqrt(dx * dx + dy * dy) || 0.001
-    
-    // Контрольная точка для кривой Безье
-    const offset = dist * 0.15
-    const midLat = (from.lat + to.lat) / 2 + (dx / dist) * offset
-    const midLng = (from.lng + to.lng) / 2 - (dy / dist) * offset
-    
-    const segments = 30
-    for (let j = 0; j <= segments; j++) {
-      const t = j / segments
-      const mt = 1 - t
-      // Квадратичная кривая Безье
-      const lat = mt * mt * from.lat + 2 * mt * t * midLat + t * t * to.lat
-      const lng = mt * mt * from.lng + 2 * mt * t * midLng + t * t * to.lng
-      result.push([lat, lng])
-    }
-  }
-  
-  return result
+function toCoordinates(point: [number, number]): Coordinates {
+  return { lat: point[0], lng: point[1] }
 }
 
 export async function GET(request: NextRequest) {
-  const __auth = await requireStaffAuth(request);
-  if (__auth.error) return __auth.error;
-  const __org = requireStaffOrganization(__auth.user);
-  if (!__org.ok) return __org.response;
+  const auth = await requireStaffAuth(request)
+  if (auth.error) return auth.error
 
+  const org = requireStaffOrganization(auth.user)
+  if (!org.ok) return org.response
 
   try {
-    // ========== ЛОГИКА БАЗЫ ==========
-    // Настройки базы — свои у каждой организации (раньше была одна на всю БД, id = "default")
+    // ========== БАЗА АВТОПАРКА ==========
     const settings = await prisma.fleetSettings.findFirst({
-      where: scopedWhere(__org.organizationId),
+      where: scopedWhere(org.organizationId),
     })
 
-    let base: {
-      name: string
-      address: string
-      coordinates: [number, number]
-    }
+    let base: BasePayload
     let warning: string | null = null
 
-    // Приоритет 1: Координаты из настроек
     if (
       settings?.baseLat != null &&
       settings?.baseLng != null &&
-      !isNaN(settings.baseLat) &&
-      !isNaN(settings.baseLng) &&
+      Number.isFinite(settings.baseLat) &&
+      Number.isFinite(settings.baseLng) &&
       Math.abs(settings.baseLat) <= 90 &&
       Math.abs(settings.baseLng) <= 180
     ) {
@@ -171,28 +88,27 @@ export async function GET(request: NextRequest) {
         address: settings.baseAddress || "База",
         coordinates: [settings.baseLat, settings.baseLng],
       }
-    }
-    // Приоритет 2: Геокодирование адреса
-    else if (settings?.baseAddress) {
-      const geocoded = await geocodeAddress(settings.baseAddress)
-      if (geocoded) {
+    } else if (settings?.baseAddress) {
+      // Адрес базы геокодируется отдельно и первым: он нужен всегда,
+      // а общий список адресов заказов может упереться в лимит запросов
+      const baseCoords = await geocodeAddresses([settings.baseAddress])
+      const resolved = baseCoords.get(settings.baseAddress) ?? null
+      if (resolved) {
         base = {
           name: settings.parkName || "Автопарк",
           address: settings.baseAddress,
-          coordinates: [geocoded.lat, geocoded.lng],
+          coordinates: [resolved.lat, resolved.lng],
         }
         warning = "Координаты базы определены по адресу"
       } else {
         base = {
-          name: settings?.parkName || "Автопарк",
-          address: "Координаты не определены",
+          name: settings.parkName || "Автопарк",
+          address: settings.baseAddress,
           coordinates: DEFAULT_BASE_COORDS,
         }
-        warning = "Не удалось определить координаты базы. Используется Москва."
+        warning = `Не удалось определить координаты базы («${settings.baseAddress}»). Показана Москва.`
       }
-    }
-    // Приоритет 3: Дефолт
-    else {
+    } else {
       base = {
         name: "Автопарк",
         address: "Настройте адрес в настройках",
@@ -201,10 +117,9 @@ export async function GET(request: NextRequest) {
       warning = "База не настроена. Перейдите в Настройки → Автопарк."
     }
 
-    // ========== ПОЛУЧЕНИЕ ЗАКАЗОВ ==========
+    // ========== ЗАКАЗЫ В РАБОТЕ ==========
     const activeOrders = await prisma.order.findMany({
-      where: scopedWhere(__org.organizationId, {
-        // заказы в работе: канон — lib/orders/stages.ts
+      where: scopedWhere(org.organizationId, {
         status: { in: [...OCCUPYING_ORDER_STATUSES] },
         assignedDriverId: { not: null },
       }),
@@ -212,37 +127,35 @@ export async function GET(request: NextRequest) {
     })
 
     if (activeOrders.length === 0) {
-      return NextResponse.json({ success: true, base, warning, routes: [] })
+      return NextResponse.json({ success: true, base, warning, routes: [], problems: [] })
     }
 
-    // ========== ГРУППИРОВКА ПО ВОДИТЕЛЯМ ==========
+    // ========== ГРУППИРОВКА ПО РЕЙСАМ ==========
     type Group = { driverId: string; orders: typeof activeOrders }
     const groups = new Map<string, Group>()
 
     for (const order of activeOrders) {
       const key = order.routeId || `solo-${order.id}`
       const driverId = order.assignedDriverId as string
-      
+
       const existing = groups.get(key)
       if (!existing) {
         groups.set(key, { driverId, orders: [order] })
       } else if (existing.driverId === driverId) {
         existing.orders.push(order)
       } else {
+        // Один рейс не может принадлежать двум водителям — разделяем группы,
+        // чтобы на карте не появилось «две машины на одной нитке»
         const altKey = `${key}-${driverId}`
         const alt = groups.get(altKey)
-        if (!alt) {
-          groups.set(altKey, { driverId, orders: [order] })
-        } else {
-          alt.orders.push(order)
-        }
+        if (!alt) groups.set(altKey, { driverId, orders: [order] })
+        else alt.orders.push(order)
       }
     }
 
-    // Получаем водителей
-    const driverIds = [...new Set([...groups.values()].map((g: any) => g.driverId))]
+    const driverIds = [...new Set([...groups.values()].map((group) => group.driverId))]
     const drivers = await prisma.driver.findMany({
-      where: scopedWhere(__org.organizationId, {
+      where: scopedWhere(org.organizationId, {
         id: { in: driverIds },
         latitude: { not: null },
         longitude: { not: null },
@@ -256,148 +169,153 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Кэш геокодирования
-    const geoCache = new Map<string, Point>()
-    const geocodeWithCache = async (address: string): Promise<Point | null> => {
-      const key = address.trim().toLowerCase()
-      if (geoCache.has(key)) return geoCache.get(key)!
-      const coords = await geocodeAddress(address)
-      if (coords) geoCache.set(key, coords)
-      return coords
+    // ========== КОДИНГОРДИНАТЫ АДРЕСОВ (один пакетный запрос) ==========
+    const addresses = Array.from(
+      new Set(
+        activeOrders.flatMap((order) => [order.routeFrom, order.routeTo]).filter(Boolean),
+      ),
+    )
+    const coordsByAddress = addresses.length > 0 ? await geocodeAddresses(addresses) : new Map()
+
+    const problems = new Set<string>()
+    const pointOf = (address: string | null): Coordinates | null => {
+      if (!address) return null
+      const point = coordsByAddress.get(address) ?? null
+      if (!point) problems.add(address)
+      return point
     }
 
-    // ========== ПОСТРОЕНИЕ МАРШРУТОВ ==========
-    const routes: any[] = []
-    let colorIndex = 0
+    // ========== СБОРКА РЕЙСОВ ==========
+    const basePoint = toCoordinates(base.coordinates)
 
-    for (const [routeKey, group] of groups.entries()) {
-      const driver = drivers.find((d: any) => d.id === group.driverId)
-      if (!driver?.latitude || !driver?.longitude) continue
+    const built = await Promise.all(
+      [...groups.entries()].map(async ([routeKey, group]) => {
+        const driver = drivers.find((item) => item.id === group.driverId)
+        if (!driver?.latitude || !driver?.longitude) return null
 
-      const driverPos: Point = { lat: driver.latitude, lng: driver.longitude }
-      const ordersSorted = [...group.orders].sort(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
-      )
+        const driverPoint: Coordinates = { lat: driver.latitude, lng: driver.longitude }
+        const ordersSorted = [...group.orders].sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        )
 
-      const points: Point[] = [driverPos]
-      const waypoints: Waypoint[] = [
-        {
-          type: "driver",
-          label: "🚚",
-          address: "Текущая позиция",
-          position: [driver.latitude, driver.longitude],
-        },
-      ]
+        const points: Coordinates[] = [driverPoint]
+        const waypoints: Waypoint[] = [
+          {
+            type: "driver",
+            label: "🚚",
+            address: "Текущая позиция",
+            position: [driverPoint.lat, driverPoint.lng],
+          },
+        ]
 
-      let wpIndex = 0
-      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        let waypointIndex = 0
+        for (const order of ordersSorted) {
+          const from = pointOf(order.routeFrom)
+          if (from) {
+            points.push(from)
+            waypoints.push({
+              type: "loading",
+              label: LETTERS[waypointIndex++] || "•",
+              address: order.routeFrom,
+              position: [from.lat, from.lng],
+            })
+          }
 
-      // Добавляем точки загрузки/выгрузки
-      for (const order of ordersSorted) {
-        const fromCoords = await geocodeWithCache(order.routeFrom)
-        if (fromCoords) {
-          points.push(fromCoords)
-          waypoints.push({
-            type: "loading",
-            label: letters[wpIndex++] || "•",
-            address: order.routeFrom,
-            position: [fromCoords.lat, fromCoords.lng],
-          })
+          const to = pointOf(order.routeTo)
+          if (to) {
+            points.push(to)
+            waypoints.push({
+              type: "unloading",
+              label: LETTERS[waypointIndex++] || "•",
+              address: order.routeTo,
+              position: [to.lat, to.lng],
+            })
+          }
         }
 
-        const toCoords = await geocodeWithCache(order.routeTo)
-        if (toCoords) {
-          points.push(toCoords)
-          waypoints.push({
-            type: "unloading",
-            label: letters[wpIndex++] || "•",
-            address: order.routeTo,
-            position: [toCoords.lat, toCoords.lng],
-          })
+        // База — последняя точка: рейс возвращается в автопарк
+        points.push(basePoint)
+        waypoints.push({
+          type: "base",
+          label: "🏠",
+          address: base.address,
+          position: base.coordinates,
+        })
+
+        if (points.length < 2) return null
+
+        const geometry = await getRouteGeometry(points)
+        const totalPrice = ordersSorted.reduce((sum, order) => sum + (order.price || 0), 0)
+        // Пробег: из OSRM — настоящий, иначе — сумма плеч из заказов
+        // (их вносили логисты, это точнее прямой между городами).
+        const distanceKm =
+          geometry.source === "osrm"
+            ? geometry.distanceKm
+            : ordersSorted.reduce((sum, order) => sum + (order.distance || 0), 0)
+        // Время в пути: измерение OSRM или честная оценка (geometrySource: "line")
+        const durationMin =
+          geometry.source === "osrm" ? geometry.durationMin : estimateDurationMin(distanceKm)
+
+        return {
+          id: routeKey,
+          driverId: group.driverId,
+          driverName: driver.name,
+          vehiclePlate: driver.vehiclePlate ?? undefined,
+          driverPos: [driver.latitude, driver.longitude] as [number, number],
+          routeFrom: ordersSorted[0].routeFrom,
+          routeTo: ordersSorted[ordersSorted.length - 1].routeTo,
+          status: ordersSorted.some((order) => isOrderMoving(order.status))
+            ? "in_transit"
+            : "confirmed",
+          cargoType: ordersSorted[0].cargoType,
+          totalPrice,
+          totalDistance: distanceKm,
+          duration: durationMin,
+          coordinates: geometry.coordinates,
+          geometrySource: geometry.source,
+          waypoints,
+          orders: ordersSorted.map((order) => ({
+            id: order.id,
+            from: order.routeFrom,
+            to: order.routeTo,
+            status: order.status,
+            cargo: order.cargoType,
+            price: order.price,
+          })),
         }
-      }
+      }),
+    )
 
-      // ✅ ВАЖНО: Добавляем базу как конечную точку маршрута
-      const basePoint: Point = { lat: base.coordinates[0], lng: base.coordinates[1] }
-      points.push(basePoint)
-      waypoints.push({
-        type: "base",
-        label: "🏠",
-        address: base.address,
-        position: base.coordinates,
-      })
-
-      if (points.length < 2) continue
-
-      // Получаем геометрию маршрута
-      const osrmRoute = await getOSRMRoute(points)
-      let coordinates: [number, number][]
-      let distanceKm = 0
-      let durationMin = 0
-
-      if (osrmRoute) {
-        coordinates = osrmRoute.coordinates
-        distanceKm = osrmRoute.distance
-        durationMin = osrmRoute.duration
-      } else {
-        coordinates = generateSmoothCurve(points)
-        distanceKm = ordersSorted.reduce((sum: any, o: any) => sum + (o.distance || 0), 0)
-      }
-
-      const totalPrice = ordersSorted.reduce((sum: any, o: any) => sum + (o.price || 0), 0)
-      // Статус для маркера на карте: едет ли хотя бы один заказ рейса
-      const mainStatus = ordersSorted.some((o: any) => isOrderMoving(o.status))
-        ? "in_transit"
-        : "confirmed"
-
-      routes.push({
-        id: routeKey,
-        driverId: group.driverId,
-        driverName: driver.name,
-        vehiclePlate: driver.vehiclePlate,
-        driverPos: [driver.latitude, driver.longitude] as [number, number],
-        routeFrom: ordersSorted[0].routeFrom,
-        routeTo: ordersSorted[ordersSorted.length - 1].routeTo,
-        status: mainStatus,
-        cargoType: ordersSorted[0].cargoType,
-        totalPrice,
-        totalDistance: distanceKm,
-        duration: durationMin,
-        coordinates,
-        waypoints,
-        // Цвет маршрута из премиальной палитры
-        color: ROUTE_COLORS[colorIndex++ % ROUTE_COLORS.length],
-        orders: ordersSorted.map((o: any) => ({
-          id: o.id,
-          from: o.routeFrom,
-          to: o.routeTo,
-          status: o.status,
-          cargo: o.cargoType,
-          price: o.price,
-        })),
-      })
-    }
+    const routes = built
+      .filter((route): route is NonNullable<typeof route> => route !== null)
+      .map((route, index) => ({
+        ...route,
+        color: ROUTE_COLORS[index % ROUTE_COLORS.length],
+      }))
 
     return NextResponse.json({
       success: true,
       base,
       warning,
       routes,
+      problems: [...problems],
     })
-  } catch (error: any) {
-    console.warn("[Dashboard Routes API] Safe fallback due to:", error?.message || error)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Неизвестная ошибка"
+    console.warn("[Dashboard Routes API] запасной ответ из-за:", message)
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error?.message || "Unknown error",
+      {
+        success: false,
+        error: message,
         base: {
           name: "Автопарк",
           address: "Москва",
           coordinates: DEFAULT_BASE_COORDS,
         },
         routes: [],
+        problems: [],
       },
-      { status: 200 }
+      { status: 200 },
     )
   }
 }

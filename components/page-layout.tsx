@@ -17,7 +17,9 @@ export function PageLayout({ children, title, description, actions }: PageLayout
   const { isCollapsed } = useSidebar()
 
   return (
-    <div className="min-h-screen bg-background">
+    // Фон НЕ закрашиваем: под штабными страницами живёт LiveBackground
+    // (общий слой в app/layout.tsx), а цвет подложки задаёт <body>.
+    <div className="min-h-screen bg-transparent">
       <Sidebar />
       <div 
         className="transition-all duration-300 ease-in-out"

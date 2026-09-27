@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { PRODUCT_NAME } from "@/lib/auth/constants"
 
 /** Какие счётчики может показывать пункт меню. */
 type BadgeKey = "orders" | "chat"
@@ -114,8 +115,9 @@ export function Sidebar() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Truck className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="text-lg font-bold text-sidebar-foreground">
-                ГрузоПоток
+              {/* Единое название продукта — не «ГрузоПоток» из старого макета */}
+              <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
+                {PRODUCT_NAME}
               </span>
             </Link>
           )}

@@ -7,6 +7,7 @@ import { SidebarProvider } from "@/lib/sidebar-context"
 import { CsrfProvider } from "@/components/csrf-provider"
 import { LiveBackground } from "@/components/visual/live-background"
 import { PageTransition } from "@/components/visual/page-transition"
+import { WelcomeSplash } from "@/components/visual/welcome-splash"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 
 export const metadata: Metadata = {
@@ -33,6 +34,9 @@ export default function RootLayout({
               <ConfirmProvider>
                 {/* Плавный вход в раздел вместо мгновенной подмены экрана */}
                 <PageTransition>{children}</PageTransition>
+                {/* Приветствие после входа: показывается один раз на сессию,
+                    в том числе на полноэкранном дашборде с картой */}
+                <WelcomeSplash />
               </ConfirmProvider>
             </SidebarProvider>
           </AuthProvider>

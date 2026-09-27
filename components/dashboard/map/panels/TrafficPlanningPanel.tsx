@@ -33,6 +33,8 @@ interface TrafficPlanningPanelProps {
   opacity: number
   onChangeOpacity: (value: number) => void
   trafficInfo: TrafficLevelInfo | null
+  /** true — данные пришли от демо-провайдера (TRAFFIC_PROVIDER=mock) */
+  trafficIsMock?: boolean
   onRefreshTraffic: () => void
   activeRoutesCount: number
   onFocusLocation?: (coords: [number, number], zoom?: number) => void
@@ -50,6 +52,7 @@ export function TrafficPlanningPanel({
   opacity,
   onChangeOpacity,
   trafficInfo,
+  trafficIsMock = false,
   onRefreshTraffic,
   activeRoutesCount,
   onFocusLocation,
@@ -59,12 +62,14 @@ export function TrafficPlanningPanel({
 
   if (!isOpen) return null
 
-  const status = trafficInfo?.status || "normal"
+  const status = trafficInfo?.status ?? "unknown"
   const isCritical = status === "critical"
   const isWarning = status === "warning"
-  const isNormal = status === "normal"
+  // Данных о пробках нет вовсе — это не «всё свободно», а «неизвестно»
+  const isUnknown = status === "unknown" || trafficInfo?.hasData === false
+  const isMock = trafficIsMock || trafficInfo?.mock === true
 
-  const riskScore = trafficInfo?.riskScore ?? (isCritical ? 75 : isWarning ? 35 : 5)
+  const riskScore = trafficInfo?.riskScore ?? 0
   const totalDelayMinutes = trafficInfo?.totalDelayMinutes ?? 0
   const accidentsCount = trafficInfo?.accidentsCount ?? 0
   const closuresCount = trafficInfo?.closuresCount ?? 0
@@ -74,8 +79,20 @@ export function TrafficPlanningPanel({
   const incidents = trafficInfo?.incidents || []
   const congestedArterials = arterials.filter((a: any) => a.severity === "critical" || a.severity === "heavy" || a.delayMinutes > 0)
 
-  // Цвета плашки общего статуса
-  const statusBadge = isCritical
+  // Цвета и тексты плашки общего статуса
+  const statusBadge = isUnknown
+    ? {
+        border: "border-white/[0.1]",
+        bg: "bg-gradient-to-br from-white/[0.05] via-transparent to-transparent",
+        scoreBg: "bg-white/[0.08] text-gray-300 border-white/[0.12]",
+        dot: "bg-gray-400",
+        title: "Данных о пробках пока нет",
+        desc:
+          activeRoutesCount === 0
+            ? "Нет активных рейсов — сравнивать не с чем. Назначьте заказ на рейс, и обстановка появится здесь."
+            : "Сервис пробок не ответил по активным рейсам. Обновите данные — карта запросит обстановку заново.",
+      }
+    : isCritical
     ? {
         border: "border-rose-500/40",
         bg: "bg-gradient-to-br from-rose-500/15 via-rose-950/20 to-transparent",
@@ -113,7 +130,9 @@ export function TrafficPlanningPanel({
       <div className="p-4 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-[#0c0e14]">
         <div className="flex items-center gap-3">
           <div className={`p-2.5 rounded-xl border ${statusBadge.scoreBg} shadow-lg`}>
-            {isCritical ? (
+            {isUnknown ? (
+              <Info className="h-4 w-4 text-gray-300" />
+            ) : isCritical ? (
               <AlertOctagon className="h-4 w-4 text-rose-400" />
             ) : isWarning ? (
               <AlertTriangle className="h-4 w-4 text-amber-400" />
@@ -124,8 +143,19 @@ export function TrafficPlanningPanel({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-sm text-white">Дорожная обстановка флота</h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/30">
-                Трассы РФ
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                  isMock
+                    ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
+                    : "bg-orange-500/15 text-orange-400 border-orange-500/30"
+                }`}
+                title={
+                  isMock
+                    ? "TRAFFIC_PROVIDER=mock: обстановка смоделирована, а не измерена"
+                    : "Данные сервиса пробок по траекториям ваших рейсов"
+                }
+              >
+                {isMock ? "Демо-режим" : "Трассы РФ"}
               </span>
             </div>
             <p className="text-[11px] text-gray-400 mt-0.5">
@@ -208,7 +238,9 @@ export function TrafficPlanningPanel({
                   </p>
                 </div>
                 <div className={`px-2.5 py-1.5 rounded-xl border font-bold text-xs shrink-0 ${statusBadge.scoreBg} text-center`}>
-                  <div className="text-base leading-none font-extrabold">{riskScore}%</div>
+                  <div className="text-base leading-none font-extrabold">
+                    {isUnknown ? "—" : `${riskScore}%`}
+                  </div>
                   <div className="text-[9px] uppercase tracking-wider opacity-80 mt-0.5">риск</div>
                 </div>
               </div>
@@ -217,8 +249,12 @@ export function TrafficPlanningPanel({
               <div className="grid grid-cols-3 gap-2 mt-3.5 pt-3 border-t border-white/[0.06]">
                 <div className="bg-[#151722]/80 p-2.5 rounded-xl border border-white/[0.04] text-center">
                   <span className="text-[10px] text-gray-400 block font-medium">Отставание</span>
-                  <span className={`text-xs font-bold mt-0.5 block ${totalDelayMinutes > 0 ? "text-rose-400" : "text-emerald-400"}`}>
-                    {totalDelayMinutes > 0 ? `+${totalDelayMinutes} мин` : "0 мин"}
+                  <span
+                    className={`text-xs font-bold mt-0.5 block ${
+                      isUnknown ? "text-gray-400" : totalDelayMinutes > 0 ? "text-rose-400" : "text-emerald-400"
+                    }`}
+                  >
+                    {isUnknown ? "нет данных" : totalDelayMinutes > 0 ? `+${totalDelayMinutes} мин` : "0 мин"}
                   </span>
                 </div>
                 <div className="bg-[#151722]/80 p-2.5 rounded-xl border border-white/[0.04] text-center">
@@ -295,6 +331,34 @@ export function TrafficPlanningPanel({
                   />
                 </button>
               </div>
+
+              {/* Только сильные заторы */}
+              {onToggleCongestionsOnly && (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#141620] border border-white/[0.05]">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0" />
+                    <div className="text-xs">
+                      <span className="font-semibold text-gray-200 block">Только сильные заторы</span>
+                      <span className="text-[10px] text-gray-400">
+                        Скрывает участки с плавным замедлением, оставляет критичные
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={onToggleCongestionsOnly}
+                    aria-pressed={congestionsOnly}
+                    className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                      congestionsOnly ? "bg-orange-500" : "bg-white/[0.1]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                        congestionsOnly ? "translate-x-5" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
 
               {/* Маркеры ДТП и перекрытий */}
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#141620] border border-white/[0.05]">
@@ -475,8 +539,18 @@ export function TrafficPlanningPanel({
          ══════════════════════════════════════════════════════════════════ */}
       <div className="p-3 border-t border-white/[0.08] flex items-center justify-between text-xs text-gray-400 shrink-0 bg-[#0c0e14]">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] text-gray-400">Синхронизация трасс: Live</span>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              isUnknown ? "bg-gray-500" : isMock ? "bg-sky-400 animate-pulse" : "bg-emerald-400 animate-pulse"
+            }`}
+          />
+          <span className="text-[11px] text-gray-400">
+            {isUnknown
+              ? "Обстановка не получена"
+              : isMock
+              ? "Демо-провайдер пробок (TRAFFIC_PROVIDER=mock)"
+              : "Синхронизация трасс: Live"}
+          </span>
         </div>
         <button
           onClick={onRefreshTraffic}

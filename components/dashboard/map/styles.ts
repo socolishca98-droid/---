@@ -287,6 +287,35 @@ export const mapStyles = `
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
   }
 
+  /* Выбранный водитель: кольцо вокруг метки — связь «панель ↔ машина на карте» */
+  .driver-ring {
+    position: absolute;
+    top: -4px;
+    width: 50px;
+    height: 50px;
+    border: 2px solid;
+    border-radius: 50%;
+    opacity: 0.85;
+    box-shadow: 0 0 18px rgba(0, 0, 0, 0.45);
+    animation: driverRingAnim 2.6s ease-in-out infinite;
+  }
+
+  @keyframes driverRingAnim {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.14); opacity: 0.45; }
+  }
+
+  .driver-container.selected .driver-core {
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6), 0 0 0 3px rgba(255, 255, 255, 0.08);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .driver-ring,
+    .driver-pulse {
+      animation: none !important;
+    }
+  }
+
   /* === POPUP ВОДИТЕЛЯ === */
   .custom-popup .leaflet-popup-content-wrapper {
     background: rgba(18, 20, 28, 0.95) !important;
@@ -436,7 +465,9 @@ export const mapStyles = `
     background: rgba(255, 255, 255, 0.25);
   }
 
-  /* === TRAFFIC TOOLTIP & INCIDENTS === */
+  /* === Слой пробок: тултипы, попапы и маркеры инцидентов ===
+     className у Leaflet попадает на корень попапа/тултипа, поэтому все
+     правила пишем потомкам — иначе стили не применяются вовсе. */
   .leaflet-tooltip.traffic-leaflet-tooltip {
     background: rgba(14, 16, 23, 0.96) !important;
     backdrop-filter: blur(16px) !important;
@@ -445,7 +476,7 @@ export const mapStyles = `
     border-radius: 12px !important;
     color: #f3f4f6 !important;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7) !important;
-    padding: 6px 10px !important;
+    padding: 8px 10px !important;
   }
 
   .leaflet-tooltip.traffic-leaflet-tooltip::before {
@@ -453,15 +484,66 @@ export const mapStyles = `
   }
 
   .traffic-tooltip {
-    background: rgba(15, 17, 23, 0.96);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 8px 12px;
-    color: #f3f4f6;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+    display: grid;
+    gap: 3px;
+    min-width: 190px;
+    max-width: 260px;
+    font-size: 11px;
+    line-height: 1.45;
     pointer-events: none;
+  }
+
+  .traffic-tooltip__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 2px;
+  }
+
+  .traffic-tooltip__title {
+    font-weight: 700;
+    font-size: 11.5px;
+    color: #f9fafb;
+  }
+
+  .traffic-tooltip__delay {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #fecdd3;
+    background: rgba(225, 29, 72, 0.22);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+  }
+
+  .traffic-tooltip__delay--ok {
+    color: #bbf7d0;
+    background: rgba(34, 197, 94, 0.18);
+    border-color: rgba(34, 197, 94, 0.35);
+  }
+
+  .traffic-tooltip__row {
+    color: #cbd5e1;
+  }
+
+  .traffic-tooltip__row strong {
+    color: #f1f5f9;
+    font-weight: 600;
+  }
+
+  .traffic-tooltip__row--muted {
+    color: #94a3b8;
+    font-size: 10.5px;
+  }
+
+  .traffic-tooltip__note {
+    margin-top: 3px;
+    padding-top: 3px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.14);
+    color: #94a3b8;
+    font-size: 10px;
   }
 
   .leaflet-div-icon.traffic-incident-div-icon {
@@ -470,50 +552,151 @@ export const mapStyles = `
   }
 
   .traffic-incident-marker {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 52px;
+    height: 28px;
     cursor: pointer;
     transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .traffic-incident-marker:hover {
-    transform: scale(1.25);
+    transform: scale(1.12);
   }
 
   .traffic-incident-beacon {
     position: absolute;
-    width: 32px;
-    height: 32px;
+    top: 50%;
+    left: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
     border-radius: 50%;
-    animation: trafficBeaconPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-    opacity: 0.75;
+    border: 1.5px solid;
+    opacity: 0.7;
+    animation: trafficBeaconPulse 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
 
   @keyframes trafficBeaconPulse {
-    75%, 100% {
-      transform: scale(2.2);
+    70%,
+    100% {
+      transform: scale(1.9);
       opacity: 0;
     }
   }
 
-  .leaflet-popup-content-wrapper.traffic-popup {
-    background: rgba(18, 20, 28, 0.96) !important;
+  .traffic-incident-badge {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 9px;
+    background: rgba(15, 17, 23, 0.96);
+    border: 1.5px solid;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.75);
+  }
+
+  .traffic-incident-emoji {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .traffic-incident-delay {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: -0.2px;
+    color: #fecdd3;
+  }
+
+  .traffic-popup-wrap .leaflet-popup-content-wrapper {
+    background: rgba(18, 20, 28, 0.97) !important;
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-radius: 16px !important;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75) !important;
+    color: #f3f4f6 !important;
   }
 
-  .traffic-popup .leaflet-popup-content {
-    margin: 14px 16px !important;
-    line-height: 1.4 !important;
+  .traffic-popup-wrap .leaflet-popup-content {
+    margin: 12px 14px !important;
+    line-height: 1.45 !important;
+    font-size: 12px;
   }
 
-  .traffic-popup .leaflet-popup-tip {
-    background: rgba(18, 20, 28, 0.96) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  .traffic-popup-wrap .leaflet-popup-tip {
+    background: rgba(18, 20, 28, 0.97) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .traffic-popup {
+    display: grid;
+    gap: 5px;
+    min-width: 220px;
+  }
+
+  .traffic-popup__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 12.5px;
+  }
+
+  .traffic-popup__delay {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #fecdd3;
+    background: rgba(225, 29, 72, 0.22);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+  }
+
+  .traffic-popup__row {
+    font-size: 11.5px;
+    color: #94a3b8;
+  }
+
+  .traffic-popup__row strong {
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+
+  .traffic-popup__text {
+    margin: 0;
+    font-size: 11px;
+    color: #cbd5e1;
+    line-height: 1.45;
+  }
+
+  /* === Подложка, пока тайлы карты не загрузились === */
+  .map-tiles-veil {
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255, 107, 53, 0.06), transparent 60%),
+      linear-gradient(180deg, #0b0d13 0%, #0a0a0f 60%, #090a10 100%);
+    animation: mapVeilBreath 3.2s ease-in-out infinite;
+  }
+
+  @keyframes mapVeilBreath {
+    0%,
+    100% {
+      opacity: 0.96;
+    }
+    50% {
+      opacity: 0.82;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .map-tiles-veil,
+    .traffic-incident-beacon {
+      animation: none !important;
+    }
   }
 `

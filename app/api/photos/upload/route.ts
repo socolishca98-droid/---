@@ -153,16 +153,32 @@ export async function POST(request: NextRequest) {
     // добавляется второй ступенью: иначе сборщик считает путь произвольным и
     // тянет в образ весь проект целиком
     const uploadsRoot = path.join(process.cwd(), "public", "uploads")
+    // Каталог <организация>/<дата> собирается во время исполнения, поэтому
+    // статически проследить его нельзя. Явно отказываем сборщику в трейсинге:
+    // иначе Turbopack включает в образ весь проект (public, исходники) и
+    // предупреждает «Dynamic filesystem access causes tracing of the whole project».
     const relativeDir = path.join(
+      /* turbopackIgnore: true */
       org.organizationId ?? "shared",
       new Date().toISOString().slice(0, 10),
     )
     const absoluteDir = path.join(uploadsRoot, relativeDir)
 
-    await mkdir(absoluteDir, { recursive: true })
+    // Страховка: запись строго внутри public/uploads, даже если идентификатор
+    // организации когда-нибудь окажется похож на «../../etc»
+    const normalizedRoot = path.resolve(uploadsRoot)
+    const resolvedDir = path.resolve(absoluteDir)
+    if (resolvedDir !== normalizedRoot && !resolvedDir.startsWith(normalizedRoot + path.sep)) {
+      return NextResponse.json(
+        { success: false, error: "Недопустимый каталог загрузки" },
+        { status: 400 },
+      )
+    }
+
+    await mkdir(resolvedDir, { recursive: true })
 
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(file.name || "photo")}`
-    const absolutePath = path.join(absoluteDir, fileName)
+    const absolutePath = path.join(resolvedDir, fileName)
     const bytes = Buffer.from(await file.arrayBuffer())
     await writeFile(absolutePath, bytes)
 

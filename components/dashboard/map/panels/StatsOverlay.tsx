@@ -2,7 +2,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   RefreshCw,
@@ -29,6 +29,8 @@ import type { TrafficLevelInfo } from "../layers/TrafficLayer"
 interface StatsOverlayProps {
   base: BaseData | null
   baseWarning: string | null
+  /** Адреса, координаты которых не удалось определить (Nominatim не нашёл город) */
+  geocodeProblems?: string[]
   stats: DashboardStats
   routesCount: number
   totalActiveKm: number
@@ -53,6 +55,7 @@ interface StatsOverlayProps {
 export function StatsOverlay({
   base,
   baseWarning,
+  geocodeProblems,
   stats,
   routesCount,
   totalActiveKm,
@@ -75,32 +78,65 @@ export function StatsOverlay({
 }: StatsOverlayProps) {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const [warningDismissed, setWarningDismissed] = useState(false)
+  const [problemsDismissed, setProblemsDismissed] = useState(false)
+
+  const problems = (geocodeProblems ?? []).filter(Boolean)
+  const problemsPreview = problems.slice(0, 3).join(", ")
+  const problemsRest = problems.length - Math.min(3, problems.length)
+  const themeMenuRef = useRef<HTMLDivElement>(null)
+
+  // Меню стиля карты закрывается кликом вне и по Escape: раньше оно оставалось
+  // открытым и перекрывало кнопки справа
+  useEffect(() => {
+    if (!themeMenuOpen) return
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!themeMenuRef.current?.contains(event.target as Node)) setThemeMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setThemeMenuOpen(false)
+    }
+
+    document.addEventListener("mousedown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [themeMenuOpen])
 
   const isCritical = trafficInfo?.status === "critical"
   const isWarning = trafficInfo?.status === "warning"
+  // Нет ответа сервиса пробок — показываем «нет данных», а не ложное «в графике»
+  const isUnknown = !trafficInfo || trafficInfo.hasData === false
+  const isMock = trafficInfo?.mock === true
 
-  const trafficBadgeColor = isCritical
+  const trafficBadgeColor = isUnknown
+    ? "text-gray-300 bg-white/[0.08] border-white/[0.14]"
+    : isCritical
     ? "text-rose-300 bg-rose-500/20 border-rose-500/40"
     : isWarning
     ? "text-amber-300 bg-amber-500/20 border-amber-500/40"
     : "text-emerald-300 bg-emerald-500/20 border-emerald-500/40"
 
-  const trafficDotColor = isCritical
+  const trafficDotColor = isUnknown
+    ? "bg-gray-400 shadow-gray-500/40"
+    : isCritical
     ? "bg-rose-400 shadow-rose-500/50"
     : isWarning
     ? "bg-amber-400 shadow-amber-500/50"
     : "bg-emerald-400 shadow-emerald-500/50"
 
-  const trafficLabel = trafficInfo
-    ? isCritical
-      ? trafficInfo.accidentsCount > 0
-        ? `ДТП • +${trafficInfo.totalDelayMinutes}м`
-        : `Сбой • +${trafficInfo.totalDelayMinutes}м`
-      : isWarning
-      ? `+${trafficInfo.totalDelayMinutes} мин`
-      : "В графике"
-    : typeof trafficLevel === "number"
-    ? `${trafficLevel} б.`
+  const trafficLabel = isUnknown
+    ? typeof trafficLevel === "number" && trafficLevel > 0
+      ? `${trafficLevel} б.`
+      : "Нет данных"
+    : isCritical
+    ? trafficInfo && trafficInfo.accidentsCount > 0
+      ? `ДТП • +${trafficInfo.totalDelayMinutes}м`
+      : `Сбой • +${trafficInfo?.totalDelayMinutes ?? 0}м`
+    : isWarning
+    ? `+${trafficInfo?.totalDelayMinutes ?? 0} мин`
     : "В графике"
 
   return (
@@ -238,7 +274,7 @@ export function StatsOverlay({
                 : "bg-[#111319]/60 border-white/[0.05] text-gray-500 hover:text-gray-300"
             }`}
           >
-            <Car className={`h-4 w-4 ${showTraffic ? (isCritical ? "text-rose-400" : isWarning ? "text-amber-400" : "text-orange-400") : "text-gray-500"}`} />
+            <Car className={`h-4 w-4 ${showTraffic ? (isCritical ? "text-rose-400" : isWarning ? "text-amber-400" : isMock ? "text-sky-400" : "text-orange-400") : "text-gray-500"}`} />
             <span className="hidden sm:inline">Дороги</span>
             {showTraffic && (
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${trafficBadgeColor}`}>
@@ -263,9 +299,11 @@ export function StatsOverlay({
 
           {/* Меню переключения стилей карты */}
           {onChangeTheme && (
-            <div className="relative">
+            <div className="relative" ref={themeMenuRef}>
               <button
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                aria-expanded={themeMenuOpen}
+                aria-haspopup="menu"
                 title="Стиль карты (Тёмный / Графит / Спутник)"
                 className={`p-2.5 backdrop-blur-xl border rounded-2xl shadow-xl transition-all cursor-pointer ${
                   themeMenuOpen
@@ -392,6 +430,32 @@ export function StatsOverlay({
           </span>
         </div>
 
+        <div className="flex flex-col items-end gap-2 min-w-0">
+        {/* Города без координат: линия рейса будет короче — говорим об этом прямо */}
+        {problems.length > 0 && !problemsDismissed && (
+          <aside
+            aria-label="Не определены координаты адресов"
+            className="flex items-center gap-3 bg-[#101420]/95 backdrop-blur-xl border border-sky-500/35 text-sky-100 rounded-2xl px-4 py-2.5 shadow-2xl pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-md"
+          >
+            <AlertTriangle className="h-4 w-4 text-sky-300 shrink-0" />
+            <div className="text-xs leading-relaxed">
+              <span className="font-semibold">Координаты не определены:</span>{" "}
+              <span className="text-sky-200/90">{problemsPreview}</span>
+              {problemsRest > 0 && <span className="text-sky-300/70"> и ещё {problemsRest}</span>}
+              <span className="block text-[11px] text-sky-300/60 mt-0.5">
+                Эти точки пропущены в линиях рейсов
+              </span>
+            </div>
+            <button
+              onClick={() => setProblemsDismissed(true)}
+              className="p-1 text-sky-300 hover:text-white rounded-lg transition-colors ml-auto"
+              title="Скрыть уведомление"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </aside>
+        )}
+
         {/* Предупреждение о базе (аккуратный Toast справа внизу, не загораживающий карту) */}
         {baseWarning && !warningDismissed && (
           <aside aria-label="Предупреждение базы" className="flex items-center gap-3 bg-[#181510]/95 backdrop-blur-xl border border-amber-500/40 text-amber-200 rounded-2xl px-4 py-2.5 shadow-2xl pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-md">
@@ -411,6 +475,7 @@ export function StatsOverlay({
             </button>
           </aside>
         )}
+        </div>
       </footer>
     </>
   )
