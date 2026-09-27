@@ -72,8 +72,21 @@ const GENERIC_NAMES = new Set([
   "диспетчер",
   "водитель",
   "менеджер",
+  "руководитель",
   "сотрудник",
   "пользователь",
+  "оператор",
+  "поддержка",
+  "сервис",
+  "служба",
+  "система",
+  "охрана",
+  "склад",
+  "парк",
+  "компания",
+  "организация",
+  "флот",
+  "бот",
   "admin",
   "administrator",
   "logist",
@@ -81,7 +94,53 @@ const GENERIC_NAMES = new Set([
   "driver",
   "manager",
   "user",
+  "operator",
+  "support",
+  "service",
+  "system",
+  "company",
+  "organization",
+  "fleet",
+  "bot",
+  "test",
 ])
+
+/**
+ * Аббревиатуры правовых форм. Если строка начинается с такой — это название
+ * юрлица («ИП Фролов Иван Александрович», «ООО Рассвет»), а не человека:
+ * обращение по имени было бы выдумкой, поэтому приветствуем обезличенно.
+ */
+const LEGAL_FORMS = new Set([
+  "ип",
+  "ооо",
+  "оао",
+  "зао",
+  "пао",
+  "ао",
+  "тсж",
+  "жск",
+  "гбу",
+  "мку",
+  "муп",
+  "фгуп",
+  "кфх",
+  "llc",
+  "ltd",
+  "inc",
+  "gmbh",
+  "corp",
+  "srl",
+])
+
+/** «И.» → «и», «Иван» → «иван»: сравниваем со списками только по буквам. */
+function normalizeWord(word: string): string {
+  return word.toLowerCase().replace(/[^а-яёa-z]/g, "")
+}
+
+/** «И.», «И.И.», «И.И» — блок инициалов: настоящего имени за ним не видно. */
+function isInitialBlock(word: string): boolean {
+  return /^[А-ЯЁA-Z]{1,2}(\.[А-ЯЁA-Z]{0,2})?\.?$/.test(word.trim())
+}
 
 function looksLikeSurname(word: string): boolean {
   const lower = word.toLowerCase().replace(/[^а-яёa-z-]/g, "")
@@ -96,20 +155,45 @@ function looksLikeSurname(word: string): boolean {
  * — «Иван Фролов» → «Иван»;
  * — «Мария» → «Мария»;
  * — «Администратор» → null (приветствуем без имени);
+ * — «ИП Фролов Иван Александрович», «ООО Рассвет» → null (это организация);
+ * — «И.И. Иванов», «Фролов И.» → null (имя скрыто инициалами — не угадываем);
  * — пусто / не строка → null.
  */
 export function givenName(fullName?: string | null): string | null {
   if (typeof fullName !== "string") return null
 
-  const tokens = fullName.trim().split(/\s+/).filter(Boolean)
+  const tokens = fullName
+    .replace(/[«»"]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.replace(/[.,;:!?]+$/, ""))
+    .filter(Boolean)
+
   if (tokens.length === 0) return null
+
+  // Название юрлица, а не человек: «ИП Фролов…», «ООО Рассвет», «Loginex LLC».
+  // Форму смотрим в любом слове — она бывает и в конце.
+  if (tokens.some((token) => LEGAL_FORMS.has(normalizeWord(token)))) return null
+
+  // Строка начинается с инициалов («И.И. Иванов», «И. Фролов»): настоящего имени
+  // в ней нет, а обращаться по фамилии невежливо — приветствуем без имени
+  if (tokens.length > 1 && (isInitialBlock(tokens[0]) || normalizeWord(tokens[0]).length <= 1)) {
+    return null
+  }
 
   const candidate =
     tokens.length > 1 && looksLikeSurname(tokens[0]) && !looksLikeSurname(tokens[1])
       ? tokens[1]
       : tokens[0]
 
-  const normalized = candidate.toLowerCase().replace(/[^а-яёa-z]/g, "")
+  const normalized = normalizeWord(candidate)
+
+  // Инициалы вместо имени: «Фролов И.», «ИВАНОВ И.И.»
+  if (normalized.length < 2 || isInitialBlock(candidate)) return null
+
+  // Аббревиатура капсом («ООО», «ФНС», «ИВАНОВ И.И.») — не имя
+  if (/^[А-ЯЁA-Z]{2,}$/.test(candidate)) return null
+
   if (GENERIC_NAMES.has(normalized)) return null
 
   return candidate

@@ -73,6 +73,37 @@ describe("givenName — из того, что лежит в карточке с�
     expect(givenName("dispatcher")).toBeNull()
   })
 
+  it("название организации — не человек: приветствуем без имени", () => {
+    expect(givenName("ИП Фролов Иван Александрович")).toBeNull()
+    expect(givenName("ООО Рассвет")).toBeNull()
+    expect(givenName('ООО "Рассвет"')).toBeNull()
+    expect(givenName("Loginex LLC")).toBeNull()
+  })
+
+  it("инициалы вместо имени — не угадываем", () => {
+    expect(givenName("И.И. Иванов")).toBeNull()
+    expect(givenName("И. Фролов")).toBeNull()
+    expect(givenName("Фролов И.")).toBeNull()
+    expect(givenName("ИВАНОВ И.И.")).toBeNull()
+  })
+
+  it("аббревиатура капсом именем не считается", () => {
+    expect(givenName("ФНС")).toBeNull()
+    expect(givenName("ОПЕРАТОР")).toBeNull()
+  })
+
+  it("служебные учётки, которых раньше не было в списке", () => {
+    expect(givenName("Оператор")).toBeNull()
+    expect(givenName("Поддержка")).toBeNull()
+    expect(givenName("Система")).toBeNull()
+  })
+
+  it("хвостовая пунктуация не попадает в обращение", () => {
+    expect(givenName("Иван,")).toBe("Иван")
+    expect(givenName("Фролов Иван.")).toBe("Иван")
+    expect(givenName("Иван Фролов!")).toBe("Иван")
+  })
+
   it("пусто и не строка — null", () => {
     expect(givenName(null)).toBeNull()
     expect(givenName(undefined)).toBeNull()
