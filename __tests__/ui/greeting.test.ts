@@ -9,6 +9,7 @@ import {
   formatHumanDate,
   getGreetingLabel,
   getGreetingPart,
+  givenName,
 } from "@/lib/ui/greeting"
 
 /** Дата в локальной зоне песочницы (UTC) — час задаём напрямую. */
@@ -52,13 +53,44 @@ describe("getGreetingLabel — русские формулировки", () => {
   })
 })
 
-describe("formatGreeting — обращение по имени", () => {
-  it("берёт только имя из ФИО", () => {
-    expect(formatGreeting("Фролов Иван Александрович", at(9))).toBe("Доброе утро, Фролов")
+describe("givenName — из того, что лежит в карточке сотрудника", () => {
+  it("ФИО через фамилию: обращается по имени, а не по фамилии", () => {
+    expect(givenName("Фролов Иван Александрович")).toBe("Иван")
+    expect(givenName("Иванов Сергей Петрович")).toBe("Сергей")
+    expect(givenName("Смирнова Ольга Игоревна")).toBe("Ольга")
+    expect(givenName("Кузнецкая Мария Петровна")).toBe("Мария")
+  })
+
+  it("имя первым — берёт его же", () => {
+    expect(givenName("Иван Фролов")).toBe("Иван")
+    expect(givenName("Сергей")).toBe("Сергей")
+    expect(givenName("Anna Petrova")).toBe("Anna")
+  })
+
+  it("служебные учётки без имени — null (приветствуем без обращения)", () => {
+    expect(givenName("Администратор")).toBeNull()
+    expect(givenName("Логист")).toBeNull()
+    expect(givenName("dispatcher")).toBeNull()
+  })
+
+  it("пусто и не строка — null", () => {
+    expect(givenName(null)).toBeNull()
+    expect(givenName(undefined)).toBeNull()
+    expect(givenName("   ")).toBeNull()
+    expect(givenName(42 as unknown as string)).toBeNull()
+  })
+})
+
+describe("formatGreeting — обращение по имени вошедшего сотрудника", () => {
+  it("подставляет имя из сессии, а не зашитое значение", () => {
+    expect(formatGreeting("Фролов Иван Александрович", at(9))).toBe("Доброе утро, Иван")
+    expect(formatGreeting("Петрова Мария Сергеевна", at(14))).toBe("Добрый день, Мария")
+    expect(formatGreeting("Сергей Кузнецов", at(20))).toBe("Добрый вечер, Сергей")
   })
 
   it("работает без имени и с пустой строкой", () => {
     expect(formatGreeting(null, at(9))).toBe("Доброе утро")
+    expect(formatGreeting("Администратор", at(9))).toBe("Доброе утро")
     expect(formatGreeting("   ", at(20))).toBe("Добрый вечер")
     expect(formatGreeting(undefined, at(20))).toBe("Добрый вечер")
   })
