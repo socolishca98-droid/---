@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 
 import { forbidden, requireAnySession } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { parseDateValue } from "@/lib/dates"
 // GET — текущее активное ТО
 // Доступ: водитель (только своя машина) и логист (любая машина) —
 // эндпоинт используют и мобильное приложение, и экран автопарка.
@@ -145,7 +146,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const startDate = plannedDate ? new Date(plannedDate) : new Date()
+    // Плановая дата приходит из <input type="date"> строкой «2026-10-05»:
+    // читаем её как местный день, а не как полночь UTC (lib/dates.ts)
+    const planned = parseDateValue(plannedDate)
+    if (plannedDate && !planned) {
+      return NextResponse.json(
+        { success: false, error: "Дата указана неверно: ожидается ГГГГ-ММ-ДД" },
+        { status: 400 }
+      )
+    }
+    const startDate = planned ?? new Date()
 
     // ТО создаётся только на машину своей организации
     const ownVehicle = await prisma.vehicle.findFirst({

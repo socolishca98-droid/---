@@ -8,6 +8,7 @@
 // открывает такой файл сразу, без «импорта данных» и настройки кодировки.
 
 import { NextRequest, NextResponse } from "next/server"
+import { toLocalDateKey } from "@/lib/dates"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
@@ -86,7 +87,9 @@ export async function GET(request: NextRequest) {
 
     const csv = buildAccountingCsv(rows)
     const summary = buildPaymentsSummary(rows)
-    const stamp = new Date().toISOString().slice(0, 10)
+    // Дата в имени файла — местный день (toISOString отдавал UTC: после 21:00
+    // по Москве выгрузка подписывалась предыдущим днём)
+    const stamp = toLocalDateKey(new Date())
 
     return new NextResponse(csv, {
       status: 200,

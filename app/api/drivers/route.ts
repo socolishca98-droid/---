@@ -8,6 +8,7 @@ import { normalizePhone } from "@/lib/auth/constants"
 import { generateTemporaryPassword, hashPassword } from "@/lib/auth/password"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { linkDriverToVehicle } from "@/lib/fleet/assignment"
+import { parseDateValue } from "@/lib/dates"
 // ✅ Допустимые статусы водителя
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 
@@ -108,6 +109,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Срок прав и медосмотра приходит из <input type="date"> строкой
+    // «2026-10-05». new Date() прочитал бы её как полночь UTC, и в зонах
+    // западнее Гринвича в базу лёг бы предыдущий день (lib/dates.ts).
+    const licenseExpiryDate = parseDateValue(licenseExpiry)
+    const medicalExpiryDate = parseDateValue(medicalExpiry)
+    if ((licenseExpiry && !licenseExpiryDate) || (medicalExpiry && !medicalExpiryDate)) {
+      return NextResponse.json(
+        { success: false, error: "Дата указана неверно: ожидается ГГГГ-ММ-ДД" },
+        { status: 400 }
+      )
+    }
+
     const driver = await prisma.driver.create({
       data: {
         organizationId: org.organizationId,
@@ -115,8 +128,8 @@ export async function POST(request: NextRequest) {
         phone,
         status: "available",
         licenseNumber: licenseNumber || null,
-        licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
-        medicalExpiry: medicalExpiry ? new Date(medicalExpiry) : null,
+        licenseExpiry: licenseExpiryDate,
+        medicalExpiry: medicalExpiryDate,
         hiredAt: new Date(),
       },
     })

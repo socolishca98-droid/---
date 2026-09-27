@@ -8,7 +8,10 @@ import { afterAll, describe, expect, it } from "vitest"
 
 import {
   DATE_KEY_PATTERN,
+  endOfLocalDay,
+  formatLocalDate,
   parseDateValue,
+  startOfLocalDay,
   toDateInputValue,
   toLocalDateKey,
 } from "@/lib/dates"
@@ -78,6 +81,9 @@ describe("parseDateValue — «2026-09-28» это локальный день",
   it("мусор, пусто и несуществующий день — null", () => {
     expect(parseDateValue("2026-02-31")).toBeNull()
     expect(parseDateValue("не дата")).toBeNull()
+    // V8 прочитал бы это как 10 мая 2026 — молча и на пять месяцев раньше
+    expect(parseDateValue("05.10.2026")).toBeNull()
+    expect(parseDateValue("28/09/2026")).toBeNull()
     expect(parseDateValue("")).toBeNull()
     expect(parseDateValue("   ")).toBeNull()
     expect(parseDateValue(null)).toBeNull()
@@ -119,5 +125,54 @@ describe("DATE_KEY_PATTERN", () => {
     expect(DATE_KEY_PATTERN.test("28.09.2026")).toBe(false)
     expect(DATE_KEY_PATTERN.test("2026-09-28T00:00:00Z")).toBe(false)
     expect(DATE_KEY_PATTERN.test("2026-9-28")).toBe(false)
+  })
+})
+
+describe("startOfLocalDay / endOfLocalDay — границы местных суток", () => {
+  it("начало и конец дня в локальной зоне", () => {
+    setZone("Europe/Moscow")
+    const day = new Date(2026, 8, 28, 14, 30)
+
+    expect(startOfLocalDay(day).getHours()).toBe(0)
+    expect(startOfLocalDay(day).getDate()).toBe(28)
+    expect(endOfLocalDay(day).getHours()).toBe(23)
+    expect(endOfLocalDay(day).getMinutes()).toBe(59)
+    expect(endOfLocalDay(day).getDate()).toBe(28)
+  })
+
+  it("исходную дату не меняют", () => {
+    setZone("Europe/Moscow")
+    const day = new Date(2026, 8, 28, 14, 30)
+    startOfLocalDay(day)
+    endOfLocalDay(day)
+    expect(day.getHours()).toBe(14)
+  })
+})
+
+describe("formatLocalDate — показ календарной даты", () => {
+  it("строку «2026-09-28» показывает как 28 сентября в любой зоне", () => {
+    setZone("America/New_York")
+    expect(formatLocalDate("2026-09-28")).toBe(new Date(2026, 8, 28).toLocaleDateString("ru-RU"))
+
+    setZone("Europe/Moscow")
+    expect(formatLocalDate("2026-09-28")).toBe(new Date(2026, 8, 28).toLocaleDateString("ru-RU"))
+  })
+
+  it("полное значение времени форматирует в местной зоне", () => {
+    setZone("Europe/Moscow")
+    // 21:00 UTC = 00:00 29 сентября по Москве
+    expect(formatLocalDate("2026-09-28T21:00:00.000Z")).toBe(
+      new Date(2026, 8, 29).toLocaleDateString("ru-RU"),
+    )
+  })
+
+  it("принимает параметры формата и отдаёт пустую строку на мусоре", () => {
+    setZone("Europe/Moscow")
+    expect(formatLocalDate(new Date(2026, 8, 28), "ru-RU", { day: "2-digit", month: "2-digit" })).toBe(
+      "28.09",
+    )
+    expect(formatLocalDate(null)).toBe("")
+    expect(formatLocalDate("мусор")).toBe("")
+    expect(formatLocalDate("05.10.2026")).toBe("")
   })
 })

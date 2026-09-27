@@ -12,6 +12,7 @@ import {
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { linkDriverToVehicle } from "@/lib/fleet/assignment"
+import { parseDateValue } from "@/lib/dates"
 // ✅ Добавлен 'offline' в список разрешённых статусов
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 type DriverStatus = typeof ALLOWED_DRIVER_STATUSES[number]
@@ -129,11 +130,18 @@ export async function PATCH(
     }
 
     if (licenseNumber !== undefined) data.licenseNumber = licenseNumber
-    if (licenseExpiry !== undefined) {
-      data.licenseExpiry = licenseExpiry ? new Date(licenseExpiry) : null
-    }
-    if (medicalExpiry !== undefined) {
-      data.medicalExpiry = medicalExpiry ? new Date(medicalExpiry) : null
+    // Календарная дата из <input type="date"> — как местный день (lib/dates.ts)
+    if (licenseExpiry !== undefined || medicalExpiry !== undefined) {
+      const licenseExpiryDate = parseDateValue(licenseExpiry)
+      const medicalExpiryDate = parseDateValue(medicalExpiry)
+      if ((licenseExpiry && !licenseExpiryDate) || (medicalExpiry && !medicalExpiryDate)) {
+        return NextResponse.json(
+          { success: false, error: "Дата указана неверно: ожидается ГГГГ-ММ-ДД" },
+          { status: 400 }
+        )
+      }
+      if (licenseExpiry !== undefined) data.licenseExpiry = licenseExpiryDate
+      if (medicalExpiry !== undefined) data.medicalExpiry = medicalExpiryDate
     }
     if (currentLocation !== undefined) data.currentLocation = currentLocation
     if (latitude !== undefined) data.latitude = latitude

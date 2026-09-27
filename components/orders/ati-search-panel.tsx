@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { formatLocalDate } from "@/lib/dates"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -1081,7 +1082,7 @@ function LoadCard({
               {load.loadingDate && (
                 <span className="flex items-center gap-1 text-primary">
                   <Calendar className="h-3.5 w-3.5" />
-                  {new Date(load.loadingDate).toLocaleDateString("ru-RU")}
+                  {formatLocalDate(load.loadingDate)}
                 </span>
               )}
             </div>

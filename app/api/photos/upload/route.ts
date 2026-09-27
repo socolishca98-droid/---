@@ -9,6 +9,7 @@
 // а чек и накладная сразу распознаются локальным OCR.
 
 import { mkdir, writeFile } from "node:fs/promises"
+import { toLocalDateKey } from "@/lib/dates"
 import path from "node:path"
 
 import { NextRequest, NextResponse } from "next/server"
@@ -160,7 +161,8 @@ export async function POST(request: NextRequest) {
     const relativeDir = path.join(
       /* turbopackIgnore: true */
       org.organizationId ?? "shared",
-      new Date().toISOString().slice(0, 10),
+      // папка загрузки — по местному дню, а не по UTC (lib/dates.ts)
+      toLocalDateKey(new Date()),
     )
     const absoluteDir = path.join(uploadsRoot, relativeDir)
 

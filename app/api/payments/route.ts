@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { DATE_KEY_PATTERN, endOfLocalDay, parseDateValue } from "@/lib/dates"
 import {
   buildDebtors,
   buildPaymentsSummary,
@@ -122,9 +123,17 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get("from")
     const to = searchParams.get("to")
 
+    // Границы фильтра — календарные дни: «2026-10-01» читаем как начало
+    // местных суток, «2026-10-05» — как их конец (lib/dates.ts). Раньше `from`
+    // был полуночью UTC и в Москве отрезал первые три часа первого дня, а
+    // полное ISO-значение в `to` не разбиралось вовсе.
     const createdAt: Record<string, Date> = {}
-    if (from && !Number.isNaN(new Date(from).getTime())) createdAt.gte = new Date(from)
-    if (to && !Number.isNaN(new Date(to).getTime())) createdAt.lte = new Date(`${to}T23:59:59`)
+    const fromDate = parseDateValue(from)
+    if (fromDate) createdAt.gte = fromDate
+    const toDate = parseDateValue(to)
+    if (toDate) {
+      createdAt.lte = DATE_KEY_PATTERN.test((to ?? "").trim()) ? endOfLocalDay(toDate) : toDate
+    }
 
     const orders = (await prisma.order.findMany({
       where: scopedWhere(org.organizationId, {
@@ -297,8 +306,9 @@ export async function PATCH(request: NextRequest) {
     if ("dueDate" in body) {
       if (body.dueDate === null || body.dueDate === "") data.dueDate = null
       else {
-        const due = new Date(String(body.dueDate))
-        if (Number.isNaN(due.getTime())) {
+        // Срок оплаты приходит из <input type="date"> — читаем как местный день
+        const due = parseDateValue(String(body.dueDate))
+        if (!due) {
           return NextResponse.json({ success: false, error: "Срок оплаты указан неверно" }, { status: 400 })
         }
         data.dueDate = due

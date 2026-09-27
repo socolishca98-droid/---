@@ -9,6 +9,8 @@ import React, {
   useEffect,
   useMemo,
 } from "react"
+
+import { formatLocalDate } from "@/lib/dates"
 import {
   DndContext,
   useSensor,
@@ -739,7 +741,7 @@ function DraggableOrderCard({
                   Погр.
                 </span>
                 <span>
-                  {new Date(order.loadingDate).toLocaleDateString("ru-RU")}
+                  {formatLocalDate(order.loadingDate)}
                   {order.loadingTime && ` • ${order.loadingTime}`}
                 </span>
               </div>
@@ -751,7 +753,7 @@ function DraggableOrderCard({
                   Выгр.
                 </span>
                 <span>
-                  {new Date(order.unloadingDate).toLocaleDateString("ru-RU")}
+                  {formatLocalDate(order.unloadingDate)}
                   {order.unloadingTime && ` • ${order.unloadingTime}`}
                 </span>
               </div>
@@ -2126,7 +2128,7 @@ export function OrdersSandbox() {
 
           if (a.loadingDate) {
             reasons.push(
-              `Дата погрузки: ${new Date(a.loadingDate).toLocaleDateString("ru-RU")}`,
+              `Дата погрузки: ${formatLocalDate(a.loadingDate)}`,
             )
           }
 
