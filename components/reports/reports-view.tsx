@@ -240,10 +240,6 @@ function change(current: number, previous: number): number | null {
   return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10
 }
 
-function dateInput(value: string): string {
-  return new Date(value).toISOString().slice(0, 10)
-}
-
 function KpiCard({
   icon: Icon,
   label,

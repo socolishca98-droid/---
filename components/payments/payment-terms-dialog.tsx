@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+import { toDateInputValue } from "@/lib/dates"
+
 const NONE = "__none__"
 
 const PAYMENT_TYPES = [
@@ -61,10 +63,9 @@ interface PaymentTermsDialogProps {
 }
 
 function toDateInput(value: string | null) {
-  if (!value) return ""
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ""
-  return date.toISOString().slice(0, 10)
+  // Календарная дата приходит с сервера строкой «2026-09-28»: пересчёт через
+  // toISOString() показывал бы в поле день раньше (lib/dates.ts)
+  return toDateInputValue(value)
 }
 
 export function PaymentTermsDialog({

@@ -13,6 +13,7 @@
 //
 // Все суммы — рубли (в базе Int), проценты — целые или с одним знаком.
 
+import { parseDateValue, toLocalDateKey } from "../dates"
 import { normalizeOrderStatus, orderStatusLabel } from "../orders/stages"
 import { overdueDaysFor, paymentDueDate } from "../payments/summary"
 import { EXPENSE_TYPE_LABELS, orderAmount } from "../trips/history"
@@ -267,7 +268,10 @@ export function buildPeriod(
   options: { from?: string | Date | null; to?: string | Date | null; now?: Date } = {},
 ): ReportPeriod {
   const now = options.now ?? new Date()
-  const to = options.to ? endOfDay(new Date(options.to)) : endOfDay(now)
+  // Дату «2026-09-28» читаем как локальный календарный день: new Date() сделал
+  // бы из неё полночь UTC, и в зонах западнее Гринвича период начинался на день
+  // раньше, а последний выбранный день терялся целиком (lib/dates.ts)
+  const to = options.to ? endOfDay(parseDateValue(options.to) ?? now) : endOfDay(now)
 
   // Начало периода — всегда начало суток: иначе пресет «7 дней» терял бы
   // первую половину первого дня (её отсекал бы конец суток, взятый за границу)
@@ -280,7 +284,7 @@ export function buildPeriod(
   })
 
   if (options.from) {
-    const from = startOfDay(new Date(options.from))
+    const from = startOfDay(parseDateValue(options.from) ?? now)
     const span = Math.max(0, daysBetween(from, to))
     const group: ReportGroup = span <= 31 ? "day" : span <= 120 ? "week" : "month"
     return {
@@ -352,10 +356,12 @@ function bucketKey(date: Date, group: ReportGroup): string {
     // Неделя начинается с понедельника
     const day = date.getDay() === 0 ? 7 : date.getDay()
     const monday = startOfDay(addDays(date, -(day - 1)))
-    return monday.toISOString().slice(0, 10)
+    return toLocalDateKey(monday)
   }
 
-  return startOfDay(date).toISOString().slice(0, 10)
+  // Ключ дня — локальная дата. toISOString() отдавал UTC, из-за чего подписи
+  // периодов в отчёте («27.09» вместо «28.09») уезжали на день назад
+  return toLocalDateKey(startOfDay(date))
 }
 
 function bucketLabel(key: string, group: ReportGroup): string {
