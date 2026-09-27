@@ -109,13 +109,15 @@ export function SosButton({ orderId }: Props) {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed right-4 bottom-24 w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/40 flex items-center justify-center transition-all active:scale-95 z-40 animate-pulse"
+        className="fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/40 flex items-center justify-center transition-all active:scale-95 z-40 animate-pulse"
       >
         <AlertTriangle className="h-6 w-6 text-white" />
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-end animate-in fade-in slide-in-from-bottom-10">
+        <div className="fixed inset-0 z-[60] bg-black/90 flex items-end animate-in fade-in slide-in-from-bottom-10">
+          {/* z-[60] — выше нижней навигации (z-50): лист выбора открывается поверх
+              неё, иначе nav закрывает нижние варианты и кнопку */}
           <div className="w-full max-w-md mx-auto bg-[#151518] rounded-t-3xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-3">

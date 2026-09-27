@@ -539,7 +539,8 @@ function PhotoPageContent() {
 
       {/* Модал выбора заказа */}
       {showOrderPicker && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-end">
+        <div className="fixed inset-0 z-[60] bg-black/90 flex items-end">
+          {/* z-[60] — выше нижней навигации (z-50), иначе она закрывает низ листа */}
           <div className="w-full max-w-md mx-auto bg-[#151518] rounded-t-3xl max-h-[75vh] overflow-hidden pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 border-b border-gray-800 flex items-center justify-between">
               <h3 className="font-bold">Выберите рейс</h3>
@@ -628,7 +629,7 @@ function PhotoPageContent() {
 
       {/* Просмотр фото */}
       {previewPhoto && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col">
           <div className="flex items-center justify-between p-4">
             <button
               onClick={() => setPreviewPhoto(null)}
