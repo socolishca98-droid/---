@@ -678,7 +678,7 @@
 
   /* Стеклянная поверхность для шапок и плавающих панелей */
   .surface-glass {
-    background: color-mix(in oklab, var(--background) 72%, transparent);
+    background: color-mix(in oklab, var(--background) 58%, transparent);
     backdrop-filter: blur(14px) saturate(1.15);
   }
 }

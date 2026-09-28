@@ -1,0 +1,338 @@
+"use client"
+
+// app/settings/page.tsx
+//
+// Настоящие настройки программы в одном месте: автопарк и база, реквизиты
+// перевозчика для документов, подложка карты и нормы труда и отдыха.
+// Раньше «Настройки» в меню открывали страницу организации — теперь у
+// настроек свой дом, а организация осталась про компанию и инвайт-коды.
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Building2, Fuel, Map as MapIcon, Save, Timer } from "lucide-react"
+import { PageLayout } from "@/components/page-layout"
+import { AddressInput } from "@/components/address-input"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { useToast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
+
+const THEME_STORAGE_KEY = "tms_map_theme"
+
+const THEMES: Array<{ value: string; label: string }> = [
+  { value: "dark", label: "Тёмная" },
+  { value: "graphite", label: "Графит" },
+  { value: "satellite", label: "Спутник" },
+]
+
+const REQUISITE_FIELDS: Array<{ key: string; label: string; placeholder?: string }> = [
+  { key: "legalName", label: "Юридическое имя", placeholder: "ООО «…»" },
+  { key: "inn", label: "ИНН" },
+  { key: "kpp", label: "КПП" },
+  { key: "ogrn", label: "ОГРН" },
+  { key: "legalAddress", label: "Юридический адрес" },
+  { key: "phone", label: "Телефон" },
+  { key: "email", label: "E-mail" },
+  { key: "bankName", label: "Банк" },
+  { key: "bankBic", label: "БИК" },
+  { key: "bankAccount", label: "Расчётный счёт" },
+  { key: "signerName", label: "Подписант" },
+  { key: "signerPosition", label: "Должность подписанта" },
+]
+
+type SettingsState = Record<string, string>
+
+const EMPTY: SettingsState = {}
+
+function minutesHuman(value: string): string {
+  const total = Number(value)
+  if (!Number.isFinite(total) || total <= 0) return ""
+  const hours = Math.floor(total / 60)
+  const minutes = total % 60
+  if (hours === 0) return `${minutes} мин`
+  if (minutes === 0) return `${hours} ч`
+  return `${hours} ч ${minutes} мин`
+}
+
+export default function SettingsPage() {
+  const { toast } = useToast()
+  const [form, setForm] = useState<SettingsState>(EMPTY)
+  const [theme, setTheme] = useState("dark")
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState("")
+
+  const set = useCallback((key: string, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      try {
+        const response = await fetch("/api/fleet/settings", { credentials: "include" })
+        const data = await response.json().catch(() => null)
+        if (!alive) return
+        if (!response.ok || !data?.settings) {
+          setLoadError("Не удалось загрузить настройки")
+          return
+        }
+        const settings = data.settings as Record<string, unknown>
+        const next: SettingsState = {}
+        for (const [key, value] of Object.entries(settings)) {
+          next[key] = value === null || value === undefined ? "" : String(value)
+        }
+        setForm(next)
+      } catch {
+        if (alive) setLoadError("Не удалось загрузить настройки")
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+    load()
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY)
+      if (stored && THEMES.some((item) => item.value === stored)) setTheme(stored)
+    } catch {
+      /* приватный режим — останемся на тёмной */
+    }
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const pickTheme = (value: string) => {
+    setTheme(value)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, value)
+    } catch {
+      /* не критично */
+    }
+    toast({ title: "Тема карты сохранена", description: "Карта откроется с этой подложкой." })
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const baseLat = form.baseLat === "" ? null : Number(form.baseLat)
+      const baseLng = form.baseLng === "" ? null : Number(form.baseLng)
+      if (form.baseAddress && (baseLat === null || baseLng === null || !Number.isFinite(baseLat) || !Number.isFinite(baseLng))) {
+        toast({ title: "Нужны координаты базы", description: "Выберите адрес из подсказок или введите широту и долготу.", variant: "destructive" })
+        setSaving(false)
+        return
+      }
+      const payload: Record<string, unknown> = {
+        parkName: form.parkName || undefined,
+        baseAddress: form.baseAddress ?? null,
+        baseLat,
+        baseLng,
+      }
+      for (const field of REQUISITE_FIELDS) payload[field.key] = form[field.key] ?? null
+      if (form.restDriveLimitMin) payload.restDriveLimitMin = Number(form.restDriveLimitMin)
+      if (form.restMinBreakMin) payload.restMinBreakMin = Number(form.restMinBreakMin)
+
+      const response = await fetch("/api/fleet/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || "Ошибка сохранения")
+      }
+      toast({ title: "Настройки сохранены" })
+    } catch (error) {
+      toast({
+        title: "Не сохранилось",
+        description: error instanceof Error ? error.message : "Попробуйте ещё раз",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const driveHint = useMemo(() => minutesHuman(form.restDriveLimitMin || ""), [form.restDriveLimitMin])
+  const breakHint = useMemo(() => minutesHuman(form.restMinBreakMin || ""), [form.restMinBreakMin])
+
+  return (
+    <PageLayout
+      title="Настройки"
+      description="Автопарк, реквизиты для документов, карта и нормы отдыха — всё в одном месте"
+      actions={
+        <Button onClick={save} disabled={saving || loading}>
+          <Save className="mr-2 h-4 w-4" />
+          {saving ? "Сохраняем…" : "Сохранить"}
+        </Button>
+      }
+    >
+      <div className="space-y-6">
+        {loadError && (
+          <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{loadError}</div>
+        )}
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          {/* ── Автопарк и база ─────────────────────────────────────── */}
+          <Card className="border-border/50" id="fleet">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Building2 className="h-4 w-4" />
+                Автопарк и база
+              </CardTitle>
+              <CardDescription>
+                Название парка и точка базы: от неё считается возврат на базу и
+                от неё строятся маршруты смены
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="parkName">Название автопарка</Label>
+                <Input
+                  id="parkName"
+                  value={form.parkName ?? ""}
+                  onChange={(event) => set("parkName", event.target.value)}
+                  placeholder="Наш автопарк"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="baseAddress">Адрес базы</Label>
+                <AddressInput
+                  id="baseAddress"
+                  value={form.baseAddress ?? ""}
+                  onChange={(value) => set("baseAddress", value)}
+                  onPick={(item) => {
+                    set("baseLat", item.lat.toFixed(6))
+                    set("baseLng", item.lng.toFixed(6))
+                  }}
+                  placeholder="Город, улица, дом — подскажем варианты"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Начните печатать адрес — ниже появятся подсказки. Выбор подставит
+                  координаты сам; если места в подсказках нет, координаты можно ввести руками.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="baseLat">Широта</Label>
+                  <Input
+                    id="baseLat"
+                    value={form.baseLat ?? ""}
+                    onChange={(event) => set("baseLat", event.target.value)}
+                    placeholder="57.6261"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="baseLng">Долгота</Label>
+                  <Input
+                    id="baseLng"
+                    value={form.baseLng ?? ""}
+                    onChange={(event) => set("baseLng", event.target.value)}
+                    placeholder="39.8847"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Карта и нормы ───────────────────────────────────────── */}
+          <div className="space-y-6">
+            <Card className="border-border/50" id="map">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <MapIcon className="h-4 w-4" />
+                  Карта
+                </CardTitle>
+                <CardDescription>Подложка по умолчанию на вашем рабочем месте</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="inline-flex rounded-lg border border-border/70 p-1">
+                  {THEMES.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => pickTheme(item.value)}
+                      className={cn(
+                        "rounded-md px-4 py-1.5 text-sm transition-colors",
+                        theme === item.value
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/50" id="rest">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Timer className="h-4 w-4" />
+                  Труд и отдых
+                </CardTitle>
+                <CardDescription>
+                  Через сколько непрерывного движения программа напомнит водителю
+                  об отдыхе и какой перерыв засчитает как отдых
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="restDriveLimitMin">Движение до отдыха, мин</Label>
+                  <Input
+                    id="restDriveLimitMin"
+                    inputMode="numeric"
+                    value={form.restDriveLimitMin ?? ""}
+                    onChange={(event) => set("restDriveLimitMin", event.target.value.replace(/\D/g, ""))}
+                    placeholder="270"
+                  />
+                  {driveHint && <p className="text-xs text-muted-foreground">это {driveHint}</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="restMinBreakMin">Перерыв, мин</Label>
+                  <Input
+                    id="restMinBreakMin"
+                    inputMode="numeric"
+                    value={form.restMinBreakMin ?? ""}
+                    onChange={(event) => set("restMinBreakMin", event.target.value.replace(/\D/g, ""))}
+                    placeholder="45"
+                  />
+                  {breakHint && <p className="text-xs text-muted-foreground">это {breakHint}</p>}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* ── Реквизиты перевозчика ─────────────────────────────────── */}
+        <Card className="border-border/50" id="requisites">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Fuel className="h-4 w-4" />
+              Реквизиты перевозчика
+            </CardTitle>
+            <CardDescription>
+              Печатаются в ТТН, путевом листе и договоре-заявке от имени вашей
+              организации. Пустое поле уходит в документ строкой для заполнения от руки
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            {REQUISITE_FIELDS.map((field) => (
+              <div key={field.key} className="space-y-1.5">
+                <Label htmlFor={`req-${field.key}`}>{field.label}</Label>
+                <Input
+                  id={`req-${field.key}`}
+                  value={form[field.key] ?? ""}
+                  onChange={(event) => set(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </PageLayout>
+  )
+}

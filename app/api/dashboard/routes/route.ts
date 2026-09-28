@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
         address: "Настройте адрес в настройках",
         coordinates: DEFAULT_BASE_COORDS,
       }
-      warning = "База не настроена. Перейдите в Настройки → Автопарк."
+      warning = "База не настроена. Откройте Настройки → раздел «Автопарк и база»."
     }
 
     // ========== ЗАКАЗЫ В РАБОТЕ ==========

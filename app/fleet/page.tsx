@@ -13,7 +13,6 @@ import { DriverCard } from "@/components/fleet/driver-card"
 import { AddVehicleDialog } from "@/components/fleet/add-vehicle-dialog"
 import { AddDriverDialog } from "@/components/fleet/add-driver-dialog"
 import { MaintenanceDialog } from "@/components/fleet/maintenance-dialog"
-import { FleetSettingsDialog } from "@/components/fleet/fleet-settings-dialog" // <-- Новый
 import { AssignDriverDialog } from "@/components/fleet/assign-driver-dialog" // <-- Новый
 import {
   FleetInsightsPanel,
@@ -63,7 +62,6 @@ export default function FleetPage() {
   // Диалоги действий
   const [maintenanceVehicle, setMaintenanceVehicle] = useState<any>(null)
   const [assignVehicle, setAssignVehicle] = useState<any>(null) // Для привязки водителя
-  const [showSettings, setShowSettings] = useState(false) // Настройки базы
 
   const [availableVehicles, setAvailableVehicles] = useState<any[]>([])
   const [fleetSettings, setFleetSettings] = useState<any>(null)
@@ -204,7 +202,7 @@ export default function FleetPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => setShowSettings(true)}
+                    onClick={() => router.push("/settings#fleet")}
                   >
                     <Settings className="h-4 w-4" />
                   </Button>
@@ -388,16 +386,6 @@ export default function FleetPage() {
         onSuccess={() => {
           refresh()
           setMaintenanceVehicle(null)
-        }}
-      />
-
-      <FleetSettingsDialog
-        open={showSettings}
-        onOpenChange={setShowSettings}
-        currentSettings={fleetSettings}
-        onSuccess={() => {
-          loadSettings()
-          toast.success("Настройки обновлены")
         }}
       />
 

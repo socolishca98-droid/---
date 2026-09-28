@@ -103,10 +103,26 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar/92 backdrop-blur-xl border-r border-sidebar-border transition-[width] duration-300 ease-out",
+        // Панель полупрозрачная: живой фон рабочего места читается сквозь неё
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar/70 backdrop-blur-xl border-r border-sidebar-border transition-[width] duration-300 ease-out",
         isCollapsed ? "w-20" : "w-64",
       )}
     >
+      {/* Кнопка сворачивания — маленький аккуратный «выступ» на самой кромке
+          панели, а не полноширинная кнопка внизу списка */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
+        title={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
+        className="absolute -right-3 top-20 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-popover text-muted-foreground shadow-lg transition-colors hover:text-foreground"
+      >
+        {isCollapsed ? (
+          <ChevronRight className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronLeft className="h-3.5 w-3.5" />
+        )}
+      </button>
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
@@ -178,13 +194,6 @@ export function Sidebar() {
                     {badgeLabel}
                   </Badge>
                 )}
-
-                {/* Тултип при наведении в свёрнутом режиме */}
-                {isCollapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 border">
-                    {item.name}
-                  </div>
-                )}
               </Link>
             )
           })}
@@ -204,10 +213,9 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* Ссылка ведёт на существующую страницу: раньше здесь был /settings,
-              которого нет в приложении — «Настройки» открывали 404 */}
+          {/* Настройки — отдельная страница /settings: карта, нормы, реквизиты */}
           <Link
-            href="/organization"
+            href="/settings"
             className={cn(
               "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground transition-[background-color,color,transform] duration-200 ease-out hover:translate-x-0.5 group",
             )}
@@ -215,11 +223,6 @@ export function Sidebar() {
           >
             <Settings className="h-5 w-5 flex-shrink-0" />
             {!isCollapsed && <span>Настройки</span>}
-            {isCollapsed && (
-              <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 border">
-                Настройки
-              </div>
-            )}
           </Link>
 
           <Button
@@ -234,28 +237,6 @@ export function Sidebar() {
           >
             <LogOut className="h-5 w-5 flex-shrink-0" />
             {!isCollapsed && <span className="ml-3">Выйти</span>}
-            {isCollapsed && (
-              <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 border">
-                Выйти
-              </div>
-            )}
-          </Button>
-
-          {/* Кнопка сворачивания */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggle}
-            className="w-full justify-center text-sidebar-foreground/70 hover:text-sidebar-foreground mt-2"
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-5 w-5" />
-            ) : (
-              <>
-                <ChevronLeft className="h-5 w-5 mr-2" />
-                <span>Свернуть</span>
-              </>
-            )}
           </Button>
         </div>
       </div>

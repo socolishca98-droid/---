@@ -65,6 +65,15 @@ const TEXT_FIELDS = [
 
 const NUMBER_FIELDS = ["baseLat", "baseLng"] as const
 
+/** Целочисленные нормы: минуты непрерывного движения и минуты перерыва. */
+const INT_FIELDS = ["restDriveLimitMin", "restMinBreakMin"] as const
+
+/** Разумные границы норм, чтобы в базу не уехали 0 или миллион минут. */
+const INT_LIMITS: Record<(typeof INT_FIELDS)[number], { min: number; max: number }> = {
+  restDriveLimitMin: { min: 30, max: 720 },
+  restMinBreakMin: { min: 5, max: 240 },
+}
+
 /** Длинные значения не режем, но и не принимаем бесконечные. */
 const MAX_TEXT_LENGTH = 500
 
@@ -81,7 +90,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
 
-    const allowed = new Set<string>([...TEXT_FIELDS, ...NUMBER_FIELDS])
+    const allowed = new Set<string>([...TEXT_FIELDS, ...NUMBER_FIELDS, ...INT_FIELDS])
     const unknownFields = Object.keys(body).filter((key) => !allowed.has(key))
     if (unknownFields.length > 0) {
       return NextResponse.json(
@@ -132,6 +141,22 @@ export async function POST(request: NextRequest) {
         )
       }
       data[field] = value
+    }
+
+    for (const field of INT_FIELDS) {
+      if (!(field in body)) continue
+      const raw = body[field]
+      if (raw === null || raw === undefined || raw === "") continue
+      const value = Number(raw)
+      if (!Number.isFinite(value)) {
+        return NextResponse.json(
+          { success: false, error: `Поле «${field}» должно быть числом минут` },
+          { status: 400 },
+        )
+      }
+      const limits = INT_LIMITS[field]
+      const clamped = Math.round(Math.min(limits.max, Math.max(limits.min, value)))
+      data[field] = clamped
     }
 
     const parkName = typeof data.parkName === "string" ? data.parkName : undefined

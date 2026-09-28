@@ -90,23 +90,22 @@ export function LiveBackground() {
         preserveAspectRatio="xMidYMid slice"
         focusable="false"
       >
-        {/* Перевалочные узлы: ромбы и круг — геометрия маршрутной сети */}
-        <rect
-          className="route-node"
-          x="1042"
-          y="150"
-          width="118"
-          height="118"
-          transform="rotate(45 1101 209)"
-        />
-        <rect
-          className="route-hub"
-          x="228"
-          y="596"
-          width="76"
-          height="76"
-          transform="rotate(45 266 634)"
-        />
+        {/* Узлы сети — схематичные силуэты: город и зона погрузки вместо ромбов */}
+        {/* Город: skyline из контурных зданий разной высоты + линия земли */}
+        <g className="route-node">
+          <path d="M1041 240 V206 H1057 V192 H1069 V206 H1079 V166 H1093 V206 H1105 V182 H1121 V206 H1131 V194 H1145 V240" />
+          <path d="M1033 240 H1153" />
+          {/* окна-точки: город живой, но остаётся схемой */}
+          <path d="M1085 176 h4 M1085 186 h4 M1111 190 h4 M1061 214 h4" strokeWidth="1.6" />
+        </g>
+        {/* Зона погрузки: склад с двускатной крышей, ворота, штабель контейнеров */}
+        <g className="route-hub">
+          <path d="M228 664 V634 L266 616 L304 634 V664 Z" />
+          <path d="M254 664 V646 H278 V664" />
+          <rect x="312" y="650" width="20" height="14" />
+          <rect x="312" y="634" width="20" height="14" />
+          <path d="M220 664 H340" />
+        </g>
         <circle className="route-node route-node--core" cx="266" cy="634" r="2.6" />
         <circle className="route-node route-node--core" cx="1101" cy="209" r="2.6" />
 

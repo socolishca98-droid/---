@@ -236,6 +236,13 @@ model Order {
   assignedVehicleId String?
   vehicle           Vehicle?  @relation(fields: [assignedVehicleId], references: [id], onDelete: SetNull)
 
+  // ── Догруз сверх грузоподъёмности: разрешён только осознанно, под
+  //    ответственность конкретного логиста; факт решения фиксируется ──
+  overloadApproved     Boolean   @default(false)
+  overloadApprovedById String?
+  overloadApprovedAt   DateTime?
+  overloadNote         String?
+
   /// Рейс, в который собран заказ (одна машина может везти несколько заказов)
   routeId           String?
   route             Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
@@ -393,6 +400,12 @@ model Vehicle {
   lastMaintenanceDate DateTime?
   nextMaintenanceDate DateTime?
   mileage             Int?
+  // ── Учёт топлива: ёмкость бака (л), паспортный расход (л/100 км) и
+  //    оценочный остаток в баке (л). Под груженым рейсом расход считается
+  //    с коэффициентом загрузки; уровень списывается по завершении рейса.
+  fuelTankL           Float?
+  fuelConsumptionPer100 Float?
+  fuelLevelL          Float?
   insuranceExpiry     DateTime?
   inspectionExpiry    DateTime?
   createdAt           DateTime         @default(now())
@@ -644,6 +657,11 @@ model FleetSettings {
   bankAccount    String?
   signerName     String?
   signerPosition String?
+  // ── Нормы труда и отдыха: после скольких минут непрерывного движения
+  //    программа напоминает водителю об отдыхе и какой перерыв засчитывает.
+  //    Значения по умолчанию — ориентир ЕСТП: 4,5 ч движения / 45 мин отдых.
+  restDriveLimitMin Int @default(270)
+  restMinBreakMin   Int @default(45)
   updatedAt   DateTime @updatedAt
 
   @@index([organizationId])
