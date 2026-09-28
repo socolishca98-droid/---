@@ -1321,6 +1321,21 @@ export function OrdersSandbox() {
     updateSheet((s) => ({ ...s, orders: [...s.orders, newOrder] }))
   }
 
+  // Заказ из вкладки «Заказ из текста» прилетает событием и встаёт на активный
+  // лист песочницы готовой карточкой: груз, маршрут, вес — всё на своих местах
+  const addOrderRef = useRef<(order: AtiOrderFromApi) => void>(addOrderFromAti)
+  useEffect(() => {
+    addOrderRef.current = addOrderFromAti
+  })
+  useEffect(() => {
+    const onAdd = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (detail && typeof detail === "object") addOrderRef.current(detail)
+    }
+    window.addEventListener("tms:sandbox-add-order", onAdd)
+    return () => window.removeEventListener("tms:sandbox-add-order", onAdd)
+  }, [])
+
   const pushUndo = (label: string, undo: () => void): void => {
     const createdAt = Date.now()
     setUndoBanner({ label, undo, createdAt })

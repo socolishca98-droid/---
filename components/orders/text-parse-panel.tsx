@@ -16,7 +16,6 @@
 //     вес и телефоны.
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   AlertTriangle,
@@ -34,15 +33,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
-const EXAMPLE_TEXT = `Груз: Стройматериалы (кирпич)
-Откуда: Москва, ул. Промышленная 15
-Куда: Тверь, склад на Петербургском шоссе
-Вес: 18 тонн
-Объём: 80 куб.м
-Цена: 45000р
-Требования: тент, боковая загрузка
-Контакт: Иван, +7-925-111-22-33
-Срок: завтра до 18:00`
+const EXAMPLE_TEXT = `Звонили из «Север-Строй», срочно нужно перевезти
+12 тонн пиломатериалов из Ярославля в Москву до пятницы.
+Машина нужна тент. Обещают 60 тысяч, контакт Сергей +7 910 123-45-67`
 
 type ParsedFields = {
   routeFrom: string
@@ -104,6 +97,19 @@ function pickDeadline(text: string): string {
     return `${year}-${month}-${day}${clock}`
   }
 
+  // «до пятницы», «в понедельник» — ближайшая такая дата недели
+  const weekdays = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"]
+  for (let index = 0; index < weekdays.length; index += 1) {
+    if (!new RegExp(weekdays[index], "i").test(text)) continue
+    const date = new Date()
+    const delta = (index - date.getDay() + 7) % 7 || 7
+    date.setDate(date.getDate() + delta)
+    const time = text.match(/(\d{1,2}):(\d{2})/)
+    if (time) date.setHours(Number(time[1]), Number(time[2]), 0, 0)
+    else date.setHours(18, 0, 0, 0)
+    return date.toISOString().slice(0, 16)
+  }
+
   const dayShift = /послезавтра/i.test(text) ? 2 : /завтра/i.test(text) ? 1 : 0
   if (dayShift > 0) {
     const date = new Date(Date.now() + dayShift * 24 * 60 * 60 * 1000)
@@ -122,6 +128,15 @@ function parseOrderText(text: string): { fields: ParsedFields; warnings: string[
 
   fields.routeFrom = pickLabeled(text, ["откуда", "от", "погрузка", "загрузка", "адрес погрузки"])
   fields.routeTo = pickLabeled(text, ["куда", "до", "выгрузка", "разгрузка", "адрес выгрузки"])
+
+  // Свободный текст без меток: «перевезти из Ярославля в Москву», «из Ростова до Москвы»
+  if (!fields.routeFrom || !fields.routeTo) {
+    const prose = text.match(/из\s+([А-Яа-яЁёA-Za-z\-]{2,40}(?:\s+[А-Яа-яЁёA-Za-z\-]{2,40})?)\s+(?:в|до|под)\s+([А-Яа-яЁёA-Za-z\-]{2,40}(?:\s+[А-Яа-яЁёA-Za-z\-]{2,40})?)/i)
+    if (prose) {
+      fields.routeFrom = fields.routeFrom || prose[1].trim()
+      fields.routeTo = fields.routeTo || prose[2].trim()
+    }
+  }
 
   // «Москва → Тверь» одной строкой
   if (!fields.routeFrom || !fields.routeTo) {
@@ -142,6 +157,11 @@ function parseOrderText(text: string): { fields: ParsedFields; warnings: string[
 
   fields.volume = pickNumber(text, "куб\\.?\\s*м|м3|м³|кубов")
   fields.price = pickNumber(text, "р\\b|руб|₽|рублей")
+  if (!fields.price) {
+    // «60 тысяч», «150 тыщ» — разговорные суммы
+    const thousands = text.match(/(\d+[.,]?\d*)\s*(?:тысяч|тыщ|тыс)/i)
+    if (thousands) fields.price = String(Math.round(Number(thousands[1].replace(",", ".")) * 1000))
+  }
   fields.distance = pickNumber(text, "км")
 
   const phone = text.match(
@@ -167,8 +187,7 @@ function parseOrderText(text: string): { fields: ParsedFields; warnings: string[
 }
 
 export function TextParsePanel() {
-  const router = useRouter()
-  const [text, setText] = useState("")
+    const [text, setText] = useState("")
   const [fields, setFields] = useState<ParsedFields | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [parsed, setParsed] = useState(false)
@@ -227,11 +246,31 @@ export function TextParsePanel() {
         return
       }
 
-      const orderId = data.order?.id
-      toast.success("Заказ создан на этапе «Согласование»", {
-        description: "Дальше — переговоры и торг по цене в карточке заказа",
+      const order = data.order
+      toast.success("Заказ разборчив: карточка уже в песочнице", {
+        description: "Груз, маршрут и вес встали в нужные поля — проверьте и планируйте рейс",
       })
-      if (orderId) router.push(`/orders/${orderId}`)
+      // Карточка появляется прямо в песочнице заказов: песочница слушает
+      // событие и кладёт заказ на активный лист, страница переключает вкладку
+      window.dispatchEvent(
+        new CustomEvent("tms:sandbox-add-order", {
+          detail: {
+            orderId: order?.id,
+            routeFrom: fields.routeFrom.trim(),
+            routeTo: fields.routeTo.trim(),
+            distance: fields.distance ? Number(fields.distance) : 0,
+            cargo: fields.cargoType.trim() || "Груз",
+            weight: fields.weight ? Number(fields.weight) : 0,
+            volume: fields.volume ? Number(fields.volume) : undefined,
+            price: fields.price ? Number(fields.price) : 0,
+            clientCompany: fields.clientName.trim() || undefined,
+            clientPhone: fields.clientContact.trim() || undefined,
+            loadingDate: fields.deadline ? fields.deadline.slice(0, 10) : undefined,
+            status: "negotiation",
+          },
+        }),
+      )
+      window.dispatchEvent(new CustomEvent("tms:orders-tab", { detail: "orders" }))
     } catch {
       toast.error("Ошибка связи с сервером")
     } finally {
@@ -353,7 +392,7 @@ export function TextParsePanel() {
                 ) : (
                   <CheckCircle2 className="h-4 w-4 mr-2" />
                 )}
-                Создать заказ
+                В песочницу на планирование
               </Button>
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 заказ появится на этапе «Согласование»

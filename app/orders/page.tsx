@@ -2,7 +2,7 @@
 
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -16,6 +16,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Package, Bot, Loader2, Search } from "lucide-react"
 
 export default function OrdersPage() {
+  const [tab, setTab] = useState<"orders" | "parser">("orders")
+
+  // Разбор текста положил заказ в песочницу — открываем вкладку песочницы
+  useEffect(() => {
+    const onTab = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (detail === "orders" || detail === "parser") setTab(detail)
+    }
+    window.addEventListener("tms:orders-tab", onTab)
+    return () => window.removeEventListener("tms:orders-tab", onTab)
+  }, [])
+
   const { user, isLoading } = useAuth()
   const { isCollapsed } = useSidebar()
   const router = useRouter()
@@ -63,7 +75,7 @@ export default function OrdersPage() {
             </Button>
           </div>
 
-          <Tabs defaultValue="orders" className="space-y-6">
+          <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList className="bg-secondary w-full justify-start p-1">
               <TabsTrigger value="orders" className="gap-2 px-6">
                 <Package className="h-4 w-4" />
@@ -76,7 +88,9 @@ export default function OrdersPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="orders">
+            {/* forceMount: песочница остаётся в DOM и слышит событие
+                «заказ из текста», даже когда открыта вкладка разбора */}
+            <TabsContent value="orders" forceMount>
               <OrdersSandbox />
             </TabsContent>
 

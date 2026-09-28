@@ -198,6 +198,7 @@ export default function DashboardMap() {
       )}
 
       <StatsOverlay
+        map={map}
         base={base}
         baseWarning={baseWarning}
         geocodeProblems={problems}

@@ -2,6 +2,8 @@
 
 "use client"
 
+import type { Map as LeafletMap } from "leaflet"
+import { MapSearch } from "@/components/dashboard/map/map-search"
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
@@ -27,6 +29,8 @@ import type { MapTheme } from "../hooks/useMapInstance"
 import type { TrafficLevelInfo } from "../layers/TrafficLayer"
 
 interface StatsOverlayProps {
+  /** Экземпляр карты для поиска: летаем к найденному месту и ставим метку */
+  map: LeafletMap | null
   base: BaseData | null
   baseWarning: string | null
   /** Адреса, координаты которых не удалось определить (Nominatim не нашёл город) */
@@ -53,6 +57,7 @@ interface StatsOverlayProps {
 }
 
 export function StatsOverlay({
+  map,
   base,
   baseWarning,
   geocodeProblems,
@@ -264,7 +269,9 @@ export function StatsOverlay({
 
         {/* ПРАВЫЙ МОДУЛЬ: Панель инструментов (Control Cluster) */}
         <div className="flex items-center gap-2 pointer-events-auto shrink-0">
-          
+          {/* Поиск на карте: адрес, город, объект — раскрывается из лупы */}
+          <MapSearch map={map} />
+
           {/* Индикатор дорожной обстановки флота */}
           <button
             onClick={onToggleTrafficPanel}
