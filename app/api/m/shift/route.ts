@@ -6,6 +6,14 @@ import { prisma } from "@/lib/prisma"
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
+import {
+  REST_END,
+  REST_START,
+  currentBreak,
+  drivingMinutes,
+  restVerdict,
+  sumRestMinutes,
+} from "@/lib/rest/norms"
 
 // Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
 // (канон жизненного цикла заказа — lib/orders/stages.ts)
@@ -45,10 +53,68 @@ export async function GET(request: NextRequest) {
       getActiveOrderForDriver(driverId, org.organizationId),
     ])
 
+    // ── Нормы отдыха: непрерывное время в пути по смене и событиям отдыха ──
+    let rest: {
+      resting: boolean
+      restDue: boolean
+      drivingMinutes: number
+      minutesToRest: number
+      currentBreakMin: number
+      breakCounts: boolean
+      limitMin: number
+      minBreakMin: number
+    } | null = null
+
+    if (shift) {
+      const settings = await prisma.fleetSettings.findFirst({
+        where: scopedWhere(org.organizationId),
+        select: { restDriveLimitMin: true, restMinBreakMin: true },
+      })
+      const limitMin = settings?.restDriveLimitMin ?? 270
+      const minBreakMin = settings?.restMinBreakMin ?? 45
+
+      const events = activeOrder?.routeId
+        ? await prisma.routeEvent.findMany({
+            where: scopedWhere(org.organizationId, {
+              routeId: activeOrder.routeId,
+              driverId,
+              type: "status",
+              status: { in: [REST_START, REST_END] },
+            }),
+            select: { status: true, createdAt: true },
+          })
+        : []
+
+      const now = new Date()
+      const shiftStart = new Date(shift.startedAt)
+      const restMinutes = sumRestMinutes(events, shiftStart, now)
+      const breakInfo = currentBreak(events, now)
+      const verdict = restVerdict({
+        shiftStart,
+        now,
+        restMinutes,
+        resting: breakInfo.resting,
+        currentBreakMin: breakInfo.currentBreakMin,
+        limitMin,
+        minBreakMin,
+      })
+      rest = {
+        resting: verdict.resting,
+        restDue: verdict.restDue,
+        drivingMinutes: drivingMinutes(shiftStart, now, restMinutes),
+        minutesToRest: verdict.minutesToRest,
+        currentBreakMin: verdict.currentBreakMin,
+        breakCounts: verdict.breakCounts,
+        limitMin,
+        minBreakMin,
+      }
+    }
+
     return NextResponse.json({
       success: true,
       shift,
       activeOrder,
+      rest,
     })
   } catch (error: any) {
     console.error("[m/shift] GET Error:", error)
@@ -130,10 +196,68 @@ export async function POST(request: NextRequest) {
       return { shift: newShift }
     })
 
+    // ── Нормы отдыха: непрерывное время в пути по смене и событиям отдыха ──
+    let rest: {
+      resting: boolean
+      restDue: boolean
+      drivingMinutes: number
+      minutesToRest: number
+      currentBreakMin: number
+      breakCounts: boolean
+      limitMin: number
+      minBreakMin: number
+    } | null = null
+
+    if (shift) {
+      const settings = await prisma.fleetSettings.findFirst({
+        where: scopedWhere(org.organizationId),
+        select: { restDriveLimitMin: true, restMinBreakMin: true },
+      })
+      const limitMin = settings?.restDriveLimitMin ?? 270
+      const minBreakMin = settings?.restMinBreakMin ?? 45
+
+      const events = activeOrder?.routeId
+        ? await prisma.routeEvent.findMany({
+            where: scopedWhere(org.organizationId, {
+              routeId: activeOrder.routeId,
+              driverId,
+              type: "status",
+              status: { in: [REST_START, REST_END] },
+            }),
+            select: { status: true, createdAt: true },
+          })
+        : []
+
+      const now = new Date()
+      const shiftStart = new Date(shift.startedAt)
+      const restMinutes = sumRestMinutes(events, shiftStart, now)
+      const breakInfo = currentBreak(events, now)
+      const verdict = restVerdict({
+        shiftStart,
+        now,
+        restMinutes,
+        resting: breakInfo.resting,
+        currentBreakMin: breakInfo.currentBreakMin,
+        limitMin,
+        minBreakMin,
+      })
+      rest = {
+        resting: verdict.resting,
+        restDue: verdict.restDue,
+        drivingMinutes: drivingMinutes(shiftStart, now, restMinutes),
+        minutesToRest: verdict.minutesToRest,
+        currentBreakMin: verdict.currentBreakMin,
+        breakCounts: verdict.breakCounts,
+        limitMin,
+        minBreakMin,
+      }
+    }
+
     return NextResponse.json({
       success: true,
       shift,
       activeOrder,
+      rest,
     })
   } catch (error: any) {
     console.error("[m/shift] POST Error:", error)

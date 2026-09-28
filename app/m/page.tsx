@@ -177,6 +177,17 @@ export default function MobileHomePage() {
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("inactive")
   const [isGoingToBase, setIsGoingToBase] = useState(false)
   const [tripStarted, setTripStarted] = useState(false)
+  // Нормы отдыха: непрерывное время в пути и подсказка «пора отдыхать»
+  const [rest, setRest] = useState<{
+    resting: boolean
+    restDue: boolean
+    drivingMinutes: number
+    minutesToRest: number
+    currentBreakMin: number
+    breakCounts: boolean
+    limitMin: number
+    minBreakMin: number
+  } | null>(null)
   const [completingRoute, setCompletingRoute] = useState(false)
   /** Связь и очередь фото: водитель видит, что чек не потерян, а ждёт сети */
   const [isOnline, setIsOnline] = useState(true)
@@ -230,6 +241,7 @@ export default function MobileHomePage() {
       const shiftData = await shiftRes.json()
       if (shiftData.success) {
         setShift(shiftData.shift || null)
+        setRest(shiftData.rest || null)
       }
 
       const routeData = await routeRes.json()
@@ -857,6 +869,32 @@ export default function MobileHomePage() {
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
       </div>
     )
+  }
+
+  const toggleRest = async () => {
+    const routeId = (activeOrder as any)?.routeId
+    if (!driver?.id || !routeId) {
+      toast.error("Отдых отмечаем в рейсе: дождитесь активного заказа")
+      return
+    }
+    const status = rest?.resting ? "rest_end" : "rest_start"
+    try {
+      const res = await fetch("/api/m/route/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ routeId, driverId: driver.id, type: "status", status }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        toast.error(data.error || "Не удалось отметить отдых")
+        return
+      }
+      toast.success(status === "rest_start" ? "Отдых начат: машина стоит, таймер отдыха идёт" : "Отдых завершён: хорошего пути")
+      void fetchData()
+    } catch {
+      toast.error("Ошибка связи с сервером")
+    }
   }
 
   const hasActiveTrip = activeOrder !== null && tripStarted

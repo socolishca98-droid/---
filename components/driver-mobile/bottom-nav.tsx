@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, ListChecks, Camera, User } from "lucide-react"
+import { Home, ListChecks, Camera, User, MapPin } from "lucide-react"
 
 const ITEMS = [
   { href: "/m", label: "Главная", icon: Home },
   { href: "/m/orders", label: "Рейсы", icon: ListChecks },
   { href: "/m/photo", label: "Фото", icon: Camera },
+  { href: "/m/nearby", label: "Рядом", icon: MapPin },
   { href: "/m/profile", label: "Профиль", icon: User },
 ]
 
