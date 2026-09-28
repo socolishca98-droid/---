@@ -24,48 +24,79 @@ export type MapTheme = "dark" | "graphite" | "satellite"
 const THEME_STORAGE_KEY = "tms_map_theme"
 const THEMES: MapTheme[] = ["dark", "graphite", "satellite"]
 
+/**
+ * Ключ CARTO из .env (NEXT_PUBLIC_* подставляется в клиентский бандл).
+ * С сентября 2026 CARTO требует ключ на каждом запросе basemaps: без ключа
+ * CDN возвращает тайлы с водяным знаком «API KEY REQUIRED» вместо карты.
+ */
+const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || ""
+
+/** Проверенный шаблон CARTO: путь rastertiles + ключ параметром key. */
+const cartoUrl = (style: string) =>
+  `https://{s}.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`
+
+const CARTO_DARK: Array<{ url: string; options: L.TileLayerOptions }> = [
+  {
+    url: cartoUrl("dark_all"),
+    options: {
+      subdomains: "abcd",
+      maxZoom: 19,
+      minZoom: 3,
+      attribution: "© OpenStreetMap · CARTO Dark Matter",
+      crossOrigin: true,
+    },
+  },
+]
+
+/** Запасная подложка без ключа: тёмный инженерный графит Esri. */
+const ESRI_DARK: Array<{ url: string; options: L.TileLayerOptions }> = [
+  {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    options: {
+      maxZoom: 18,
+      minZoom: 3,
+      attribution: "© Esri Canvas Base",
+      crossOrigin: true,
+    },
+  },
+  {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    options: { maxZoom: 18, minZoom: 3, opacity: 0.85, crossOrigin: true },
+  },
+]
+
+const ESRI_SATELLITE: Array<{ url: string; options: L.TileLayerOptions }> = [
+  {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    options: { maxZoom: 19, minZoom: 3, attribution: "© Esri Satellite", crossOrigin: true },
+  },
+]
+
+if (!CARTO_API_KEY && typeof window !== "undefined") {
+  // Не ошибка сборки: карта работает на запасной подложке, но тёмная тема
+  // будет отличаться от задуманной — причину стоит видеть в консоли.
+  console.warn(
+    "[map] NEXT_PUBLIC_CARTO_API_KEY не задан: тёмная тема переключена на запасную подложку Esri. Добавьте ключ в .env и перезапустите dev-сервер.",
+  )
+}
+
 /** Базовые слои для каждой темы: тайлы + подпись прав внизу. */
 const BASE_LAYERS: Record<MapTheme, Array<{ url: string; options: L.TileLayerOptions }>> = {
-  // CARTO Dark Matter — тёмный минимализм, на нём читаются неоновые маршруты
-  dark: [
-    {
-      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      options: {
-        subdomains: "abcd",
-        maxZoom: 19,
-        minZoom: 3,
-        attribution: "© OpenStreetMap · CARTO Dark Matter",
-        crossOrigin: true,
-      },
-    },
-  ],
+  // CARTO Dark Matter — тёмный минимализм, на нём читаются неоновые маршруты;
+  // без ключа CARTO отдаёт водяные знаки, поэтому уходим на Esri
+  dark: CARTO_API_KEY ? CARTO_DARK : ESRI_DARK,
   // Esri Canvas Dark Gray — нейтральный инженерный графит
-  graphite: [
-    {
-      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-      options: {
-        maxZoom: 18,
-        minZoom: 3,
-        attribution: "© Esri Canvas Base",
-        crossOrigin: true,
-      },
-    },
-    {
-      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
-      options: { maxZoom: 18, minZoom: 3, opacity: 0.85, crossOrigin: true },
-    },
-  ],
-  // Спутник + тёмные подписи дорог поверх снимка
-  satellite: [
-    {
-      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      options: { maxZoom: 19, minZoom: 3, attribution: "© Esri Satellite", crossOrigin: true },
-    },
-    {
-      url: "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
-      options: { subdomains: "abcd", maxZoom: 19, minZoom: 3, opacity: 0.9, crossOrigin: true },
-    },
-  ],
+  graphite: ESRI_DARK,
+  // Спутник + тёмные подписи дорог поверх снимка (подписи — только с ключом)
+  satellite: CARTO_API_KEY
+    ? [
+        ...ESRI_SATELLITE,
+        {
+          url: cartoUrl("dark_only_labels"),
+          options: { subdomains: "abcd", maxZoom: 19, minZoom: 3, opacity: 0.9, crossOrigin: true },
+        },
+      ]
+    : ESRI_SATELLITE,
 }
 
 interface UseMapInstanceOptions {
