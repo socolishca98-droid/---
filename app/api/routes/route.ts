@@ -6,6 +6,20 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import {
+  backhaulCandidates,
+  emptyReturnKm,
+  routeEndpointCity,
+  showBackhaulWarning,
+} from "@/lib/routes/backhaul"
+import { normalizeCity } from "@/lib/routes/optimizer"
+import {
+  factFuelLiters,
+  fuelAuditDiffPct,
+  fuelAuditFlag,
+} from "@/lib/fleet/fuel-audit"
+import { estimateFuelL } from "@/lib/fleet/fuel"
+
 
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
@@ -65,8 +79,19 @@ type CreateRouteBody = {
 /** Строка списка рейсов: запись Route + подгруженные водитель, машина и заказы. */
 type RouteListRow = Parameters<typeof serializeRoute>[0] & {
   driver: unknown
-  vehicle: unknown
+  vehicle: {
+    id: string
+    plate: string
+    type: string
+    capacity: number
+    status: string
+    fuelConsumptionPer100: number | null
+  } | null
   orders: RouteOrderLike[]
+  /** Расходы рейса для сверки топлива: только тип и литры */
+  expenses: Array<{ type: string; liters: number | null }>
+  /** Последняя точка позиции — для оценки порожнего обратного плеча */
+  events: Array<{ latitude: number | null; longitude: number | null }>
 }
 
 const DEFAULT_PAGE_SIZE = 50
@@ -116,13 +141,55 @@ export async function GET(request: NextRequest) {
       where.status = { notIn: ["completed", "cancelled"] }
     }
 
+    const [settings, atiLoads] = await Promise.all([
+      prisma.fleetSettings.findFirst({
+        where: scopedWhere(org.organizationId),
+        select: { baseAddress: true, baseLat: true, baseLng: true },
+      }),
+      prisma.atiCache.findMany({
+        where: { status: "new" },
+        select: {
+          id: true,
+          routeFrom: true,
+          routeTo: true,
+          distance: true,
+          weight: true,
+          price: true,
+          cargoType: true,
+        },
+        take: 100,
+        orderBy: { createdAt: "desc" },
+      }),
+    ])
+    const baseCity = normalizeCity(settings?.baseAddress ?? "")
+    const basePoint =
+      settings?.baseLat != null && settings?.baseLng != null
+        ? { lat: settings.baseLat, lng: settings.baseLng }
+        : null
+
     const [total, rows] = await Promise.all([
       prisma.route.count({ where: scopedWhere(org.organizationId, where) }),
       prisma.route.findMany({
         where: scopedWhere(org.organizationId, where),
         include: {
           driver: { select: { id: true, name: true, phone: true, status: true, vehiclePlate: true } },
-          vehicle: { select: { id: true, plate: true, type: true, capacity: true, status: true } },
+          vehicle: {
+            select: {
+              id: true,
+              plate: true,
+              type: true,
+              capacity: true,
+              status: true,
+              fuelConsumptionPer100: true,
+            },
+          },
+          expenses: { select: { type: true, liters: true } },
+          events: {
+            where: { type: "location" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { latitude: true, longitude: true },
+          },
           orders: {
             where: scopedWhere(org.organizationId, {}),
             orderBy: routeOrdersOrderBy,
@@ -134,13 +201,65 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    const routes = (rows as RouteListRow[]).map((route) => ({
-      ...serializeRoute(route),
-      driver: route.driver,
-      vehicle: route.vehicle,
-      orders: route.orders,
-      stats: summarizeRoute(route.orders),
-    }))
+    const routes = (rows as RouteListRow[]).map((route) => {
+      // ── Обратное плечо: конец рейса против базы компании ──
+      const endpointCity = routeEndpointCity(route.orders)
+      const lastEvent = route.events?.[0]
+      const lastPoint =
+        lastEvent?.latitude != null && lastEvent?.longitude != null
+          ? { lat: lastEvent.latitude, lng: lastEvent.longitude }
+          : null
+      const returnKm = emptyReturnKm(lastPoint, basePoint)
+      const candidates = backhaulCandidates(endpointCity, baseCity, atiLoads)
+      const backhaul = showBackhaulWarning(endpointCity, baseCity, returnKm)
+        ? {
+            endpointCity,
+            baseCity,
+            emptyReturnKm: returnKm,
+            candidatesCount: candidates.length,
+          }
+        : null
+
+      // ── Сверка топлива: чеки водителя против оценочного расхода ──
+      const factL = factFuelLiters(route.expenses ?? [])
+      const plannedKm =
+        route.totalDistance ??
+        route.orders.reduce((sum: number, order: any) => sum + (Number(order.distance) || 0), 0)
+      const cargoKg = route.orders.reduce(
+        (sum: number, order: any) => sum + (Number(order.weight) || 0),
+        0,
+      )
+      const estimatedL = route.vehicle
+        ? estimateFuelL(
+            {
+              capacity: route.vehicle.capacity,
+              fuelConsumptionPer100: route.vehicle.fuelConsumptionPer100,
+            },
+            plannedKm,
+            cargoKg,
+          )
+        : null
+      const diffPct = fuelAuditDiffPct(factL, estimatedL)
+      const fuelAudit =
+        factL !== null && estimatedL !== null
+          ? {
+              factL,
+              estimatedL: Math.round(estimatedL * 10) / 10,
+              diffPct,
+              flag: fuelAuditFlag(factL, estimatedL),
+            }
+          : null
+
+      return {
+        ...serializeRoute(route),
+        driver: route.driver,
+        vehicle: route.vehicle,
+        orders: route.orders,
+        stats: summarizeRoute(route.orders),
+        backhaul,
+        fuelAudit,
+      }
+    })
 
     return NextResponse.json({
       success: true,

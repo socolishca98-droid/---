@@ -84,12 +84,27 @@ interface RouteData {
   availableCapacity: number
   status: string
   orders: any[]
+  /** Обратное плечо: рейс заканчивается не у базы (lib/routes/backhaul.ts) */
+  backhaul?: {
+    endpointCity: string
+    baseCity: string
+    emptyReturnKm: number | null
+    candidatesCount: number
+  } | null
+  /** Сверка топлива: чеки против оценочного расхода (lib/fleet/fuel-audit.ts) */
+  fuelAudit?: {
+    factL: number
+    estimatedL: number
+    diffPct: number | null
+    flag: boolean
+  } | null
 }
 
 interface ActiveRouteCardProps {
   route: RouteData
   onAddLoad: () => void
   onRefresh: () => void
+  onBackhaul?: () => void
 }
 
 type RouteEtaPreview = {
@@ -141,7 +156,7 @@ function buildRouteEtaPreview(route: RouteData): RouteEtaPreview | null {
   }
 }
 
-export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCardProps) {
+export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: ActiveRouteCardProps) {
   const [expanded, setExpanded] = useState(false)
   /** Карта грузится по требованию: за ней стоят внешние запросы (Nominatim/OSRM) */
   const [showMap, setShowMap] = useState(false)
@@ -315,6 +330,29 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh }: ActiveRouteCard
                         className="text-purple-500 border-purple-500/30"
                       >
                         +{additionalLoads} догруз
+                      </Badge>
+                    )}
+                    {route.backhaul && (
+                      <button
+                        type="button"
+                        onClick={() => onBackhaul?.()}
+                        title="Рейс заканчивается вдали от базы: посмотреть попутные грузы на обратное плечо"
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-500 transition-colors hover:bg-amber-500/20"
+                      >
+                        обратное плечо
+                        {route.backhaul.emptyReturnKm !== null && ` ≈${route.backhaul.emptyReturnKm} км`}
+                        {route.backhaul.candidatesCount > 0 &&
+                          ` · грузов обратно: ${route.backhaul.candidatesCount}`}
+                      </button>
+                    )}
+                    {route.fuelAudit?.flag && (
+                      <Badge
+                        variant="outline"
+                        className="text-rose-500 border-rose-500/40"
+                        title={`Чеки водителя: ${route.fuelAudit.factL} л, оценка рейса: ${route.fuelAudit.estimatedL} л`}
+                      >
+                        топливо {route.fuelAudit.diffPct !== null && route.fuelAudit.diffPct > 0 ? "+" : ""}
+                        {route.fuelAudit.diffPct}% к оценке
                       </Badge>
                     )}
                     {eta && (

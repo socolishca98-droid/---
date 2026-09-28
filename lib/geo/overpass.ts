@@ -83,7 +83,8 @@ export async function searchNearby(
         name: tags.name || tags.operator || tag,
         lat: elLat,
         lng: elLng,
-        distanceM: haversineDistance({ lat, lng }, { lat: elLat, lng: elLng }),
+        // haversineDistance возвращает километры — переводим в метры
+        distanceM: haversineDistance({ lat, lng }, { lat: elLat, lng: elLng }) * 1000,
         kind: placeKind,
         tag,
       })

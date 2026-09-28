@@ -9,6 +9,7 @@ import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { ActiveRouteCard } from "@/components/routes/active-route-card"
 import { AddLoadDialog } from "@/components/routes/add-load-dialog"
+import { BackhaulDialog } from "@/components/routes/backhaul-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -105,6 +106,18 @@ interface ApiRoute {
     totalPrice: number
     completedOrders: number
   }
+  backhaul?: {
+    endpointCity: string
+    baseCity: string
+    emptyReturnKm: number | null
+    candidatesCount: number
+  } | null
+  fuelAudit?: {
+    factL: number
+    estimatedL: number
+    diffPct: number | null
+    flag: boolean
+  } | null
 }
 
 /** Статус рейса из БД → статус карточки на странице. */
@@ -160,6 +173,8 @@ function buildRouteCards(routes: ApiRoute[]): RouteData[] {
         vehicleCapacity > 0 ? Math.round((totalWeight / vehicleCapacity) * 100) : 0,
       status: toCardStatus(route.status, sortedOrders),
       orders: sortedOrders,
+      backhaul: route.backhaul ?? null,
+      fuelAudit: route.fuelAudit ?? null,
     }
   })
 }
@@ -177,6 +192,7 @@ export default function RoutesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"active" | "completed">("active")
+  const [backhaulRoute, setBackhaulRoute] = useState<RouteData | null>(null)
   const [addLoadRoute, setAddLoadRoute] = useState<RouteData | null>(null)
 
   useEffect(() => {
@@ -456,6 +472,7 @@ export default function RoutesPage() {
                   key={route.id}
                   route={route}
                   onAddLoad={() => setAddLoadRoute(route)}
+                  onBackhaul={() => setBackhaulRoute(route)}
                   onRefresh={() => void fetchRoutes({ force: true })}
                 />
               ))}
@@ -463,6 +480,13 @@ export default function RoutesPage() {
           )}
         </main>
       </div>
+
+      <BackhaulDialog
+        open={!!backhaulRoute}
+        onOpenChange={(open) => !open && setBackhaulRoute(null)}
+        route={backhaulRoute ? { id: backhaulRoute.id, vehiclePlate: backhaulRoute.vehiclePlate } : null}
+        onSuccess={() => void fetchRoutes({ force: true })}
+      />
 
       <AddLoadDialog
         open={!!addLoadRoute}
