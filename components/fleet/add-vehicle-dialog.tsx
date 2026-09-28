@@ -33,6 +33,9 @@ interface VehicleFormData {
   width: string
   height: string
   features: VehicleFeature[]
+  fuelTankL: string
+  fuelConsumptionPer100: string
+  fuelLevelL: string
 }
 
 const vehicleTypes = ["Фура", "Газель", "Рефрижератор", "Бортовая", "Тент", "Изотерм"]
@@ -59,6 +62,9 @@ const initialFormData: VehicleFormData = {
   width: "",
   height: "",
   features: [],
+  fuelTankL: "",
+  fuelConsumptionPer100: "",
+  fuelLevelL: "",
 }
 
 export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDialogProps) {
@@ -254,6 +260,45 @@ export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDia
                   <span className="text-sm">{label}</span>
                 </label>
               ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Топливо (учёт расхода)</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="fuelTankL" className="text-xs text-muted-foreground">Бак, л</Label>
+                <Input
+                  id="fuelTankL"
+                  type="number"
+                  placeholder="200"
+                  value={formData.fuelTankL}
+                  onChange={(e) => setFormData({ ...formData, fuelTankL: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="fuelConsumptionPer100" className="text-xs text-muted-foreground">Расход л/100 км</Label>
+                <Input
+                  id="fuelConsumptionPer100"
+                  type="number"
+                  placeholder="25"
+                  value={formData.fuelConsumptionPer100}
+                  onChange={(e) => setFormData({ ...formData, fuelConsumptionPer100: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="fuelLevelL" className="text-xs text-muted-foreground">Сейчас в баке, л</Label>
+                <Input
+                  id="fuelLevelL"
+                  type="number"
+                  placeholder="120"
+                  value={formData.fuelLevelL}
+                  onChange={(e) => setFormData({ ...formData, fuelLevelL: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
             </div>
           </div>
 

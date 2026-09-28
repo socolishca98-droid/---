@@ -88,8 +88,52 @@ export default function FleetPage() {
   }
 
   const refreshAll = () => {
+    loadLoads()
     void refresh()
     loadInsights()
+  }
+
+  // Загрузка и топливо каждой машины: полоса в карточке и запас под догруз
+  const [loadByVehicle, setLoadByVehicle] = useState<Record<string, {
+    loadKg: number
+    freeKg: number
+    ratio: number | null
+  }>>({})
+
+  const loadLoads = () => {
+    fetch("/api/fleet/load", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data?.success || !Array.isArray(data.items)) return
+        const next: Record<string, { loadKg: number; freeKg: number; ratio: number | null }> = {}
+        for (const item of data.items) next[item.id] = {
+          loadKg: item.loadKg,
+          freeKg: item.freeKg,
+          ratio: item.ratio,
+        }
+        setLoadByVehicle(next)
+      })
+      .catch(() => { /* без полосы загрузки карточки остаются рабочими */ })
+  }
+
+  const handleRefuel = async (vehicle: { id: string; plate: string }) => {
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}/refuel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        toast.error(data.error || "Не удалось заправить")
+        return
+      }
+      toast.success(data.message || "Заправлено до полного бака")
+      loadLoads()
+    } catch {
+      toast.error("Ошибка связи с сервером")
+    }
   }
 
   const loadSettings = () => {
@@ -315,6 +359,8 @@ export default function FleetPage() {
                         /* «Отправить на ТО» и «Вернуть в строй» карточка делает
                            сама: без обновления список показывал бы прежний статус */
                         onRefresh={refreshAll}
+                        loadInfo={loadByVehicle[vehicle.id] ?? null}
+                        onRefuel={handleRefuel}
                       />
                     )
                   })}

@@ -63,6 +63,12 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
   const [selectedLoad, setSelectedLoad] = useState<AtiLoad | null>(null)
   const [proposeToDriver, setProposeToDriver] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Перегруз: показываем, насколько не хватает, и берём осознанное согласие
+  const [overload, setOverload] = useState<{
+    overflow: number
+    accepted: boolean
+    note: string
+  } | null>(null)
 
   // Ручной ввод
   const [manualData, setManualData] = useState({
@@ -78,6 +84,7 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
 
   useEffect(() => {
     if (open) {
+      setOverload(null)
       loadAtiLoads()
     }
   }, [open])
@@ -114,7 +121,17 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
   const handleAddFromAti = async () => {
     if (!selectedLoad || !route) return
 
-    if (!canAddLoad(selectedLoad.weight)) {
+    const approved = overload?.accepted === true
+    const overloadBody = approved
+      ? { overloadApproved: true, overloadNote: overload?.note.trim() || undefined }
+      : {}
+
+    if (!canAddLoad(selectedLoad.weight) && !approved) {
+      setOverload({
+        overflow: selectedLoad.weight - route.availableCapacity,
+        accepted: false,
+        note: overload?.note ?? "",
+      })
       toast.error("Груз не помещается", {
         description: `Требуется ${(selectedLoad.weight / 1000).toFixed(1)}т, доступно ${(route.availableCapacity / 1000).toFixed(1)}т`,
       })
@@ -156,10 +173,14 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
           clientName: selectedLoad.firmName,
           clientContact: importData.contact?.phone || "",
           proposeToDriver,
+          ...overloadBody,
         }),
       })
 
       const data = await res.json()
+      if (data.details?.overflow && !approved) {
+        setOverload({ overflow: data.details.overflow, accepted: false, note: overload?.note ?? "" })
+      }
       if (data.success) {
         toast.success(data.message)
         onSuccess()
@@ -185,9 +206,15 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
       return
     }
 
-    if (!canAddLoad(weight)) {
+    const approved = overload?.accepted === true
+    if (!canAddLoad(weight) && !approved) {
+      setOverload({
+        overflow: weight - route.availableCapacity,
+        accepted: false,
+        note: overload?.note ?? "",
+      })
       toast.error("Груз не помещается", {
-        description: `Требуется ${(weight / 1000).toFixed(1)}т, доступно ${(route.availableCapacity / 1000).toFixed(1)}т`,
+        description: `Требуется ${(weight / 1000).toFixed(1)}т, доступно ${(route.availableCapacity / 1000).toFixed(1)}т. Можно добавить под ответственность логиста — ниже появится подтверждение.`,
       })
       return
     }
@@ -208,6 +235,9 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
           clientName: manualData.clientName,
           clientContact: manualData.clientContact,
           proposeToDriver,
+          ...(approved
+            ? { overloadApproved: true, overloadNote: overload?.note.trim() || undefined }
+            : {}),
         }),
       })
 
@@ -430,7 +460,34 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
           </div>
         </div>
 
-        <DialogFooter>
+        {overload && route && (
+        <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="flex items-start gap-2 text-sm text-amber-500">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>
+              Перегруз {(overload.overflow / 1000).toFixed(1)} т: с этим грузом машина{" "}
+              {route.vehiclePlate} пойдёт тяжелее грузоподъёмности.
+            </span>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <Switch
+              checked={overload.accepted}
+              onCheckedChange={(value) => setOverload({ ...overload, accepted: value })}
+            />
+            Беру ответственность за перегруз по бумагам на себя
+          </label>
+          <Input
+            placeholder="Почему допустимо: объёмный но лёгкий, разгрузке не мешает…"
+            value={overload.note}
+            onChange={(event) => setOverload({ ...overload, note: event.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Решение запишется в заказ вместе с вашим именем и временем — видно в карточке.
+          </p>
+        </div>
+      )}
+
+      <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>

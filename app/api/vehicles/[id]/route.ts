@@ -130,6 +130,17 @@ export async function PATCH(request: NextRequest,
       const c = typeof capacity === "string" ? parseInt(capacity, 10) : capacity
       data.capacity = Number.isNaN(c) ? 0 : c
     }
+    // Топливные поля: число, пусто — сброс в null
+    for (const key of ["fuelTankL", "fuelConsumptionPer100", "fuelLevelL"] as const) {
+      const raw = (body as Record<string, unknown>)[key]
+      if (raw === undefined) continue
+      if (raw === null || raw === "") {
+        data[key] = null
+        continue
+      }
+      const value = typeof raw === "string" ? parseFloat(raw) : raw
+      data[key] = typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
+    }
     if (volume !== undefined) {
       const v = typeof volume === "string" ? parseFloat(volume) : volume
       data.volume = Number.isNaN(v) ? null : v

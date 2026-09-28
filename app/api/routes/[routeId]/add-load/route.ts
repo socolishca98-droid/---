@@ -44,6 +44,8 @@ export async function POST(
       clientContact,
       proposeToDriver = false,
       insertAfterOrderId,
+      overloadApproved = false,
+      overloadNote,
     } = body
 
     const route = await prisma.route.findFirst({
@@ -96,19 +98,23 @@ export async function POST(
       const newTotalWeight = currentWeight + (weight || 0)
 
       if (vehicle && newTotalWeight > vehicle.capacity) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Превышена грузоподъёмность машины",
-            details: {
-              capacity: vehicle.capacity,
-              currentWeight,
-              newWeight: weight,
-              overflow: newTotalWeight - vehicle.capacity,
+        // Перегруз разрешён только осознанно: логист явно берёт ответственность
+        // за то, что по бумагам груз превышает предел. Флаг пишется в заказ.
+        if (overloadApproved !== true) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Превышена грузоподъёмность машины",
+              details: {
+                capacity: vehicle.capacity,
+                currentWeight,
+                newWeight: weight,
+                overflow: newTotalWeight - vehicle.capacity,
+              },
             },
-          },
-          { status: 400 }
-        )
+            { status: 400 }
+          )
+        }
       }
     }
 
@@ -153,6 +159,14 @@ export async function POST(
           status: "in_route",
           isAdditionalLoad: true,
           addedToRouteAt: new Date(),
+          // ответственность за перегруз — только при явном согласии логиста
+          overloadApproved: overloadApproved === true,
+          overloadApprovedById: overloadApproved === true ? auth.value.user.id : null,
+          overloadApprovedAt: overloadApproved === true ? new Date() : null,
+          overloadNote:
+            overloadApproved === true && typeof overloadNote === "string"
+              ? overloadNote.slice(0, 500)
+              : null,
           proposedToDriver: proposeToDriver,
           proposedAt: proposeToDriver ? new Date() : null,
           routeSequence,

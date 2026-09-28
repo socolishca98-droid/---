@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { estimateFuelL, fuelAfterRoute } from "@/lib/fleet/fuel"
 
 import {
   canDriverAccessRoute,
@@ -133,6 +134,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
       // пересчёт итогов рейса по заказам
       const summary = await recalcRoute(tx, routeId, org.organizationId)
+
+      // Топливо: завершённый рейс списывает оценочный расход из бака машины.
+      // Расстояние — сумма плеч заказов, загрузка — их суммарный вес: гружёная
+      // машина ест больше (lib/fleet/fuel.ts).
+      if (assignedVehicleId) {
+        const vehicle = await tx.vehicle.findFirst({
+          where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
+          select: {
+            id: true,
+            capacity: true,
+            fuelTankL: true,
+            fuelConsumptionPer100: true,
+            fuelLevelL: true,
+          },
+        })
+        if (vehicle && vehicle.fuelLevelL !== null && vehicle.fuelConsumptionPer100 !== null) {
+          const distanceKm = orders.reduce((sum, order) => sum + (order.distance || 0), 0)
+          const loadKg = orders.reduce((sum, order) => sum + (order.weight || 0), 0)
+          const used = estimateFuelL(vehicle, distanceKm, loadKg)
+          const level = fuelAfterRoute(vehicle, used)
+          if (level !== null && level !== vehicle.fuelLevelL) {
+            await tx.vehicle.update({
+              where: { id: vehicle.id },
+              data: { fuelLevelL: level },
+            })
+          }
+        }
+      }
 
       if (assignedDriverId) {
         const otherActiveOrders = await tx.order.count({

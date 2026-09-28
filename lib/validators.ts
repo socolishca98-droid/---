@@ -145,6 +145,17 @@ export const driverLocationSchema = z.object({
 })
 
 // -------------------- Vehicles --------------------
+/** Число с плавающей точкой из строки или числа; пусто → null (поле сбрасывают). */
+const floatOrNull = z
+  .union([z.string(), z.number(), z.null(), z.undefined()])
+  .optional()
+  .transform((v) => {
+    if (v === null || v === undefined || v === "") return null
+    const n = typeof v === "string" ? parseFloat(v) : v
+    return Number.isFinite(n) && n >= 0 ? (n as number) : null
+  })
+  .pipe(z.number().nullish())
+
 export const createVehicleSchema = z.object({
   plate: z.string().trim().min(1, "Plate required").max(20),
   type: z.string().trim().min(1, "Type required").max(50),
@@ -181,6 +192,10 @@ export const createVehicleSchema = z.object({
   }).pipe(z.number().min(0).optional().or(z.undefined())),
   features: z.union([z.array(z.string()), z.string()]).optional(),
   status: z.enum(["available", "in_use", "maintenance"]).optional(),
+  // Учёт топлива: бак, паспортный расход, текущий остаток (всё опционально)
+  fuelTankL: floatOrNull,
+  fuelConsumptionPer100: floatOrNull,
+  fuelLevelL: floatOrNull,
 })
 
 export const updateVehicleSchema = createVehicleSchema.partial()

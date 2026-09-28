@@ -32,6 +32,10 @@ import {
   type VehicleAssignment,
 } from "@/components/fleet/vehicle-history-dialog"
 import { toast } from "sonner"
+import { Fuel } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { formatKg } from "@/lib/fleet/load"
+import { cn } from "@/lib/utils"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { safeJsonParse } from "@/lib/safe-json"
 import { formatPhone } from "@/lib/ui/phone"
@@ -65,6 +69,16 @@ interface Vehicle {
   mileage?: number | null
   insuranceExpiry?: Date | null
   inspectionExpiry?: Date | null
+  fuelTankL?: number | null
+  fuelConsumptionPer100?: number | null
+  fuelLevelL?: number | null
+}
+
+/** Загрузка машины из GET /api/fleet/load: сколько везёт и сколько свободно. */
+export interface VehicleLoadInfo {
+  loadKg: number
+  freeKg: number
+  ratio: number | null
 }
 
 interface VehicleCardProps {
@@ -78,6 +92,8 @@ interface VehicleCardProps {
   onAssignDriver?: (vehicle: Vehicle) => void
   onMaintenance?: (vehicle: Vehicle) => void
   onRefresh?: () => void
+  loadInfo?: VehicleLoadInfo | null
+  onRefuel?: (vehicle: Vehicle) => void
 }
 
 export function VehicleCard({
@@ -89,6 +105,8 @@ export function VehicleCard({
   onAssignDriver,
   onMaintenance,
   onRefresh,
+  loadInfo,
+  onRefuel,
 }: VehicleCardProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -418,6 +436,54 @@ export function VehicleCard({
             </div>
           )}
         </div>
+
+        {/* Загрузка и топливо: фактический груз и оценочный остаток в баке */}
+        {(loadInfo || vehicle.fuelTankL != null) && (
+          <div className="mb-4 space-y-3 rounded-lg border border-border/50 bg-secondary/40 p-3">
+            {loadInfo && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Загрузка</span>
+                  <span className="font-semibold">
+                    {formatKg(loadInfo.loadKg)} / {formatKg(vehicle.capacity)}
+                  </span>
+                </div>
+                <Progress
+                  value={Math.min(100, Math.round((loadInfo.ratio ?? 0) * 100))}
+                  className={cn("h-1.5", (loadInfo.ratio ?? 0) >= 1 && "bg-amber-500/30")}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {(loadInfo.ratio ?? 0) >= 1
+                    ? "Машина загружена полностью: догруз только под ответственность логиста"
+                    : `Свободно ${formatKg(loadInfo.freeKg)} — столько можно догрузить`}
+                </p>
+              </div>
+            )}
+            {vehicle.fuelTankL != null && (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Fuel className="h-3.5 w-3.5" />
+                  <span
+                    className={cn(
+                      vehicle.fuelLevelL != null &&
+                        vehicle.fuelTankL > 0 &&
+                        vehicle.fuelLevelL / vehicle.fuelTankL < 0.25 &&
+                        "font-semibold text-amber-500",
+                    )}
+                  >
+                    Топливо: {vehicle.fuelLevelL ?? "—"} л из {vehicle.fuelTankL} л
+                    {vehicle.fuelConsumptionPer100 != null
+                      ? ` · расход ${vehicle.fuelConsumptionPer100} л/100 км`
+                      : ""}
+                  </span>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => onRefuel?.(vehicle)}>
+                  Заправить
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Features */}
         {features.length > 0 && (

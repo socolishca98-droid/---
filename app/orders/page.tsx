@@ -75,7 +75,7 @@ export default function OrdersPage() {
             </Button>
           </div>
 
-          <Tabs value={tab} onValueChange={setTab} className="space-y-6">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "orders" | "parser")} className="space-y-6">
             <TabsList className="bg-secondary w-full justify-start p-1">
               <TabsTrigger value="orders" className="gap-2 px-6">
                 <Package className="h-4 w-4" />
