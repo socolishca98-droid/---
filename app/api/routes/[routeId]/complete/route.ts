@@ -156,7 +156,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           const level = fuelAfterRoute(vehicle, used)
           if (level !== null && level !== vehicle.fuelLevelL) {
             await tx.vehicle.update({
-              where: { id: vehicle.id },
+              // защита в глубину: машина уже найдена по scopedWhere, но
+              // обновление тоже не выходит за пределы организации
+              where: { id: vehicle.id, organizationId: org.organizationId },
               data: { fuelLevelL: level },
             })
           }

@@ -52,7 +52,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const level = fuelAfterRefuel(vehicle, liters)
     await prisma.vehicle.update({
-      where: { id: vehicle.id },
+      // защита в глубину: обновление не выходит за пределы организации сессии
+      where: { id: vehicle.id, organizationId: org.organizationId },
       data: { fuelLevelL: level },
     })
 
