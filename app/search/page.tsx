@@ -16,7 +16,7 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -24,6 +24,7 @@ import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { AtiSearchPanel } from "@/components/orders/ati-search-panel"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 export default function SearchPage() {
   const { user, isLoading } = useAuth()
@@ -40,7 +41,7 @@ export default function SearchPage() {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

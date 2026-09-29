@@ -18,7 +18,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, MessageSquare, Phone, MapPin, AlertTriangle, RefreshCw } from "lucide-react"
+import { MessageSquare, Phone, MapPin, AlertTriangle, RefreshCw } from "lucide-react"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface Driver {
   id: string
@@ -147,7 +148,7 @@ export default function ChatPage() {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

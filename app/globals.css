@@ -909,3 +909,89 @@ body {
 .m-nav-pad-sos {
   padding-bottom: calc(10rem + env(safe-area-inset-bottom, 0px));
 }
+
+/* --------------------------------------------------------------------------
+   Загрузочная анимация «коробка → грузовик»
+   Вместо скучного спиннера: коробка складывается, перелетает в кузов,
+   грузовик уезжает вправо. Цвет — currentColor (наследуется от родителя),
+   поэтому на страницах логиста она в primary, у водителя — в оранжевом.
+-------------------------------------------------------------------------- */
+
+.truck-loader {
+  display: inline-block;
+  line-height: 0;
+  color: currentColor;
+}
+
+.truck-loader svg {
+  overflow: visible;
+}
+
+/* Все подвижные части вращаются/двигаются вокруг собственного центра */
+.truck-loader .tl-box,
+.truck-loader .tl-truck,
+.truck-loader .tl-wheel {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.truck-loader .tl-box {
+  animation: tl-box 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.truck-loader .tl-truck {
+  animation: tl-truck 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.truck-loader .tl-wheel {
+  animation: tl-wheel 3.6s linear infinite;
+}
+
+/* Коробка: складывается из плоской, пружинит, улетает по дуге в кузов,
+   затем уезжает вместе с грузовиком. */
+@keyframes tl-box {
+  0%   { opacity: 0; transform: translate(0, 6px) scaleY(0.15) scaleX(0.9) rotate(-6deg); }
+  8%   { opacity: 1; transform: translate(0, 0) scaleY(1.12) scaleX(0.94) rotate(3deg); }
+  15%  { transform: translate(0, 0) scaleY(1) scaleX(1) rotate(0deg); }
+  20%  { transform: translate(0, 1px) scaleY(0.9) scaleX(1.04) rotate(0deg); }
+  28%  { transform: translate(24px, -16px) scaleY(1) scaleX(1) rotate(-8deg); }
+  40%  { transform: translate(50px, -20px) scaleY(1) scaleX(1) rotate(6deg); }
+  50%  { transform: translate(74px, 0) scaleY(0.92) scaleX(1.06) rotate(0deg); }
+  54%  { transform: translate(74px, 0) scaleY(1) scaleX(1) rotate(0deg); }
+  58%  { transform: translate(74px, 0) scaleY(1) scaleX(1) rotate(0deg); opacity: 1; }
+  86%  { transform: translate(176px, 0) scaleY(1) scaleX(1) rotate(0deg); opacity: 1; }
+  92%  { transform: translate(210px, 0) scaleY(1) scaleX(1) rotate(0deg); opacity: 0; }
+  100% { transform: translate(0, 6px) scaleY(0.15) scaleX(0.9) rotate(-6deg); opacity: 0; }
+}
+
+/* Грузовик: стоит, пока коробка летит, принимает её с лёгким покачиванием,
+   затем уезжает вправо и уходит за кадр. */
+@keyframes tl-truck {
+  0%   { transform: translate(0, 0); opacity: 1; }
+  50%  { transform: translate(0, 0); }
+  53%  { transform: translate(0, 1.5px); }
+  56%  { transform: translate(0, 0); }
+  58%  { transform: translate(0, 0); opacity: 1; }
+  86%  { transform: translate(102px, 0); opacity: 1; }
+  92%  { transform: translate(150px, 0); opacity: 0; }
+  93%  { transform: translate(0, 0); opacity: 0; }
+  100% { transform: translate(0, 0); opacity: 1; }
+}
+
+/* Колёса крутятся только пока грузовик едет. */
+@keyframes tl-wheel {
+  0%   { transform: rotate(0deg); }
+  57%  { transform: rotate(0deg); }
+  90%  { transform: rotate(720deg); }
+  100% { transform: rotate(720deg); }
+}
+
+/* Уважение к пользователям с настройкой «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+  .truck-loader .tl-box,
+  .truck-loader .tl-truck,
+  .truck-loader .tl-wheel {
+    animation-duration: 0.001s;
+    animation-iteration-count: 1;
+  }
+}

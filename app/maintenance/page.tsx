@@ -1,13 +1,10 @@
 "use client"
 
-// app/reports/page.tsx
+// app/maintenance/page.tsx
 //
-// Отчёты (задача 8). Раньше страница показывала выдуманные числа: выручку
-// «2.45М ₽», водителей «Александр Петров», заказы «156 выполнено» и «ИИ-отчёт»
-// из зашитого текста. Теперь на странице один настоящий отчёт: период,
-// деньги за период, разбор по числам, заказы, клиенты, водители, парк и оплаты.
-//
-// Данные — из GET /api/reports (см. components/reports/reports-view.tsx).
+// Обслуживание и документы машин: сроки ТО, страховки и техосмотра по парку
+// + журнал работ с ценами. У водителя свой экран (m/maintenance) — здесь
+// сводная картина для организатора.
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -15,9 +12,10 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { ReportsView } from "@/components/reports/reports-view"
+import { MaintenanceView } from "@/components/maintenance/maintenance-view"
 import { TruckLoader } from "@/components/ui/truck-loader"
-export default function ReportsPage() {
+
+export default function MaintenancePage() {
   const { user, isLoading } = useAuth()
   const { isCollapsed } = useSidebar()
   const router = useRouter()
@@ -49,13 +47,13 @@ export default function ReportsPage() {
         <Header />
         <main className="space-y-6 p-6">
           <div>
-            <h1 className="text-2xl font-bold">Отчёты и аналитика</h1>
+            <h1 className="text-2xl font-bold">Обслуживание и документы</h1>
             <p className="text-muted-foreground">
-              Реальные числа из заказов, рейсов, чеков водителей и оплат — с разбором и выгрузкой
+              Сроки ТО, страховки и техосмотра по парку, журнал работ и их стоимость
             </p>
           </div>
 
-          <ReportsView />
+          <MaintenanceView />
         </main>
       </div>
     </div>

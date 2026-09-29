@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useDriverSession } from "@/hooks/use-driver-session"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface Driver {
   id: string
@@ -178,7 +179,7 @@ export default function MaintenancePage() {
   if (!driver || isSessionLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }

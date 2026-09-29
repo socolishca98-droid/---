@@ -46,6 +46,7 @@ import Link from "next/link"
 import { toast } from "sonner"
 import { fetchJsonCached, invalidateCache, peekCache } from "@/lib/client-cache"
 import { CardsSkeleton, KpiSkeleton } from "@/components/ui/skeletons"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface DriverItem {
   id: string
@@ -237,7 +238,7 @@ export default function DriversPage() {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

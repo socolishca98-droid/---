@@ -1,13 +1,10 @@
 "use client"
 
-// app/reports/page.tsx
+// app/audit/page.tsx
 //
-// Отчёты (задача 8). Раньше страница показывала выдуманные числа: выручку
-// «2.45М ₽», водителей «Александр Петров», заказы «156 выполнено» и «ИИ-отчёт»
-// из зашитого текста. Теперь на странице один настоящий отчёт: период,
-// деньги за период, разбор по числам, заказы, клиенты, водители, парк и оплаты.
-//
-// Данные — из GET /api/reports (см. components/reports/reports-view.tsx).
+// Журнал действий организации — только для админа. API /api/admin/audit
+// существовал и писался, но своего экрана не имел: записи копились в БД
+// и никто их не видел. Теперь видны, с фильтром по действию.
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -15,9 +12,10 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { ReportsView } from "@/components/reports/reports-view"
+import { AuditView } from "@/components/audit/audit-view"
 import { TruckLoader } from "@/components/ui/truck-loader"
-export default function ReportsPage() {
+
+export default function AuditPage() {
   const { user, isLoading } = useAuth()
   const { isCollapsed } = useSidebar()
   const router = useRouter()
@@ -29,9 +27,13 @@ export default function ReportsPage() {
     if (!isLoading && user?.role === "driver") {
       router.push("/m")
     }
+    // Журнал — только админу организации; логисту он не показывается
+    if (!isLoading && user && user.role !== "admin") {
+      router.push("/dashboard")
+    }
   }, [user, isLoading, router])
 
-  if (isLoading || !user) {
+  if (isLoading || !user || user.role !== "admin") {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <TruckLoader className="text-primary" />
@@ -49,13 +51,13 @@ export default function ReportsPage() {
         <Header />
         <main className="space-y-6 p-6">
           <div>
-            <h1 className="text-2xl font-bold">Отчёты и аналитика</h1>
+            <h1 className="text-2xl font-bold">Журнал действий</h1>
             <p className="text-muted-foreground">
-              Реальные числа из заказов, рейсов, чеков водителей и оплат — с разбором и выгрузкой
+              Кто входил, кого приглашали и одобряли, что меняли — все действия в вашей организации
             </p>
           </div>
 
-          <ReportsView />
+          <AuditView />
         </main>
       </div>
     </div>

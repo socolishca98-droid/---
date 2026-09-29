@@ -13,7 +13,6 @@ import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { isOrderClosed, isOrderMoving } from "@/lib/orders/stages"
 import {
-  Loader2,
   Truck,
   Package,
   Coffee,
@@ -39,6 +38,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { getPhotoQueue } from "@/lib/offline/photo-queue"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 // ... (оставляем все константы IDLE_STATUSES, TRIP_STATUSES, интерфейсы без изменений)
 
@@ -857,7 +857,7 @@ export default function MobileHomePage() {
   if (isSessionLoading || isDataLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }
@@ -866,7 +866,7 @@ export default function MobileHomePage() {
   if (!isAuthenticated || !driver) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }

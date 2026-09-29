@@ -27,7 +27,6 @@ import {
   Users,
   Plus,
   Search,
-  Loader2,
   RefreshCw,
   MapPin,
   Settings,
@@ -35,6 +34,7 @@ import {
 import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { CardsSkeleton } from "@/components/ui/skeletons"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 export default function FleetPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -208,7 +208,7 @@ export default function FleetPage() {
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

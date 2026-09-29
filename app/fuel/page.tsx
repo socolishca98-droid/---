@@ -1,13 +1,10 @@
 "use client"
 
-// app/reports/page.tsx
+// app/fuel/page.tsx
 //
-// Отчёты (задача 8). Раньше страница показывала выдуманные числа: выручку
-// «2.45М ₽», водителей «Александр Петров», заказы «156 выполнено» и «ИИ-отчёт»
-// из зашитого текста. Теперь на странице один настоящий отчёт: период,
-// деньги за период, разбор по числам, заказы, клиенты, водители, парк и оплаты.
-//
-// Данные — из GET /api/reports (см. components/reports/reports-view.tsx).
+// Топливная ведомость: чеки водителей, расход по машинам «факт против
+// оценки», цена литра. Отчёты считают деньги вообще — эта страница только
+// про топливо, без дублирования других разделов.
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -15,9 +12,10 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { ReportsView } from "@/components/reports/reports-view"
+import { FuelView } from "@/components/fuel/fuel-view"
 import { TruckLoader } from "@/components/ui/truck-loader"
-export default function ReportsPage() {
+
+export default function FuelPage() {
   const { user, isLoading } = useAuth()
   const { isCollapsed } = useSidebar()
   const router = useRouter()
@@ -49,13 +47,13 @@ export default function ReportsPage() {
         <Header />
         <main className="space-y-6 p-6">
           <div>
-            <h1 className="text-2xl font-bold">Отчёты и аналитика</h1>
+            <h1 className="text-2xl font-bold">Топливная ведомость</h1>
             <p className="text-muted-foreground">
-              Реальные числа из заказов, рейсов, чеков водителей и оплат — с разбором и выгрузкой
+              Чеки водителей, расход против паспортной нормы и цена литра — по данным организации
             </p>
           </div>
 
-          <ReportsView />
+          <FuelView />
         </main>
       </div>
     </div>

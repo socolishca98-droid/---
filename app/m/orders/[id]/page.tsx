@@ -41,6 +41,7 @@ import {
 import { toast } from "sonner"
 import { uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
 import { useDriverSession } from "@/hooks/use-driver-session"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface Order {
   id: string
@@ -330,7 +331,7 @@ export default function OrderDetailsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }

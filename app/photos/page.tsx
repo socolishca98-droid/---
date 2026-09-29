@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 export default function PhotosPage() {
   const { user, isLoading } = useAuth()
@@ -186,7 +187,7 @@ export default function PhotosPage() {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

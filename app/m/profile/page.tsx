@@ -9,7 +9,6 @@ import { useDriverSession } from "@/hooks/use-driver-session"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatPhone, telHref } from "@/lib/ui/phone"
 import {
-  Loader2,
   Phone,
   Truck,
   Star,
@@ -23,6 +22,7 @@ import {
   Award,
   Wrench,
 } from "lucide-react"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface DriverProfile {
   id: string
@@ -140,7 +140,7 @@ export default function MobileProfilePage() {
   if (isSessionLoading || !shown) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }

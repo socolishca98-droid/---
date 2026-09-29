@@ -44,6 +44,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 // ==================== ТИПЫ ====================
 interface GeoOption {
@@ -952,7 +953,7 @@ export function AtiSearchPanel() {
 
           {loadingContact ? (
             <div className="py-8 flex flex-col items-center gap-4">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <TruckLoader className="text-primary" />
               <p className="text-sm text-muted-foreground">
                 Получаем контакты...
               </p>

@@ -24,6 +24,9 @@ import {
   Users,
   Building2,
   Search,
+  Fuel,
+  Wrench,
+  ScrollText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,7 +35,14 @@ import { PRODUCT_NAME } from "@/lib/auth/constants"
 /** Какие счётчики может показывать пункт меню. */
 type BadgeKey = "orders" | "chat"
 
-const navigation: Array<{ name: string; href: string; icon: any; badgeKey?: BadgeKey }> = [
+const navigation: Array<{
+  name: string
+  href: string
+  icon: any
+  badgeKey?: BadgeKey
+  /** Пункт виден только администратору организации */
+  adminOnly?: boolean
+}> = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
   // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
   { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
@@ -40,11 +50,15 @@ const navigation: Array<{ name: string; href: string; icon: any; badgeKey?: Badg
   { name: "Поиск грузов", href: "/search", icon: Search },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
+  { name: "Топливо", href: "/fuel", icon: Fuel },
+  { name: "Обслуживание", href: "/maintenance", icon: Wrench },
   { name: "Клиенты", href: "/clients", icon: Contact },
   { name: "Фото", href: "/photos", icon: Camera },
   { name: "Чат", href: "/chat", icon: MessageSquare, badgeKey: "chat" },
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
+  // журнал действий — для админа: кто и что менял в организации
+  { name: "Журнал", href: "/audit", icon: ScrollText, adminOnly: true },
   { name: "Сотрудники", href: "/users", icon: Users },
   { name: "Организация", href: "/organization", icon: Building2 },
 ]
@@ -150,7 +164,9 @@ export function Sidebar() {
             разделов прокручивается, а логотип сверху и блок пользователя снизу
             остаются на месте. Иначе нижние разделы уезжают за экран. */}
         <nav className="flex-1 min-h-0 space-y-1 overflow-y-auto overscroll-contain p-3">
-          {navigation.map((item) => {
+          {navigation
+            .filter((item) => !item.adminOnly || user?.role === "admin")
+            .map((item) => {
             const isActive = pathname === item.href
             const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0
             const badgeLabel = badgeValue > 99 ? "99+" : String(badgeValue)

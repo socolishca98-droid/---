@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface Vehicle {
   id: string
@@ -148,7 +149,7 @@ export default function VehicleSelectPage() {
   if (isLoading || isSessionLoading) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }

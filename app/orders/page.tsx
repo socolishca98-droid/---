@@ -13,7 +13,8 @@ import { OrdersSandbox } from "@/components/orders/orders-sandbox"
 import { TextParsePanel } from "@/components/orders/text-parse-panel"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Package, Bot, Loader2, Search } from "lucide-react"
+import { Package, Bot, Search } from "lucide-react"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 export default function OrdersPage() {
   const [tab, setTab] = useState<"orders" | "parser">("orders")
@@ -44,7 +45,7 @@ export default function OrdersPage() {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

@@ -22,6 +22,7 @@ import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
 import { useDriverSession } from "@/hooks/use-driver-session"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 // Этот экспорт всё равно оставим для надёжности
 export const dynamic = "force-dynamic"
@@ -344,7 +345,7 @@ function PhotoPageContent() {
   if (!driver) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }
@@ -672,7 +673,7 @@ export default function PhotoPageWrapper() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     }>
       <PhotoPageContent />

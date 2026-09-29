@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import {
-  Loader2,
   Search,
   RefreshCw,
   Route,
@@ -30,6 +29,7 @@ import { toast } from "sonner"
 import { MOVING_ORDER_STATUSES, type OrderStatus } from "@/lib/orders/stages"
 import { fetchJsonCached, peekCache, invalidateCache } from "@/lib/client-cache"
 import { CardsSkeleton } from "@/components/ui/skeletons"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 // ============================================
 // ТИПЫ
@@ -303,7 +303,7 @@ export default function RoutesPage() {
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin" />
+        <TruckLoader className="text-primary" />
       </div>
     )
   }

@@ -5,7 +5,6 @@ import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import Link from "next/link"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import {
-  Loader2,
   MapPin,
   ChevronRight,
   Clock,
@@ -14,6 +13,7 @@ import {
   Package,
   RefreshCw,
 } from "lucide-react"
+import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface DriverSession {
   id: string
@@ -175,7 +175,7 @@ export default function DriverOrdersPage() {
   if (!driver) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        <TruckLoader className="text-orange-500" />
       </div>
     )
   }
@@ -235,7 +235,7 @@ export default function DriverOrdersPage() {
       <main className="p-4 space-y-3">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-orange-500 mb-3" />
+            <TruckLoader className="text-orange-500 mb-3" />
             <p className="text-gray-500 text-sm">Загрузка рейсов...</p>
           </div>
         ) : orders.length === 0 ? (
