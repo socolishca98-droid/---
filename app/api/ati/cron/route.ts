@@ -17,7 +17,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { timingSafeEqual } from "node:crypto"
-import { scanAtiLoads, cleanExpiredCache, getAtiStats } from "@/lib/ati-client"
+import { scanAtiLoads, cleanExpiredCache } from "@/lib/ati-client"
+import { getActiveAtiToken } from "@/lib/ati/connection"
+import { prisma } from "@/lib/prisma"
 import { loadStaffSession } from "@/lib/auth/session"
 import { getDueScanProfiles, markProfileScanned, scanParamsForProfile } from "@/lib/ati/scan-schedule"
 
@@ -78,55 +80,81 @@ function resolveAction(value: string | null | undefined, fallback: Action = "all
 }
 
 /**
- * Скан по расписанию.
+ * Скан по расписанию — обход подключений организаций.
  *
- * Профили расписания (AtiScanConfig) решают, что сканировать и как часто:
- * города, радиус, минимальный вес, типы кузова и интервал. Профиль без
- * интервала (autoScanInterval = 0) сам не запускается — только вручную из
- * интерфейса.
+ * У каждой организации свой аккаунт ATI.SU: cron берёт её токен
+ * (AtiConnection), её профили расписания (AtiScanConfig) и наполняет ЕЁ
+ * накопленную базу грузов (AtiCache.organizationId). Организации без
+ * подключения пропускаются — общий токен из .env больше не используется.
  *
- * Профилей нет — работает прежнее поведение: один общий скан основных хабов.
- * Живой ATI опрашивается только здесь и в ручном поиске: поиск заказов идёт по
- * накопленной базе.
+ * Профили без интервала (autoScanInterval = 0) сами не запускаются — только
+ * вручную из интерфейса. Профилей нет — скан всех видимых грузов площадок.
  */
 async function runScheduledScan(mode: string) {
-  const { active, due, waiting } = await getDueScanProfiles()
+  // org-audit: manual — cron легально обходит подключения ВСЕХ организаций:
+  // для каждой используется только её собственный токен и её профили
+  const connections = await prisma.atiConnection.findMany({
+    where: { status: { in: ["active", "unverified"] } },
+    orderBy: { createdAt: "asc" },
+  })
 
-  if (active.length === 0) {
-    const result = await scanAtiLoads({ mode })
+  if (connections.length === 0) {
     return {
-      mode: "default",
-      reason: "профилей расписания нет — скан по умолчанию",
-      result,
+      mode: "skipped",
+      reason: "нет организаций, подключённых к ATI.SU — сканировать нечего",
     }
   }
 
-  const profiles: { id: string; name: string; result: unknown }[] = []
+  const organizations: { organizationId: string; profile?: string; result: unknown }[] = []
 
-  for (const profile of due) {
-    try {
-      const result = await scanAtiLoads(scanParamsForProfile(profile, mode))
-      await markProfileScanned(profile.id)
-      profiles.push({ id: profile.id, name: profile.name, result })
-    } catch (error) {
-      // один сломанный профиль не должен останавливать остальные
-      profiles.push({
-        id: profile.id,
-        name: profile.name,
-        result: {
-          success: false,
-          error: error instanceof Error ? error.message : "ошибка скана",
-        },
+  for (const connection of connections) {
+    const organizationId = connection.organizationId
+    if (!organizationId) continue
+
+    const ati = await getActiveAtiToken(organizationId)
+    if (!ati.ok) {
+      organizations.push({
+        organizationId,
+        result: { success: false, code: ati.code, error: ati.error },
       })
+      continue
+    }
+
+    const { active, due } = await getDueScanProfiles(organizationId)
+
+    if (active.length === 0) {
+      const result = await scanAtiLoads({ mode, token: ati.token, organizationId })
+      organizations.push({ organizationId, result })
+      continue
+    }
+
+    for (const profile of due) {
+      try {
+        const result = await scanAtiLoads({
+          ...scanParamsForProfile(profile, mode),
+          token: ati.token,
+          organizationId,
+        })
+        await markProfileScanned(profile.id, organizationId)
+        organizations.push({ organizationId, profile: profile.name, result })
+      } catch (error) {
+        // один сломанный профиль не должен останавливать остальные
+        organizations.push({
+          organizationId,
+          profile: profile.name,
+          result: {
+            success: false,
+            error: error instanceof Error ? error.message : "ошибка скана",
+          },
+        })
+      }
     }
   }
 
   return {
-    mode: "profiles",
-    scanned: profiles.length,
-    profiles,
-    // профили, которым ещё рано: следующий запуск — по их интервалу
-    waiting: waiting.map((profile) => ({ id: profile.id, name: profile.name })),
+    mode: "organizations",
+    scanned: organizations.length,
+    organizations,
   }
 }
 
@@ -147,7 +175,6 @@ async function runActions(action: Action, mode: string) {
     results.scan = await runScheduledScan(mode)
   }
 
-  results.stats = await getAtiStats()
   return results
 }
 

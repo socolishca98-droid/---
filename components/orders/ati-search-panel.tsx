@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { formatLocalDate } from "@/lib/dates"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -220,6 +221,8 @@ export function AtiSearchPanel() {
 
   // Статусы загрузки
   const [scanning, setScanning] = useState(false)
+  // Подключён ли у организации свой аккаунт ATI (null — ещё не знаем)
+  const [atiConnected, setAtiConnected] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [harvesting, setHarvesting] = useState(false)
   const [harvestMode, setHarvestMode] = useState<"fast" | "normal" | "deep">(
@@ -289,6 +292,23 @@ export function AtiSearchPanel() {
     }
   }
 
+  // Без подключённого аккаунта ATI и скан, и живой поиск не работают —
+  // узнаём состояние сразу, чтобы показать баннер с инструкцией
+  useEffect(() => {
+    let active = true
+    fetch("/api/ati/connection", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data?.success) setAtiConnected(Boolean(data.connected))
+      })
+      .catch(() => {
+        /* не критично: узнаем из ответа скана */
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
   useEffect(() => {
     if (activeTab === "database") {
       void loadDatabase()
@@ -357,6 +377,7 @@ export function AtiSearchPanel() {
       const data = (await res.json()) as {
         success?: boolean
         error?: string
+        code?: string
         loads?: LoadItem[]
         found?: number
         count?: number
@@ -366,6 +387,9 @@ export function AtiSearchPanel() {
         setSearchResults(data.loads || [])
         toast.success(`Найдено: ${data.found || 0}, сохранено: ${data.count}`)
         void loadStats()
+      } else if (data.code === "ati_not_connected") {
+        setAtiConnected(false)
+        toast.error("Аккаунт ATI.SU не подключён — зайдите в раздел «Организация»")
       } else {
         toast.warning(data.error || "Ничего не найдено")
       }
@@ -402,6 +426,7 @@ export function AtiSearchPanel() {
       const data = (await res.json()) as {
         success?: boolean
         error?: string
+        code?: string
         found?: number
         count?: number
       }
@@ -415,6 +440,9 @@ export function AtiSearchPanel() {
         )
         void loadDatabase()
         void loadStats()
+      } else if (data.code === "ati_not_connected") {
+        setAtiConnected(false)
+        toast.error("Аккаунт ATI.SU не подключён — зайдите в раздел «Организация»")
       } else {
         toast.error(data.error || "Ошибка сборщика")
       }
@@ -522,6 +550,24 @@ export function AtiSearchPanel() {
   // ==================== РЕНДЕР ====================
   return (
     <div className="space-y-6">
+      {atiConnected === false && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm">
+          <AlertTriangle className="h-5 w-5 mt-0.5 text-red-500 flex-shrink-0" />
+          <div className="flex-1 space-y-1">
+            <p className="font-semibold text-red-700 dark:text-red-300">
+              Аккаунт ATI.SU не подключён
+            </p>
+            <p className="text-red-600/90 dark:text-red-300/80">
+              Сканы и живой поиск идут через аккаунт ATI вашей организации —
+              свои площадки, подписки и лимиты. Подключите токен в разделе
+              «Организация» (это может сделать администратор).
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm" className="flex-shrink-0">
+            <Link href="/organization">Подключить</Link>
+          </Button>
+        </div>
+      )}
       <Tabs
         value={activeTab}
         onValueChange={(val) => setActiveTab(val as "search" | "database")}

@@ -9,9 +9,9 @@
 //   Поиск → Согласование → Маршрут → Документы → Назначение → Контроль.
 //
 // Три правила, которые здесь важны:
-//  1. AtiCache — ОБЩАЯ таблица (биржа грузов). Мы её не помечаем и не меняем:
-//     иначе груз, взятый одной организацией, исчез бы из базы у других
-//     (прежний /api/ati/import ставил status="imported" именно так).
+//  1. AtiCache — накопленная база ОРГАНИЗАЦИИ: грузы, найденные её токеном
+//     ATI.SU на её площадках. Взять можно только груз из своей базы — строки
+//     другой организации невидимы (проверка ниже).
 //  2. organizationId берётся из проверенной сессии, а не из тела запроса.
 //  3. Внутри организации один груз берётся один раз: @@unique([organizationId, atiCacheId])
 //     → повторный запрос возвращает 409 и уже созданный заказ.
@@ -26,6 +26,7 @@ import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
 import { normalizeOrderStatus, orderStageOf, orderStatusLabel } from "@/lib/orders/stages"
 import { fetchFirmContacts } from "@/lib/ati/contacts"
+import { getActiveAtiToken } from "@/lib/ati/connection"
 
 export const dynamic = "force-dynamic"
 
@@ -83,10 +84,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // org-audit: manual — AtiCache общая таблица (биржа грузов): организация к ней
-    // не применяется намеренно, а созданный заказ получает организацию из сессии
+    // org-audit: ok — груз ищется по id, но принадлежит ли он организации
+    // сессии проверяется сразу: чужая строка базы неотличима от несуществующей
     const cache = await prisma.atiCache.findUnique({ where: { id: cacheId } })
-    if (!cache) {
+    if (!cache || cache.organizationId !== org.organizationId) {
       return NextResponse.json(
         { success: false, error: "Груз в накопленной базе не найден" },
         { status: 404 },
@@ -134,21 +135,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Контакты добираем живым запросом к ATI только по явному флагу: это
-    // обращение во внешнюю систему, по умолчанию оно не выполняется.
-    // Результат пишем в строку общей базы (контакты — свойство груза, а не
-    // принадлежность организации), статус строки не меняем.
+    // обращение во внешнюю систему, по умолчанию оно не выполняется. Запрос
+    // идёт с токеном ОРГАНИЗАЦИИ (её аккаунт, её лимиты); без подключения
+    // контакты просто останутся пустыми.
     let contactPhone: string | null = cache.contactPhone || null
     let contactName: string | null = cache.contactName || null
     let contactEmail: string | null = null
     if (body.fetchContacts === true && cache.firmId && (!contactPhone || !contactName)) {
       try {
-        const fetched = await fetchFirmContacts(cache.firmId)
+        const ati = await getActiveAtiToken(org.organizationId)
+        const fetched = await fetchFirmContacts(cache.firmId, ati.ok ? ati.token : null)
         contactPhone = contactPhone || fetched.phone || null
         contactName = contactName || fetched.name || null
         contactEmail = fetched.email || null
         if (contactPhone || contactName) {
           await prisma.atiCache.updateMany({
-            where: { id: cache.id },
+            where: { id: cache.id, organizationId: org.organizationId },
             data: { contactPhone, contactName },
           })
         }

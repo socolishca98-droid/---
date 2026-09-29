@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     // Если запрос статистики
     if (searchParams.get("stats") === "true") {
-      const stats = await getAtiStats()
+      const stats = await getAtiStats(__org.organizationId)
       return NextResponse.json(stats)
     }
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       sortOrder: searchParams.get("sortOrder") || "desc",
     }
 
-    const result = await getAtiCache(params)
+    const result = await getAtiCache({ ...params, organizationId: __org.organizationId })
     return NextResponse.json(result)
   } catch (error: any) {
     console.error("[ATI Cache] Error:", error)

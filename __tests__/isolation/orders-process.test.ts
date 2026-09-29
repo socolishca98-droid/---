@@ -5,7 +5,7 @@
 //
 // Проверяется то, что нельзя проверить типами:
 //   * заказ рождается в своей организации и на этапе «Поиск»;
-//   * общая база ATI (AtiCache) не меняется — груз остаётся доступным другим;
+//   * база ATI (AtiCache) у каждой организации своя — чужая строка не отдаётся;
 //   * чужой заказ не читается и не меняется (404, а не 403);
 //   * на холст/в рейс попадают только согласованные заказы;
 //   * смена цены и статуса автоматически попадает в ленту согласования.
@@ -41,11 +41,12 @@ let world: World
 let cookieA: string
 let cookieB: string
 
-/** Строка общей накопленной базы ATI (биржа грузов — организация не применяется). */
+/** Строка накопленной базы ATI: у каждой организации свой кэш (по умолчанию — А). */
 function seedCacheRow(slug: string, overrides: Record<string, unknown> = {}) {
   const id = cid(slug)
   memoryDb.insert("atiCache", {
     id,
+    organizationId: world.orgA,
     atiLoadId: `ati-${slug}`,
     routeFrom: "Москва",
     routeTo: "Казань",
@@ -143,28 +144,21 @@ describe("взять груз в работу (POST /api/orders/from-cache)", ()
     expectNoForeignIds(data, world)
   })
 
-  it("общая база ATI не меняется: тот же груз берёт другая организация", async () => {
-    const cacheId = seedCacheRow("cache2")
+  it("груз из кэша чужой организации не отдаётся — 404, заказ не создаётся", async () => {
+    // у организации Б своя строка кэша; организация А её не видит
+    const cacheId = seedCacheRow("cache2", { organizationId: world.orgB })
 
-    const first = await jsonOf(
-      await takeFromCachePost(
-        makeRequest("POST", "/api/orders/from-cache", { cookie: cookieA, body: { cacheId } }),
-      ),
+    const response = await takeFromCachePost(
+      makeRequest("POST", "/api/orders/from-cache", { cookie: cookieA, body: { cacheId } }),
     )
-    expect(first.success).toBe(true)
+    const data = await jsonOf(response)
 
-    // строка общей базы осталась как была — груз не «спрятан» от других
+    expect(response.status).toBe(404)
+    expect(data.success).toBe(false)
+    expect(memoryDb.rows("order").filter((row) => row.atiCacheId === cacheId).length).toBe(0)
+
+    // своя строка кэша при этом никуда не делась
     expect(rowOf("atiCache", cacheId).status).toBe("new")
-
-    const second = await takeFromCachePost(
-      makeRequest("POST", "/api/orders/from-cache", { cookie: cookieB, body: { cacheId } }),
-    )
-    const data = await jsonOf(second)
-
-    expect(second.status).toBe(200)
-    expect(data.success).toBe(true)
-    expect(rowOf("order", data.order.id).organizationId).toBe(world.orgB)
-    expectNoForeignIds({ order: { id: data.order.id, status: data.order.status } }, world)
   })
 
   it("второй раз тот же груз в своей организации взять нельзя — 409", async () => {
@@ -366,7 +360,7 @@ describe("песочница заказов (GET/DELETE /api/ati/sandbox)", () =
     expect(response.status).toBe(200)
     expect(data.success).toBe(true)
     expect(memoryDb.find("order", orderId)).toBeUndefined()
-    // строка общей базы не пострадала
+    // строка кэша организации не пострадала
     expect(rowOf("atiCache", cacheId).id).toBe(cacheId)
 
     const rows = auditRows("order_return_to_base")

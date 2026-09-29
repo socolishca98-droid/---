@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
+import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import dynamic from "next/dynamic"
 
 const DashboardMap = dynamic(
@@ -67,6 +68,9 @@ export default function DashboardPage() {
           <DashboardMap />
         </div>
       </div>
+
+      {/* Инструктаж при первом входе — показывается один раз на человека */}
+      <FirstLoginGuide />
     </div>
   )
 }

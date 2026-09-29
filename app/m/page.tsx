@@ -11,6 +11,7 @@ import { DriverNotificationsBell } from "@/components/driver-mobile/notification
 import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import { isOrderClosed, isOrderMoving } from "@/lib/orders/stages"
 import {
   Truck,
@@ -917,6 +918,8 @@ export default function MobileHomePage() {
       }`}
     >
       {/* ... весь существующий JSX ... */}
+      {/* Инструктаж при первом входе водителя */}
+      <FirstLoginGuide />
       <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">

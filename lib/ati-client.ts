@@ -1,13 +1,15 @@
 ﻿// lib/ati-client.ts
 // ATI.su интеграция — без лишних логов и без создания Order
 
-import { prisma } from "./prisma"
+import { prisma } from "@/lib/prisma"
+import { atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 
-const ATI_TOKEN = process.env.ATI_TOKEN || ""
-const ATI_API = "https://loads.ati.su/webapi/v1.0"
-
-// ВАЖНО: соответствует тарифу ATI — 10 записей на страницу
-const ITEMS_PER_PAGE = 10
+// Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
+// ATI.SU (своя подписка, свои площадки, свои лимиты), токен передаётся
+// в функции из lib/ati/connection.ts. Прежний адрес loads.ati.su/webapi —
+// внутренний недокументированный API сайта: правила ATI (п. 2.9) запрещают
+// недокументированные возможности, поэтому все запросы переведены на
+// официальный https://api.ati.su.
 
 // CITIES: эмпирически выученные from.id (по brute-force)
 const CITIES = [
@@ -44,8 +46,6 @@ const CITIES = [
 const HUB_IDS_PRIORITY_1 = CITIES.filter((c: any) => c.priority === 1).map((c: any) => c.atiId)
 const ALL_HUB_IDS = HUB_IDS_PRIORITY_1
 
-type ScanMode = "fast" | "normal" | "deep"
-
 interface ScanFilters {
   minPrice?: number
   maxPrice?: number
@@ -61,81 +61,13 @@ interface ScanFilters {
   truckTypes?: string[]
 }
 
-interface ModeConfig {
-  cityLimit?: number
-  segmentsPerCity: number
-  maxPages: number
-  sortTypes: number[]
-}
-
-const MODE_CONFIG: Record<ScanMode, ModeConfig> = {
-  fast: {
-    cityLimit: HUB_IDS_PRIORITY_1.length,
-    segmentsPerCity: 1,
-    maxPages: 1,
-    sortTypes: [2],
-  },
-  normal: {
-    cityLimit: HUB_IDS_PRIORITY_1.length,
-    segmentsPerCity: 2,
-    maxPages: 2,
-    sortTypes: [2],
-  },
-  deep: {
-    cityLimit: HUB_IDS_PRIORITY_1.length,
-    segmentsPerCity: 3,
-    maxPages: 10,
-    sortTypes: [2, 4],
-  },
-}
-
-const DATE_SEGMENTS = [
-  { option: "today", name: "Сегодня" },
-  { option: "tomorrow", name: "Завтра" },
-  { option: "week", name: "Неделя" },
-]
-
 const DEFAULT_FILTERS: ScanFilters = {
   minDistance: 50,
-}
-
-// Карта "краткое имя города" -> наш выученный from.id для ручного поиска
-const CITY_NAME_TO_FROM_ID: Record<string, number> = {
-  Москва: 151,
-  "Санкт-Петербург": 153,
-  "Нижний Новгород": 78,
-  Казань: 54,
-  Самара: 9,
-  Уфа: 43,
-  Краснодар: 40,
-  "Ростов-на-Дону": 7,
-  Екатеринбург: 21,
-  Челябинск: 86,
-  Новосибирск: 80,
-  Пермь: 3,
-  Воронеж: 26,
-  Волгоград: 67,
-  Ярославль: 88,
-  Тюмень: 15,
-  Хабаровск: 61,
-  Владивосток: 60,
 }
 
 // =============================================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // =============================================================================
-
-function getHeaders(): HeadersInit {
-  return {
-    Authorization: `Bearer ${ATI_TOKEN}`,
-    Cookie: `sid=${ATI_TOKEN};`,
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0",
-    Referer: "https://loads.ati.su/",
-    Origin: "https://loads.ati.su",
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  }
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -227,26 +159,38 @@ function normalizeLoadFromToCityKey(load: any): string | null {
 // ЗАПРОСЫ К ATI API
 // =============================================================================
 
-async function fetchLoadsPage(filter: any, page: number): Promise<any[]> {
-  try {
-    const res = await fetch(`${ATI_API}/loads/search`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({
-        exclude_geo_dicts: true,
-        page,
-        items_per_page: ITEMS_PER_PAGE,
-        filter,
-      }),
-      cache: "no-store",
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    return data.loads || []
-  } catch (error) {
-    console.error("[ATI fetchLoadsPage] Error:", error)
-    return []
-  }
+/**
+ * Официальный метод: площадки, на которых организация может видеть грузы
+ * (GET /v2/boards/public/boards/canView). Поиск грузов через API поддержан
+ * ТОЛЬКО по персональным площадкам — документированное ограничение ATI.SU.
+ */
+async function fetchBoardIds(token: string): Promise<string[]> {
+  const res = await fetch(`${ATI_API_BASE}/v2/boards/public/boards/canView`, {
+    headers: atiHeaders(token),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!res.ok) throw new Error(atiHttpError(res.status, "Список площадок"))
+  const data: any = await res.json()
+  const rows = Array.isArray(data) ? data : data?.boards ?? data?.items ?? []
+  return rows
+    .map((board: any) => String(board?.id ?? board?.Id ?? ""))
+    .filter((id: string) => id.length > 0)
+}
+
+/**
+ * Официальный метод: грузы, размещённые на площадках организации
+ * (GET /v1.0/loads/search/byboards). Свои и чужие грузы участников площадок.
+ */
+async function fetchLoadsByBoards(token: string): Promise<any[]> {
+  const res = await fetch(`${ATI_API_BASE}/v1.0/loads/search/byboards`, {
+    headers: atiHeaders(token),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  })
+  if (!res.ok) throw new Error(atiHttpError(res.status, "Поиск грузов"))
+  const data: any = await res.json()
+  return Array.isArray(data) ? data : data?.loads ?? data?.items ?? []
 }
 
 // =============================================================================
@@ -254,57 +198,56 @@ async function fetchLoadsPage(filter: any, page: number): Promise<any[]> {
 // =============================================================================
 
 export async function scanAtiLoads(params?: any) {
-  const scanMode = (params?.mode || "normal") as ScanMode
-  const cfg = MODE_CONFIG[scanMode] || MODE_CONFIG.normal
+  const token: string | null = params?.token ?? null
+  const organizationId: string | null = params?.organizationId ?? null
+  if (!token || !organizationId) {
+    return {
+      success: false,
+      code: "ati_not_connected",
+      error: "Скан не выполнен: организация не подключена к ATI.SU",
+    }
+  }
+
   const customFilters: ScanFilters = params?.filters || DEFAULT_FILTERS
   globalSeenIds = new Set()
 
-  // Города профиля расписания (AtiScanConfig.cities) важнее списка хабов:
-  // именно они решают, что сканировать по расписанию
-  const profileCities: number[] = Array.isArray(params?.cityIds)
+  // Города профиля расписания (ATI id) → ключи имён: официальный поиск по
+  // площадкам не фильтрует гео на сервере, поэтому отбираем по ответу.
+  const profileCityIds: number[] = Array.isArray(params?.cityIds)
     ? params.cityIds.filter((id: unknown) => Number.isFinite(Number(id))).map(Number)
     : []
-  const hubsBase = profileCities.length > 0 ? profileCities : HUB_IDS_PRIORITY_1
-  const cityLimit = profileCities.length > 0 ? hubsBase.length : (cfg.cityLimit ?? hubsBase.length)
-  const hubsToScan = hubsBase.slice(0, cityLimit)
-  const scanRadius = Number.isFinite(Number(params?.radius)) ? Number(params.radius) : 100
+  const cityKeys = profileCityIds
+    .map((id) => CITIES.find((city: any) => city.atiId === id))
+    .filter(Boolean)
+    .map((city: any) => makeCityKey(city.name))
+    .filter((key): key is string => Boolean(key))
 
   try {
     // Ручной поиск
     if (params?.manualMode) {
-      return await manualSearch(params, customFilters)
+      return await manualSearch(params, customFilters, token, organizationId)
     }
 
-    let totalFound = 0
-    let totalSaved = 0
-    let totalRequests = 0
-    let errors = 0
+    const boards = await fetchBoardIds(token)
+    const loads = await fetchLoadsByBoards(token)
 
-    for (let i = 0; i < hubsToScan.length; i++) {
-      const cityId = hubsToScan[i]
-
-      try {
-        const { loads, requests } = await scanCity(cityId, cfg, customFilters, scanRadius)
-        totalRequests += requests
-        totalFound += loads.length
-
-        if (loads.length > 0) {
-          const saved = await saveToCache(loads)
-          totalSaved += saved.length
-        }
-      } catch (e: any) {
-        errors++
+    const picked: any[] = []
+    for (const load of loads) {
+      if (cityKeys.length > 0) {
+        const key = normalizeLoadFromToCityKey(load)
+        if (!key || !cityKeys.includes(key)) continue
       }
-      await delay(300)
+      if (addIfNew(load, customFilters)) picked.push(load)
     }
 
+    const saved = await saveToCache(picked, organizationId)
     return {
       success: true,
-      count: totalSaved,
-      found: totalFound,
-      requests: totalRequests,
-      errors,
-      hubs: hubsToScan.length,
+      count: saved.length,
+      found: picked.length,
+      requests: 2,
+      errors: 0,
+      boards: boards.length,
     }
   } catch (e: any) {
     console.error("[scanAtiLoads] Fatal error:", e)
@@ -312,133 +255,49 @@ export async function scanAtiLoads(params?: any) {
   }
 }
 
-async function scanCity(
-  cityId: number,
-  cfg: ModeConfig,
-  filters: ScanFilters,
-  radius = 100,
-): Promise<{ loads: any[]; requests: number }> {
-  const allLoads: any[] = []
-  let requests = 0
-  const sortTypes = cfg.sortTypes
-  const maxPages = cfg.maxPages
-
-  for (const dateSeg of DATE_SEGMENTS.slice(0, cfg.segmentsPerCity)) {
-    for (const sortType of sortTypes) {
-      let page = 1
-
-      while (page <= maxPages) {
-        try {
-          const filter: any = {
-            dates: { date_option: dateSeg.option },
-            sorting_type: sortType,
-            from: {
-              id: cityId,
-              type: 1,
-              radius,
-              exact_only: false,
-            },
-          }
-
-          const loads = await fetchLoadsPage(filter, page)
-          requests++
-          if (!loads.length) break
-
-          for (const load of loads) {
-            if (addIfNew(load, filters)) allLoads.push(load)
-          }
-
-          if (loads.length < ITEMS_PER_PAGE) break
-          page++
-          await delay(300)
-        } catch {
-          break
-        }
-      }
-    }
-  }
-
-  return { loads: allLoads, requests }
+/** Город выгрузки из ответа ATI (пара к normalizeLoadFromToCityKey). */
+function normalizeLoadToCityKey(load: any): string | null {
+  const locTo = load.unloading?.location
+  const city = locTo?.city || locTo?.cityName || null
+  const region = locTo?.region || locTo?.region_name || ""
+  const route = city ? (region ? `${city}, ${region}` : city) : null
+  return makeCityKey(route)
 }
 
-async function manualSearch(params: any, filters: ScanFilters) {
-  let fromId = params.fromCityId || params.fromGeo?.id
-  const toId = params.toCityId || params.toGeo?.id
-  const fromRadius = params.fromRadius || 0
-  const toRadius = params.toRadius || 0
-
-  if (params.fromGeo) {
-    const geoName: string = params.fromGeo.name || ""
-    const geoFullName: string = params.fromGeo.fullName || ""
-
-    for (const [cityName, learnedId] of Object.entries(CITY_NAME_TO_FROM_ID)) {
-      if (geoName === cityName || geoFullName.includes(cityName)) {
-        fromId = learnedId
-        break
-      }
-    }
-  }
-
-  if (!fromId) return { success: false, error: "City ID required" }
-
-  const allLoads: any[] = []
-  let requests = 0
+/**
+ * Ручной поиск: те же грузы площадок организации + фильтры по городу
+ * погрузки/выгрузки и параметрам (цена, вес, расстояние) по ответу.
+ */
+async function manualSearch(
+  params: any,
+  filters: ScanFilters,
+  token: string,
+  organizationId: string,
+) {
   const fromCityKey = normalizeGeoToCityKey(params.fromGeo)
-  const maxPages = 10
+  const toCityKey = normalizeGeoToCityKey(params.toGeo)
 
-  for (const dateSeg of DATE_SEGMENTS) {
-    let page = 1
-
-    while (page <= maxPages) {
-      try {
-        const filter: any = {
-          dates: { date_option: dateSeg.option },
-          sorting_type: 2,
-          from: {
-            id: fromId,
-            type: 1,
-            radius: fromRadius,
-            exact_only: fromRadius === 0,
-          },
-        }
-        if (toId) {
-          filter.to = {
-            id: toId,
-            type: 1,
-            radius: toRadius,
-            exact_only: toRadius === 0,
-          }
-        }
-
-        const loads = await fetchLoadsPage(filter, page)
-        requests++
-        if (!loads.length) break
-
-        for (const load of loads) {
-          if (fromRadius === 0 && fromCityKey) {
-            const loadFromKey = normalizeLoadFromToCityKey(load)
-            if (!loadFromKey || loadFromKey !== fromCityKey) continue
-          }
-
-          if (addIfNew(load, filters)) allLoads.push(load)
-        }
-
-        if (loads.length < ITEMS_PER_PAGE) break
-        page++
-        await delay(300)
-      } catch {
-        break
-      }
+  const loads = await fetchLoadsByBoards(token)
+  const allLoads: any[] = []
+  for (const load of loads) {
+    if (fromCityKey) {
+      const loadFromKey = normalizeLoadFromToCityKey(load)
+      if (!loadFromKey || loadFromKey !== fromCityKey) continue
     }
+    if (toCityKey) {
+      const loadToKey = normalizeLoadToCityKey(load)
+      if (!loadToKey || loadToKey !== toCityKey) continue
+    }
+    if (addIfNew(load, filters)) allLoads.push(load)
   }
 
-  const saved = await saveToCache(allLoads)
+  const saved = await saveToCache(allLoads, organizationId)
   return {
     success: true,
     count: saved.length,
     found: allLoads.length,
     loads: saved,
-    requests,
+    requests: 1,
   }
 }
 
@@ -446,7 +305,7 @@ async function manualSearch(params: any, filters: ScanFilters) {
 // СОХРАНЕНИЕ В КЭШ (без rawJson и без контактов)
 // =============================================================================
 
-async function saveToCache(rawLoads: any[]): Promise<any[]> {
+async function saveToCache(rawLoads: any[], organizationId: string): Promise<any[]> {
   const saved: any[] = []
   const now = new Date()
 
@@ -454,14 +313,15 @@ async function saveToCache(rawLoads: any[]): Promise<any[]> {
     try {
       const atiId = String(item.id)
 
-      const existing = await prisma.atiCache.findUnique({
-        where: { atiLoadId: atiId },
+      // org-audit: ok — строка ищется в накопленной базе своей организации
+      const existing = await prisma.atiCache.findFirst({
+        where: { organizationId, atiLoadId: atiId },
       })
       if (existing) {
         // Обновляем только scannedAt для "new" записей
         if (existing.status === "new") {
           await prisma.atiCache.update({
-            where: { atiLoadId: atiId },
+            where: { id: existing.id },
             data: { scannedAt: now },
           })
         }
@@ -514,6 +374,7 @@ async function saveToCache(rawLoads: any[]): Promise<any[]> {
 
       const created = await prisma.atiCache.create({
         data: {
+          organizationId,
           atiLoadId: atiId,
           routeFrom,
           routeFromId: fromKey,
@@ -575,7 +436,9 @@ export async function getAtiCache(params: any) {
     sortOrder = "desc",
   } = params
 
-  const where: any = { status }
+  // org-audit: ok — накопленная база у каждой организации своя (organizationId
+  // приходит из проверенной сессии, а не из тела запроса)
+  const where: any = { status, organizationId: params.organizationId ?? null }
 
   if (search) {
     where.OR = [
@@ -642,26 +505,28 @@ export async function getAtiCache(params: any) {
   }
 }
 
-export async function getAtiStats() {
-  const total = await prisma.atiCache.count()
-  // «Взято в работу» — строки общей базы, на которые организации завели заказ
+export async function getAtiStats(organizationId: string | null = null) {
+  // org-audit: ok — все счётчики только по строкам своей организации
+  const total = await prisma.atiCache.count({ where: { organizationId } })
+  // «Взято в работу» — строки базы, на которые организация завела заказ
   // (Order.atiCacheId), плюс легас-строки, помеченные прежним «импортом».
-  const legacyImported = await prisma.atiCache.count({ where: { status: "imported" } })
-  // org-audit: manual — счётчик по ОБЩЕЙ базе грузов: считаем, сколько строк взято
-  // любыми организациями; сами данные организаций в ответ не попадают
+  const legacyImported = await prisma.atiCache.count({
+    where: { organizationId, status: "imported" },
+  })
   const takenOrders = await prisma.order.findMany({
-    where: { atiCacheId: { not: null } },
+    where: { organizationId, atiCacheId: { not: null } },
     select: { atiCacheId: true },
     distinct: ["atiCacheId"],
   })
   const imported = takenOrders.length + legacyImported
-  const expired = await prisma.atiCache.count({ where: { status: "expired" } })
+  const expired = await prisma.atiCache.count({ where: { organizationId, status: "expired" } })
   const fresh = Math.max(0, total - imported - expired)
 
   const now = new Date()
   const soonThreshold = new Date(now.getTime() + 6 * 60 * 60 * 1000) // 6 часов
   const expiringSoon = await prisma.atiCache.count({
     where: {
+      organizationId,
       status: "new",
       expiresAt: { lte: soonThreshold },
     },

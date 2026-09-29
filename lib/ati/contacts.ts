@@ -7,7 +7,7 @@
 //     работает и без доступа к ATI;
 //   * модуль можно импортировать из API-роутов, не подключая клиент базы.
 
-const ATI_TOKEN = process.env.ATI_TOKEN || ""
+import { atiHeaders, ATI_API_BASE } from "./http"
 
 export type FirmContacts = {
   phone: string | null
@@ -17,16 +17,20 @@ export type FirmContacts = {
 
 const EMPTY: FirmContacts = { phone: null, name: null, email: null }
 
-/** Контакты фирмы по её идентификатору в ATI. Только по явному запросу. */
-export async function fetchFirmContacts(firmId: string | number): Promise<FirmContacts> {
-  if (!ATI_TOKEN) return { ...EMPTY }
+/**
+ * Контакты фирмы по её идентификатору в ATI. Только по явному запросу и
+ * только с токеном ОРГАНИЗАЦИИ (каждый запрос идёт в её аккаунт и тратит её
+ * лимиты). Без токена — пустые контакты: приложение работает и без ATI.
+ */
+export async function fetchFirmContacts(
+  firmId: string | number,
+  token: string | null,
+): Promise<FirmContacts> {
+  if (!token) return { ...EMPTY }
 
   try {
-    const res = await fetch(`https://api.ati.su/v1.0/firms/${firmId}`, {
-      headers: {
-        Authorization: `Bearer ${ATI_TOKEN}`,
-        Accept: "application/json",
-      },
+    const res = await fetch(`${ATI_API_BASE}/v1.0/firms/${firmId}`, {
+      headers: atiHeaders(token),
       signal: AbortSignal.timeout(5000),
     })
 

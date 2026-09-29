@@ -16,7 +16,7 @@
 //   where: равенство, null, in, notIn, not, gte, gt, lte, lt, contains,
 //          startsWith, endsWith, OR, AND, NOT
 //   select / include — включая вложенные связи (user.driver.organization)
-//   orderBy (объект или массив), skip, take
+//   orderBy (объект или массив), skip, take, distinct
 //   уникальности: user.email, user.phone, driver.phone,
 //                 vehicle(organizationId, plate), organization.nameKey,
 //                 inviteCode.code, fleetSettings.organizationId
@@ -209,7 +209,8 @@ const UNIQUE: Record<string, string[][]> = {
   session: [["id"]],
   auditLog: [["id"]],
   atiScanConfig: [["id"]],
-  atiCache: [["id"]],
+  atiConnection: [["id"], ["organizationId"]],
+  atiCache: [["id"], ["organizationId", "atiLoadId"]],
   geoCache: [["id"]],
 }
 
@@ -232,6 +233,7 @@ const DEFAULTS: Record<string, Row> = {
   inviteCode: { role: "logist", usedCount: 0 },
   fleetSettings: { parkName: "Наш Автопарк" },
   auditLog: { targetType: "user" },
+  atiConnection: { kind: "token", status: "unverified" },
   organization: {},
 }
 
@@ -513,6 +515,15 @@ function makeDelegate(model: string) {
   return {
     async findMany(args: any = {}) {
       let rows = table(model).filter((row) => matches(row, args.where))
+      if (Array.isArray(args.distinct) && args.distinct.length > 0) {
+        const seen = new Set<string>()
+        rows = rows.filter((row) => {
+          const key = args.distinct.map((field: string) => String(row[field])).join("\u0000")
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+      }
       rows = applyOrderBy(rows, args.orderBy)
       if (typeof args.skip === "number") rows = rows.slice(args.skip)
       if (typeof args.take === "number") rows = rows.slice(0, args.take)

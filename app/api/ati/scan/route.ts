@@ -3,6 +3,7 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import {requireStaffOrganization} from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { scanAtiLoads } from "@/lib/ati-client"
+import { getActiveAtiToken } from "@/lib/ati/connection"
 
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
@@ -13,7 +14,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json().catch(() => ({}))
-    const result = await scanAtiLoads(body)
+
+    // Скан идёт в аккаунт ATI самой организации: её токен, её площадки, её лимиты
+    const ati = await getActiveAtiToken(__org.organizationId)
+    if (!ati.ok) {
+      return NextResponse.json(
+        { success: false, code: ati.code, error: ati.error },
+        { status: 400 },
+      )
+    }
+
+    const result = await scanAtiLoads({ ...body, token: ati.token, organizationId: __org.organizationId })
     return NextResponse.json(result)
   } catch (error: any) {
     console.error("[ATI Scan] Error:", error)

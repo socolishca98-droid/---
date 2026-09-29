@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Coffee, Fuel, BedDouble, Loader2, MapPin, Navigation } from "lucide-react"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import { SosButton } from "@/components/driver-mobile/sos-button"
-import { useAuth } from "@/lib/auth-context"
+import { useDriverSession } from "@/hooks/use-driver-session"
 import {
   formatMeters,
   searchNearby,
@@ -25,31 +25,26 @@ const CATEGORIES: Array<{ kind: NearbyKind; label: string; icon: any }> = [
 ]
 
 export default function NearbyPage() {
-  const { user } = useAuth()
+  const { driver } = useDriverSession()
   const [kind, setKind] = useState<NearbyKind>("fuel")
   const [places, setPlaces] = useState<NearbyPlace[]>([])
   const [loading, setLoading] = useState(false)
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [positionNote, setPositionNote] = useState("")
 
-  // Позиция водителя: сначала живые координаты устройства, затем база
+  // Позиция водителя: сначала живые координаты устройства, затем отметка GPS
+  // из серверной сессии (useDriverSession — единый источник для всего /m)
   useEffect(() => {
     let alive = true
-    const useFallback = async () => {
-      try {
-        const res = await fetch("/api/m/me", { credentials: "include" })
-        const data = await res.json()
-        if (!alive) return
-        const lat = Number(data?.driver?.latitude)
-        const lng = Number(data?.driver?.longitude)
-        if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
-          setPosition({ lat, lng })
-          setPositionNote("Позиция по последней отметке GPS")
-        } else {
-          setPositionNote("Нет координат: включите геолокацию или отправьте точку из рейса")
-        }
-      } catch {
-        if (alive) setPositionNote("Не удалось получить позицию")
+    const useFallback = () => {
+      if (!alive) return
+      const lat = Number(driver?.latitude)
+      const lng = Number(driver?.longitude)
+      if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+        setPosition({ lat, lng })
+        setPositionNote("Позиция по последней отметке GPS")
+      } else {
+        setPositionNote("Нет координат: включите геолокацию или отправьте точку из рейса")
       }
     }
 
@@ -60,16 +55,16 @@ export default function NearbyPage() {
           setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude })
           setPositionNote("Текущая позиция телефона")
         },
-        () => void useFallback(),
+        useFallback,
         { timeout: 6000, maximumAge: 60000 },
       )
     } else {
-      void useFallback()
+      useFallback()
     }
     return () => {
       alive = false
     }
-  }, [])
+  }, [driver])
 
   const load = useCallback(async () => {
     if (!position) return

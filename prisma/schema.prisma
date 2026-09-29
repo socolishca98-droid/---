@@ -40,7 +40,11 @@ model AtiScanConfig {
 
 model AtiCache {
   id            String    @id @default(cuid())
-  atiLoadId     String    @unique
+  /// Организация, чей токен ATI нашёл этот груз: у каждого аккаунта свои
+  /// площадки и своя подписка, поэтому накопленная база больше не общая.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  atiLoadId     String
   routeFrom     String
   routeFromId   String?
   routeTo       String
@@ -69,9 +73,46 @@ model AtiCache {
   scannedAt     DateTime  @default(now())
   expiresAt     DateTime
 
+  /// Один и тот же груз может лежать в базах разных организаций
+  @@unique([organizationId, atiLoadId])
+  @@index([organizationId])
   @@index([status])
   @@index([scannedAt])
   @@index([routeFrom, routeTo])
+}
+
+// ============================================
+// ПОДКЛЮЧЕНИЕ ОРГАНИЗАЦИИ К ATI.SU
+// ============================================
+
+/// Собственный аккаунт ATI.SU организации: токен (постоянный или OAuth),
+/// фирма и контакт. Токен хранится зашифрованным (AES-256-GCM, ключ из
+/// AUTH_SECRET) и наружу — ни в UI, ни в логи — никогда не отдаётся.
+model AtiConnection {
+  id            String   @id @default(cuid())
+  /// Одно подключение на организацию
+  organizationId String?  @unique
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Зашифрованный access_token ATI.SU
+  tokenEncrypted String
+  /// token — постоянный токен из «Мои токены», oauth — подключение через OAuth 2.0
+  kind          String   @default("token")
+  /// Зашифрованный refresh_token (только для oauth)
+  refreshTokenEncrypted String?
+  /// Когда истекает access_token (oauth: 2 часа); null — постоянный токен
+  expiresAt     DateTime?
+  /// Фирма и контакт ATI, на которые выдан токен (из проверки подключения)
+  firmId        String?
+  firmName      String?
+  contactId     String?
+  /// unverified | active | invalid
+  status        String   @default("unverified")
+  lastCheckAt   DateTime?
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 model AtiSession {
@@ -783,6 +824,10 @@ model Organization {
   inviteCodes       InviteCode[]
 
   @@index([name])
+  /// Подключение к ATI.SU (одно на организацию) и строки накопленной базы грузов
+  atiConnection AtiConnection?
+  atiCacheRows  AtiCache[]
+
 }
 
 // ---------------------------------------------------------------------------
@@ -881,6 +926,9 @@ model User {
   /// Инвайт-код, по которому человек присоединился к организации (если был)
   inviteCodeId String?
   inviteCode   InviteCode? @relation(fields: [inviteCodeId], references: [id], onDelete: SetNull)
+
+  /// Когда пользователь прошёл приветственный инструктаж (null — показать при первом входе)
+  onboardedAt  DateTime?
 
   /// Кто одобрил регистрацию
   approvedById String?

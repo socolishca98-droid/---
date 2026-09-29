@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-27T14:37:25.842Z",
+  "generatedAt": "2026-09-29T20:12:58.906Z",
   "endpoints": [
     {
       "method": "GET",
@@ -14,6 +14,26 @@
     {
       "method": "GET",
       "route": "/api/ati/cities",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ati/connection",
+      "group": "ati"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ati/connection",
+      "group": "ati"
+    },
+    {
+      "method": "DELETE",
+      "route": "/api/ati/connection",
+      "group": "ati"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ati/connection/check",
       "group": "ati"
     },
     {
@@ -44,6 +64,16 @@
     {
       "method": "POST",
       "route": "/api/ati/import",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ati/oauth/callback",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ati/oauth/start",
       "group": "ati"
     },
     {
@@ -238,6 +268,11 @@
     },
     {
       "method": "GET",
+      "route": "/api/fleet/load",
+      "group": "fleet"
+    },
+    {
+      "method": "GET",
       "route": "/api/fleet/settings",
       "group": "fleet"
     },
@@ -255,6 +290,11 @@
       "method": "GET",
       "route": "/api/fleet/vehicles",
       "group": "fleet"
+    },
+    {
+      "method": "GET",
+      "route": "/api/fuel",
+      "group": "fuel"
     },
     {
       "method": "GET",
@@ -398,6 +438,11 @@
     },
     {
       "method": "GET",
+      "route": "/api/maintenance",
+      "group": "maintenance"
+    },
+    {
+      "method": "GET",
       "route": "/api/notifications",
       "group": "notifications"
     },
@@ -405,6 +450,16 @@
       "method": "POST",
       "route": "/api/notifications",
       "group": "notifications"
+    },
+    {
+      "method": "GET",
+      "route": "/api/onboarding",
+      "group": "onboarding"
+    },
+    {
+      "method": "POST",
+      "route": "/api/onboarding",
+      "group": "onboarding"
     },
     {
       "method": "GET",
@@ -552,6 +607,11 @@
       "group": "routes"
     },
     {
+      "method": "GET",
+      "route": "/api/routes/:routeId/backhaul",
+      "group": "routes"
+    },
+    {
       "method": "POST",
       "route": "/api/routes/:routeId/complete",
       "group": "routes"
@@ -649,6 +709,11 @@
     {
       "method": "DELETE",
       "route": "/api/vehicles/:id",
+      "group": "vehicles"
+    },
+    {
+      "method": "POST",
+      "route": "/api/vehicles/:id/refuel",
       "group": "vehicles"
     }
   ],

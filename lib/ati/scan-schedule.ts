@@ -3,15 +3,16 @@
 // Работа с расписанием сканирования в базе: какие профили (AtiScanConfig) пора
 // запускать и когда отмечать, что скан прошёл.
 //
-// Почему профили читаются по всем организациям: сканируется ОБЩАЯ накопленная
-// база грузов (AtiCache), и профили — это расписания наполнения этой базы, а не
-// данные организации. Наружу из этого модуля уходят только города, радиус и
-// фильтры — никаких заказов, водителей или цен организаций.
+// Профили принадлежат организациям: у каждой организации свой аккаунт ATI.SU,
+// свои площадки и своя накопленная база грузов (AtiCache.organizationId).
+// Cron обходит подключения организаций и для каждой запускает ЕЁ профили
+// с ЕЁ токеном.
 //
-// Если профилей нет вообще (свежая база), cron работает как раньше: сканирует
-// список основных хабов настройками по умолчанию.
+// Если профилей у организации нет, cron делает скан по умолчанию — грузы всех
+// её площадок без гео-фильтра.
 
 import { prisma } from "@/lib/prisma"
+import { scopedWhere } from "@/lib/org"
 import {
   buildProfileFilters,
   isProfileDue,
@@ -19,18 +20,18 @@ import {
   type ScanProfileRow,
 } from "@/lib/ati/scan-profile"
 
-/** Все профили, которые сейчас должны сканироваться, и те, что ещё ждут. */
-export async function getDueScanProfiles(now: Date = new Date()): Promise<{
+/** Профили организации, которые сейчас должны сканироваться, и те, что ждут. */
+export async function getDueScanProfiles(
+  organizationId: string,
+  now: Date = new Date(),
+): Promise<{
   active: ScanProfileRow[]
   due: ScanProfileRow[]
   waiting: ScanProfileRow[]
 }> {
-  // Профили расписания общие: сканируется ОБЩАЯ накопленная база грузов, и из
-  // профиля берутся только города, радиус и фильтры — заказы, цены и водители
-  // организаций здесь не читаются.
-  // org-audit: manual — профили расписания общие, данные организаций не читаются
+  // org-audit: ok — профили расписания читаются только своей организации
   const rows = (await prisma.atiScanConfig.findMany({
-    where: { isActive: true },
+    where: scopedWhere(organizationId, { isActive: true }),
     orderBy: { createdAt: "asc" },
   })) as ScanProfileRow[]
 
@@ -46,11 +47,14 @@ export async function getDueScanProfiles(now: Date = new Date()): Promise<{
 }
 
 /** Отмечает, что скан профиля прошёл: следующий запуск — по интервалу. */
-export async function markProfileScanned(id: string, at: Date = new Date()): Promise<void> {
-  // id приходит из getDueScanProfiles (профиль уже отобран по расписанию)
-  // org-audit: manual — отметка о скане в общем профиле расписания, не данные организации
+export async function markProfileScanned(
+  id: string,
+  organizationId: string,
+  at: Date = new Date(),
+): Promise<void> {
+  // org-audit: ok — профиль принадлежит организации из сессии/cron-обхода
   await prisma.atiScanConfig.updateMany({
-    where: { id },
+    where: scopedWhere(organizationId, { id }),
     data: { lastScanAt: at },
   })
 }
