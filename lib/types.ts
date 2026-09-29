@@ -28,6 +28,14 @@ export interface Driver {
   id: string
   name: string
   phone: string
+  /** Рейтинг водителя: доставки в срок и документы (GET /api/drivers) */
+  rating?: {
+    deliveredTotal: number
+    onTime: number | null
+    docs: number | null
+    score: number
+    grade: string
+  } | null
   vehicleId?: string
   vehicleType: string
   vehiclePlate: string
@@ -37,7 +45,6 @@ export interface Driver {
   lastGpsUpdate?: Date
   status: "available" | "busy" | "offline"
   ordersCompleted: number
-  rating: number
   licenseNumber?: string
   licenseExpiry?: Date
   medicalExpiry?: Date

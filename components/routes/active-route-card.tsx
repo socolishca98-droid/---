@@ -98,6 +98,20 @@ interface RouteData {
     diffPct: number | null
     flag: boolean
   } | null
+  /** Экономика рейса: выручка/себестоимость на км и маржа (lib/routes/economics.ts) */
+  economics?: {
+    revenueRub: number
+    distanceKm: number
+    factCostRub: number | null
+    estimatedCostRub: number | null
+    rubPerKmRevenue: number | null
+    costPerKm: number | null
+    profitRub: number | null
+    basis: "fact" | "estimate" | null
+    unprofitable: boolean
+  } | null
+  /** Плечи, где цена заказа ниже оценочной стоимости топлива */
+  unprofitableOrderIds?: string[]
 }
 
 interface ActiveRouteCardProps {
@@ -345,6 +359,15 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                           ` · грузов обратно: ${route.backhaul.candidatesCount}`}
                       </button>
                     )}
+                    {route.economics?.unprofitable && (
+                      <Badge
+                        variant="outline"
+                        className="text-rose-500 border-rose-500/50"
+                        title="Стоимость рейса выше выручки: проверьте цену или плечи"
+                      >
+                        убыточный рейс
+                      </Badge>
+                    )}
                     {route.fuelAudit?.flag && (
                       <Badge
                         variant="outline"
@@ -431,6 +454,30 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                 <span className="text-xl font-bold text-green-600">
                   {route.totalPrice.toLocaleString()} ₽
                 </span>
+
+                {route.economics?.basis && (
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div>
+                      {route.economics.rubPerKmRevenue !== null &&
+                        `${route.economics.rubPerKmRevenue} ₽/км выручка`}
+                      {route.economics.costPerKm !== null &&
+                        ` · ${route.economics.costPerKm} ₽/км себест.`}
+                    </div>
+                    {route.economics.profitRub !== null && (
+                      <div
+                        className={
+                          route.economics.profitRub >= 0
+                            ? "font-semibold text-emerald-500"
+                            : "font-semibold text-rose-500"
+                        }
+                      >
+                        {route.economics.profitRub >= 0 ? "+" : ""}
+                        {route.economics.profitRub.toLocaleString("ru-RU")} ₽
+                        {route.economics.basis === "estimate" && " · оценка"}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {eta && (
                   <div className="text-xs text-muted-foreground">
@@ -619,6 +666,14 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                       <div className="text-right">
                         <span className="font-medium text-green-600">
                           {(order.price || 0).toLocaleString()} ₽
+                          {(route.unprofitableOrderIds || []).includes(order.id) && (
+                            <span
+                              className="block text-[10px] font-semibold text-rose-500"
+                              title="Цена плеча ниже оценочной стоимости топлива на нём"
+                            >
+                              ниже себестоимости
+                            </span>
+                          )}
                         </span>
                         {/* Подпись точки — из канона этапов заказа
                             (lib/orders/stages.ts): прежние значения приводятся сами */}

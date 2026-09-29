@@ -140,6 +140,26 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
                 <Badge variant="outline" className={cn("text-xs", status.color)}>
                   {status.label}
                 </Badge>
+                {driver.rating && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs",
+                      driver.rating.score >= 75
+                        ? "text-emerald-500 border-emerald-500/40"
+                        : driver.rating.score >= 50
+                          ? "text-amber-500 border-amber-500/40"
+                          : "text-rose-500 border-rose-500/40",
+                    )}
+                    title={`Доставок: ${driver.rating.deliveredTotal} · в срок: ${
+                      driver.rating.onTime !== null ? `${Math.round(driver.rating.onTime * 100)}%` : "—"
+                    } · документы: ${
+                      driver.rating.docs !== null ? `${Math.round(driver.rating.docs * 100)}%` : "—"
+                    }`}
+                  >
+                    {driver.rating.score} · {driver.rating.grade}
+                  </Badge>
+                )}
               </div>
               <a
                 href={`tel:${telHref(driver.phone)}`}
@@ -178,9 +198,11 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
           <div className="text-center p-2 rounded-lg bg-secondary/50">
             <div className="flex items-center justify-center gap-1 text-lg font-bold">
               <Star className="h-4 w-4 text-amber-500" />
-              {driver.rating?.toFixed(1) || "5.0"}
+              {driver.rating ? driver.rating.score : "—"}
             </div>
-            <p className="text-xs text-muted-foreground">Рейтинг</p>
+            <p className="text-xs text-muted-foreground">
+              {driver.rating ? driver.rating.grade : "Рейтинг"}
+            </p>
           </div>
           <div className="text-center p-2 rounded-lg bg-secondary/50">
             <div className="text-lg font-bold">{driver.ordersCompleted || 0}</div>

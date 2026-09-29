@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { driverRating } from "@/lib/drivers/rating"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { normalizePhone } from "@/lib/auth/constants"
@@ -62,9 +63,39 @@ export async function GET(request: NextRequest) {
       where.status = status
     }
 
-    const drivers = await prisma.driver.findMany({
+    const rows = await prisma.driver.findMany({
       where: scopedWhere(org.organizationId, where),
       orderBy: { name: "asc" },
+      include: {
+        orders: {
+          where: scopedWhere(org.organizationId, { status: "delivered" }),
+          select: { id: true, deliveredAt: true, deadline: true },
+        },
+        photos: {
+          where: scopedWhere(org.organizationId, { type: "document" }),
+          select: { orderId: true },
+        },
+      },
+    })
+
+    // Рейтинг водителя — из проверяемых фактов: доставки в срок и документы.
+    // Считается только по данным своей организации (scopedWhere выше).
+    const drivers = rows.map((row) => {
+      const withDocs = new Set(
+        row.photos.map((photo) => photo.orderId).filter(Boolean) as string[],
+      )
+      const deliveredTotal = row.orders.length
+      let deliveredOnTime = 0
+      let deliveredWithDocs = 0
+      for (const order of row.orders) {
+        if (order.deliveredAt && order.deadline && order.deliveredAt <= order.deadline) {
+          deliveredOnTime += 1
+        }
+        if (withDocs.has(order.id)) deliveredWithDocs += 1
+      }
+      const rating = driverRating({ deliveredTotal, deliveredOnTime, deliveredWithDocs })
+      const { orders: _orders, photos: _photos, ...driver } = row
+      return { ...driver, rating }
     })
 
     return NextResponse.json({ success: true, drivers })

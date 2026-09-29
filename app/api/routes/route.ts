@@ -19,6 +19,11 @@ import {
   fuelAuditFlag,
 } from "@/lib/fleet/fuel-audit"
 import { estimateFuelL } from "@/lib/fleet/fuel"
+import {
+  fuelPriceRubPerL,
+  legEconomics,
+  routeEconomics,
+} from "@/lib/routes/economics"
 
 
 import { requireStaff } from "@/lib/auth/session"
@@ -89,7 +94,7 @@ type RouteListRow = Parameters<typeof serializeRoute>[0] & {
   } | null
   orders: RouteOrderLike[]
   /** Расходы рейса для сверки топлива: только тип и литры */
-  expenses: Array<{ type: string; liters: number | null }>
+  expenses: Array<{ type: string; liters: number | null; amount: number | null }>
   /** Последняя точка позиции — для оценки порожнего обратного плеча */
   events: Array<{ latitude: number | null; longitude: number | null }>
 }
@@ -183,7 +188,7 @@ export async function GET(request: NextRequest) {
               fuelConsumptionPer100: true,
             },
           },
-          expenses: { select: { type: true, liters: true } },
+          expenses: { select: { type: true, liters: true, amount: true } },
           events: {
             where: { type: "location" },
             orderBy: { createdAt: "desc" },
@@ -240,6 +245,38 @@ export async function GET(request: NextRequest) {
           )
         : null
       const diffPct = fuelAuditDiffPct(factL, estimatedL)
+
+      // ── Экономика рейса: выручка на км против стоимости км ──
+      const stats = summarizeRoute(route.orders)
+      const factCostRub = (route.expenses ?? []).reduce(
+        (sum: number, expense: any) => sum + (Number(expense.amount) || 0),
+        0,
+      )
+      const pricePerL = fuelPriceRubPerL(route.expenses ?? [])
+      const economics = routeEconomics({
+        revenueRub: stats.revenue,
+        distanceKm:
+          route.totalDistance ??
+          route.orders.reduce((sum: any, order: any) => sum + (Number(order.distance) || 0), 0),
+        factCostRub: (route.expenses ?? []).length > 0 ? factCostRub : null,
+        estimatedLiters: estimatedL,
+        fuelPriceRubPerL: pricePerL,
+      })
+      const unprofitableOrderIds = route.orders
+        .map((order: any) => ({
+          id: order.id,
+          leg: legEconomics({
+            priceRub: order.price,
+            distanceKm: order.distance,
+            consumptionPer100: route.vehicle?.fuelConsumptionPer100 ?? null,
+            loadKg: order.weight,
+            capacityKg: route.vehicle?.capacity ?? null,
+            fuelPriceRubPerL: pricePerL,
+          }),
+        }))
+        .filter((item: any) => item.leg?.unprofitable)
+        .map((item: any) => item.id)
+
       const fuelAudit =
         factL !== null && estimatedL !== null
           ? {
@@ -255,9 +292,11 @@ export async function GET(request: NextRequest) {
         driver: route.driver,
         vehicle: route.vehicle,
         orders: route.orders,
-        stats: summarizeRoute(route.orders),
+        stats,
         backhaul,
         fuelAudit,
+        economics,
+        unprofitableOrderIds,
       }
     })
 

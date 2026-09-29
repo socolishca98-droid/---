@@ -118,6 +118,18 @@ interface ApiRoute {
     diffPct: number | null
     flag: boolean
   } | null
+  economics?: {
+    revenueRub: number
+    distanceKm: number
+    factCostRub: number | null
+    estimatedCostRub: number | null
+    rubPerKmRevenue: number | null
+    costPerKm: number | null
+    profitRub: number | null
+    basis: "fact" | "estimate" | null
+    unprofitable: boolean
+  } | null
+  unprofitableOrderIds?: string[]
 }
 
 /** Статус рейса из БД → статус карточки на странице. */
@@ -175,6 +187,8 @@ function buildRouteCards(routes: ApiRoute[]): RouteData[] {
       orders: sortedOrders,
       backhaul: route.backhaul ?? null,
       fuelAudit: route.fuelAudit ?? null,
+      economics: route.economics ?? null,
+      unprofitableOrderIds: route.unprofitableOrderIds ?? [],
     }
   })
 }
