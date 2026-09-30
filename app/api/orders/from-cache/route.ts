@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     if (body.fetchContacts === true && cache.firmId && (!contactPhone || !contactName)) {
       try {
         const ati = await getActiveAtiToken(org.organizationId)
-        const fetched = await fetchFirmContacts(cache.firmId, ati.ok ? ati.token : null)
+        const fetched = await fetchFirmContacts(cache.firmId, ati.ok ? ati.token : null, org.organizationId)
         contactPhone = contactPhone || fetched.phone || null
         contactName = contactName || fetched.name || null
         contactEmail = fetched.email || null

@@ -2,7 +2,7 @@
 // ATI.su интеграция — без лишних логов и без создания Order
 
 import { prisma } from "@/lib/prisma"
-import { atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
+import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 
 // Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
 // ATI.SU (своя подписка, свои площадки, свои лимиты), токен передаётся
@@ -11,7 +11,8 @@ import { atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 // недокументированные возможности, поэтому все запросы переведены на
 // официальный https://api.ati.su.
 
-// CITIES: эмпирически выученные from.id (по brute-force)
+// CITIES: статический справочник id городов ATI для гео-фильтра профилей
+// расписания. Никаких запросов к ATI не делает — фильтрация идёт по ответу.
 const CITIES = [
   { id: 151, atiId: 151, name: "Москва", region: "Москва", priority: 1 },
   { id: 153, atiId: 153, name: "Санкт-Петербург", region: "Санкт-Петербург", priority: 1 },
@@ -164,12 +165,16 @@ function normalizeLoadFromToCityKey(load: any): string | null {
  * (GET /v2/boards/public/boards/canView). Поиск грузов через API поддержан
  * ТОЛЬКО по персональным площадкам — документированное ограничение ATI.SU.
  */
-async function fetchBoardIds(token: string): Promise<string[]> {
-  const res = await fetch(`${ATI_API_BASE}/v2/boards/public/boards/canView`, {
-    headers: atiHeaders(token),
-    cache: "no-store",
-    signal: AbortSignal.timeout(15_000),
-  })
+async function fetchBoardIds(token: string, organizationId: string): Promise<string[]> {
+  const res = await atiFetch(
+    `${ATI_API_BASE}/v2/boards/public/boards/canView`,
+    {
+      headers: atiHeaders(token),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    },
+    organizationId,
+  )
   if (!res.ok) throw new Error(atiHttpError(res.status, "Список площадок"))
   const data: any = await res.json()
   const rows = Array.isArray(data) ? data : data?.boards ?? data?.items ?? []
@@ -182,12 +187,16 @@ async function fetchBoardIds(token: string): Promise<string[]> {
  * Официальный метод: грузы, размещённые на площадках организации
  * (GET /v1.0/loads/search/byboards). Свои и чужие грузы участников площадок.
  */
-async function fetchLoadsByBoards(token: string): Promise<any[]> {
-  const res = await fetch(`${ATI_API_BASE}/v1.0/loads/search/byboards`, {
-    headers: atiHeaders(token),
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  })
+async function fetchLoadsByBoards(token: string, organizationId: string): Promise<any[]> {
+  const res = await atiFetch(
+    `${ATI_API_BASE}/v1.0/loads/search/byboards`,
+    {
+      headers: atiHeaders(token),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    },
+    organizationId,
+  )
   if (!res.ok) throw new Error(atiHttpError(res.status, "Поиск грузов"))
   const data: any = await res.json()
   return Array.isArray(data) ? data : data?.loads ?? data?.items ?? []
@@ -228,8 +237,8 @@ export async function scanAtiLoads(params?: any) {
       return await manualSearch(params, customFilters, token, organizationId)
     }
 
-    const boards = await fetchBoardIds(token)
-    const loads = await fetchLoadsByBoards(token)
+    const boards = await fetchBoardIds(token, organizationId)
+    const loads = await fetchLoadsByBoards(token, organizationId)
 
     const picked: any[] = []
     for (const load of loads) {
@@ -277,7 +286,7 @@ async function manualSearch(
   const fromCityKey = normalizeGeoToCityKey(params.fromGeo)
   const toCityKey = normalizeGeoToCityKey(params.toGeo)
 
-  const loads = await fetchLoadsByBoards(token)
+  const loads = await fetchLoadsByBoards(token, organizationId)
   const allLoads: any[] = []
   for (const load of loads) {
     if (fromCityKey) {

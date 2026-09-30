@@ -7,7 +7,7 @@
 //     работает и без доступа к ATI;
 //   * модуль можно импортировать из API-роутов, не подключая клиент базы.
 
-import { atiHeaders, ATI_API_BASE } from "./http"
+import { atiFetch, atiHeaders, ATI_API_BASE } from "./http"
 
 export type FirmContacts = {
   phone: string | null
@@ -25,14 +25,19 @@ const EMPTY: FirmContacts = { phone: null, name: null, email: null }
 export async function fetchFirmContacts(
   firmId: string | number,
   token: string | null,
+  organizationId = "default",
 ): Promise<FirmContacts> {
   if (!token) return { ...EMPTY }
 
   try {
-    const res = await fetch(`${ATI_API_BASE}/v1.0/firms/${firmId}`, {
-      headers: atiHeaders(token),
-      signal: AbortSignal.timeout(5000),
-    })
+    const res = await atiFetch(
+      `${ATI_API_BASE}/v1.0/firms/${firmId}`,
+      {
+        headers: atiHeaders(token),
+        signal: AbortSignal.timeout(5000),
+      },
+      organizationId,
+    )
 
     if (!res.ok) return { ...EMPTY }
 

@@ -6,7 +6,7 @@
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization } from "@/lib/org"
 import { getActiveAtiToken } from "@/lib/ati/connection"
-import { atiHeaders, ATI_API_BASE } from "@/lib/ati/http"
+import { atiFetch, atiHeaders, ATI_API_BASE } from "@/lib/ati/http"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
@@ -24,10 +24,11 @@ export async function GET(request: NextRequest) {
 
   // 1. Кто я? (Проверка токена)
   try {
-    const res = await fetch(`${ATI_API_BASE}/v1.0/users/me`, {
-      headers: atiHeaders(ati.token),
-      cache: "no-store",
-    })
+    const res = await atiFetch(
+      `${ATI_API_BASE}/v1.0/users/me`,
+      { headers: atiHeaders(ati.token), cache: "no-store" },
+      __org.organizationId,
+    )
     const data = await res.json().catch(() => ({}))
     results.me = { status: res.status, data }
   } catch (e) {
@@ -36,10 +37,11 @@ export async function GET(request: NextRequest) {
 
   // 2. Моя фирма (Проверка связи с аккаунтом)
   try {
-    const res = await fetch(`${ATI_API_BASE}/v1.0/firms/my`, {
-      headers: atiHeaders(ati.token),
-      cache: "no-store",
-    })
+    const res = await atiFetch(
+      `${ATI_API_BASE}/v1.0/firms/my`,
+      { headers: atiHeaders(ati.token), cache: "no-store" },
+      __org.organizationId,
+    )
     const data = await res.json().catch(() => ({}))
     results.firm = { status: res.status, id: data.id, name: data.name, city: data.city }
   } catch (e) {

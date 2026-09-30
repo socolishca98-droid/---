@@ -28,6 +28,7 @@ import { prisma } from "@/lib/prisma"
 import { scopedWhere } from "@/lib/org"
 import { decryptSecret, encryptSecret } from "@/lib/ati/secrets"
 import {
+  atiFetch,
   atiHeaders,
   atiHttpError,
   ATI_API_BASE,
@@ -110,17 +111,21 @@ async function refreshOAuthToken(
   }
 
   try {
-    const response = await fetch(ATI_OAUTH_TOKEN_URL, {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: process.env.ATI_CLIENT_ID,
-        client_secret: process.env.ATI_CLIENT_SECRET,
-        refresh_token: refreshToken,
-        grant_type: "refresh_token",
-      }),
-      signal: AbortSignal.timeout(10_000),
-    })
+    const response = await atiFetch(
+      ATI_OAUTH_TOKEN_URL,
+      {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: process.env.ATI_CLIENT_ID,
+          client_secret: process.env.ATI_CLIENT_SECRET,
+          refresh_token: refreshToken,
+          grant_type: "refresh_token",
+        }),
+        signal: AbortSignal.timeout(10_000),
+      },
+      organizationId,
+    )
     if (!response.ok) throw new Error(`ATI ответил ${response.status}`)
     const data: any = await response.json()
     if (!data?.access_token) throw new Error("ATI не вернул access_token")
@@ -194,11 +199,15 @@ export async function verifyConnection(organizationId: string) {
   if (!token) return INVALID
 
   try {
-    const response = await fetch(`${ATI_API_BASE}/v1.0/firms/my`, {
-      headers: atiHeaders(token),
-      signal: AbortSignal.timeout(10_000),
-      cache: "no-store",
-    })
+    const response = await atiFetch(
+      `${ATI_API_BASE}/v1.0/firms/my`,
+      {
+        headers: atiHeaders(token),
+        signal: AbortSignal.timeout(10_000),
+        cache: "no-store",
+      },
+      organizationId,
+    )
     if (!response.ok) {
       const message = atiHttpError(response.status, "Проверка подключения")
       await prisma.atiConnection.update({
@@ -286,17 +295,21 @@ export async function exchangeOAuthCode(organizationId: string, code: string, re
     }
   }
   try {
-    const response = await fetch(ATI_OAUTH_TOKEN_URL, {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: process.env.ATI_CLIENT_ID,
-        client_secret: process.env.ATI_CLIENT_SECRET,
-        code,
-        grant_type: "authorization_code",
-      }),
-      signal: AbortSignal.timeout(10_000),
-    })
+    const response = await atiFetch(
+      ATI_OAUTH_TOKEN_URL,
+      {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: process.env.ATI_CLIENT_ID,
+          client_secret: process.env.ATI_CLIENT_SECRET,
+          code,
+          grant_type: "authorization_code",
+        }),
+        signal: AbortSignal.timeout(10_000),
+      },
+      organizationId,
+    )
     const data: any = await response.json().catch(() => ({}))
     if (!response.ok || !data?.access_token) {
       const reason = data?.reason || data?.error || `ATI ответил ${response.status}`
