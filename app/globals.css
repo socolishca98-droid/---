@@ -7,9 +7,9 @@
 :root {
   --background: oklch(0.13 0.01 260);
   --foreground: oklch(0.95 0 0);
-  --card: oklch(0.17 0.01 260);
+  --card: oklch(0.17 0.01 260 / 0.78);
   --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.17 0.01 260);
+  --popover: oklch(0.17 0.01 260 / 0.92);
   --popover-foreground: oklch(0.95 0 0);
   --primary: oklch(0.65 0.2 30);
   --primary-foreground: oklch(0.98 0 0);
@@ -45,9 +45,9 @@
 .dark {
   --background: oklch(0.13 0.01 260);
   --foreground: oklch(0.95 0 0);
-  --card: oklch(0.17 0.01 260);
+  --card: oklch(0.17 0.01 260 / 0.78);
   --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.17 0.01 260);
+  --popover: oklch(0.17 0.01 260 / 0.92);
   --popover-foreground: oklch(0.95 0 0);
   --primary: oklch(0.65 0.2 30);
   --primary-foreground: oklch(0.98 0 0);
@@ -678,7 +678,7 @@
 
   /* Стеклянная поверхность для шапок и плавающих панелей */
   .surface-glass {
-    background: color-mix(in oklab, var(--background) 58%, transparent);
+    background: color-mix(in oklab, var(--background) 42%, transparent);
     backdrop-filter: blur(14px) saturate(1.15);
   }
 }
@@ -986,12 +986,18 @@ body {
   100% { transform: rotate(720deg); }
 }
 
-/* Уважение к пользователям с настройкой «меньше движения» */
+/* Индикатор загрузки обязан подавать признак жизни даже при системной
+   настройке «меньше движения» (в Windows она выключает анимации целиком,
+   и сцена выглядела застывшей): вместо полной остановки — мягкая пульсация. */
 @media (prefers-reduced-motion: reduce) {
   .truck-loader .tl-box,
   .truck-loader .tl-truck,
   .truck-loader .tl-wheel {
-    animation-duration: 0.001s;
-    animation-iteration-count: 1;
+    animation: tl-calm 2.4s ease-in-out infinite;
   }
+}
+
+@keyframes tl-calm {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }

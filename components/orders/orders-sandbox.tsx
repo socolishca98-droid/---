@@ -3431,8 +3431,12 @@ export function OrdersSandbox() {
                 onSave={saveOrderEdit}
                 onCancel={() => setSelectedOrderForEdit(null)}
                 onOpenNegotiation={(orderId) => {
+                  // Модалки Radix нельзя менять местами в одном тике: замок
+                  // pointer-events/scroll старого диалога снимается после
+                  // установки нового, и страница «залипает» без кликов.
+                  // Сначала закрываем диалог, панель согласования — следующим тиком.
                   setSelectedOrderForEdit(null)
-                  setNegotiationOrderId(orderId)
+                  window.setTimeout(() => setNegotiationOrderId(orderId), 0)
                 }}
               />
             ) : null}

@@ -120,7 +120,7 @@ export function Sidebar() {
     <aside
       className={cn(
         // Панель полупрозрачная: живой фон рабочего места читается сквозь неё
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar/70 backdrop-blur-xl border-r border-sidebar-border transition-[width] duration-300 ease-out",
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar/45 backdrop-blur-xl border-r border-sidebar-border transition-[width] duration-300 ease-out",
         isCollapsed ? "w-20" : "w-64",
       )}
     >
