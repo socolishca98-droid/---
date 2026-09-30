@@ -3,6 +3,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
+import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
 
 // Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
 // ATI.SU (своя подписка, свои площадки, свои лимиты), токен передаётся
@@ -60,6 +61,12 @@ interface ScanFilters {
    * ATI не фильтрует по типу кузова в запросе, поэтому отбираем по ответу.
    */
   truckTypes?: string[]
+  /**
+   * Окно даты погрузки в днях от сегодня (0 — сегодня, 3 — ближайшие три дня).
+   * Как и остальные поля формы ATI, применяется к ответу: в запросе ATI
+   * такого фильтра нет.
+   */
+  loadingWithinDays?: number
 }
 
 const DEFAULT_FILTERS: ScanFilters = {
@@ -96,6 +103,19 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
     if (filters.minPricePerKm && pricePerKm < filters.minPricePerKm) return false
   }
 
+  // Окно даты погрузки (поле формы ATI): груз вне окна не показываем;
+  // если ATI дату не отдал — груз остаётся (лучше показать, чем потерять)
+  if (filters.loadingWithinDays != null) {
+    const date = parseLoadingDate(item)
+    if (date) {
+      const start = new Date()
+      start.setHours(0, 0, 0, 0)
+      const end = start.getTime() + (filters.loadingWithinDays + 1) * 86400000
+      const ts = date.getTime()
+      if (ts < start.getTime() || ts > end) return false
+    }
+  }
+
   // Тип кузова: ATI отдаёт его в truck.carTypes — фильтруем по ответу
   if (filters.truckTypes && filters.truckTypes.length > 0) {
     const carTypes: string[] = Array.isArray(item.truck?.carTypes) ? item.truck.carTypes : []
@@ -104,6 +124,46 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
     if (!wanted) return false
   }
   return true
+}
+
+/** Дата погрузки из ответа ATI:_iso или дд.мм.гггг — иначе null. */
+function parseLoadingDate(load: any): Date | null {
+  const raw =
+    load?.loading?.date ??
+    load?.loading?.dateStart ??
+    load?.loadingDate ??
+    load?.loadDate ??
+    null
+  if (!raw) return null
+  if (typeof raw === "string" && /^\d{1,2}\.\d{1,2}\.\d{4}/.test(raw)) {
+    const [d, m, y] = raw.split(".").map((part: string) => Number(part))
+    const date = new Date(y, (m || 1) - 1, d || 1)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+/** Расстояние по дуге, км — для радиуса вокруг города в ручном поиске. */
+function distanceKm(a: Coordinates, b: Coordinates): number {
+  const R = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const la1 = (a.lat * Math.PI) / 180
+  const la2 = (b.lat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** Координаты точки погрузки/выгрузки из ответа ATI, если они там есть. */
+function locationCoords(location: any): Coordinates | null {
+  if (!location) return null
+  const lat = Number(location.latitude ?? location.lat)
+  const lng = Number(location.longitude ?? location.lng ?? location.lon)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (lat === 0 && lng === 0) return null
+  return { lat, lng }
 }
 
 let globalSeenIds: Set<string> = new Set()
@@ -277,26 +337,62 @@ function normalizeLoadToCityKey(load: any): string | null {
  * Ручной поиск: те же грузы площадок организации + фильтры по городу
  * погрузки/выгрузки и параметрам (цена, вес, расстояние) по ответу.
  */
+/**
+ * Город попадает в радиус: координаты груза из ответа ATI сравниваем с
+ * центром города (геокодер с кэшем GeoCache); если координат у груза нет —
+ * fallback на точное совпадение названия города, как при радиусе 0.
+ */
+async function cityMatcher(
+  geo: any,
+  radiusKm: number,
+  pick: (load: any) => string | null,
+  pickLocation: (load: any) => any,
+) {
+  const cityKey = normalizeGeoToCityKey(geo)
+  if (!cityKey) return null
+  if (!radiusKm || radiusKm <= 0) {
+    return (load: any) => pick(load) === cityKey
+  }
+  const label = String(geo?.fullName || geo?.name || cityKey)
+  let center: Coordinates | null = null
+  try {
+    const coords = await geocodeAddresses([label])
+    center = coords.get(label) ?? null
+  } catch {
+    center = null
+  }
+  if (!center) return (load: any) => pick(load) === cityKey
+  return (load: any) => {
+    const point = locationCoords(pickLocation(load))
+    if (point) return distanceKm(center as Coordinates, point) <= radiusKm
+    return pick(load) === cityKey
+  }
+}
+
 async function manualSearch(
   params: any,
   filters: ScanFilters,
   token: string,
   organizationId: string,
 ) {
-  const fromCityKey = normalizeGeoToCityKey(params.fromGeo)
-  const toCityKey = normalizeGeoToCityKey(params.toGeo)
+  const fromMatch = await cityMatcher(
+    params.fromGeo,
+    Number(params.fromRadius) || 0,
+    normalizeLoadFromToCityKey,
+    (load: any) => load?.loading?.location,
+  )
+  const toMatch = await cityMatcher(
+    params.toGeo,
+    Number(params.toRadius) || 0,
+    normalizeLoadToCityKey,
+    (load: any) => load?.unloading?.location,
+  )
 
   const loads = await fetchLoadsByBoards(token, organizationId)
   const allLoads: any[] = []
   for (const load of loads) {
-    if (fromCityKey) {
-      const loadFromKey = normalizeLoadFromToCityKey(load)
-      if (!loadFromKey || loadFromKey !== fromCityKey) continue
-    }
-    if (toCityKey) {
-      const loadToKey = normalizeLoadToCityKey(load)
-      if (!loadToKey || loadToKey !== toCityKey) continue
-    }
+    if (fromMatch && !fromMatch(load)) continue
+    if (toMatch && !toMatch(load)) continue
     if (addIfNew(load, filters)) allLoads.push(load)
   }
 

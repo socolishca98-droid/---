@@ -24,6 +24,7 @@ import {
   Users,
   Building2,
   Search,
+  Plug,
   Fuel,
   Wrench,
   ScrollText,
@@ -48,6 +49,7 @@ const navigation: Array<{
   { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
   { name: "Поиск грузов", href: "/search", icon: Search },
+  { name: "Кабинет ATI", href: "/ati", icon: Plug },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
   { name: "Топливо", href: "/fuel", icon: Fuel },

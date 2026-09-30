@@ -42,6 +42,7 @@ import {
   CheckCircle,
   AlertTriangle,
   ExternalLink,
+  Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -208,6 +209,11 @@ export function AtiSearchPanel() {
   const [toRadius, setToRadius] = useState("0")
   const [weightMin, setWeightMin] = useState("")
   const [weightMax, setWeightMax] = useState("")
+  // Поля формы в формате биржи ATI: тип кузова, цена и окно даты погрузки
+  const [truckType, setTruckType] = useState("any")
+  const [priceMin, setPriceMin] = useState("")
+  const [priceMax, setPriceMax] = useState("")
+  const [loadingWindow, setLoadingWindow] = useState("any")
 
   // Данные
   const [searchResults, setSearchResults] = useState<LoadItem[]>([])
@@ -370,6 +376,11 @@ export function AtiSearchPanel() {
           filters: {
             minWeight: Number(weightMin) * 1000 || undefined,
             maxWeight: Number(weightMax) * 1000 || undefined,
+            minPrice: Number(priceMin) || undefined,
+            maxPrice: Number(priceMax) || undefined,
+            truckTypes: truckType !== "any" ? [truckType] : undefined,
+            loadingWithinDays:
+              loadingWindow !== "any" ? Number(loadingWindow) : undefined,
           },
         }),
       })
@@ -598,6 +609,9 @@ export function AtiSearchPanel() {
           </div>
           <Card className="border-l-4 border-l-primary">
             <CardContent className="p-6">
+              {/* Формат полей — как в форме поиска грузов на бирже ATI
+                  (откуда/куда с радиусом, вес, тип ТС, цена, дата погрузки),
+                  чтобы логисту не пришлось переучиваться. Оформление наше. */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
                 <div className="lg:col-span-4 space-y-2">
                   <label className="text-sm font-semibold flex items-center gap-2">
@@ -647,15 +661,37 @@ export function AtiSearchPanel() {
                         <SelectItem value="0">Точно</SelectItem>
                         <SelectItem value="50">+50 км</SelectItem>
                         <SelectItem value="100">+100 км</SelectItem>
+                        <SelectItem value="200">+200 км</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
-                <div className="lg:col-span-2 space-y-2">
+                <div className="lg:col-span-4 space-y-2">
+                  <label className="text-sm font-semibold flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-blue-500" />
+                    Дата погрузки
+                  </label>
+                  <Select
+                    value={loadingWindow}
+                    onValueChange={(v) => setLoadingWindow(v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Любая</SelectItem>
+                      <SelectItem value="0">Сегодня</SelectItem>
+                      <SelectItem value="3">Ближайшие 3 дня</SelectItem>
+                      <SelectItem value="7">Ближайшая неделя</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="lg:col-span-3 space-y-2">
                   <label className="text-sm font-semibold flex items-center gap-2">
                     <Weight className="h-4 w-4" />
-                    Вес (т)
+                    Вес, т
                   </label>
                   <div className="flex gap-1">
                     <Input
@@ -673,7 +709,50 @@ export function AtiSearchPanel() {
                   </div>
                 </div>
 
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-3 space-y-2">
+                  <label className="text-sm font-semibold flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-purple-500" />
+                    Тип ТС
+                  </label>
+                  <Select value={truckType} onValueChange={(v) => setTruckType(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Любой</SelectItem>
+                      <SelectItem value="тент">Тент</SelectItem>
+                      <SelectItem value="рефрижератор">Рефрижератор</SelectItem>
+                      <SelectItem value="изотермический">Изотермический</SelectItem>
+                      <SelectItem value="бортовой">Бортовой</SelectItem>
+                      <SelectItem value="фургон">Фургон</SelectItem>
+                      <SelectItem value="цистна">Цистерна</SelectItem>
+                      <SelectItem value="контейнеровоз">Контейнеровоз</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="lg:col-span-3 space-y-2">
+                  <label className="text-sm font-semibold flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-emerald-500" />
+                    Цена, ₽
+                  </label>
+                  <div className="flex gap-1">
+                    <Input
+                      placeholder="от"
+                      value={priceMin}
+                      onChange={(e) => setPriceMin(e.target.value)}
+                      className="text-center"
+                    />
+                    <Input
+                      placeholder="до"
+                      value={priceMax}
+                      onChange={(e) => setPriceMax(e.target.value)}
+                      className="text-center"
+                    />
+                  </div>
+                </div>
+
+                <div className="lg:col-span-3">
                   <Button
                     size="lg"
                     className="w-full h-10 font-bold"
