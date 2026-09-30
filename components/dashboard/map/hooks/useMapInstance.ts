@@ -29,15 +29,17 @@ const THEMES: MapTheme[] = ["dark", "graphite", "satellite"]
  * С сентября 2026 CARTO требует ключ на каждом запросе basemaps: без ключа
  * CDN возвращает тайлы с водяным знаком «API KEY REQUIRED» вместо карты.
  */
-const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || ""
+const INITIAL_CARTO_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || ""
 
 /** Проверенный шаблон CARTO: путь rastertiles + ключ параметром key. */
-const cartoUrl = (style: string) =>
-  `https://{s}.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`
+const cartoUrl = (style: string, key: string) =>
+  `https://{s}.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}{r}.png?key=${key}`
+
+type BaseLayer = { url: string; options: L.TileLayerOptions }
 
 const CARTO_DARK: Array<{ url: string; options: L.TileLayerOptions }> = [
   {
-    url: cartoUrl("dark_all"),
+    url: cartoUrl("dark_all", ""),
     options: {
       subdomains: "abcd",
       maxZoom: 19,
@@ -72,31 +74,29 @@ const ESRI_SATELLITE: Array<{ url: string; options: L.TileLayerOptions }> = [
   },
 ]
 
-if (!CARTO_API_KEY && typeof window !== "undefined") {
-  // Не ошибка сборки: карта работает на запасной подложке, но тёмная тема
-  // будет отличаться от задуманной — причину стоит видеть в консоли.
-  console.warn(
-    "[map] NEXT_PUBLIC_CARTO_API_KEY не задан: тёмная тема переключена на запасную подложку Esri. Добавьте ключ в .env и перезапустите dev-сервер.",
-  )
-}
+// Предупреждение о missing-ключе больше не нужно: хук сам дочитывает ключ
+// с сервера (/api/map/config), а без ключа честно включает запасную подложку.
 
-/** Базовые слои для каждой темы: тайлы + подпись прав внизу. */
-const BASE_LAYERS: Record<MapTheme, Array<{ url: string; options: L.TileLayerOptions }>> = {
-  // CARTO Dark Matter — тёмный минимализм, на нём читаются неоновые маршруты;
-  // без ключа CARTO отдаёт водяные знаки, поэтому уходим на Esri
-  dark: CARTO_API_KEY ? CARTO_DARK : ESRI_DARK,
-  // Esri Canvas Dark Gray — нейтральный инженерный графит
-  graphite: ESRI_DARK,
-  // Спутник + тёмные подписи дорог поверх снимка (подписи — только с ключом)
-  satellite: CARTO_API_KEY
-    ? [
-        ...ESRI_SATELLITE,
-        {
-          url: cartoUrl("dark_only_labels"),
-          options: { subdomains: "abcd", maxZoom: 19, minZoom: 3, opacity: 0.9, crossOrigin: true },
-        },
-      ]
-    : ESRI_SATELLITE,
+/**
+ * Базовые слои для каждой темы: тайлы + подпись прав внизу. Без ключа CARTO
+ * отдаёт водяные знаки «API KEY REQUIRED», поэтому тёмная неоновая подложка
+ * и подписи спутника доступны только с ключом; без него — запасная Esri.
+ */
+function baseLayersFor(theme: MapTheme, key: string): BaseLayer[] {
+  if (!key) return theme === "satellite" ? ESRI_SATELLITE : ESRI_DARK
+  if (theme === "dark") {
+    return [{ url: cartoUrl("dark_all", key), options: CARTO_DARK[0].options }]
+  }
+  if (theme === "satellite") {
+    return [
+      ...ESRI_SATELLITE,
+      {
+        url: cartoUrl("dark_only_labels", key),
+        options: { subdomains: "abcd", maxZoom: 19, minZoom: 3, opacity: 0.9, crossOrigin: true },
+      },
+    ]
+  }
+  return ESRI_DARK
 }
 
 interface UseMapInstanceOptions {
@@ -133,6 +133,33 @@ export function useMapInstance({
 
   const mapRef = useRef<L.Map | null>(null)
   const baseLayersGroupRef = useRef<L.LayerGroup | null>(null)
+  const [cartoKey, setCartoKey] = useState(INITIAL_CARTO_KEY)
+  const cartoKeyRef = useRef(INITIAL_CARTO_KEY)
+  cartoKeyRef.current = cartoKey
+  const applyThemeRef = useRef<(instance: L.Map, nextTheme: MapTheme) => void>(() => {})
+
+  // Ключ мог не попасть в бандл: NEXT_PUBLIC_* запекается на старте dev-сервера,
+  // а в .env ключ мог появиться позже или под соседним именем (CARTO_API_KEY,
+  // CARTO_KEY). Дочитываем с сервера и перерисовываем подложку без перезагрузки.
+  useEffect(() => {
+    if (cartoKey) return
+    let alive = true
+    fetch("/api/map/config", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (alive && data?.cartoKey) setCartoKey(String(data.cartoKey))
+      })
+      .catch(() => {
+        /* останемся на запасной подложке Esri */
+      })
+    return () => {
+      alive = false
+    }
+  }, [cartoKey])
+
+  useEffect(() => {
+    if (mapRef.current && cartoKey) applyThemeRef.current(mapRef.current, theme)
+  }, [cartoKey, theme])
 
   const applyTheme = useCallback((instance: L.Map, nextTheme: MapTheme) => {
     if (baseLayersGroupRef.current) {
@@ -140,10 +167,11 @@ export function useMapInstance({
       baseLayersGroupRef.current = null
     }
 
+    const layers = baseLayersFor(nextTheme, cartoKeyRef.current)
     const group = L.layerGroup()
-    let pending = BASE_LAYERS[nextTheme].length
+    let pending = layers.length
 
-    for (const layer of BASE_LAYERS[nextTheme]) {
+    for (const layer of layers) {
       const tile = L.tileLayer(layer.url, layer.options)
       tile.on("load", () => {
         pending -= 1
@@ -162,6 +190,7 @@ export function useMapInstance({
     baseLayersGroupRef.current = group
     setTilesReady(false)
   }, [])
+  applyThemeRef.current = applyTheme
 
   const setTheme = useCallback(
     (nextTheme: MapTheme) => {

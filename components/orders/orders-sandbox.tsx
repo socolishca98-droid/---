@@ -1279,7 +1279,7 @@ export function OrdersSandbox() {
       setAtiOrders((prev) => prev.filter((o: any) => o.id !== orderId))
       toast.success("Груз возвращён в базу")
     } catch {
-      toast.error("Ошибка")
+      toast.error("Не удалось вернуть груз в базу: проверьте связь и повторите")
     }
   }
 

@@ -731,7 +731,7 @@ export default function MobileHomePage() {
         )
       }
     } catch {
-      toast.error("Ошибка")
+      toast.error("Не удалось выехать на базу: проверьте связь и повторите")
     } finally {
       setIsGoingToBase(false)
     }

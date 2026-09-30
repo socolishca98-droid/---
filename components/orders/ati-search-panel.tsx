@@ -405,7 +405,7 @@ export function AtiSearchPanel() {
         toast.warning(data.error || "Ничего не найдено")
       }
     } catch {
-      toast.error("Ошибка поиска")
+      toast.error("Поиск не завершился: проверьте связь или подключение ATI в «Настройках»")
     } finally {
       setScanning(false)
     }
@@ -458,7 +458,7 @@ export function AtiSearchPanel() {
         toast.error(data.error || "Ошибка сборщика")
       }
     } catch {
-      toast.error("Сбой сборщика")
+      toast.error("Сборщик не завершился: проверьте связь или подключение ATI в «Настройках»")
     } finally {
       setHarvesting(false)
     }
@@ -571,11 +571,11 @@ export function AtiSearchPanel() {
             <p className="text-red-600/90 dark:text-red-300/80">
               Сканы и живой поиск идут через аккаунт ATI вашей организации —
               свои площадки, подписки и лимиты. Подключите токен в разделе
-              «Организация» (это может сделать администратор).
+              «Настройки» (это может сделать администратор).
             </p>
           </div>
           <Button asChild variant="outline" size="sm" className="flex-shrink-0">
-            <Link href="/organization">Подключить</Link>
+            <Link href="/settings">Подключить</Link>
           </Button>
         </div>
       )}
@@ -599,14 +599,6 @@ export function AtiSearchPanel() {
 
         {/* Вкладка живого поиска ATI */}
         <TabsContent value="search" className="space-y-6 mt-6">
-          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-            <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-            <p className="text-amber-800 dark:text-amber-300">
-              Живой запрос уходит на ati.su и тратит лимиты токена. Основной
-              источник грузов — своя накопленная база (вкладка «Своя база»): её
-              наполняют плановые сканы, и поиск по ней мгновенный.
-            </p>
-          </div>
           <Card className="border-l-4 border-l-primary">
             <CardContent className="p-6">
               {/* Формат полей — как в форме поиска грузов на бирже ATI
@@ -667,7 +659,23 @@ export function AtiSearchPanel() {
                   </div>
                 </div>
 
-                <div className="lg:col-span-4 space-y-2">
+                <div className="lg:col-span-4">
+                  <Button
+                    size="lg"
+                    className="w-full h-10 font-bold"
+                    onClick={() => void handleSearch()}
+                    disabled={scanning}
+                  >
+                    {scanning ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    Найти
+                  </Button>
+                </div>
+
+                <div className="lg:col-span-3 space-y-2">
                   <label className="text-sm font-semibold flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-blue-500" />
                     Дата погрузки
@@ -752,21 +760,6 @@ export function AtiSearchPanel() {
                   </div>
                 </div>
 
-                <div className="lg:col-span-3">
-                  <Button
-                    size="lg"
-                    className="w-full h-10 font-bold"
-                    onClick={() => void handleSearch()}
-                    disabled={scanning}
-                  >
-                    {scanning ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
-                    )}
-                    Найти
-                  </Button>
-                </div>
               </div>
             </CardContent>
           </Card>

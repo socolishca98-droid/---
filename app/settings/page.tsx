@@ -2,13 +2,14 @@
 
 // app/settings/page.tsx
 //
-// Настоящие настройки программы в одном месте: автопарк и база, реквизиты
-// перевозчика для документов, подложка карты и нормы труда и отдыха.
+// Настоящие настройки программы в одном месте: автопарк и база, подложка
+// карты, нормы труда и отдыха и подключение интеграции ATI.SU.
+// Информация об организации (реквизиты, люди, инвайты) — на странице «Организация».
 // Раньше «Настройки» в меню открывали страницу организации — теперь у
 // настроек свой дом, а организация осталась про компанию и инвайт-коды.
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Building2, Fuel, Map as MapIcon, Save, Timer } from "lucide-react"
+import { Building2, Map as MapIcon, Save, Timer } from "lucide-react"
 import { PageLayout } from "@/components/page-layout"
 import { AddressInput } from "@/components/address-input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
+import { AtiConnectionCard } from "@/components/organization/ati-connection-card"
 
 const THEME_STORAGE_KEY = "tms_map_theme"
 
@@ -24,21 +26,6 @@ const THEMES: Array<{ value: string; label: string }> = [
   { value: "dark", label: "Тёмная" },
   { value: "graphite", label: "Графит" },
   { value: "satellite", label: "Спутник" },
-]
-
-const REQUISITE_FIELDS: Array<{ key: string; label: string; placeholder?: string }> = [
-  { key: "legalName", label: "Юридическое имя", placeholder: "ООО «…»" },
-  { key: "inn", label: "ИНН" },
-  { key: "kpp", label: "КПП" },
-  { key: "ogrn", label: "ОГРН" },
-  { key: "legalAddress", label: "Юридический адрес" },
-  { key: "phone", label: "Телефон" },
-  { key: "email", label: "E-mail" },
-  { key: "bankName", label: "Банк" },
-  { key: "bankBic", label: "БИК" },
-  { key: "bankAccount", label: "Расчётный счёт" },
-  { key: "signerName", label: "Подписант" },
-  { key: "signerPosition", label: "Должность подписанта" },
 ]
 
 type SettingsState = Record<string, string>
@@ -128,7 +115,6 @@ export default function SettingsPage() {
         baseLat,
         baseLng,
       }
-      for (const field of REQUISITE_FIELDS) payload[field.key] = form[field.key] ?? null
       if (form.restDriveLimitMin) payload.restDriveLimitMin = Number(form.restDriveLimitMin)
       if (form.restMinBreakMin) payload.restMinBreakMin = Number(form.restMinBreakMin)
 
@@ -160,7 +146,7 @@ export default function SettingsPage() {
   return (
     <PageLayout
       title="Настройки"
-      description="Автопарк, реквизиты для документов, карта и нормы отдыха — всё в одном месте"
+      description="Автопарк и база, карта, нормы труда и отдыха, подключение ATI.SU — всё в одном месте"
       actions={
         <Button onClick={save} disabled={saving || loading}>
           <Save className="mr-2 h-4 w-4" />
@@ -306,32 +292,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* ── Реквизиты перевозчика ─────────────────────────────────── */}
-        <Card className="border-border/50" id="requisites">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Fuel className="h-4 w-4" />
-              Реквизиты перевозчика
-            </CardTitle>
-            <CardDescription>
-              Печатаются в ТТН, путевом листе и договоре-заявке от имени вашей
-              организации. Пустое поле уходит в документ строкой для заполнения от руки
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            {REQUISITE_FIELDS.map((field) => (
-              <div key={field.key} className="space-y-1.5">
-                <Label htmlFor={`req-${field.key}`}>{field.label}</Label>
-                <Input
-                  id={`req-${field.key}`}
-                  value={form[field.key] ?? ""}
-                  onChange={(event) => set(field.key, event.target.value)}
-                  placeholder={field.placeholder}
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        {/* Подключение ATI.SU — настройка интеграции, поэтому живёт здесь */}
+        <AtiConnectionCard />
+
       </div>
     </PageLayout>
   )

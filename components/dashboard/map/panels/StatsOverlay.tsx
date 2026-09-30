@@ -194,76 +194,68 @@ export function StatsOverlay({
           )}
         </div>
 
-        {/* ЦЕНТРАЛЬНЫЙ МОДУЛЬ: KPI Капсула (Скрывается на очень узких экранах) */}
-        <div className="hidden lg:flex items-center gap-1 bg-[#111319]/90 backdrop-blur-xl border border-white/[0.08] rounded-2xl p-1.5 shadow-2xl pointer-events-auto">
-          {/* В работе */}
+        {/* ЦЕНТРАЛЬНЫЙ МОДУЛЬ: KPI-капсула со сводкой дня.
+            Стекло с градиентом, мягкие иконки-плитки и спокойная типографика —
+            островок читается как приборная панель, а не как набор плиток. */}
+        <div className="hidden lg:flex items-stretch gap-0.5 rounded-2xl bg-gradient-to-b from-[#161a26]/95 to-[#0d0f15]/95 backdrop-blur-xl border border-white/[0.06] p-1.5 shadow-[0_16px_48px_-16px_rgba(0,0,0,0.85)] pointer-events-auto">
           <Link
             href="/orders?status=active"
-            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-white/[0.04] transition-colors"
+            title="Заказы в работе"
+            className="group flex items-center gap-2.5 rounded-xl px-3 py-2 transition-colors hover:bg-white/[0.05]"
           >
-            <div className="p-1.5 rounded-lg bg-orange-500/15 text-orange-400">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-orange-500/25 to-orange-500/5 text-orange-400 ring-1 ring-orange-500/20 transition-transform group-hover:scale-105">
               <Package className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-white tracking-tight">
+            </span>
+            <span className="flex flex-col">
+              <span className="text-sm font-semibold leading-none tabular-nums text-zinc-100">
                 {stats.orders.active}
-              </div>
-              <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
-                В работе
-              </div>
-            </div>
+              </span>
+              <span className="mt-1 text-[10px] leading-none text-zinc-500">в работе</span>
+            </span>
           </Link>
 
-          <div className="w-px h-6 bg-white/[0.08]" />
+          <div className="w-px self-stretch bg-white/[0.06]" />
 
-          {/* Маршрутов */}
-          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl">
-            <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400">
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2" title="Активные рейсы">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-emerald-500/25 to-emerald-500/5 text-emerald-400 ring-1 ring-emerald-500/20">
               <Route className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-white tracking-tight">
+            </span>
+            <span className="flex flex-col">
+              <span className="text-sm font-semibold leading-none tabular-nums text-zinc-100">
                 {routesCount}
-              </div>
-              <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
-                Рейсов
-              </div>
-            </div>
+              </span>
+              <span className="mt-1 text-[10px] leading-none text-zinc-500">рейсов</span>
+            </span>
           </div>
 
-          <div className="w-px h-6 bg-white/[0.08]" />
+          <div className="w-px self-stretch bg-white/[0.06]" />
 
-          {/* Общий пробег */}
-          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl">
-            <div className="p-1.5 rounded-lg bg-cyan-500/15 text-cyan-400">
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2" title="Пробег активных рейсов">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-cyan-500/25 to-cyan-500/5 text-cyan-400 ring-1 ring-cyan-500/20">
               <TrendingUp className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-white tracking-tight">
-                {formatDistance(totalActiveKm)} <span className="text-[10px] font-normal text-gray-400">км</span>
-              </div>
-              <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
-                Дистанция
-              </div>
-            </div>
+            </span>
+            <span className="flex flex-col">
+              <span className="text-sm font-semibold leading-none tabular-nums text-zinc-100">
+                {formatDistance(totalActiveKm)}
+                <span className="ml-1 text-[10px] font-normal text-zinc-500">км</span>
+              </span>
+              <span className="mt-1 text-[10px] leading-none text-zinc-500">пробег</span>
+            </span>
           </div>
 
-          <div className="w-px h-6 bg-white/[0.08]" />
+          <div className="w-px self-stretch bg-white/[0.06]" />
 
-          {/* Водители на связи */}
-          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl">
-            <div className="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-400">
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2" title="Водители на связи">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-gradient-to-br from-indigo-500/25 to-indigo-500/5 text-indigo-400 ring-1 ring-indigo-500/20">
               <Radio className="h-3.5 w-3.5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-white tracking-tight flex items-center gap-1.5">
-                <span>{stats.online}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              </div>
-              <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
-                Онлайн
-              </div>
-            </div>
+            </span>
+            <span className="flex flex-col">
+              <span className="flex items-center gap-1.5 text-sm font-semibold leading-none tabular-nums text-zinc-100">
+                {stats.online}
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              </span>
+              <span className="mt-1 text-[10px] leading-none text-zinc-500">на связи</span>
+            </span>
           </div>
         </div>
 

@@ -95,7 +95,7 @@ export function atiHttpError(status: number, context: string): string {
     return `${context}: ATI.SU ограничил частоту запросов (429). Лимиты считаются на аккаунт организации — повторите позже.`
   }
   if (status === 401 || status === 403) {
-    return `${context}: ATI.SU не принял токен (${status}). Переподключите аккаунт в разделе «Организация».`
+    return `${context}: ATI.SU не принял токен (${status}). Переподключите аккаунт в разделе «Настройки».`
   }
   return `${context}: ATI.SU ответил ${status}`
 }

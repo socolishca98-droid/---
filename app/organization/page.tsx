@@ -53,7 +53,7 @@ import {
 } from "lucide-react"
 import { fetchJsonCached, invalidateCache } from "@/lib/client-cache"
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
-import { AtiConnectionCard } from "@/components/organization/ati-connection-card"
+import { RequisitesCard } from "@/components/organization/requisites-card"
 
 interface OrganizationInfo {
   id: string
@@ -453,7 +453,7 @@ export default function OrganizationPage() {
       )}
 
       {/* ── Интеграция с ATI.SU: свой аккаунт организации ───────────── */}
-      {isAdmin && <AtiConnectionCard />}
+      <RequisitesCard />
 
       {/* ── Инвайт-коды ─────────────────────────────────────────────── */}
       {isAdmin && (

@@ -164,8 +164,8 @@ export default function MaintenancePage() {
 
         router.push("/m")
       } else {
-        toast.error("Ошибка", {
-          description: data.error || "Не удалось начать ТО",
+        toast.error(data.error || "Не удалось начать ТО", {
+          description: "Сервис отклонил запрос — подробности в тексте",
         })
       }
     } catch (error) {

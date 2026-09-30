@@ -130,7 +130,7 @@ export default function AtiAccountPage() {
               расписанию и контакты грузоотправителей заработают от вашего имени.
             </p>
             <Button asChild>
-              <Link href="/organization">Подключить аккаунт</Link>
+              <Link href="/settings">Подключить аккаунт</Link>
             </Button>
           </CardContent>
         </Card>
@@ -157,7 +157,7 @@ export default function AtiAccountPage() {
             Обновить
           </Button>
           <Button asChild size="sm">
-            <Link href="/organization">
+            <Link href="/settings">
               Управление подключением
               <ExternalLink className="h-3.5 w-3.5 ml-2" />
             </Link>
