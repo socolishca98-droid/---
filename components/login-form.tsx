@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Экран входа сотрудника (admin / logist).
@@ -15,20 +15,20 @@
  * геометрией маршрута, сверху приветствие по времени суток.
  */
 
-import { useEffect, useState, type FormEvent } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { useAuth } from "@/lib/auth-context"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   AlertCircle,
   Boxes,
@@ -38,13 +38,14 @@ import {
   MapPinned,
   ShieldCheck,
   Truck,
-} from "lucide-react"
-import { PRODUCT_NAME } from "@/lib/auth/constants"
-import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
+} from "lucide-react";
+import { PRODUCT_NAME } from "@/lib/auth/constants";
+import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting";
+import { isMobileDevice } from "@/lib/device";
 
 interface LoginFormProps {
   /** Куда отправить после успешного входа */
-  nextPath?: string
+  nextPath?: string;
 }
 
 /** Что коротко показываем о системе на экране входа. */
@@ -52,88 +53,93 @@ const HIGHLIGHTS: Array<{ icon: typeof Boxes; text: string }> = [
   { icon: Boxes, text: "Заказы, рейсы и водители в одном окне" },
   { icon: MapPinned, text: "Живая карта: пробки, ETA и статусы машин" },
   { icon: ShieldCheck, text: "Документы, оплаты и отчёты без Excel" },
-]
+];
 
 export function LoginForm({ nextPath }: LoginFormProps) {
-  const router = useRouter()
-  const { login } = useAuth()
+  const router = useRouter();
+  const { login } = useAuth();
 
   // Приветствие по времени суток считаем на клиенте: серверный рендер и
   // гидратация не должны расходиться из-за часов.
-  const [now, setNow] = useState<Date | null>(null)
-  useEffect(() => setNow(new Date()), [])
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => setNow(new Date()), []);
 
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // Обязательная смена пароля
-  const [needsPasswordChange, setNeedsPasswordChange] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [repeatPassword, setRepeatPassword] = useState("")
-  const [isChanging, setIsChanging] = useState(false)
+  const [needsPasswordChange, setNeedsPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [repeatPassword, setRepeatPassword] = useState("");
+  const [isChanging, setIsChanging] = useState(false);
 
-  const redirectTarget = nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard"
+  // После входа: явный ?next= важнее всего; иначе телефон → мобильный пульт /s,
+  // компьютер → дашборд.
+  const redirectTarget = () => {
+    if (nextPath && nextPath.startsWith("/")) return nextPath;
+    return isMobileDevice() ? "/s" : "/dashboard";
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError("")
-    setIsLoading(true)
+    event.preventDefault();
+    setError("");
+    setIsLoading(true);
 
-    const result = await login(email.trim(), password)
-    setIsLoading(false)
+    const result = await login(email.trim(), password);
+    setIsLoading(false);
 
     if (!result.ok) {
-      setError(result.error || "Не удалось войти")
-      return
+      setError(result.error || "Не удалось войти");
+      return;
     }
 
     if (result.mustChangePassword) {
-      setNeedsPasswordChange(true)
-      setCurrentPassword(password)
-      return
+      setNeedsPasswordChange(true);
+      setCurrentPassword(password);
+      return;
     }
 
-    router.replace(redirectTarget)
-    router.refresh()
-  }
+    router.replace(redirectTarget());
+    router.refresh();
+  };
 
   const handleChangePassword = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError("")
+    event.preventDefault();
+    setError("");
 
     if (newPassword !== repeatPassword) {
-      setError("Пароли не совпадают")
-      return
+      setError("Пароли не совпадают");
+      return;
     }
 
-    setIsChanging(true)
+    setIsChanging(true);
     try {
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
-      })
-      const data = await res.json().catch(() => ({}))
+      });
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data?.success) {
-        setError(data?.error || "Не удалось сменить пароль")
-        return
+        setError(data?.error || "Не удалось сменить пароль");
+        return;
       }
 
-      router.replace(redirectTarget)
-      router.refresh()
+      router.replace(redirectTarget());
+      router.refresh();
     } catch {
-      setError("Ошибка соединения. Попробуйте ещё раз")
+      setError("Ошибка соединения. Попробуйте ещё раз");
     } finally {
-      setIsChanging(false)
+      setIsChanging(false);
     }
-  }
+  };
 
-  const eyebrow = now ? formatGreeting(null, now) : "Здравствуйте"
-  const dateLabel = now ? formatHumanDate(now) : undefined
+  const eyebrow = now ? formatGreeting(null, now) : "Здравствуйте";
+  const dateLabel = now ? formatHumanDate(now) : undefined;
 
   if (needsPasswordChange) {
     return (
@@ -177,7 +183,11 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
           <ErrorBlock message={error} />
 
-          <Button type="submit" className="w-full h-11" disabled={isChanging || !newPassword}>
+          <Button
+            type="submit"
+            className="w-full h-11"
+            disabled={isChanging || !newPassword}
+          >
             {isChanging ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -192,7 +202,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
           </Button>
         </form>
       </Shell>
-    )
+    );
   }
 
   return (
@@ -255,23 +265,29 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       <div className="mt-6 pt-4 border-t border-border/50 space-y-2.5">
         <p className="text-sm text-muted-foreground text-center">
           Нет учётной записи?{" "}
-          <Link href="/register" className="text-primary hover:underline font-medium">
+          <Link
+            href="/register"
+            className="text-primary hover:underline font-medium"
+          >
             Оставить заявку на доступ
           </Link>
         </p>
         <p className="text-sm text-muted-foreground text-center">
           Вы водитель?{" "}
-          <Link href="/m/login" className="text-primary hover:underline font-medium">
+          <Link
+            href="/m/login"
+            className="text-primary hover:underline font-medium"
+          >
             Вход в приложение водителя
           </Link>
         </p>
       </div>
     </Shell>
-  )
+  );
 }
 
 function ErrorBlock({ message }: { message: string }) {
-  if (!message) return null
+  if (!message) return null;
   return (
     <div
       role="alert"
@@ -280,7 +296,7 @@ function ErrorBlock({ message }: { message: string }) {
       <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
       <span>{message}</span>
     </div>
-  )
+  );
 }
 
 function Shell({
@@ -291,12 +307,12 @@ function Shell({
   children,
 }: {
   /** Приветствие по времени суток: «Доброе утро» */
-  eyebrow: string
+  eyebrow: string;
   /** «суббота, 26 сентября» — показываем, когда часы уже известны клиенту */
-  dateLabel?: string
-  title: string
-  description: string
-  children: React.ReactNode
+  dateLabel?: string;
+  title: string;
+  description: string;
+  children: React.ReactNode;
 }) {
   return (
     // Фон не перекрываем наглухо: за экраном входа работает общий слой
@@ -310,7 +326,9 @@ function Shell({
               <Truck className="h-7 w-7 text-primary-foreground" />
             </span>
             <div>
-              <p className="text-2xl font-bold tracking-tight">{PRODUCT_NAME}</p>
+              <p className="text-2xl font-bold tracking-tight">
+                {PRODUCT_NAME}
+              </p>
               <p className="text-sm text-muted-foreground">
                 система управления грузоперевозками
               </p>
@@ -329,7 +347,13 @@ function Shell({
               className="login-brand__track"
               d="M18 74 C 90 74, 110 30, 176 34 S 268 78, 336 52 S 386 30, 402 26"
             />
-            <circle cx="18" cy="74" r="5" stroke="var(--primary)" strokeWidth="1.8" />
+            <circle
+              cx="18"
+              cy="74"
+              r="5"
+              stroke="var(--primary)"
+              strokeWidth="1.8"
+            />
             <circle cx="18" cy="74" r="1.8" fill="var(--primary)" />
             <circle
               cx="176"
@@ -371,7 +395,9 @@ function Shell({
               <Truck className="h-6 w-6 text-primary-foreground" />
             </span>
             <div>
-              <p className="text-xl font-bold leading-tight tracking-tight">{PRODUCT_NAME}</p>
+              <p className="text-xl font-bold leading-tight tracking-tight">
+                {PRODUCT_NAME}
+              </p>
               <p className="text-xs text-muted-foreground">
                 система управления грузоперевозками
               </p>
@@ -391,12 +417,14 @@ function Shell({
                 )}
               </div>
               <CardTitle className="text-2xl tracking-tight">{title}</CardTitle>
-              <CardDescription className="leading-relaxed">{description}</CardDescription>
+              <CardDescription className="leading-relaxed">
+                {description}
+              </CardDescription>
             </CardHeader>
             <CardContent>{children}</CardContent>
           </Card>
         </div>
       </div>
     </div>
-  )
+  );
 }
