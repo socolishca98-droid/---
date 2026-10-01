@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Building2,
+  Crown,
   Download,
   LogOut,
   Monitor,
@@ -71,6 +72,22 @@ export default function StaffMobileMenu() {
   const [installEvent, setInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
+
+  // Раздел владельца виден только аккаунту из PLATFORM_OWNER_EMAIL
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/owner/me", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.owner) setIsOwner(true);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -140,6 +157,26 @@ export default function StaffMobileMenu() {
             </span>
           </span>
         </button>
+      )}
+
+      {isOwner && (
+        <Link
+          href="/owner"
+          className="flex items-center gap-3 rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/15 to-amber-500/[0.03] p-3.5 backdrop-blur-xl transition-colors hover:from-amber-500/20"
+        >
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/25">
+            <Crown className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-amber-300">
+              Режим владельца
+            </span>
+            <span className="mt-0.5 block text-[11px] text-zinc-500">
+              все организации платформы
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 flex-shrink-0 text-zinc-600" />
+        </Link>
       )}
 
       <div className="space-y-2">

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-30T20:03:20.427Z",
+  "generatedAt": "2026-10-01T18:08:50.210Z",
   "endpoints": [
     {
       "method": "GET",
@@ -530,6 +530,26 @@
       "method": "DELETE",
       "route": "/api/organization/invites/:id",
       "group": "organization"
+    },
+    {
+      "method": "POST",
+      "route": "/api/owner/exit",
+      "group": "owner"
+    },
+    {
+      "method": "POST",
+      "route": "/api/owner/impersonate",
+      "group": "owner"
+    },
+    {
+      "method": "GET",
+      "route": "/api/owner/me",
+      "group": "owner"
+    },
+    {
+      "method": "GET",
+      "route": "/api/owner/organizations",
+      "group": "owner"
     },
     {
       "method": "GET",
