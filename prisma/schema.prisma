@@ -820,6 +820,7 @@ model Organization {
   shiftEvents       ShiftEvent[]
   fleetSettings     FleetSettings[]
   atiScanConfigs    AtiScanConfig[]
+  settings          OrganizationSettings?
   auditLogs         AuditLog[]
   inviteCodes       InviteCode[]
 
@@ -837,6 +838,20 @@ model Organization {
 /// Заказы ссылаются на неё через Order.clientId; у заказа остаются поля
 /// clientName/clientContact как «снимок» на момент заказа — если карточку
 /// потом поправят, уже оформленные заказы не изменятся задним числом.
+model OrganizationSettings {
+  id             String       @id @default(cuid())
+  /// Одна строка настроек на организацию (1:1).
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Использовать ATI.SU: поиск грузов, кабинет, сканирование. Компании,
+  /// которые возят только постоянным клиентам, выключают — интерфейс прячет
+  /// ATI-разделы. По умолчанию включено (обратная совместимость).
+  atiEnabled     Boolean      @default(true)
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
 model Client {
   id             String        @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
@@ -865,6 +880,8 @@ model Client {
   updatedAt      DateTime      @updatedAt
 
   orders         Order[]
+  /// Пользователи личного кабинета клиента (задел: role = "client")
+  users          User[]
 
   @@unique([organizationId, nameKey])
   @@index([organizationId])
@@ -922,6 +939,12 @@ model User {
   /// Ссылка на карточку водителя (только для role = "driver")
   driverId     String?  @unique
   driver       Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  /// Задел под личный кабинет клиента (role = "client"): пользователь портала
+  /// привязывается к карточке Client и видит только её заказы. Сейчас роль
+  /// "client" не выпускается ни в одной сессии — поле зарезервировано.
+  clientId     String?
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   /// Инвайт-код, по которому человек присоединился к организации (если был)
   inviteCodeId String?

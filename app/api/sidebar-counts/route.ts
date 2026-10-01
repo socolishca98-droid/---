@@ -13,45 +13,52 @@
 // значения — база может быть ещё не перенесена) либо у него просрочено
 // напоминание nextFollowUpAt и заказ не закрыт.
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 
-import { prisma } from "@/lib/prisma"
-import { requireStaff } from "@/lib/auth/session"
-import { requireOrganization, scopedWhere } from "@/lib/org"
+import { prisma } from "@/lib/prisma";
+import { getOrgSettings } from "@/lib/org-settings";
+import { requireStaff } from "@/lib/auth/session";
+import { requireOrganization, scopedWhere } from "@/lib/org";
 import {
   CLOSED_ORDER_STATUSES,
   LEGACY_ORDER_STATUS_MAP,
   ORDER_STATUSES,
-} from "@/lib/orders/stages"
+} from "@/lib/orders/stages";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 /** Все значения статуса (канон + прежние), которые означают «Поиск»/«Согласование». */
 const PENDING_STATUSES: string[] = [
-  ...ORDER_STATUSES.filter((status) => status === "search" || status === "negotiation"),
+  ...ORDER_STATUSES.filter(
+    (status) => status === "search" || status === "negotiation",
+  ),
   ...Object.entries(LEGACY_ORDER_STATUS_MAP)
-    .filter(([, canonical]) => canonical === "search" || canonical === "negotiation")
+    .filter(
+      ([, canonical]) => canonical === "search" || canonical === "negotiation",
+    )
     .map(([legacy]) => legacy),
-]
+];
 
 const CLOSED_STATUSES: string[] = [
   ...CLOSED_ORDER_STATUSES,
   ...Object.entries(LEGACY_ORDER_STATUS_MAP)
-    .filter(([, canonical]) => (CLOSED_ORDER_STATUSES as readonly string[]).includes(canonical))
+    .filter(([, canonical]) =>
+      (CLOSED_ORDER_STATUSES as readonly string[]).includes(canonical),
+    )
     .map(([legacy]) => legacy),
-]
+];
 
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
 
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
 
   try {
-    const now = new Date()
+    const now = new Date();
 
-    const [orders, chat] = await Promise.all([
+    const [orders, chat, settings] = await Promise.all([
       prisma.order.count({
         where: scopedWhere(org.organizationId, {
           OR: [
@@ -70,15 +77,28 @@ export async function GET(request: NextRequest) {
           senderId: { not: org.userId },
         }),
       }),
-    ])
+      getOrgSettings(org.organizationId),
+    ]);
 
-    return NextResponse.json({ success: true, orders, chat })
+    // atiEnabled — сайдбар прячет ATI-разделы у компаний, которые не работают с биржей
+    return NextResponse.json({
+      success: true,
+      orders,
+      chat,
+      atiEnabled: settings.atiEnabled,
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "sidebar counts error"
-    console.error("[sidebar-counts] GET error:", message)
+    const message =
+      error instanceof Error ? error.message : "sidebar counts error";
+    console.error("[sidebar-counts] GET error:", message);
     return NextResponse.json(
-      { success: false, error: "Не удалось получить счётчики", orders: 0, chat: 0 },
+      {
+        success: false,
+        error: "Не удалось получить счётчики",
+        orders: 0,
+        chat: 0,
+      },
       { status: 500 },
-    )
+    );
   }
 }

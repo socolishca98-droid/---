@@ -1,18 +1,21 @@
 // lib/validators.ts - Zod validation schemas (P1-6)
-import { z } from "zod"
+import { z } from "zod";
 import {
   LEGACY_ORDER_STATUS_MAP,
   NEGOTIATION_STATUSES,
   ORDER_STATUSES,
   normalizeOrderStatus,
-} from "@/lib/orders/stages"
+} from "@/lib/orders/stages";
 
 /** Допустимые значения статуса заказа: канон + прежние (для обратной совместимости). */
-const ORDER_STATUS_VALUES = [...ORDER_STATUSES] as [string, ...string[]]
+const ORDER_STATUS_VALUES = [...ORDER_STATUSES] as [string, ...string[]];
 const LEGACY_ORDER_STATUS_VALUES = Object.keys(LEGACY_ORDER_STATUS_MAP).filter(
   (value) => !(ORDER_STATUSES as readonly string[]).includes(value),
-) as [string, ...string[]]
-const NEGOTIATION_STATUS_VALUES = [...NEGOTIATION_STATUSES] as [string, ...string[]]
+) as [string, ...string[]];
+const NEGOTIATION_STATUS_VALUES = [...NEGOTIATION_STATUSES] as [
+  string,
+  ...string[],
+];
 
 // -------------------- Helpers --------------------
 export function formatZodError(error: z.ZodError) {
@@ -23,7 +26,7 @@ export function formatZodError(error: z.ZodError) {
       message: i.message,
       code: i.code,
     })),
-  }
+  };
 }
 
 export function zodErrorResponse(error: z.ZodError) {
@@ -31,14 +34,20 @@ export function zodErrorResponse(error: z.ZodError) {
     success: false,
     error: "Validation failed",
     details: formatZodError(error),
-  }
+  };
 }
 
 // -------------------- Auth --------------------
 export const loginSchema = z.object({
-  email: z.string().min(1, "Email required").email("Invalid email").max(254).trim().toLowerCase(),
+  email: z
+    .string()
+    .min(1, "Email required")
+    .email("Invalid email")
+    .max(254)
+    .trim()
+    .toLowerCase(),
   password: z.string().min(1, "Password required").max(128),
-})
+});
 
 /**
  * Регистрация сотрудника. Ровно один из двух сценариев:
@@ -81,26 +90,28 @@ export const registerSchema = z
       .or(z.literal("")),
   })
   .superRefine((value, ctx) => {
-    const hasOrganization = (value.organizationName ?? "").trim().length > 0
-    const hasInvite = (value.inviteCode ?? "").trim().length > 0
+    const hasOrganization = (value.organizationName ?? "").trim().length > 0;
+    const hasInvite = (value.inviteCode ?? "").trim().length > 0;
 
     if (hasOrganization && hasInvite) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["organizationName"],
-        message: "Выберите один сценарий: создать свою организацию или присоединиться по коду",
-      })
+        message:
+          "Выберите один сценарий: создать свою организацию или присоединиться по коду",
+      });
     }
     if (!hasOrganization && !hasInvite) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["inviteCode"],
-        message: "Укажите название своей организации или код приглашения от администратора",
-      })
+        message:
+          "Укажите название своей организации или код приглашения от администратора",
+      });
     }
-  })
+  });
 
-export type RegisterInput = z.infer<typeof registerSchema>
+export type RegisterInput = z.infer<typeof registerSchema>;
 
 /**
  * Вход водителя в мобильное приложение: телефон + пароль.
@@ -116,7 +127,7 @@ export const driverLoginSchema = z.object({
     .string({ required_error: "Укажите пароль" })
     .min(1, "Укажите пароль")
     .max(128, "Пароль слишком длинный"),
-})
+});
 
 // -------------------- Drivers --------------------
 export const createDriverSchema = z.object({
@@ -125,15 +136,21 @@ export const createDriverSchema = z.object({
   vehicleId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   vehicleType: z.string().trim().max(50).optional().or(z.literal("")),
   vehiclePlate: z.string().trim().max(20).optional().or(z.literal("")),
-  licenseNumber: z.string().trim().max(50).optional().or(z.literal("")).or(z.null()),
+  licenseNumber: z
+    .string()
+    .trim()
+    .max(50)
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
   licenseExpiry: z.string().or(z.date()).optional().or(z.null()),
   medicalExpiry: z.string().or(z.date()).optional().or(z.null()),
   status: z.enum(["available", "busy", "maintenance", "offline"]).optional(),
-})
+});
 
 export const updateDriverSchema = createDriverSchema.partial().extend({
   id: z.string().optional(),
-})
+});
 
 export const driverLocationSchema = z.object({
   driverId: z.string().min(1),
@@ -142,7 +159,7 @@ export const driverLocationSchema = z.object({
   address: z.string().max(500).optional(),
   speed: z.number().min(0).optional(),
   heading: z.number().min(0).max(360).optional(),
-})
+});
 
 // -------------------- Vehicles --------------------
 /** Число с плавающей точкой из строки или числа; пусто → null (поле сбрасывают). */
@@ -150,55 +167,78 @@ const floatOrNull = z
   .union([z.string(), z.number(), z.null(), z.undefined()])
   .optional()
   .transform((v) => {
-    if (v === null || v === undefined || v === "") return null
-    const n = typeof v === "string" ? parseFloat(v) : v
-    return Number.isFinite(n) && n >= 0 ? (n as number) : null
+    if (v === null || v === undefined || v === "") return null;
+    const n = typeof v === "string" ? parseFloat(v) : v;
+    return Number.isFinite(n) && n >= 0 ? (n as number) : null;
   })
-  .pipe(z.number().nullish())
+  .pipe(z.number().nullish());
 
 export const createVehicleSchema = z.object({
   plate: z.string().trim().min(1, "Plate required").max(20),
   type: z.string().trim().min(1, "Type required").max(50),
   brand: z.string().trim().max(50).optional().or(z.literal("")).or(z.null()),
   model: z.string().trim().max(50).optional().or(z.literal("")).or(z.null()),
-  year: z.union([z.string(), z.number()]).optional().transform((v) => {
-    if (v === undefined || v === "") return undefined
-    const n = typeof v === "string" ? parseInt(v, 10) : v
-    return isNaN(n) ? undefined : n
-  }).pipe(z.number().int().min(1900).max(2100).optional().or(z.undefined())),
-  capacity: z.union([z.string(), z.number()]).transform((v) => {
-    if (typeof v === "string") return parseInt(v, 10)
-    return v
-  }).pipe(z.number().int().min(1, "Capacity min 1").max(100000)),
-  volume: z.union([z.string(), z.number(), z.null(), z.undefined()]).optional().transform((v) => {
-    if (v === null || v === undefined || v === "") return undefined
-    const n = typeof v === "string" ? parseFloat(v) : v
-    return isNaN(n as number) ? undefined : (n as number)
-  }).pipe(z.number().min(0).optional().or(z.undefined())),
-  length: z.union([z.string(), z.number(), z.null(), z.undefined()]).optional().transform((v) => {
-    if (v === null || v === undefined || v === "") return undefined
-    const n = typeof v === "string" ? parseFloat(v) : v
-    return isNaN(n as number) ? undefined : (n as number)
-  }).pipe(z.number().min(0).optional().or(z.undefined())),
-  width: z.union([z.string(), z.number(), z.null(), z.undefined()]).optional().transform((v) => {
-    if (v === null || v === undefined || v === "") return undefined
-    const n = typeof v === "string" ? parseFloat(v) : v
-    return isNaN(n as number) ? undefined : (n as number)
-  }).pipe(z.number().min(0).optional().or(z.undefined())),
-  height: z.union([z.string(), z.number(), z.null(), z.undefined()]).optional().transform((v) => {
-    if (v === null || v === undefined || v === "") return undefined
-    const n = typeof v === "string" ? parseFloat(v) : v
-    return isNaN(n as number) ? undefined : (n as number)
-  }).pipe(z.number().min(0).optional().or(z.undefined())),
+  year: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === "") return undefined;
+      const n = typeof v === "string" ? parseInt(v, 10) : v;
+      return isNaN(n) ? undefined : n;
+    })
+    .pipe(z.number().int().min(1900).max(2100).optional().or(z.undefined())),
+  capacity: z
+    .union([z.string(), z.number()])
+    .transform((v) => {
+      if (typeof v === "string") return parseInt(v, 10);
+      return v;
+    })
+    .pipe(z.number().int().min(1, "Capacity min 1").max(100000)),
+  volume: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return undefined;
+      const n = typeof v === "string" ? parseFloat(v) : v;
+      return isNaN(n as number) ? undefined : (n as number);
+    })
+    .pipe(z.number().min(0).optional().or(z.undefined())),
+  length: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return undefined;
+      const n = typeof v === "string" ? parseFloat(v) : v;
+      return isNaN(n as number) ? undefined : (n as number);
+    })
+    .pipe(z.number().min(0).optional().or(z.undefined())),
+  width: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return undefined;
+      const n = typeof v === "string" ? parseFloat(v) : v;
+      return isNaN(n as number) ? undefined : (n as number);
+    })
+    .pipe(z.number().min(0).optional().or(z.undefined())),
+  height: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return undefined;
+      const n = typeof v === "string" ? parseFloat(v) : v;
+      return isNaN(n as number) ? undefined : (n as number);
+    })
+    .pipe(z.number().min(0).optional().or(z.undefined())),
   features: z.union([z.array(z.string()), z.string()]).optional(),
   status: z.enum(["available", "in_use", "maintenance"]).optional(),
   // Учёт топлива: бак, паспортный расход, текущий остаток (всё опционально)
   fuelTankL: floatOrNull,
   fuelConsumptionPer100: floatOrNull,
   fuelLevelL: floatOrNull,
-})
+});
 
-export const updateVehicleSchema = createVehicleSchema.partial()
+export const updateVehicleSchema = createVehicleSchema.partial();
 
 // -------------------- Orders --------------------
 export const createOrderSchema = z.object({
@@ -206,35 +246,88 @@ export const createOrderSchema = z.object({
   sourceId: z.string().max(100).optional().or(z.null()),
   routeFrom: z.string().trim().min(1, "routeFrom required").max(200),
   routeTo: z.string().trim().min(1, "routeTo required").max(200),
-  distance: z.union([z.string(), z.number()]).optional().transform((v) => {
-    if (v === undefined) return 0
-    const n = typeof v === "string" ? parseInt(v, 10) : v
-    return isNaN(n as number) ? 0 : (n as number)
-  }).pipe(z.number().int().min(0).max(100000).optional()),
-  weight: z.union([z.string(), z.number()]).optional().transform((v) => {
-    if (v === undefined) return 0
-    const n = typeof v === "string" ? parseInt(v, 10) : v
-    return isNaN(n as number) ? 0 : (n as number)
-  }).pipe(z.number().int().min(0).max(1000000).optional()),
-  volume: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => {
-    if (v === null || v === undefined || v === "") return undefined
-    const n = typeof v === "string" ? parseFloat(v) : v
-    return isNaN(n as number) ? undefined : (n as number)
-  }).pipe(z.number().min(0).optional().or(z.undefined())),
+  distance: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return 0;
+      const n = typeof v === "string" ? parseInt(v, 10) : v;
+      return isNaN(n as number) ? 0 : (n as number);
+    })
+    .pipe(z.number().int().min(0).max(100000).optional()),
+  weight: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return 0;
+      const n = typeof v === "string" ? parseInt(v, 10) : v;
+      return isNaN(n as number) ? 0 : (n as number);
+    })
+    .pipe(z.number().int().min(0).max(1000000).optional()),
+  volume: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return undefined;
+      const n = typeof v === "string" ? parseFloat(v) : v;
+      return isNaN(n as number) ? undefined : (n as number);
+    })
+    .pipe(z.number().min(0).optional().or(z.undefined())),
   cargoType: z.string().trim().max(100).optional().default("Груз"),
-  price: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => {
-    if (v === null || v === undefined || v === "") return 0
-    const n = typeof v === "string" ? parseInt(v, 10) : v
-    return isNaN(n as number) ? 0 : (n as number)
-  }).pipe(z.number().int().min(0).optional()),
-  clientName: z.string().trim().max(100).optional().or(z.literal("")).or(z.null()),
+  price: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return 0;
+      const n = typeof v === "string" ? parseInt(v, 10) : v;
+      return isNaN(n as number) ? 0 : (n as number);
+    })
+    .pipe(z.number().int().min(0).optional()),
+  clientName: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
   clientContact: z.string().trim().max(200).optional().default(""),
+  /** Карточка клиента (Client.id своей организации): заказ от постоянного клиента. */
+  clientId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
+  /** Условия оплаты — наследуются от клиента, если не переопределены в заказе. */
+  paymentType: z
+    .string()
+    .trim()
+    .max(50)
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
+  vatType: z.string().trim().max(50).optional().or(z.literal("")).or(z.null()),
+  deferredDays: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = typeof v === "string" ? parseInt(v, 10) : v;
+      return isNaN(n as number) ? null : (n as number);
+    })
+    .pipe(z.number().int().min(0).max(365).nullable().optional()),
   deadline: z.string().or(z.date()).optional(),
   assignedDriverId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
-  assignedVehicleId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
+  assignedVehicleId: z
+    .string()
+    .cuid()
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
   routeId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
   /** Особые требования к грузу/погрузке (текст из заявки). */
-  requirements: z.string().trim().max(2000).optional().or(z.literal("")).or(z.null()),
+  requirements: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
   /** Ид строки накопленной базы ATI, из которой взят заказ (связь с общей базой). */
   atiCacheId: z.string().max(100).optional().or(z.literal("")).or(z.null()),
   /** Цена, о которой договорились с клиентом (итог согласования). */
@@ -242,9 +335,9 @@ export const createOrderSchema = z.object({
     .union([z.string(), z.number(), z.null()])
     .optional()
     .transform((v) => {
-      if (v === null || v === undefined || v === "") return null
-      const n = typeof v === "string" ? parseInt(v, 10) : v
-      return isNaN(n as number) ? null : (n as number)
+      if (v === null || v === undefined || v === "") return null;
+      const n = typeof v === "string" ? parseInt(v, 10) : v;
+      return isNaN(n as number) ? null : (n as number);
     })
     .pipe(z.number().int().min(0).nullable().optional()),
   negotiationStatus: z.enum(NEGOTIATION_STATUS_VALUES).optional(),
@@ -254,7 +347,7 @@ export const createOrderSchema = z.object({
     .optional()
     .or(z.null())
     .transform((v) => (v ? new Date(v as string | Date) : null)),
-})
+});
 
 export const updateOrderSchema = createOrderSchema.partial().extend({
   /**
@@ -266,28 +359,28 @@ export const updateOrderSchema = createOrderSchema.partial().extend({
     .enum([...ORDER_STATUS_VALUES, ...LEGACY_ORDER_STATUS_VALUES])
     .transform((value) => normalizeOrderStatus(value))
     .optional(),
-})
+});
 
 // -------------------- Admin --------------------
 export const adminUserActionSchema = z.object({
   userId: z.string().min(1, "userId required"),
   action: z.enum(["approve", "deactivate", "activate", "change_role"]),
   role: z.enum(["admin", "logist"]).optional(),
-})
+});
 
 // -------------------- Fleet --------------------
 export const fleetAssignSchema = z.object({
   vehicleId: z.string().min(1),
   driverId: z.string().min(1).optional().or(z.literal("")).or(z.null()),
   orderIds: z.array(z.string()).optional(),
-})
+});
 
 export const fleetSettingsSchema = z.object({
   parkName: z.string().trim().min(1).max(100).optional(),
   baseAddress: z.string().trim().max(500).optional().or(z.null()),
   baseLat: z.number().min(-90).max(90).optional().or(z.null()),
   baseLng: z.number().min(-180).max(180).optional().or(z.null()),
-})
+});
 
 // -------------------- Routes --------------------
 export const createRouteSchema = z.object({
@@ -300,19 +393,23 @@ export const createRouteSchema = z.object({
   notes: z.string().max(1000).optional(),
   /** Существующие заказы организации, которые включаются в рейс (обычно согласованные). */
   orderIds: z.array(z.string().min(1)).max(50).optional(),
-  orders: z.array(z.object({
-    routeFrom: z.string().min(1),
-    routeTo: z.string().min(1),
-    distance: z.number().optional(),
-    weight: z.number().optional(),
-    price: z.number().optional(),
-    cargo: z.string().optional(),
-    clientCompany: z.string().optional(),
-    clientPhone: z.string().optional(),
-    groupId: z.string().optional().or(z.null()),
-    atiCacheId: z.string().optional().or(z.null()),
-  })).optional(),
-})
+  orders: z
+    .array(
+      z.object({
+        routeFrom: z.string().min(1),
+        routeTo: z.string().min(1),
+        distance: z.number().optional(),
+        weight: z.number().optional(),
+        price: z.number().optional(),
+        cargo: z.string().optional(),
+        clientCompany: z.string().optional(),
+        clientPhone: z.string().optional(),
+        groupId: z.string().optional().or(z.null()),
+        atiCacheId: z.string().optional().or(z.null()),
+      }),
+    )
+    .optional(),
+});
 
 export const addLoadSchema = z.object({
   atiCacheId: z.string().optional(),
@@ -322,12 +419,12 @@ export const addLoadSchema = z.object({
   weight: z.number().optional(),
   price: z.number().optional(),
   cargo: z.string().optional(),
-})
+});
 
 export const completeRouteSchema = z.object({
   fuelExpense: z.number().min(0).optional(),
   notes: z.string().max(1000).optional(),
-})
+});
 
 // -------------------- Chat --------------------
 export const chatMessageSchema = z.object({
@@ -335,7 +432,7 @@ export const chatMessageSchema = z.object({
   recipientId: z.string().optional().or(z.null()),
   type: z.enum(["text", "system", "important"]).optional().default("text"),
   isImportant: z.boolean().optional(),
-})
+});
 
 // -------------------- Payments --------------------
 export const createPaymentSchema = z.object({
@@ -345,7 +442,7 @@ export const createPaymentSchema = z.object({
   method: z.string().max(50).optional(),
   status: z.enum(["pending", "paid", "failed", "cancelled"]).optional(),
   dueDate: z.string().or(z.date()).optional(),
-})
+});
 
 // -------------------- Photos --------------------
 export const photoUploadSchema = z.object({
@@ -353,15 +450,17 @@ export const photoUploadSchema = z.object({
   orderId: z.string().optional().or(z.null()),
   type: z.string().min(1).max(50),
   description: z.string().max(500).optional(),
-})
+});
 
 // -------------------- Mobile --------------------
 export const driverShiftSchema = z.object({
   driverId: z.string().min(1),
-  status: z.enum(["driving", "resting", "loading", "waiting", "offline"]).optional(),
+  status: z
+    .enum(["driving", "resting", "loading", "waiting", "offline"])
+    .optional(),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
-})
+});
 
 export const sosSchema = z.object({
   driverId: z.string().min(1),
@@ -371,7 +470,7 @@ export const sosSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   address: z.string().max(500).optional(),
-})
+});
 
 export const maintenanceSchema = z.object({
   vehicleId: z.string().min(1),
@@ -383,25 +482,37 @@ export const maintenanceSchema = z.object({
   performer: z.enum(["driver", "service"]).optional(),
   serviceName: z.string().max(100).optional(),
   status: z.enum(["in_progress", "completed", "cancelled"]).optional(),
-})
+});
 
 // -------------------- Generic helper --------------------
-export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<{ success: true; data: T } | { success: false; error: ReturnType<typeof formatZodError> }> {
+export async function parseBody<T>(
+  req: Request,
+  schema: z.ZodSchema<T>,
+): Promise<
+  | { success: true; data: T }
+  | { success: false; error: ReturnType<typeof formatZodError> }
+> {
   try {
-    const body = await req.json()
-    const parsed = schema.safeParse(body)
+    const body = await req.json();
+    const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return { success: false, error: formatZodError(parsed.error) }
+      return { success: false, error: formatZodError(parsed.error) };
     }
-    return { success: true, data: parsed.data }
+    return { success: true, data: parsed.data };
   } catch (e) {
     return {
       success: false,
       error: {
         message: "Invalid JSON",
-        issues: [{ path: "", message: "Body must be valid JSON", code: "custom" as any }],
+        issues: [
+          {
+            path: "",
+            message: "Body must be valid JSON",
+            code: "custom" as any,
+          },
+        ],
       },
-    }
+    };
   }
 }
 
@@ -412,7 +523,9 @@ export async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promis
  */
 export const createInviteSchema = z.object({
   role: z
-    .enum(["admin", "logist"], { errorMap: () => ({ message: "Роль: admin или logist" }) })
+    .enum(["admin", "logist"], {
+      errorMap: () => ({ message: "Роль: admin или logist" }),
+    })
     .default("logist"),
   /** null/не задано = бессрочный код */
   expiresInDays: z
@@ -430,6 +543,6 @@ export const createInviteSchema = z.object({
     .max(1000, "Максимум 1000 использований")
     .nullable()
     .optional(),
-})
+});
 
-export type CreateInviteInput = z.infer<typeof createInviteSchema>
+export type CreateInviteInput = z.infer<typeof createInviteSchema>;

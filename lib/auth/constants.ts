@@ -29,7 +29,12 @@ export const IDENTITY_HEADERS = {
   sessionId: "x-loginex-session-id",
 } as const;
 
-export const USER_ROLES = ["admin", "logist", "driver"] as const;
+/**
+ * "client" — зарезервированная роль будущего личного кабинета клиента
+ * (User.clientId). Сейчас не выпускается ни в одной сессии: STAFF_ROLES и
+ * driver-гарды её не принимают.
+ */
+export const USER_ROLES = ["admin", "logist", "driver", "client"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const STAFF_ROLES: UserRole[] = ["admin", "logist"];

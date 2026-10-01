@@ -75,6 +75,22 @@ export default function StaffMobileMenu() {
 
   // Раздел владельца виден только аккаунту из PLATFORM_OWNER_EMAIL
   const [isOwner, setIsOwner] = useState(false);
+  // ATI-ссылка в меню — только пока организация использует биржу
+  const [atiEnabled, setAtiEnabled] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/org-settings", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.success)
+          setAtiEnabled(data.settings?.atiEnabled !== false);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -180,24 +196,26 @@ export default function StaffMobileMenu() {
       )}
 
       <div className="space-y-2">
-        {LINKS.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.04] p-3.5 backdrop-blur-xl transition-colors hover:bg-white/[0.07]"
-          >
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-zinc-400">
-              <link.icon className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">{link.label}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
-                {link.hint}
+        {LINKS.filter((link) => link.href !== "/ati" || atiEnabled).map(
+          (link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.04] p-3.5 backdrop-blur-xl transition-colors hover:bg-white/[0.07]"
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-zinc-400">
+                <link.icon className="h-4 w-4" />
               </span>
-            </span>
-            <ChevronRight className="h-4 w-4 flex-shrink-0 text-zinc-600" />
-          </Link>
-        ))}
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{link.label}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+                  {link.hint}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-zinc-600" />
+            </Link>
+          ),
+        )}
       </div>
 
       <button

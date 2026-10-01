@@ -11,31 +11,48 @@
 // «Взять в работу» создаёт заказ организации на этапе «Поиск»
 // (POST /api/orders/from-cache) — дальше заказ живёт в карточке /orders/[id].
 
-"use client"
+"use client";
 
-import { useEffect } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
-import { useAuth } from "@/lib/auth-context"
-import { useSidebar } from "@/lib/sidebar-context"
-import { Sidebar } from "@/components/sidebar"
-import { Header } from "@/components/header"
-import { Button } from "@/components/ui/button"
-import { AtiSearchPanel } from "@/components/orders/ati-search-panel"
-import { TruckLoader } from "@/components/ui/truck-loader"
+import { useAuth } from "@/lib/auth-context";
+import { useSidebar } from "@/lib/sidebar-context";
+import { Sidebar } from "@/components/sidebar";
+import { Header } from "@/components/header";
+import { Button } from "@/components/ui/button";
+import { AtiSearchPanel } from "@/components/orders/ati-search-panel";
+import { AtiDisabledNotice } from "@/components/ati/ati-disabled-notice";
+import { TruckLoader } from "@/components/ui/truck-loader";
 
 export default function SearchPage() {
-  const { user, isLoading } = useAuth()
-  const { isCollapsed } = useSidebar()
-  const router = useRouter()
+  const { user, isLoading } = useAuth();
+  const { isCollapsed } = useSidebar();
+  const router = useRouter();
+  // Организация может не пользоваться ATI — тогда вместо поиска заглушка
+  const [atiEnabled, setAtiEnabled] = useState(true);
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace("/login")
+      router.replace("/login");
     }
-  }, [user, isLoading, router])
+  }, [user, isLoading, router]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/org-settings", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.success)
+          setAtiEnabled(data.settings?.atiEnabled !== false);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (isLoading || !user) {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
@@ -43,7 +60,7 @@ export default function SearchPage() {
       <div className="min-h-screen flex items-center justify-center bg-transparent">
         <TruckLoader className="text-primary" />
       </div>
-    )
+    );
   }
 
   return (
@@ -66,15 +83,20 @@ export default function SearchPage() {
                 <h1 className="text-2xl font-bold">Поиск грузов</h1>
                 <p className="text-muted-foreground">
                   Своя накопленная база — основной источник; живой ATI — по
-                  необходимости. «Взять в работу» создаёт заказ на этапе «Поиск».
+                  необходимости. «Взять в работу» создаёт заказ на этапе
+                  «Поиск».
                 </p>
               </div>
             </div>
           </div>
 
-          <AtiSearchPanel />
+          {atiEnabled ? (
+            <AtiSearchPanel />
+          ) : (
+            <AtiDisabledNotice title="Поиск грузов отключён" />
+          )}
         </main>
       </div>
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 // components/orders/order-process.tsx
 //
@@ -18,8 +18,8 @@
 //     (её пишет сервер), поэтому история торга не теряется;
 //   * деньги и даты отправляются числами/ISO-строками, организация — из сессии.
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   BadgeRussianRuble,
@@ -35,23 +35,23 @@ import {
   StickyNote,
   Truck,
   XCircle,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +61,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 import {
   NEGOTIATION_KIND_LABELS,
   NEGOTIATION_STATUS_LABELS,
@@ -76,10 +76,17 @@ import {
   type NegotiationStatus,
   type OrderStage,
   type OrderStatus,
-} from "@/lib/orders/stages"
+} from "@/lib/orders/stages";
+import { orderSourceLabel } from "@/lib/orders/sources";
 
 /** Виды записей, которые логист добавляет руками (остальные пишет сервер). */
-const MANUAL_KINDS = ["note", "price_offer", "call", "email", "document"] as const
+const MANUAL_KINDS = [
+  "note",
+  "price_offer",
+  "call",
+  "email",
+  "document",
+] as const;
 
 const KIND_ICONS: Record<string, typeof StickyNote> = {
   note: StickyNote,
@@ -89,7 +96,7 @@ const KIND_ICONS: Record<string, typeof StickyNote> = {
   email: Mail,
   document: FileText,
   status_change: Truck,
-}
+};
 
 /** Этапы, которые показываются в степпере (closed — отдельное состояние). */
 const PROCESS_STAGES: OrderStage[] = [
@@ -99,243 +106,257 @@ const PROCESS_STAGES: OrderStage[] = [
   "documents",
   "assignment",
   "control",
-]
+];
 
 type OrderRecord = {
-  id: string
-  status: string
-  routeFrom: string
-  routeTo: string
-  distance: number | null
-  weight: number | null
-  volume: number | null
-  cargoType: string | null
-  price: number | null
-  agreedPrice: number | null
-  priceNegotiable: boolean
-  negotiationStatus: string | null
-  nextFollowUpAt: string | Date | null
-  clientName: string | null
-  clientContact: string | null
-  routeId: string | null
-  routeSequence: number | null
-  assignedDriverId: string | null
-  assignedVehicleId: string | null
-  atiCacheId: string | null
-  source: string | null
-  takenAt: string | Date | null
-  takenById: string | null
-  deadline: string | Date | null
-  requirements: string | null
-  isAdditionalLoad?: boolean
-  driver?: { id: string; name: string } | null
-  vehicle?: { id: string; plate: string } | null
-}
+  id: string;
+  status: string;
+  routeFrom: string;
+  routeTo: string;
+  distance: number | null;
+  weight: number | null;
+  volume: number | null;
+  cargoType: string | null;
+  price: number | null;
+  agreedPrice: number | null;
+  priceNegotiable: boolean;
+  negotiationStatus: string | null;
+  nextFollowUpAt: string | Date | null;
+  clientName: string | null;
+  clientContact: string | null;
+  routeId: string | null;
+  routeSequence: number | null;
+  assignedDriverId: string | null;
+  assignedVehicleId: string | null;
+  atiCacheId: string | null;
+  source: string | null;
+  takenAt: string | Date | null;
+  takenById: string | null;
+  deadline: string | Date | null;
+  requirements: string | null;
+  isAdditionalLoad?: boolean;
+  driver?: { id: string; name: string } | null;
+  vehicle?: { id: string; plate: string } | null;
+};
 
 type FeedEntry = {
-  id: string
-  orderId: string
-  kind: string
-  kindLabel: string
-  text: string | null
-  priceOffer: number | null
-  authorId: string | null
-  authorName: string | null
-  createdAt: string | null
-}
+  id: string;
+  orderId: string;
+  kind: string;
+  kindLabel: string;
+  text: string | null;
+  priceOffer: number | null;
+  authorId: string | null;
+  authorName: string | null;
+  createdAt: string | null;
+};
 
 const money = (value: number | null | undefined): string =>
   value === null || value === undefined
     ? "не указана"
-    : `${Number(value).toLocaleString("ru-RU")} ₽`
+    : `${Number(value).toLocaleString("ru-RU")} ₽`;
 
 const dateTime = (value: string | Date | null | undefined): string => {
-  if (!value) return "—"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "—"
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  })
-}
+  });
+};
 
 const dateOnly = (value: string | Date | null | undefined): string => {
-  if (!value) return "—"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "—"
-  return date.toLocaleDateString("ru-RU")
-}
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("ru-RU");
+};
 
 /** Значение для <input type="datetime-local"> из даты заказа. */
 const toLocalInput = (value: string | Date | null | undefined): string => {
-  if (!value) return ""
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ""
-  const pad = (n: number) => String(n).padStart(2, "0")
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours(),
-  )}:${pad(date.getMinutes())}`
-}
+  )}:${pad(date.getMinutes())}`;
+};
 
 export function OrderProcess({
   orderId,
   compact = false,
   onChanged,
 }: {
-  orderId: string
+  orderId: string;
   /** Панель в песочнице: меньше заголовков, плотнее раскладка. */
-  compact?: boolean
+  compact?: boolean;
   /** Вызывается после любого успешного изменения (списки можно обновить). */
-  onChanged?: () => void
+  onChanged?: () => void;
 }) {
-  const [order, setOrder] = useState<OrderRecord | null>(null)
-  const [entries, setEntries] = useState<FeedEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [order, setOrder] = useState<OrderRecord | null>(null);
+  const [entries, setEntries] = useState<FeedEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // форма записи в ленту
-  const [kind, setKind] = useState<string>("note")
-  const [text, setText] = useState("")
-  const [priceOffer, setPriceOffer] = useState("")
+  const [kind, setKind] = useState<string>("note");
+  const [text, setText] = useState("");
+  const [priceOffer, setPriceOffer] = useState("");
 
   // форма итога переговоров
-  const [agreedPriceInput, setAgreedPriceInput] = useState("")
-  const [followUpInput, setFollowUpInput] = useState("")
-  const [statusTarget, setStatusTarget] = useState<string>("")
+  const [agreedPriceInput, setAgreedPriceInput] = useState("");
+  const [followUpInput, setFollowUpInput] = useState("");
+  const [statusTarget, setStatusTarget] = useState<string>("");
   /** Какое опасное действие подтверждает пользователь (AlertDialog, не window.confirm). */
-  const [confirmAction, setConfirmAction] = useState<"reject" | "return" | null>(null)
+  const [confirmAction, setConfirmAction] = useState<
+    "reject" | "return" | null
+  >(null);
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setLoadError(null)
+    setLoading(true);
+    setLoadError(null);
     try {
       const [orderRes, feedRes] = await Promise.all([
         fetch(`/api/orders/${orderId}`, { cache: "no-store" }),
         fetch(`/api/orders/${orderId}/negotiation`, { cache: "no-store" }),
-      ])
-      const orderData = await orderRes.json()
+      ]);
+      const orderData = await orderRes.json();
       if (!orderRes.ok || !orderData.success) {
-        setLoadError(orderData.error || "Заказ не найден")
-        return
+        setLoadError(orderData.error || "Заказ не найден");
+        return;
       }
-      const feedData = await feedRes.json()
-      setOrder(orderData.order as OrderRecord)
-      setEntries(Array.isArray(feedData.entries) ? feedData.entries : [])
+      const feedData = await feedRes.json();
+      setOrder(orderData.order as OrderRecord);
+      setEntries(Array.isArray(feedData.entries) ? feedData.entries : []);
       setAgreedPriceInput(
-        orderData.order?.agreedPrice != null ? String(orderData.order.agreedPrice) : "",
-      )
-      setFollowUpInput(toLocalInput(orderData.order?.nextFollowUpAt))
+        orderData.order?.agreedPrice != null
+          ? String(orderData.order.agreedPrice)
+          : "",
+      );
+      setFollowUpInput(toLocalInput(orderData.order?.nextFollowUpAt));
     } catch {
-      setLoadError("Не удалось загрузить заказ")
+      setLoadError("Не удалось загрузить заказ");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [orderId])
+  }, [orderId]);
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void load();
+  }, [load]);
 
-  const status = useMemo(() => normalizeOrderStatus(order?.status) ?? null, [order])
-  const stage = status ? orderStageOf(status) : null
-  const closed = status ? isOrderClosed(status) : false
+  const status = useMemo(
+    () => normalizeOrderStatus(order?.status) ?? null,
+    [order],
+  );
+  const stage = status ? orderStageOf(status) : null;
+  const closed = status ? isOrderClosed(status) : false;
   const nextStatuses = useMemo<OrderStatus[]>(
     () => (order ? allowedOrderStatuses(order.status) : []),
     [order],
-  )
+  );
   const negotiationStatus = isNegotiationStatus(order?.negotiationStatus)
     ? (order!.negotiationStatus as unknown as NegotiationStatus)
-    : "new"
+    : "new";
 
   /** Общий вызов изменения заказа с понятными ошибками. */
-  const patchOrder = async (payload: Record<string, unknown>, successMessage: string) => {
-    if (!order) return false
-    setSaving(true)
+  const patchOrder = async (
+    payload: Record<string, unknown>,
+    successMessage: string,
+  ) => {
+    if (!order) return false;
+    setSaving(true);
     try {
       const res = await fetch(`/api/orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok || !data.success) {
-        toast.error(data.error || "Не удалось изменить заказ")
-        return false
+        toast.error(data.error || "Не удалось изменить заказ");
+        return false;
       }
-      toast.success(successMessage)
-      await load()
-      onChanged?.()
-      return true
+      toast.success(successMessage);
+      await load();
+      onChanged?.();
+      return true;
     } catch {
-      toast.error("Ошибка связи с сервером")
-      return false
+      toast.error("Ошибка связи с сервером");
+      return false;
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const addEntry = async () => {
-    if (!order) return
-    const trimmed = text.trim()
-    const offer = priceOffer.trim() === "" ? null : Number(priceOffer)
+    if (!order) return;
+    const trimmed = text.trim();
+    const offer = priceOffer.trim() === "" ? null : Number(priceOffer);
     if (kind === "price_offer" && (offer === null || !Number.isFinite(offer))) {
-      toast.error("Для предложения цены укажите сумму")
-      return
+      toast.error("Для предложения цены укажите сумму");
+      return;
     }
     if (!trimmed && offer === null) {
-      toast.error("Пустая запись: нужен текст или сумма")
-      return
+      toast.error("Пустая запись: нужен текст или сумма");
+      return;
     }
-    setSaving(true)
+    setSaving(true);
     try {
       const res = await fetch(`/api/orders/${order.id}/negotiation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, text: trimmed || null, priceOffer: offer }),
-      })
-      const data = await res.json()
+        body: JSON.stringify({
+          kind,
+          text: trimmed || null,
+          priceOffer: offer,
+        }),
+      });
+      const data = await res.json();
       if (!res.ok || !data.success) {
-        toast.error(data.error || "Не удалось добавить запись")
-        return
+        toast.error(data.error || "Не удалось добавить запись");
+        return;
       }
-      setText("")
-      setPriceOffer("")
-      setKind("note")
-      toast.success("Запись добавлена в согласование")
-      await load()
+      setText("");
+      setPriceOffer("");
+      setKind("note");
+      toast.success("Запись добавлена в согласование");
+      await load();
     } catch {
-      toast.error("Ошибка связи с сервером")
+      toast.error("Ошибка связи с сервером");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const returnToBase = async () => {
-    if (!order) return
-    setSaving(true)
+    if (!order) return;
+    setSaving(true);
     try {
       const res = await fetch("/api/ati/sandbox", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: order.id }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok || !data.success) {
-        toast.error(data.error || "Не удалось вернуть груз в базу")
-        return
+        toast.error(data.error || "Не удалось вернуть груз в базу");
+        return;
       }
-      toast.success("Груз возвращён в базу, заказ удалён")
-      onChanged?.()
+      toast.success("Груз возвращён в базу, заказ удалён");
+      onChanged?.();
     } catch {
-      toast.error("Ошибка связи с сервером")
+      toast.error("Ошибка связи с сервером");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -343,7 +364,7 @@ export function OrderProcess({
         <Loader2 className="h-5 w-5 animate-spin mr-2" />
         Загрузка заказа…
       </div>
-    )
+    );
   }
 
   if (loadError || !order) {
@@ -352,10 +373,10 @@ export function OrderProcess({
         <AlertTriangle className="h-6 w-6 mx-auto mb-2 text-destructive" />
         {loadError || "Заказ не найден"}
       </div>
-    )
+    );
   }
 
-  const currentStageIndex = stage ? PROCESS_STAGES.indexOf(stage) : -1
+  const currentStageIndex = stage ? PROCESS_STAGES.indexOf(stage) : -1;
 
   return (
     <div className="space-y-4">
@@ -371,14 +392,20 @@ export function OrderProcess({
           <p className="text-sm text-muted-foreground">
             {order.cargoType || "Груз"}
             {order.weight ? ` · ${(order.weight / 1000).toFixed(1)} т` : ""}
-            {order.distance ? ` · ${Number(order.distance).toLocaleString("ru-RU")} км` : ""}
+            {order.distance
+              ? ` · ${Number(order.distance).toLocaleString("ru-RU")} км`
+              : ""}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
           <Badge variant={closed ? "secondary" : "default"}>
             {orderStatusLabel(order.status)}
           </Badge>
-          {stage && <span className="text-xs text-muted-foreground">этап «{ORDER_STAGE_LABELS[stage]}»</span>}
+          {stage && (
+            <span className="text-xs text-muted-foreground">
+              этап «{ORDER_STAGE_LABELS[stage]}»
+            </span>
+          )}
         </div>
       </div>
 
@@ -392,8 +419,8 @@ export function OrderProcess({
       ) : (
         <div className="flex flex-wrap items-center gap-1">
           {PROCESS_STAGES.map((item, index) => {
-            const done = currentStageIndex > index
-            const active = currentStageIndex === index
+            const done = currentStageIndex > index;
+            const active = currentStageIndex === index;
             return (
               <div key={item} className="flex items-center gap-1">
                 <div
@@ -418,7 +445,7 @@ export function OrderProcess({
                   <Separator orientation="vertical" className="h-4" />
                 )}
               </div>
-            )
+            );
           })}
         </div>
       )}
@@ -433,7 +460,9 @@ export function OrderProcess({
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div>
             <p className="text-xs text-muted-foreground">Клиент</p>
-            <p className="text-sm font-medium">{order.clientName || "не указан"}</p>
+            <p className="text-sm font-medium">
+              {order.clientName || "не указан"}
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Телефон</p>
@@ -453,7 +482,9 @@ export function OrderProcess({
             <p className="text-sm font-medium">
               {money(order.price)}
               {order.priceNegotiable && (
-                <span className="ml-1 text-xs text-muted-foreground">(торг)</span>
+                <span className="ml-1 text-xs text-muted-foreground">
+                  (торг)
+                </span>
               )}
             </p>
           </div>
@@ -465,11 +496,15 @@ export function OrderProcess({
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Переговоры</p>
-            <p className="text-sm font-medium">{NEGOTIATION_STATUS_LABELS[negotiationStatus]}</p>
+            <p className="text-sm font-medium">
+              {NEGOTIATION_STATUS_LABELS[negotiationStatus]}
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Вернуться к клиенту</p>
-            <p className="text-sm font-medium">{dateTime(order.nextFollowUpAt)}</p>
+            <p className="text-sm font-medium">
+              {dateTime(order.nextFollowUpAt)}
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Срок погрузки</p>
@@ -478,8 +513,13 @@ export function OrderProcess({
           <div>
             <p className="text-xs text-muted-foreground">Рейс</p>
             {order.routeId ? (
-              <Link href="/routes" className="text-sm text-primary hover:underline">
-                в рейсе{order.routeSequence ? ` (точка ${order.routeSequence})` : ""} → рейсы
+              <Link
+                href="/routes"
+                className="text-sm text-primary hover:underline"
+              >
+                в рейсе
+                {order.routeSequence ? ` (точка ${order.routeSequence})` : ""} →
+                рейсы
               </Link>
             ) : (
               <p className="text-sm text-muted-foreground">не собран</p>
@@ -488,7 +528,7 @@ export function OrderProcess({
           <div>
             <p className="text-xs text-muted-foreground">Источник</p>
             <p className="text-sm font-medium">
-              {order.source === "ATI" ? "база ATI" : order.source || "вручную"}
+              {orderSourceLabel(order.source)}
               {order.takenAt ? ` · взят ${dateTime(order.takenAt)}` : ""}
             </p>
           </div>
@@ -539,19 +579,24 @@ export function OrderProcess({
               size="sm"
               disabled={saving || closed}
               onClick={() => {
-                const price = agreedPriceInput.trim() === "" ? null : Number(agreedPriceInput)
+                const price =
+                  agreedPriceInput.trim() === ""
+                    ? null
+                    : Number(agreedPriceInput);
                 if (price !== null && (!Number.isFinite(price) || price < 0)) {
-                  toast.error("Цена должна быть числом не меньше нуля")
-                  return
+                  toast.error("Цена должна быть числом не меньше нуля");
+                  return;
                 }
                 void patchOrder(
                   {
                     agreedPrice: price,
                     negotiationStatus: "agreed",
-                    nextFollowUpAt: followUpInput ? new Date(followUpInput).toISOString() : null,
+                    nextFollowUpAt: followUpInput
+                      ? new Date(followUpInput).toISOString()
+                      : null,
                   },
                   "Договорились: заказ согласован",
-                )
+                );
               }}
             >
               <CheckCircle2 className="h-4 w-4 mr-1.5" />
@@ -565,7 +610,9 @@ export function OrderProcess({
               onClick={() =>
                 void patchOrder(
                   {
-                    nextFollowUpAt: followUpInput ? new Date(followUpInput).toISOString() : null,
+                    nextFollowUpAt: followUpInput
+                      ? new Date(followUpInput).toISOString()
+                      : null,
                   },
                   "Изменения сохранены",
                 )
@@ -610,7 +657,8 @@ export function OrderProcess({
                   <SelectContent>
                     {nextStatuses.map((value) => (
                       <SelectItem key={value} value={value}>
-                        {orderStatusLabel(value)} · {ORDER_STAGE_LABELS[orderStageOf(value) as OrderStage]}
+                        {orderStatusLabel(value)} ·{" "}
+                        {ORDER_STAGE_LABELS[orderStageOf(value) as OrderStage]}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -620,12 +668,13 @@ export function OrderProcess({
                 size="sm"
                 disabled={saving || !statusTarget}
                 onClick={() => {
-                  if (!statusTarget) return
-                  void patchOrder({ status: statusTarget }, `Статус: ${orderStatusLabel(statusTarget)}`).then(
-                    (ok) => {
-                      if (ok) setStatusTarget("")
-                    },
-                  )
+                  if (!statusTarget) return;
+                  void patchOrder(
+                    { status: statusTarget },
+                    `Статус: ${orderStatusLabel(statusTarget)}`,
+                  ).then((ok) => {
+                    if (ok) setStatusTarget("");
+                  });
                 }}
               >
                 Перевести
@@ -689,7 +738,11 @@ export function OrderProcess({
                 disabled={saving}
               />
               <div className="flex justify-end">
-                <Button size="sm" onClick={() => void addEntry()} disabled={saving}>
+                <Button
+                  size="sm"
+                  onClick={() => void addEntry()}
+                  disabled={saving}
+                >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Добавить запись
                 </Button>
@@ -703,13 +756,16 @@ export function OrderProcess({
 
           {entries.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Записей пока нет. Добавьте первую — звонок, письмо или предложение цены.
+              Записей пока нет. Добавьте первую — звонок, письмо или предложение
+              цены.
             </p>
           ) : (
             <ol className="space-y-2">
               {entries.map((entry) => {
-                const Icon = KIND_ICONS[entry.kind] ?? StickyNote
-                const automatic = entry.kind === "price_change" || entry.kind === "status_change"
+                const Icon = KIND_ICONS[entry.kind] ?? StickyNote;
+                const automatic =
+                  entry.kind === "price_change" ||
+                  entry.kind === "status_change";
                 return (
                   <li
                     key={entry.id}
@@ -723,21 +779,33 @@ export function OrderProcess({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">{entry.kindLabel}</span>
-                        {entry.priceOffer !== null && entry.priceOffer !== undefined && (
-                          <Badge variant="outline">{money(entry.priceOffer)}</Badge>
-                        )}
+                        <span className="text-sm font-medium">
+                          {entry.kindLabel}
+                        </span>
+                        {entry.priceOffer !== null &&
+                          entry.priceOffer !== undefined && (
+                            <Badge variant="outline">
+                              {money(entry.priceOffer)}
+                            </Badge>
+                          )}
                         {automatic && (
-                          <span className="text-[11px] text-muted-foreground">автоматически</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            автоматически
+                          </span>
                         )}
                       </div>
-                      {entry.text && <p className="text-sm whitespace-pre-wrap">{entry.text}</p>}
+                      {entry.text && (
+                        <p className="text-sm whitespace-pre-wrap">
+                          {entry.text}
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {entry.authorName || "система"} · {dateTime(entry.createdAt)}
+                        {entry.authorName || "система"} ·{" "}
+                        {dateTime(entry.createdAt)}
                       </p>
                     </div>
                   </li>
-                )
+                );
               })}
             </ol>
           )}
@@ -750,11 +818,16 @@ export function OrderProcess({
         действия логиста.
       </div>
 
-      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmAction === "reject" ? "Отклонить заказ?" : "Вернуть груз в базу?"}
+              {confirmAction === "reject"
+                ? "Отклонить заказ?"
+                : "Вернуть груз в базу?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === "reject"
@@ -768,11 +841,14 @@ export function OrderProcess({
               disabled={saving}
               onClick={() => {
                 if (confirmAction === "reject") {
-                  void patchOrder({ negotiationStatus: "lost" }, "Заказ отклонён")
+                  void patchOrder(
+                    { negotiationStatus: "lost" },
+                    "Заказ отклонён",
+                  );
                 } else {
-                  void returnToBase()
+                  void returnToBase();
                 }
-                setConfirmAction(null)
+                setConfirmAction(null);
               }}
             >
               {confirmAction === "reject" ? "Отклонить" : "Вернуть в базу"}
@@ -781,5 +857,5 @@ export function OrderProcess({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }

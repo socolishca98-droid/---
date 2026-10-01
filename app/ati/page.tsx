@@ -6,10 +6,11 @@
 // оформление и анимации — наши. Управление подключением живёт в
 // «Организации», здесь только картина и ссылки.
 
-"use client"
+"use client";
 
-import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { AtiDisabledNotice } from "@/components/ati/ati-disabled-notice";
 import {
   Building2,
   CalendarClock,
@@ -21,83 +22,105 @@ import {
   Plug,
   ShieldAlert,
   TriangleAlert,
-} from "lucide-react"
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface AccountData {
-  connected: boolean
-  oauthAvailable: boolean
+  connected: boolean;
+  oauthAvailable: boolean;
   connection: {
-    kind: string
-    status: string
-    firmId: string | null
-    firmName: string | null
-    contactId: string | null
-    lastCheckAt: string | null
-    lastError: string | null
-  } | null
-  boards: Array<{ id: string; name: string; boardType: string | null; direction: string | null }>
-  boardsError: string | null
+    kind: string;
+    status: string;
+    firmId: string | null;
+    firmName: string | null;
+    contactId: string | null;
+    lastCheckAt: string | null;
+    lastError: string | null;
+  } | null;
+  boards: Array<{
+    id: string;
+    name: string;
+    boardType: string | null;
+    direction: string | null;
+  }>;
+  boardsError: string | null;
   profiles: Array<{
-    id: string
-    name: string
-    cities: string
-    radius: number
-    autoScanInterval: number
-    isActive: boolean
-    lastScanAt: string | null
-  }>
-  stats: { total: number; new: number; imported: number; expired: number }
+    id: string;
+    name: string;
+    cities: string;
+    radius: number;
+    autoScanInterval: number;
+    isActive: boolean;
+    lastScanAt: string | null;
+  }>;
+  stats: { total: number; new: number; imported: number; expired: number };
 }
 
-const STATUS_LABEL: Record<string, { text: string; variant: "default" | "secondary" | "destructive" }> = {
+const STATUS_LABEL: Record<
+  string,
+  { text: string; variant: "default" | "secondary" | "destructive" }
+> = {
   active: { text: "Подключено", variant: "default" },
-  unverified: { text: "Токен сохранён, проверка не выполнена", variant: "secondary" },
+  unverified: {
+    text: "Токен сохранён, проверка не выполнена",
+    variant: "secondary",
+  },
   invalid: { text: "Токен не принят ATI", variant: "destructive" },
-}
+};
 
 function formatWhen(iso: string | null): string {
-  if (!iso) return "—"
-  const date = new Date(iso)
+  if (!iso) return "—";
+  const date = new Date(iso);
   return date.toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  })
+  });
 }
 
 function cityList(raw: string): string {
   try {
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed.join(", ")
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.join(", ");
   } catch {
     /* строка без JSON — покажем как есть */
   }
-  return raw || "все площадки"
+  return raw || "все площадки";
 }
 
 export default function AtiAccountPage() {
-  const [data, setData] = useState<AccountData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<AccountData | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Организация выключила ATI в настройках — вместо кабинета показываем заглушку
+  const [atiDisabled, setAtiDisabled] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await fetch("/api/ati/account", { credentials: "include" })
-      const json = await res.json()
-      if (json?.success) setData(json)
+      const res = await fetch("/api/ati/account", { credentials: "include" });
+      if (res.status === 403) {
+        const json = await res.json().catch(() => null);
+        if (json?.code === "ati_disabled") setAtiDisabled(true);
+        return;
+      }
+      const json = await res.json();
+      if (json?.success) setData(json);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void load();
+  }, [load]);
+
+  if (atiDisabled) {
+    return <AtiDisabledNotice title="Кабинет ATI отключён" />;
+  }
 
   if (loading) {
     return (
@@ -105,7 +128,7 @@ export default function AtiAccountPage() {
         <Loader2 className="h-6 w-6 animate-spin mr-3" />
         Загружаем кабинет ATI.SU…
       </div>
-    )
+    );
   }
 
   if (!data?.connected) {
@@ -117,17 +140,21 @@ export default function AtiAccountPage() {
             Кабинет ATI.SU
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Аккаунт вашей организации на бирже грузов: площадки, грузы, подписка.
+            Аккаунт вашей организации на бирже грузов: площадки, грузы,
+            подписка.
           </p>
         </header>
         <Card>
           <CardContent className="p-8 text-center space-y-4">
             <ShieldAlert className="h-10 w-10 mx-auto text-amber-500" />
-            <p className="font-semibold">Организация ещё не подключена к ATI.SU</p>
+            <p className="font-semibold">
+              Организация ещё не подключена к ATI.SU
+            </p>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
               У каждой организации свой аккаунт биржи: свои площадки, грузы и
               лимиты. Подключите его один раз — и живой поиск, сканы по
-              расписанию и контакты грузоотправителей заработают от вашего имени.
+              расписанию и контакты грузоотправителей заработают от вашего
+              имени.
             </p>
             <Button asChild>
               <Link href="/settings">Подключить аккаунт</Link>
@@ -135,10 +162,12 @@ export default function AtiAccountPage() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
-  const status = STATUS_LABEL[data.connection?.status ?? "unverified"] ?? STATUS_LABEL.unverified
+  const status =
+    STATUS_LABEL[data.connection?.status ?? "unverified"] ??
+    STATUS_LABEL.unverified;
 
   return (
     <div className="space-y-6">
@@ -182,7 +211,9 @@ export default function AtiAccountPage() {
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Способ</span>
               <span className="font-medium">
-                {data.connection?.kind === "oauth" ? "OAuth 2.0 (вход через ATI)" : "Постоянный токен"}
+                {data.connection?.kind === "oauth"
+                  ? "OAuth 2.0 (вход через ATI)"
+                  : "Постоянный токен"}
               </span>
             </div>
             <div className="flex items-center justify-between gap-3">
@@ -262,7 +293,9 @@ export default function AtiAccountPage() {
               >
                 <span className="font-medium truncate">{board.name}</span>
                 <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {board.boardType === "loads" ? "грузы" : board.boardType || "площадка"}
+                  {board.boardType === "loads"
+                    ? "грузы"
+                    : board.boardType || "площадка"}
                   {board.direction ? ` · ${board.direction}` : ""}
                 </span>
               </div>
@@ -290,7 +323,10 @@ export default function AtiAccountPage() {
               </p>
             )}
             {data.profiles.map((profile) => (
-              <div key={profile.id} className="rounded-lg border p-2.5 space-y-1">
+              <div
+                key={profile.id}
+                className="rounded-lg border p-2.5 space-y-1"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium truncate">{profile.name}</span>
                   <Badge variant={profile.isActive ? "secondary" : "outline"}>
@@ -302,8 +338,8 @@ export default function AtiAccountPage() {
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {cityList(profile.cities)} · радиус {profile.radius} км · последний
-                  скан {formatWhen(profile.lastScanAt)}
+                  {cityList(profile.cities)} · радиус {profile.radius} км ·
+                  последний скан {formatWhen(profile.lastScanAt)}
                 </p>
               </div>
             ))}
@@ -333,5 +369,5 @@ export default function AtiAccountPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

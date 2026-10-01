@@ -47,13 +47,15 @@ const navigation: Array<{
   adminOnly?: boolean;
   /** Пункт виден только владельцу платформы (PLATFORM_OWNER_EMAIL) */
   ownerOnly?: boolean;
+  /** Пункт виден, только пока организация использует ATI.SU */
+  atiOnly?: boolean;
 }> = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
   // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
   { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
-  { name: "Поиск грузов", href: "/search", icon: Search },
-  { name: "Кабинет ATI", href: "/ati", icon: Plug },
+  { name: "Поиск грузов", href: "/search", icon: Search, atiOnly: true },
+  { name: "Кабинет ATI", href: "/ati", icon: Plug, atiOnly: true },
   { name: "Мобильный пульт", href: "/s", icon: Smartphone },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
@@ -80,6 +82,8 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const { isCollapsed, toggle } = useSidebar();
   const [counts, setCounts] = useState<Record<BadgeKey, number>>(EMPTY_COUNTS);
+  // ATI-разделы видны, только пока организация использует биржу (/api/sidebar-counts)
+  const [atiEnabled, setAtiEnabled] = useState(true);
   // Пункт «Владелец» показываем только аккаунту из PLATFORM_OWNER_EMAIL
   const [isOwner, setIsOwner] = useState(false);
 
@@ -116,6 +120,7 @@ export function Sidebar() {
           orders: Number(data?.orders) || 0,
           chat: Number(data?.chat) || 0,
         });
+        setAtiEnabled(data?.atiEnabled !== false);
       } catch {
         /* счётчики — не критично */
       }
@@ -196,7 +201,8 @@ export function Sidebar() {
             .filter(
               (item) =>
                 (!item.adminOnly || user?.role === "admin") &&
-                (!item.ownerOnly || isOwner),
+                (!item.ownerOnly || isOwner) &&
+                (!item.atiOnly || atiEnabled),
             )
             .map((item) => {
               const isActive = pathname === item.href;

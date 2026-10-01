@@ -8,38 +8,41 @@
 // темп и ретрай обеспечивает atiFetch): кабинет должен показывать правду о
 // том, что видит аккаунт организации прямо сейчас.
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 
-import { requireStaffAuth } from "@/lib/api-auth"
-import { requireStaffOrganization } from "@/lib/org"
-import { connectionStatus, getActiveAtiToken } from "@/lib/ati/connection"
-import { fetchBoards } from "@/lib/ati/boards"
-import { getAtiStats } from "@/lib/ati-client"
-import { prisma } from "@/lib/prisma"
-import { scopedWhere } from "@/lib/org"
+import { requireStaffAuth } from "@/lib/api-auth";
+import { requireStaffOrganization } from "@/lib/org";
+import { connectionStatus, getActiveAtiToken } from "@/lib/ati/connection";
+import { fetchBoards } from "@/lib/ati/boards";
+import { getAtiStats } from "@/lib/ati-client";
+import { prisma } from "@/lib/prisma";
+import { scopedWhere } from "@/lib/org";
+import { atiFeatureGate } from "@/lib/org-settings";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const __auth = await requireStaffAuth(request)
-  if (__auth.error) return __auth.error
-  const __org = requireStaffOrganization(__auth.user)
-  if (!__org.ok) return __org.response
+  const __auth = await requireStaffAuth(request);
+  if (__auth.error) return __auth.error;
+  const __org = requireStaffOrganization(__auth.user);
+  if (!__org.ok) return __org.response;
+  const atiGate = await atiFeatureGate(__org.organizationId);
+  if (atiGate) return atiGate;
 
-  const organizationId = __org.organizationId
-  const status = await connectionStatus(organizationId)
+  const organizationId = __org.organizationId;
+  const status = await connectionStatus(organizationId);
 
   // Площадки — только если подключение есть и токен рабочий
-  let boards: unknown[] = []
-  let boardsError: string | null = null
+  let boards: unknown[] = [];
+  let boardsError: string | null = null;
   if (status.connected) {
-    const ati = await getActiveAtiToken(organizationId)
+    const ati = await getActiveAtiToken(organizationId);
     if (!ati.ok) {
-      boardsError = ati.error
+      boardsError = ati.error;
     } else {
-      const fetched = await fetchBoards(ati.token, organizationId)
-      boards = fetched.boards
-      boardsError = fetched.error
+      const fetched = await fetchBoards(ati.token, organizationId);
+      boards = fetched.boards;
+      boardsError = fetched.error;
     }
   }
 
@@ -61,18 +64,18 @@ export async function GET(request: NextRequest) {
       lastScanAt: true,
     },
   })) as {
-    id: string
-    name: string
-    cities: string
-    radius: number
-    truckTypes: string
-    minWeight: number | null
-    autoScanInterval: number
-    isActive: boolean
-    lastScanAt: Date | null
-  }[]
+    id: string;
+    name: string;
+    cities: string;
+    radius: number;
+    truckTypes: string;
+    minWeight: number | null;
+    autoScanInterval: number;
+    isActive: boolean;
+    lastScanAt: Date | null;
+  }[];
 
-  const stats = await getAtiStats(organizationId)
+  const stats = await getAtiStats(organizationId);
 
   return NextResponse.json({
     success: true,
@@ -84,5 +87,5 @@ export async function GET(request: NextRequest) {
       lastScanAt: profile.lastScanAt?.toISOString() ?? null,
     })),
     stats,
-  })
+  });
 }

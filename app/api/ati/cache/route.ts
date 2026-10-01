@@ -1,23 +1,25 @@
 // app/api/ati/cache/route.ts
-import { requireStaffAuth } from "@/lib/api-auth"
-import {requireStaffOrganization} from "@/lib/org"
-import { NextRequest, NextResponse } from "next/server"
-import { getAtiCache, getAtiStats } from "@/lib/ati-client"
+import { requireStaffAuth } from "@/lib/api-auth";
+import { requireStaffOrganization } from "@/lib/org";
+import { NextRequest, NextResponse } from "next/server";
+import { getAtiCache, getAtiStats } from "@/lib/ati-client";
+import { atiFeatureGate } from "@/lib/org-settings";
 
 export async function GET(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
   if (__auth.error) return __auth.error;
   const __org = requireStaffOrganization(__auth.user);
   if (!__org.ok) return __org.response;
-
+  const atiGate = await atiFeatureGate(__org.organizationId);
+  if (atiGate) return atiGate;
 
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = new URL(request.url);
 
     // Если запрос статистики
     if (searchParams.get("stats") === "true") {
-      const stats = await getAtiStats(__org.organizationId)
-      return NextResponse.json(stats)
+      const stats = await getAtiStats(__org.organizationId);
+      return NextResponse.json(stats);
     }
 
     // Иначе — список грузов
@@ -33,15 +35,18 @@ export async function GET(request: NextRequest) {
       minPricePerKm: searchParams.get("minPricePerKm") || undefined,
       sortBy: searchParams.get("sortBy") || "scannedAt",
       sortOrder: searchParams.get("sortOrder") || "desc",
-    }
+    };
 
-    const result = await getAtiCache({ ...params, organizationId: __org.organizationId })
-    return NextResponse.json(result)
+    const result = await getAtiCache({
+      ...params,
+      organizationId: __org.organizationId,
+    });
+    return NextResponse.json(result);
   } catch (error: any) {
-    console.error("[ATI Cache] Error:", error)
+    console.error("[ATI Cache] Error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to fetch cache" },
-      { status: 500 }
-    )
+      { status: 500 },
+    );
   }
 }

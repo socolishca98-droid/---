@@ -16,29 +16,32 @@
 // Форма ответа сохранена прежней (from/to/cargo/company/phone/…), чтобы экран
 // песочницы не сломался, и дополнена полями процесса (status/stage/agreedPrice).
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 
-import { prisma } from "@/lib/prisma"
-import { requireStaff } from "@/lib/auth/session"
-import { requireOrganization, scopedWhere } from "@/lib/org"
-import { logAudit } from "@/lib/audit"
-import { getClientIp } from "@/lib/rate-limiter"
+import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth/session";
+import { requireOrganization, scopedWhere } from "@/lib/org";
+import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/rate-limiter";
 import {
   isOrderClosed,
   normalizeOrderStatus,
   orderStageOf,
   orderStatusLabel,
-} from "@/lib/orders/stages"
+} from "@/lib/orders/stages";
+import { atiFeatureGate } from "@/lib/org-settings";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 // GET — заказы организации, которые ещё не в рейсе и не закрыты
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
 
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
+  const atiGate = await atiFeatureGate(org.organizationId);
+  if (atiGate) return atiGate;
 
   try {
     const orders = await prisma.order.findMany({
@@ -46,14 +49,16 @@ export async function GET(request: NextRequest) {
         routeId: null,
         // закрытые не показываем; значение status может быть и легас-
         // («new», «confirmed»), поэтому фильтруем списком закрытых, а не открытых
-        status: { notIn: ["delivered", "completed", "cancelled", "rejected", "expired"] },
+        status: {
+          notIn: ["delivered", "completed", "cancelled", "rejected", "expired"],
+        },
       }),
       orderBy: [{ createdAt: "desc" }],
       take: 200,
-    })
+    });
 
     const loads = orders.map((order: any) => {
-      const status = normalizeOrderStatus(order.status) ?? "search"
+      const status = normalizeOrderStatus(order.status) ?? "search";
       return {
         // ── прежняя форма ответа (экран песочницы читает эти ключи) ──
         id: order.id,
@@ -69,7 +74,9 @@ export async function GET(request: NextRequest) {
         phone: order.clientContact,
         contactName: order.clientName,
         firmId: order.clientFirmId,
-        loadingDate: order.deadline ? new Date(order.deadline).toISOString() : null,
+        loadingDate: order.deadline
+          ? new Date(order.deadline).toISOString()
+          : null,
         // ── ключи, которые песочница передаёт обратно при оформлении рейса ──
         orderId: order.id,
         atiCacheId: order.atiCacheId,
@@ -89,35 +96,42 @@ export async function GET(request: NextRequest) {
           ? new Date(order.nextFollowUpAt).toISOString()
           : null,
         source: order.source,
-        createdAt: order.createdAt ? new Date(order.createdAt).toISOString() : null,
-      }
-    })
+        createdAt: order.createdAt
+          ? new Date(order.createdAt).toISOString()
+          : null,
+      };
+    });
 
-    return NextResponse.json(loads)
+    return NextResponse.json(loads);
   } catch (error) {
-    console.error("[ATI Sandbox GET] Error:", error)
+    console.error("[ATI Sandbox GET] Error:", error);
     return NextResponse.json(
       { success: false, error: "Failed to load orders" },
       { status: 500 },
-    )
+    );
   }
 }
 
 // DELETE — вернуть груз в базу: заказ, взятый из ATI, удаляется, а строка общей
 // базы остаётся нетронутой (её может взять другая организация).
 export async function DELETE(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
 
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
+  const atiGate = await atiFeatureGate(org.organizationId);
+  if (atiGate) return atiGate;
 
   try {
-    const body = await request.json().catch(() => ({}))
-    const id = String(body.id ?? "").trim()
+    const body = await request.json().catch(() => ({}));
+    const id = String(body.id ?? "").trim();
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "id required" }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: "id required" },
+        { status: 400 },
+      );
     }
 
     const order = await prisma.order.findFirst({
@@ -130,27 +144,30 @@ export async function DELETE(request: NextRequest) {
         routeFrom: true,
         routeTo: true,
       },
-    })
+    });
 
     if (!order) {
       return NextResponse.json(
         { success: false, error: "Заказ не найден" },
         { status: 404 },
-      )
+      );
     }
 
     if (order.routeId) {
       return NextResponse.json(
-        { success: false, error: "Заказ уже в рейсе — сначала уберите его из рейса" },
+        {
+          success: false,
+          error: "Заказ уже в рейсе — сначала уберите его из рейса",
+        },
         { status: 409 },
-      )
+      );
     }
 
     if (isOrderClosed(order.status)) {
       return NextResponse.json(
         { success: false, error: "Заказ закрыт — вернуть его в базу нельзя" },
         { status: 409 },
-      )
+      );
     }
 
     if (!order.atiCacheId) {
@@ -162,19 +179,19 @@ export async function DELETE(request: NextRequest) {
           code: "not_from_cache",
         },
         { status: 400 },
-      )
+      );
     }
 
     // Удаляем с явным фильтром организации: даже если выше что-то пойдёт не так,
     // чужой заказ удалён не будет.
     const deleted = await prisma.order.deleteMany({
       where: scopedWhere(org.organizationId, { id: order.id }),
-    })
+    });
     if (deleted.count === 0) {
       return NextResponse.json(
         { success: false, error: "Заказ не найден" },
         { status: 404 },
-      )
+      );
     }
 
     await logAudit({
@@ -190,14 +207,14 @@ export async function DELETE(request: NextRequest) {
         routeTo: order.routeTo,
       },
       ip: getClientIp(request),
-    })
+    });
 
-    return NextResponse.json({ success: true, id: order.id })
+    return NextResponse.json({ success: true, id: order.id });
   } catch (error) {
-    console.error("[ATI Sandbox DELETE] Error:", error)
+    console.error("[ATI Sandbox DELETE] Error:", error);
     return NextResponse.json(
       { success: false, error: "Не удалось вернуть груз в базу" },
       { status: 500 },
-    )
+    );
   }
 }

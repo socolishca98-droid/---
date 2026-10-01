@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T18:08:50.210Z",
+  "generatedAt": "2026-10-01T19:42:53.061Z",
   "endpoints": [
     {
       "method": "GET",
@@ -510,6 +510,16 @@
       "method": "POST",
       "route": "/api/orders/from-cache",
       "group": "orders"
+    },
+    {
+      "method": "GET",
+      "route": "/api/org-settings",
+      "group": "org-settings"
+    },
+    {
+      "method": "POST",
+      "route": "/api/org-settings",
+      "group": "org-settings"
     },
     {
       "method": "GET",

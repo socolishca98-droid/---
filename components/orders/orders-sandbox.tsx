@@ -1,6 +1,6 @@
 // components/orders/orders-sandbox.tsx
 
-"use client"
+"use client";
 
 import React, {
   useState,
@@ -8,9 +8,9 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-} from "react"
+} from "react";
 
-import { formatLocalDate } from "@/lib/dates"
+import { formatLocalDate } from "@/lib/dates";
 import {
   DndContext,
   useSensor,
@@ -18,7 +18,7 @@ import {
   PointerSensor,
   DragEndEvent,
   useDraggable,
-} from "@dnd-kit/core"
+} from "@dnd-kit/core";
 import {
   Package,
   Truck,
@@ -62,17 +62,17 @@ import {
   Clock,
   Undo2,
   MessagesSquare,
-} from "lucide-react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -80,7 +80,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogDescription,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,15 +91,15 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   calculateAllCoefficients,
   calculateRiskFactors,
@@ -107,154 +107,154 @@ import {
   formatDuration as formatEtaDuration,
   type ETARequest,
   type RiskLevel,
-} from "@/lib/eta"
+} from "@/lib/eta";
 import {
   isOrderClosed,
   isOrderRouteable,
   normalizeOrderStatus,
   orderStatusLabel,
   type OrderStatus,
-} from "@/lib/orders/stages"
-import { OrderProcess } from "@/components/orders/order-process"
-import { useConfirm } from "@/components/ui/confirm-dialog"
-import { fetchJsonCached, invalidateCache } from "@/lib/client-cache"
+} from "@/lib/orders/stages";
+import { OrderProcess } from "@/components/orders/order-process";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { fetchJsonCached, invalidateCache } from "@/lib/client-cache";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
+} from "@/components/ui/sheet";
 
 // ==================== ТИПЫ ====================
-type Mode = "select" | "connect" | "route" | "group"
+type Mode = "select" | "connect" | "route" | "group";
 
 interface OrderItem {
   /** Локальный id элемента холста (для dnd-kit и подсветки). */
-  id: string
+  id: string;
   /** Id настоящего заказа организации, если элемент взят из песочницы. */
-  orderId?: string
+  orderId?: string;
   /** Id строки накопленной базы ATI, из которой заказ был взят в работу. */
-  atiCacheId?: string
-  routeFrom: string
-  routeTo: string
-  distance: number
-  cargo: string
-  weight: number
-  volume?: number
-  price: number
-  pricePerKm?: number
-  loadingDate?: string
-  loadingTime?: string
-  unloadingDate?: string
-  unloadingTime?: string
-  clientName?: string
-  clientPhone?: string
-  clientCompany?: string
-  comment?: string
+  atiCacheId?: string;
+  routeFrom: string;
+  routeTo: string;
+  distance: number;
+  cargo: string;
+  weight: number;
+  volume?: number;
+  price: number;
+  pricePerKm?: number;
+  loadingDate?: string;
+  loadingTime?: string;
+  unloadingDate?: string;
+  unloadingTime?: string;
+  clientName?: string;
+  clientPhone?: string;
+  clientCompany?: string;
+  comment?: string;
   /** Этап заказа — канон жизненного цикла (lib/orders/stages.ts). */
-  status: OrderStatus
-  x: number
-  y: number
-  inRouteOrder?: number | null
-  groupId?: string | null
+  status: OrderStatus;
+  x: number;
+  y: number;
+  inRouteOrder?: number | null;
+  groupId?: string | null;
 }
 
-type GroupColorId = "blue" | "green" | "purple" | "pink" | "cyan"
+type GroupColorId = "blue" | "green" | "purple" | "pink" | "cyan";
 
 interface OrderGroup {
-  id: string
-  name: string
-  color: GroupColorId
-  orderIds: string[]
+  id: string;
+  name: string;
+  color: GroupColorId;
+  orderIds: string[];
 }
 
 interface NoteItem {
-  id: string
-  text: string
-  x: number
-  y: number
-  color: "yellow" | "blue" | "green" | "pink" | "orange"
-  orderId?: string | null
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  color: "yellow" | "blue" | "green" | "pink" | "orange";
+  orderId?: string | null;
 }
 
 interface Connection {
-  id: string
-  from: string
-  to: string
+  id: string;
+  from: string;
+  to: string;
 }
 
 interface CanvasSheet {
-  id: number
-  name: string
-  orders: OrderItem[]
-  notes: NoteItem[]
-  connections: Connection[]
-  groups: OrderGroup[]
+  id: number;
+  name: string;
+  orders: OrderItem[];
+  notes: NoteItem[];
+  connections: Connection[];
+  groups: OrderGroup[];
 }
 
 interface DocumentTemplate {
-  id: string
-  name: string
-  description: string
-  icon: React.ReactNode
-  category: "transport" | "financial" | "legal"
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  category: "transport" | "financial" | "legal";
 }
 
 interface AtiOrderFromApi {
-  id: string
-  atiLoadId: string
-  from: string
-  to: string
-  price: number
-  weight: number
-  distance: number
-  cargo: string
-  company: string
-  phone?: string | null
-  loadingDate?: string | null
-  contactName?: string | null
-  firmId?: string | null
+  id: string;
+  atiLoadId: string;
+  from: string;
+  to: string;
+  price: number;
+  weight: number;
+  distance: number;
+  cargo: string;
+  company: string;
+  phone?: string | null;
+  loadingDate?: string | null;
+  contactName?: string | null;
+  firmId?: string | null;
   /**
    * Песочница показывает настоящие заказы организации (GET /api/ati/sandbox),
    * поэтому у строки есть id заказа и ссылка на строку накопленной базы ATI.
    */
-  orderId?: string
-  atiCacheId?: string | null
-  routeFrom?: string
-  routeTo?: string
-  clientCompany?: string | null
-  clientPhone?: string | null
-  volume?: number | null
-  requirements?: string | null
-  priceNegotiable?: boolean
+  orderId?: string;
+  atiCacheId?: string | null;
+  routeFrom?: string;
+  routeTo?: string;
+  clientCompany?: string | null;
+  clientPhone?: string | null;
+  volume?: number | null;
+  requirements?: string | null;
+  priceNegotiable?: boolean;
   /** Этап процесса заказа — lib/orders/stages.ts. */
-  status?: string
-  stage?: string | null
-  statusLabel?: string
-  agreedPrice?: number | null
-  negotiationStatus?: string | null
-  nextFollowUpAt?: string | null
-  source?: string | null
-  createdAt?: string | null
+  status?: string;
+  stage?: string | null;
+  statusLabel?: string;
+  agreedPrice?: number | null;
+  negotiationStatus?: string | null;
+  nextFollowUpAt?: string | null;
+  source?: string | null;
+  createdAt?: string | null;
 }
 
 interface VehicleWithDriver {
-  id: string
-  plate: string
-  type: string
-  brand?: string
-  model?: string
-  capacity: number
-  volume?: number
-  status: string
-  nextAvailableAt?: string | null
+  id: string;
+  plate: string;
+  type: string;
+  brand?: string;
+  model?: string;
+  capacity: number;
+  volume?: number;
+  status: string;
+  nextAvailableAt?: string | null;
   driver?: {
-    id: string
-    name: string
-    phone: string
-    status: string
-  }
+    id: string;
+    name: string;
+    phone: string;
+    status: string;
+  };
 }
 
 // ==================== АВТОПРЕДЛОЖЕНИЯ (MVP) ====================
@@ -265,40 +265,40 @@ type AutoProposalType =
   | "risk_delay"
   | "docs_missing"
   | "profit_boost"
-  | "vehicle_match"
+  | "vehicle_match";
 
-type AutoProposalStatus = "open" | "hidden" | "snoozed" | "sent"
+type AutoProposalStatus = "open" | "hidden" | "snoozed" | "sent";
 
 interface AutoProposal {
-  id: string
-  type: AutoProposalType
-  status: AutoProposalStatus
-  title: string
-  subtitle?: string
-  reasons?: string[]
-  score?: number
+  id: string;
+  type: AutoProposalType;
+  status: AutoProposalStatus;
+  title: string;
+  subtitle?: string;
+  reasons?: string[];
+  score?: number;
 
   // payload
-  atiOrderId?: string
-  existingOrderId?: string
-  orderIds?: string[]
+  atiOrderId?: string;
+  existingOrderId?: string;
+  orderIds?: string[];
 }
 
 type RouteEtaPreview = {
-  durationBaseSec: number
-  durationWithTrafficSec: number
-  riskLevel: RiskLevel
-  delayProbability: number
-  fuelCost: number
-  tollsCost: number
-  totalCost: number
-}
+  durationBaseSec: number;
+  durationWithTrafficSec: number;
+  riskLevel: RiskLevel;
+  delayProbability: number;
+  fuelCost: number;
+  tollsCost: number;
+  totalCost: number;
+};
 
-const AUTOPROPOSALS_HIDDEN_KEY = "tms_sandbox_autoproposals_hidden_v1"
-const AUTOPROPOSALS_SNOOZED_KEY = "tms_sandbox_autoproposals_snoozed_v1"
-const AUTOPROPOSALS_SENT_KEY = "tms_sandbox_autoproposals_sent_v1"
+const AUTOPROPOSALS_HIDDEN_KEY = "tms_sandbox_autoproposals_hidden_v1";
+const AUTOPROPOSALS_SNOOZED_KEY = "tms_sandbox_autoproposals_snoozed_v1";
+const AUTOPROPOSALS_SENT_KEY = "tms_sandbox_autoproposals_sent_v1";
 
-const AUTOPROPOSALS_SNOOZE_MINUTES = 30
+const AUTOPROPOSALS_SNOOZE_MINUTES = 30;
 
 const AUTOPROPOSAL_TYPE_META: Record<
   AutoProposalType,
@@ -339,7 +339,7 @@ const AUTOPROPOSAL_TYPE_META: Record<
     hint: "Подбор машины/ёмкости под текущую сборку",
     badgeClass: "border-orange-500/30 text-orange-300 bg-orange-500/10",
   },
-}
+};
 
 // ==================== КОНСТАНТЫ ====================
 const NOTE_COLORS: Record<NoteItem["color"], string> = {
@@ -348,13 +348,13 @@ const NOTE_COLORS: Record<NoteItem["color"], string> = {
   green: "bg-green-100 border-green-300 text-green-900",
   pink: "bg-pink-100 border-pink-300 text-pink-900",
   orange: "bg-orange-100 border-orange-300 text-orange-900",
-}
+};
 
 const GROUP_COLORS: {
-  id: GroupColorId
-  border: string
-  bg: string
-  text: string
+  id: GroupColorId;
+  border: string;
+  bg: string;
+  text: string;
 }[] = [
   {
     id: "blue",
@@ -386,7 +386,7 @@ const GROUP_COLORS: {
     bg: "bg-cyan-500/8",
     text: "text-cyan-300",
   },
-]
+];
 
 const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
   {
@@ -445,14 +445,14 @@ const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
     icon: <FileSpreadsheet className="h-4 w-4 text-indigo-400" />,
     category: "transport",
   },
-]
+];
 
-const STORAGE_KEY = "tms_sandbox_sheets_v2"
+const STORAGE_KEY = "tms_sandbox_sheets_v2";
 
-const CARD_WIDTH = 230
-const CARD_HEIGHT = 200
-const NOTE_WIDTH = 190
-const NOTE_HEIGHT = 110
+const CARD_WIDTH = 230;
+const CARD_HEIGHT = 200;
+const NOTE_WIDTH = 190;
+const NOTE_HEIGHT = 110;
 
 // ==================== DRAGGABLE ORDER CARD ====================
 function DraggableOrderCard({
@@ -475,30 +475,30 @@ function DraggableOrderCard({
   onRemoveFromGroup,
   onRemoveAttachedNote,
 }: {
-  order: OrderItem
-  mode: Mode
-  isConnecting: boolean
-  isConnectionStart: boolean
-  isHighlighted?: boolean
-  allOrders: OrderItem[]
-  group?: OrderGroup | null
-  attachedNotes: NoteItem[]
-  onDoubleClick: () => void
-  onConnectStart: () => void
-  onConnectEnd: () => void
-  onRemove: () => void
-  onRouteToggle: () => void
-  onSetRoutePosition: (position: number) => void
-  onSendDocuments: () => void
-  onAddToGroup: () => void
-  onRemoveFromGroup: () => void
-  onRemoveAttachedNote: (noteId: string) => void
+  order: OrderItem;
+  mode: Mode;
+  isConnecting: boolean;
+  isConnectionStart: boolean;
+  isHighlighted?: boolean;
+  allOrders: OrderItem[];
+  group?: OrderGroup | null;
+  attachedNotes: NoteItem[];
+  onDoubleClick: () => void;
+  onConnectStart: () => void;
+  onConnectEnd: () => void;
+  onRemove: () => void;
+  onRouteToggle: () => void;
+  onSetRoutePosition: (position: number) => void;
+  onSendDocuments: () => void;
+  onAddToGroup: () => void;
+  onRemoveFromGroup: () => void;
+  onRemoveAttachedNote: (noteId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: order.id,
       disabled: mode === "route",
-    })
+    });
 
   const style: React.CSSProperties = {
     position: "absolute",
@@ -508,13 +508,16 @@ function DraggableOrderCard({
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
       : undefined,
     zIndex: isDragging ? 100 : order.inRouteOrder ? 20 : 10,
-  }
+  };
 
-  const isInRoute = !!order.inRouteOrder
-  const isInGroup = !!order.groupId
-  const maxRouteOrder = Math.max(0, ...allOrders.map((o: any) => o.inRouteOrder || 0))
-  const nextRouteNumber = maxRouteOrder + 1
-  const displayName = order.clientCompany || order.clientName || "Заказ"
+  const isInRoute = !!order.inRouteOrder;
+  const isInGroup = !!order.groupId;
+  const maxRouteOrder = Math.max(
+    0,
+    ...allOrders.map((o: any) => o.inRouteOrder || 0),
+  );
+  const nextRouteNumber = maxRouteOrder + 1;
+  const displayName = order.clientCompany || order.clientName || "Заказ";
 
   const availablePositions = useMemo(
     () =>
@@ -523,10 +526,14 @@ function DraggableOrderCard({
         (_: unknown, idx: number) => idx + 1,
       ),
     [nextRouteNumber],
-  )
+  );
 
-  const groupColor = group ? (GROUP_COLORS as any).find((c: any) => c.id === group.color) : null
-  const hasShortComment = Boolean(order.comment && order.comment.trim().length > 0)
+  const groupColor = group
+    ? (GROUP_COLORS as any).find((c: any) => c.id === group.color)
+    : null;
+  const hasShortComment = Boolean(
+    order.comment && order.comment.trim().length > 0,
+  );
 
   return (
     <div
@@ -549,25 +556,26 @@ function DraggableOrderCard({
           "border-slate-700 hover:border-slate-500",
         mode === "route" && "hover:scale-[1.02] hover:border-orange-400",
         mode === "connect" && "hover:border-blue-400",
-        mode === "group" && "hover:border-purple-400 hover:ring-2 hover:ring-purple-400/30",
+        mode === "group" &&
+          "hover:border-purple-400 hover:ring-2 hover:ring-purple-400/30",
       )}
       onDoubleClick={(e) => {
-        e.stopPropagation()
-        onDoubleClick()
+        e.stopPropagation();
+        onDoubleClick();
       }}
       onClick={(e) => {
-        e.stopPropagation()
-        if (mode === "route") onRouteToggle()
-        if (mode === "connect" && isConnecting) onConnectEnd()
+        e.stopPropagation();
+        if (mode === "route") onRouteToggle();
+        if (mode === "connect" && isConnecting) onConnectEnd();
         if (mode === "group") {
-          if (isInGroup) onRemoveFromGroup()
-          else onAddToGroup()
+          if (isInGroup) onRemoveFromGroup();
+          else onAddToGroup();
         }
       }}
       onMouseDown={(e) => {
         if (mode === "connect" && !isConnecting) {
-          e.stopPropagation()
-          onConnectStart()
+          e.stopPropagation();
+          onConnectStart();
         }
       }}
     >
@@ -619,7 +627,9 @@ function DraggableOrderCard({
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0">
-          {mode === "select" && <GripVertical className="h-4 w-4 text-slate-600" />}
+          {mode === "select" && (
+            <GripVertical className="h-4 w-4 text-slate-600" />
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -784,13 +794,16 @@ function DraggableOrderCard({
             )}
           >
             {attachedNotes.map((note: any) => (
-              <div key={note.id} className="flex items-start gap-1 text-slate-200">
+              <div
+                key={note.id}
+                className="flex items-start gap-1 text-slate-200"
+              >
                 <div className="flex-1 whitespace-pre-wrap">{note.text}</div>
                 <button
                   type="button"
                   onClick={(e) => {
-                    e.stopPropagation()
-                    onRemoveAttachedNote(note.id)
+                    e.stopPropagation();
+                    onRemoveAttachedNote(note.id);
                   }}
                   className="ml-1 p-0.5 rounded hover:bg-slate-800 flex-shrink-0"
                   title="Удалить заметку"
@@ -812,12 +825,14 @@ function DraggableOrderCard({
             )}
           </div>
           <span className="text-base font-bold text-emerald-400">
-            {order.price > 0 ? `${order.price.toLocaleString()}₽` : "Договорная"}
+            {order.price > 0
+              ? `${order.price.toLocaleString()}₽`
+              : "Договорная"}
           </span>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ==================== КОНТУР ГРУППЫ ====================
@@ -826,38 +841,41 @@ function GroupContainer({
   orders,
   onRemoveGroup,
 }: {
-  group: OrderGroup
-  orders: OrderItem[]
-  onRemoveGroup: () => void
+  group: OrderGroup;
+  orders: OrderItem[];
+  onRemoveGroup: () => void;
 }) {
-  if (orders.length === 0) return null
+  if (orders.length === 0) return null;
 
-  const minX = Math.min(...orders.map((o: any) => o.x)) - 14
-  const minY = Math.min(...orders.map((o: any) => o.y)) - 10
-  const maxX = Math.max(...orders.map((o: any) => o.x + CARD_WIDTH)) + 14
-  const maxY = Math.max(...orders.map((o: any) => o.y + CARD_HEIGHT)) + 4
+  const minX = Math.min(...orders.map((o: any) => o.x)) - 14;
+  const minY = Math.min(...orders.map((o: any) => o.y)) - 10;
+  const maxX = Math.max(...orders.map((o: any) => o.x + CARD_WIDTH)) + 14;
+  const maxY = Math.max(...orders.map((o: any) => o.y + CARD_HEIGHT)) + 4;
 
-  const width = maxX - minX
-  const height = maxY - minY
+  const width = maxX - minX;
+  const height = maxY - minY;
 
   const groupColor =
-    GROUP_COLORS.find((c: any) => c.id === group.color) ?? GROUP_COLORS[0]
+    GROUP_COLORS.find((c: any) => c.id === group.color) ?? GROUP_COLORS[0];
 
-  const totalPrice = orders.reduce((sum: any, o: any) => sum + o.price, 0)
-  const totalWeight = orders.reduce((sum: any, o: any) => sum + o.weight, 0)
-  const effectiveDistance = Math.max(...orders.map((o: any) => o.distance))
+  const totalPrice = orders.reduce((sum: any, o: any) => sum + o.price, 0);
+  const totalWeight = orders.reduce((sum: any, o: any) => sum + o.weight, 0);
+  const effectiveDistance = Math.max(...orders.map((o: any) => o.distance));
   const pricePerKm =
-    effectiveDistance > 0 ? Math.round(totalPrice / effectiveDistance) : 0
+    effectiveDistance > 0 ? Math.round(totalPrice / effectiveDistance) : 0;
 
   const mainOrder = orders.reduce<OrderItem>(
     (max, o) => (o.weight > max.weight ? o : max),
     orders[0],
-  )
-  const dogruzOrders = orders.filter((o: any) => o.id !== mainOrder.id)
-  const dogruzWeight = dogruzOrders.reduce((sum: any, o: any) => sum + o.weight, 0)
+  );
+  const dogruzOrders = orders.filter((o: any) => o.id !== mainOrder.id);
+  const dogruzWeight = dogruzOrders.reduce(
+    (sum: any, o: any) => sum + o.weight,
+    0,
+  );
 
-  const topHeaderY = minY - 24
-  const bottomStatsY = maxY + 6
+  const topHeaderY = minY - 24;
+  const bottomStatsY = maxY + 6;
 
   return (
     <>
@@ -923,7 +941,9 @@ function GroupContainer({
 
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/85 border border-slate-700/80 text-[11px]">
           <DollarSign className="h-3 w-3 text-amber-300" />
-          <span className="text-slate-200">{totalPrice.toLocaleString()} ₽</span>
+          <span className="text-slate-200">
+            {totalPrice.toLocaleString()} ₽
+          </span>
           {pricePerKm > 0 && (
             <span
               className={cn(
@@ -944,13 +964,14 @@ function GroupContainer({
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/85 border border-slate-700/80 text-[11px]">
             <Package className="h-3 w-3 text-fuchsia-300" />
             <span className="text-slate-200">
-              Догрузы: {dogruzOrders.length} • {(dogruzWeight / 1000).toFixed(1)}т
+              Догрузы: {dogruzOrders.length} •{" "}
+              {(dogruzWeight / 1000).toFixed(1)}т
             </span>
           </div>
         )}
       </div>
     </>
-  )
+  );
 }
 
 // ==================== DRAGGABLE NOTE ====================
@@ -960,18 +981,18 @@ function DraggableNote({
   onEdit,
   onRemove,
 }: {
-  note: NoteItem
-  mode: Mode
-  onEdit: (text: string) => void
-  onRemove: () => void
+  note: NoteItem;
+  mode: Mode;
+  onEdit: (text: string) => void;
+  onRemove: () => void;
 }) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editText, setEditText] = useState(note.text)
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(note.text);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: note.id,
       disabled: mode === "route" || isEditing,
-    })
+    });
 
   const style: React.CSSProperties = {
     position: "absolute",
@@ -981,7 +1002,7 @@ function DraggableNote({
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
       : undefined,
     zIndex: isDragging ? 100 : 15,
-  }
+  };
 
   return (
     <div
@@ -1032,8 +1053,8 @@ function DraggableNote({
                 size="sm"
                 className="h-6 text-xs flex-1"
                 onClick={() => {
-                  onEdit(editText)
-                  setIsEditing(false)
+                  onEdit(editText);
+                  setIsEditing(false);
                 }}
               >
                 OK
@@ -1043,8 +1064,8 @@ function DraggableNote({
                 variant="ghost"
                 className="h-6 text-xs"
                 onClick={() => {
-                  setEditText(note.text)
-                  setIsEditing(false)
+                  setEditText(note.text);
+                  setIsEditing(false);
                 }}
               >
                 ✕
@@ -1056,218 +1077,259 @@ function DraggableNote({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 // ==================== ГЛАВНЫЙ КОМПОНЕНТ ====================
 export function OrdersSandbox() {
-  const [mode, setMode] = useState<Mode>("select")
+  const [mode, setMode] = useState<Mode>("select");
   const [sheets, setSheets] = useState<CanvasSheet[]>([
-    { id: 0, name: "Лист 1", orders: [], notes: [], connections: [], groups: [] },
-    { id: 1, name: "Лист 2", orders: [], notes: [], connections: [], groups: [] },
-    { id: 2, name: "Лист 3", orders: [], notes: [], connections: [], groups: [] },
-  ])
-  const [activeSheetId, setActiveSheetId] = useState(0)
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
+    {
+      id: 0,
+      name: "Лист 1",
+      orders: [],
+      notes: [],
+      connections: [],
+      groups: [],
+    },
+    {
+      id: 1,
+      name: "Лист 2",
+      orders: [],
+      notes: [],
+      connections: [],
+      groups: [],
+    },
+    {
+      id: 2,
+      name: "Лист 3",
+      orders: [],
+      notes: [],
+      connections: [],
+      groups: [],
+    },
+  ]);
+  const [activeSheetId, setActiveSheetId] = useState(0);
+  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [selectedOrderForEdit, setSelectedOrderForEdit] =
-    useState<OrderItem | null>(null)
+    useState<OrderItem | null>(null);
   const [selectedOrderForDocs, setSelectedOrderForDocs] =
-    useState<OrderItem | null>(null)
-  const [showAddNoteDialog, setShowAddNoteDialog] = useState(false)
-  const [newNoteText, setNewNoteText] = useState("")
-  const [newNoteColor, setNewNoteColor] = useState<NoteItem["color"]>("yellow")
+    useState<OrderItem | null>(null);
+  const [showAddNoteDialog, setShowAddNoteDialog] = useState(false);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [newNoteColor, setNewNoteColor] = useState<NoteItem["color"]>("yellow");
 
-  const [atiOrders, setAtiOrders] = useState<AtiOrderFromApi[]>([])
-  const [loadingAti, setLoadingAti] = useState(true)
+  const [atiOrders, setAtiOrders] = useState<AtiOrderFromApi[]>([]);
+  // Организация может не работать через ATI — боковая панель грузов скрывается
+  const [atiEnabled, setAtiEnabled] = useState(true);
+  const [loadingAti, setLoadingAti] = useState(true);
 
-  const [autoPanelCollapsed, setAutoPanelCollapsed] = useState(false)
+  const [autoPanelCollapsed, setAutoPanelCollapsed] = useState(false);
   const [collapsedProposalTypes, setCollapsedProposalTypes] = useState<
     Partial<Record<AutoProposalType, boolean>>
-  >({})
+  >({});
 
   const [hiddenProposalIds, setHiddenProposalIds] = useState<Set<string>>(
     () => new Set<string>(),
-  )
+  );
   const [sentProposalIds, setSentProposalIds] = useState<Set<string>>(
     () => new Set<string>(),
-  )
-  const [snoozedUntilById, setSnoozedUntilById] = useState<Record<string, number>>(
-    () => ({}),
-  )
+  );
+  const [snoozedUntilById, setSnoozedUntilById] = useState<
+    Record<string, number>
+  >(() => ({}));
 
   const [undoBanner, setUndoBanner] = useState<{
-    label: string
-    undo: () => void
-    createdAt: number
-  } | null>(null)
+    label: string;
+    undo: () => void;
+    createdAt: number;
+  } | null>(null);
 
-  const [timeTick, setTimeTick] = useState(0)
+  const [timeTick, setTimeTick] = useState(0);
 
   const [capacityHint, setCapacityHint] = useState<{
-    capacityKg: number
-    vehicleLabel: string
-  } | null>(null)
-  const [loadingCapacityHint, setLoadingCapacityHint] = useState(false)
+    capacityKg: number;
+    vehicleLabel: string;
+  } | null>(null);
+  const [loadingCapacityHint, setLoadingCapacityHint] = useState(false);
 
-  const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null)
+  const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null);
 
-  const [showVehicleDialog, setShowVehicleDialog] = useState(false)
-  const router = useRouter()
-  const confirm = useConfirm()
-  const [availableVehicles, setAvailableVehicles] = useState<VehicleWithDriver[]>(
-    [],
-  )
-  const [loadingVehicles, setLoadingVehicles] = useState(false)
+  const [showVehicleDialog, setShowVehicleDialog] = useState(false);
+  const router = useRouter();
+  const confirm = useConfirm();
+  const [availableVehicles, setAvailableVehicles] = useState<
+    VehicleWithDriver[]
+  >([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
   const [selectedVehicle, setSelectedVehicle] =
-    useState<VehicleWithDriver | null>(null)
-  const [savingRoute, setSavingRoute] = useState(false)
+    useState<VehicleWithDriver | null>(null);
+  const [savingRoute, setSavingRoute] = useState(false);
 
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
-  const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false)
-  const [newGroupName, setNewGroupName] = useState("")
-  const [newGroupColor, setNewGroupColor] = useState<GroupColorId>("blue")
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [showCreateGroupDialog, setShowCreateGroupDialog] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupColor, setNewGroupColor] = useState<GroupColorId>("blue");
 
-  const [etaPreview, setEtaPreview] = useState<RouteEtaPreview | null>(null)
+  const [etaPreview, setEtaPreview] = useState<RouteEtaPreview | null>(null);
 
-  const canvasRef = useRef<HTMLDivElement | null>(null)
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  )
+  );
 
   /** Заказ, открытый в выдвижной панели согласования (быстрые действия). */
-  const [negotiationOrderId, setNegotiationOrderId] = useState<string | null>(null)
+  const [negotiationOrderId, setNegotiationOrderId] = useState<string | null>(
+    null,
+  );
 
-  const activeSheet = sheets[activeSheetId]
+  const activeSheet = sheets[activeSheetId];
 
   const usedAtiIds = useMemo(() => {
-    const set = new Set<string>()
+    const set = new Set<string>();
     sheets.forEach((sheet: any) => {
       sheet.orders.forEach((order: any) => {
         // в списке песочницы строка идентифицируется id заказа
-        if (order.orderId) set.add(order.orderId)
-        if (order.atiCacheId) set.add(order.atiCacheId)
-      })
-    })
-    return set
-  }, [sheets])
+        if (order.orderId) set.add(order.orderId);
+        if (order.atiCacheId) set.add(order.atiCacheId);
+      });
+    });
+    return set;
+  }, [sheets]);
 
   const attachedNotesByOrderId = useMemo(() => {
-    const map = new Map<string, NoteItem[]>()
+    const map = new Map<string, NoteItem[]>();
     activeSheet.notes.forEach((note: any) => {
       if (note.orderId) {
-        const existing = map.get(note.orderId) ?? []
-        existing.push(note)
-        map.set(note.orderId, existing)
+        const existing = map.get(note.orderId) ?? [];
+        existing.push(note);
+        map.set(note.orderId, existing);
       }
-    })
-    return map
-  }, [activeSheet.notes])
+    });
+    return map;
+  }, [activeSheet.notes]);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as unknown
+        const parsed = JSON.parse(saved) as unknown;
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const parsedSheets = parsed as CanvasSheet[]
+          const parsedSheets = parsed as CanvasSheet[];
           const migrated: CanvasSheet[] = parsedSheets.map((sheet: any) => ({
             ...sheet,
             groups: sheet.groups || [],
-          }))
-          setSheets(migrated)
+          }));
+          setSheets(migrated);
         }
       }
     } catch (e) {
-      console.error("Failed to load sheets:", e)
+      console.error("Failed to load sheets:", e);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sheets))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sheets));
     } catch (e) {
-      console.error("Failed to save sheets:", e)
+      console.error("Failed to save sheets:", e);
     }
-  }, [sheets])
+  }, [sheets]);
 
   // ==================== localStorage: автопредложения ====================
   useEffect(() => {
-    const t = window.setInterval(() => setTimeTick(Date.now()), 30_000)
-    return () => window.clearInterval(t)
-  }, [])
+    const t = window.setInterval(() => setTimeTick(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
 
   useEffect(() => {
     try {
-      const rawHidden = localStorage.getItem(AUTOPROPOSALS_HIDDEN_KEY)
+      const rawHidden = localStorage.getItem(AUTOPROPOSALS_HIDDEN_KEY);
       if (rawHidden) {
-        const arr = JSON.parse(rawHidden) as unknown
+        const arr = JSON.parse(rawHidden) as unknown;
         if (Array.isArray(arr)) {
           setHiddenProposalIds(
             new Set(arr.filter((x: any) => typeof x === "string")),
-          )
+          );
         }
       }
 
-      const rawSent = localStorage.getItem(AUTOPROPOSALS_SENT_KEY)
+      const rawSent = localStorage.getItem(AUTOPROPOSALS_SENT_KEY);
       if (rawSent) {
-        const arr = JSON.parse(rawSent) as unknown
+        const arr = JSON.parse(rawSent) as unknown;
         if (Array.isArray(arr)) {
-          setSentProposalIds(new Set(arr.filter((x: any) => typeof x === "string")))
+          setSentProposalIds(
+            new Set(arr.filter((x: any) => typeof x === "string")),
+          );
         }
       }
 
-      const rawSnoozed = localStorage.getItem(AUTOPROPOSALS_SNOOZED_KEY)
+      const rawSnoozed = localStorage.getItem(AUTOPROPOSALS_SNOOZED_KEY);
       if (rawSnoozed) {
-        const obj = JSON.parse(rawSnoozed) as unknown
+        const obj = JSON.parse(rawSnoozed) as unknown;
         if (obj && typeof obj === "object") {
-          setSnoozedUntilById(obj as Record<string, number>)
+          setSnoozedUntilById(obj as Record<string, number>);
         }
       }
     } catch (e) {
-      console.error("Failed to load autoprops:", e)
+      console.error("Failed to load autoprops:", e);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     try {
       localStorage.setItem(
         AUTOPROPOSALS_HIDDEN_KEY,
         JSON.stringify(Array.from(hiddenProposalIds)),
-      )
+      );
       localStorage.setItem(
         AUTOPROPOSALS_SENT_KEY,
         JSON.stringify(Array.from(sentProposalIds)),
-      )
+      );
       localStorage.setItem(
         AUTOPROPOSALS_SNOOZED_KEY,
         JSON.stringify(snoozedUntilById),
-      )
+      );
     } catch (e) {
-      console.error("Failed to save autoprops:", e)
+      console.error("Failed to save autoprops:", e);
     }
-  }, [hiddenProposalIds, sentProposalIds, snoozedUntilById])
+  }, [hiddenProposalIds, sentProposalIds, snoozedUntilById]);
 
   useEffect(() => {
-    void loadAtiOrders()
-  }, [])
+    let active = true;
+    fetch("/api/org-settings", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.success)
+          setAtiEnabled(data.settings?.atiEnabled !== false);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (atiEnabled) void loadAtiOrders();
+  }, [atiEnabled]);
 
   const loadAtiOrders = async (): Promise<void> => {
-    setLoadingAti(true)
+    setLoadingAti(true);
     try {
-      const res = await fetch("/api/ati/sandbox")
-      const data = (await res.json()) as unknown
+      const res = await fetch("/api/ati/sandbox");
+      const data = (await res.json()) as unknown;
       if (Array.isArray(data)) {
-        setAtiOrders(data as AtiOrderFromApi[])
+        setAtiOrders(data as AtiOrderFromApi[]);
       } else {
-        setAtiOrders([])
+        setAtiOrders([]);
       }
     } catch (e) {
-      console.error("Failed to load ATI:", e)
-      setAtiOrders([])
+      console.error("Failed to load ATI:", e);
+      setAtiOrders([]);
     } finally {
-      setLoadingAti(false)
+      setLoadingAti(false);
     }
-  }
+  };
 
   const removeFromAtiList = async (orderId: string): Promise<void> => {
     try {
@@ -1275,22 +1337,24 @@ export function OrdersSandbox() {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: orderId }),
-      })
-      setAtiOrders((prev) => prev.filter((o: any) => o.id !== orderId))
-      toast.success("Груз возвращён в базу")
+      });
+      setAtiOrders((prev) => prev.filter((o: any) => o.id !== orderId));
+      toast.success("Груз возвращён в базу");
     } catch {
-      toast.error("Не удалось вернуть груз в базу: проверьте связь и повторите")
+      toast.error(
+        "Не удалось вернуть груз в базу: проверьте связь и повторите",
+      );
     }
-  }
+  };
 
   const updateSheet = useCallback(
     (updater: (sheet: CanvasSheet) => CanvasSheet) => {
       setSheets((prev) =>
         prev.map((s: any) => (s.id === activeSheetId ? updater(s) : s)),
-      )
+      );
     },
     [activeSheetId],
-  )
+  );
 
   const addOrderFromAti = (atiOrder: AtiOrderFromApi): void => {
     const newOrder: OrderItem = {
@@ -1317,89 +1381,92 @@ export function OrdersSandbox() {
       x: 100 + Math.random() * 50,
       y: 100 + Math.random() * 50,
       groupId: null,
-    }
-    updateSheet((s) => ({ ...s, orders: [...s.orders, newOrder] }))
-  }
+    };
+    updateSheet((s) => ({ ...s, orders: [...s.orders, newOrder] }));
+  };
 
   // Заказ из вкладки «Заказ из текста» прилетает событием и встаёт на активный
   // лист песочницы готовой карточкой: груз, маршрут, вес — всё на своих местах
-  const addOrderRef = useRef<(order: AtiOrderFromApi) => void>(addOrderFromAti)
+  const addOrderRef = useRef<(order: AtiOrderFromApi) => void>(addOrderFromAti);
   useEffect(() => {
-    addOrderRef.current = addOrderFromAti
-  })
+    addOrderRef.current = addOrderFromAti;
+  });
   useEffect(() => {
     const onAdd = (event: Event) => {
-      const detail = (event as CustomEvent).detail
-      if (detail && typeof detail === "object") addOrderRef.current(detail)
-    }
-    window.addEventListener("tms:sandbox-add-order", onAdd)
-    return () => window.removeEventListener("tms:sandbox-add-order", onAdd)
-  }, [])
+      const detail = (event as CustomEvent).detail;
+      if (detail && typeof detail === "object") addOrderRef.current(detail);
+    };
+    window.addEventListener("tms:sandbox-add-order", onAdd);
+    return () => window.removeEventListener("tms:sandbox-add-order", onAdd);
+  }, []);
 
   const pushUndo = (label: string, undo: () => void): void => {
-    const createdAt = Date.now()
-    setUndoBanner({ label, undo, createdAt })
+    const createdAt = Date.now();
+    setUndoBanner({ label, undo, createdAt });
     window.setTimeout(() => {
       setUndoBanner((prev) => {
-        if (!prev) return null
-        if (prev.createdAt !== createdAt) return prev
-        return null
-      })
-    }, 8000)
-  }
+        if (!prev) return null;
+        if (prev.createdAt !== createdAt) return prev;
+        return null;
+      });
+    }, 8000);
+  };
 
   const normalizeCity = (value: string | null | undefined): string => {
-    const raw = (value ?? "").trim()
-    if (!raw) return ""
-    return raw.split(",")[0]?.trim().toLowerCase() ?? ""
-  }
+    const raw = (value ?? "").trim();
+    if (!raw) return "";
+    return raw.split(",")[0]?.trim().toLowerCase() ?? "";
+  };
 
   const setHidden = (proposalId: string, hidden: boolean): void => {
     setHiddenProposalIds((prev) => {
-      const next = new Set(prev)
-      if (hidden) next.add(proposalId)
-      else next.delete(proposalId)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (hidden) next.add(proposalId);
+      else next.delete(proposalId);
+      return next;
+    });
+  };
 
-  const snooze = (proposalId: string, minutes = AUTOPROPOSALS_SNOOZE_MINUTES): void => {
-    const until = Date.now() + minutes * 60_000
-    setSnoozedUntilById((prev) => ({ ...prev, [proposalId]: until }))
-  }
+  const snooze = (
+    proposalId: string,
+    minutes = AUTOPROPOSALS_SNOOZE_MINUTES,
+  ): void => {
+    const until = Date.now() + minutes * 60_000;
+    setSnoozedUntilById((prev) => ({ ...prev, [proposalId]: until }));
+  };
 
   const unsnooze = (proposalId: string): void => {
     setSnoozedUntilById((prev) => {
-      const next = { ...prev }
-      delete next[proposalId]
-      return next
-    })
-  }
+      const next = { ...prev };
+      delete next[proposalId];
+      return next;
+    });
+  };
 
   const markSent = (proposalId: string, sent: boolean): void => {
     setSentProposalIds((prev) => {
-      const next = new Set(prev)
-      if (sent) next.add(proposalId)
-      else next.delete(proposalId)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (sent) next.add(proposalId);
+      else next.delete(proposalId);
+      return next;
+    });
+  };
 
   const calculateCapacityHintFromFleet = async (): Promise<void> => {
     if (routeOrders.length === 0) {
-      toast.error("Сначала соберите маршрут (режим “Маршрут”)")
-      return
+      toast.error("Сначала соберите маршрут (режим “Маршрут”)");
+      return;
     }
 
-    setLoadingCapacityHint(true)
+    setLoadingCapacityHint(true);
     try {
-      const res = await fetch("/api/fleet")
-      const data = (await res.json()) as any
+      const res = await fetch("/api/fleet");
+      const data = (await res.json()) as any;
       if (!data?.success) {
-        throw new Error(data?.error || "Ошибка загрузки автопарка")
+        throw new Error(data?.error || "Ошибка загрузки автопарка");
       }
 
-      const vehiclesRaw = Array.isArray(data.vehicles) ? data.vehicles : []
+      const vehiclesRaw = Array.isArray(data.vehicles) ? data.vehicles : [];
       const vehicles: VehicleWithDriver[] = vehiclesRaw.map((v: any) => ({
         id: v.id,
         plate: v.plate,
@@ -1418,57 +1485,61 @@ export function OrdersSandbox() {
               status: v.driver.status,
             }
           : undefined,
-      }))
+      }));
 
-      const totalWeightKg = routeCalculation.totalWeight
+      const totalWeightKg = routeCalculation.totalWeight;
       const candidates = vehicles
-        .filter((v: any) => v.status === "available" && v.capacity >= totalWeightKg)
-        .sort((a, b) => a.capacity - b.capacity)
+        .filter(
+          (v: any) => v.status === "available" && v.capacity >= totalWeightKg,
+        )
+        .sort((a, b) => a.capacity - b.capacity);
 
       if (candidates.length === 0) {
-        setCapacityHint(null)
-        toast.message("Нет доступных машин под текущий вес (проверьте маршрут/парк)")
-        return
+        setCapacityHint(null);
+        toast.message(
+          "Нет доступных машин под текущий вес (проверьте маршрут/парк)",
+        );
+        return;
       }
 
-      const best = candidates[0]
-      const label = `${best.plate}${best.driver?.name ? ` • ${best.driver.name}` : ""} • ${(best.capacity / 1000).toFixed(0)}т`
+      const best = candidates[0];
+      const label = `${best.plate}${best.driver?.name ? ` • ${best.driver.name}` : ""} • ${(best.capacity / 1000).toFixed(0)}т`;
 
-      setCapacityHint({ capacityKg: best.capacity, vehicleLabel: label })
-      toast.success("Ёмкость рассчитана по автопарку")
+      setCapacityHint({ capacityKg: best.capacity, vehicleLabel: label });
+      toast.success("Ёмкость рассчитана по автопарку");
     } catch (e: any) {
-      console.error(e)
-      toast.error(e?.message || "Не удалось рассчитать ёмкость")
-      setCapacityHint(null)
+      console.error(e);
+      toast.error(e?.message || "Не удалось рассчитать ёмкость");
+      setCapacityHint(null);
     } finally {
-      setLoadingCapacityHint(false)
+      setLoadingCapacityHint(false);
     }
-  }
+  };
 
   const handleDragEnd = (event: DragEndEvent): void => {
-    const { active, delta } = event
-    const id = active.id as string
+    const { active, delta } = event;
+    const id = active.id as string;
 
     if (id.startsWith("order-")) {
-      const anchor = activeSheet.orders.find((o: any) => o.id === id)
-      if (!anchor) return
+      const anchor = activeSheet.orders.find((o: any) => o.id === id);
+      if (!anchor) return;
 
-      let dx = delta.x
-      let dy = delta.y
+      let dx = delta.x;
+      let dy = delta.y;
 
       if (canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect()
-        const maxX = rect.width - CARD_WIDTH
-        const maxY = rect.height - CARD_HEIGHT
+        const rect = canvasRef.current.getBoundingClientRect();
+        const maxX = rect.width - CARD_WIDTH;
+        const maxY = rect.height - CARD_HEIGHT;
 
-        let newX = anchor.x + dx
-        let newY = anchor.y + dy
+        let newX = anchor.x + dx;
+        let newY = anchor.y + dy;
 
-        newX = Math.max(0, Math.min(newX, maxX))
-        newY = Math.max(0, Math.min(newY, maxY))
+        newX = Math.max(0, Math.min(newX, maxX));
+        newY = Math.max(0, Math.min(newY, maxY));
 
-        dx = newX - anchor.x
-        dy = newY - anchor.y
+        dx = newX - anchor.x;
+        dy = newY - anchor.y;
       }
 
       if (anchor.groupId) {
@@ -1479,39 +1550,39 @@ export function OrdersSandbox() {
               ? { ...o, x: o.x + dx, y: o.y + dy }
               : o,
           ),
-        }))
+        }));
       } else {
         updateSheet((s) => ({
           ...s,
           orders: s.orders.map((o: any) =>
             o.id === id ? { ...o, x: o.x + dx, y: o.y + dy } : o,
           ),
-        }))
+        }));
       }
-      return
+      return;
     }
 
     if (id.startsWith("note-")) {
       updateSheet((s) => {
         const movedNotes = s.notes.map((n: any) =>
           n.id === id ? { ...n, x: n.x + delta.x, y: n.y + delta.y } : n,
-        )
-        const note = movedNotes.find((n: any) => n.id === id)
-        if (!note) return { ...s, notes: movedNotes }
+        );
+        const note = movedNotes.find((n: any) => n.id === id);
+        if (!note) return { ...s, notes: movedNotes };
 
-        const centerX = note.x + NOTE_WIDTH / 2
-        const centerY = note.y + NOTE_HEIGHT / 2
+        const centerX = note.x + NOTE_WIDTH / 2;
+        const centerY = note.y + NOTE_HEIGHT / 2;
 
-        let attachedOrderId: string | null = null
-        let attachedOrder: OrderItem | null = null
+        let attachedOrderId: string | null = null;
+        let attachedOrder: OrderItem | null = null;
 
         for (const o of s.orders) {
-          const withinX = centerX >= o.x && centerX <= o.x + CARD_WIDTH
-          const withinY = centerY >= o.y && centerY <= o.y + CARD_HEIGHT
+          const withinX = centerX >= o.x && centerX <= o.x + CARD_WIDTH;
+          const withinY = centerY >= o.y && centerY <= o.y + CARD_HEIGHT;
           if (withinX && withinY) {
-            attachedOrderId = o.id
-            attachedOrder = o
-            break
+            attachedOrderId = o.id;
+            attachedOrder = o;
+            break;
           }
         }
 
@@ -1525,27 +1596,28 @@ export function OrdersSandbox() {
                   y: attachedOrder.y,
                 }
               : n,
-          )
-          return { ...s, notes: updatedNotes }
+          );
+          return { ...s, notes: updatedNotes };
         }
 
         const updatedNotes = movedNotes.map((n: any) =>
           n.id === id ? { ...n, orderId: null } : n,
-        )
-        return { ...s, notes: updatedNotes }
-      })
+        );
+        return { ...s, notes: updatedNotes };
+      });
     }
-  }
+  };
 
   const handleConnectStart = (orderId: string): void =>
-    setConnectingFrom(orderId)
+    setConnectingFrom(orderId);
 
   const handleConnectEnd = (orderId: string): void => {
     if (connectingFrom && connectingFrom !== orderId) {
-      const exists = activeSheet.connections.some((c: any) =>
+      const exists = activeSheet.connections.some(
+        (c: any) =>
           (c.from === connectingFrom && c.to === orderId) ||
           (c.from === orderId && c.to === connectingFrom),
-      )
+      );
       if (!exists) {
         updateSheet((s) => ({
           ...s,
@@ -1553,23 +1625,23 @@ export function OrdersSandbox() {
             ...s.connections,
             { id: `conn-${Date.now()}`, from: connectingFrom, to: orderId },
           ],
-        }))
+        }));
       }
     }
-    setConnectingFrom(null)
-    setMode("select")
-  }
+    setConnectingFrom(null);
+    setMode("select");
+  };
 
   const removeConnection = (connId: string): void =>
     updateSheet((s) => ({
       ...s,
       connections: s.connections.filter((c: any) => c.id !== connId),
-    }))
+    }));
 
   const createGroup = (): void => {
     if (!newGroupName.trim()) {
-      toast.error("Введите название группы")
-      return
+      toast.error("Введите название группы");
+      return;
     }
 
     const newGroup: OrderGroup = {
@@ -1577,22 +1649,22 @@ export function OrdersSandbox() {
       name: newGroupName.trim(),
       color: newGroupColor,
       orderIds: [],
-    }
+    };
 
-    updateSheet((s) => ({ ...s, groups: [...s.groups, newGroup] }))
-    setActiveGroupId(newGroup.id)
-    setShowCreateGroupDialog(false)
-    setNewGroupName("")
-    setMode("group")
+    updateSheet((s) => ({ ...s, groups: [...s.groups, newGroup] }));
+    setActiveGroupId(newGroup.id);
+    setShowCreateGroupDialog(false);
+    setNewGroupName("");
+    setMode("group");
     toast.success(
       `Группа "${newGroup.name}" создана. Кликайте на карточки для добавления.`,
-    )
-  }
+    );
+  };
 
   const addOrderToGroup = (orderId: string): void => {
     if (!activeGroupId) {
-      setShowCreateGroupDialog(true)
-      return
+      setShowCreateGroupDialog(true);
+      return;
     }
 
     updateSheet((s) => ({
@@ -1605,18 +1677,20 @@ export function OrdersSandbox() {
           ? {
               ...g,
               orderIds: [
-                ...g.orderIds.filter((existingId: any) => existingId !== orderId),
+                ...g.orderIds.filter(
+                  (existingId: any) => existingId !== orderId,
+                ),
                 orderId,
               ],
             }
           : g,
       ),
-    }))
-  }
+    }));
+  };
 
   const removeOrderFromGroup = (orderId: string): void => {
-    const order = activeSheet.orders.find((o: any) => o.id === orderId)
-    if (!order?.groupId) return
+    const order = activeSheet.orders.find((o: any) => o.id === orderId);
+    if (!order?.groupId) return;
 
     updateSheet((s) => ({
       ...s,
@@ -1628,8 +1702,8 @@ export function OrdersSandbox() {
           ? { ...g, orderIds: g.orderIds.filter((id: any) => id !== orderId) }
           : g,
       ),
-    }))
-  }
+    }));
+  };
 
   const removeGroup = (groupId: string): void => {
     updateSheet((s) => ({
@@ -1638,16 +1712,17 @@ export function OrdersSandbox() {
         o.groupId === groupId ? { ...o, groupId: null } : o,
       ),
       groups: s.groups.filter((g: any) => g.id !== groupId),
-    }))
-    if (activeGroupId === groupId) setActiveGroupId(null)
-    toast.success("Группа расформирована")
-  }
+    }));
+    if (activeGroupId === groupId) setActiveGroupId(null);
+    toast.success("Группа расформирована");
+  };
 
   const removeOrder = (orderId: string): void =>
     updateSheet((s) => ({
       ...s,
       orders: s.orders.filter((o: any) => o.id !== orderId),
-      connections: s.connections.filter((c: any) => c.from !== orderId && c.to !== orderId,
+      connections: s.connections.filter(
+        (c: any) => c.from !== orderId && c.to !== orderId,
       ),
       groups: s.groups.map((g: any) => ({
         ...g,
@@ -1656,71 +1731,74 @@ export function OrdersSandbox() {
       notes: s.notes.map((n: any) =>
         n.orderId === orderId ? { ...n, orderId: null } : n,
       ),
-    }))
+    }));
 
   const setOrderRoutePosition = (orderId: string, position: number): void => {
     if (position === 0) {
       updateSheet((s) => {
-        const order = s.orders.find((o: any) => o.id === orderId)
-        if (!order || order.inRouteOrder == null) return s
+        const order = s.orders.find((o: any) => o.id === orderId);
+        if (!order || order.inRouteOrder == null) return s;
 
-        const currentOrderPos = order.inRouteOrder
+        const currentOrderPos = order.inRouteOrder;
 
         return {
           ...s,
           orders: s.orders.map((o: any) => {
             if (o.id === orderId) {
-              return { ...o, inRouteOrder: null, status: "new" as const }
+              return { ...o, inRouteOrder: null, status: "new" as const };
             }
             if (o.inRouteOrder != null && o.inRouteOrder > currentOrderPos) {
-              return { ...o, inRouteOrder: o.inRouteOrder - 1 }
+              return { ...o, inRouteOrder: o.inRouteOrder - 1 };
             }
-            return o
+            return o;
           }),
-        }
-      })
+        };
+      });
     } else {
       updateSheet((s) => {
         let updatedOrders = s.orders.map((o: any) =>
           o.id === orderId ? { ...o, inRouteOrder: null } : o,
-        )
+        );
         updatedOrders = updatedOrders.map((o: any) =>
           o.inRouteOrder != null && o.inRouteOrder >= position
             ? { ...o, inRouteOrder: o.inRouteOrder + 1 }
             : o,
-        )
+        );
         updatedOrders = updatedOrders.map((o: any) =>
           o.id === orderId
             ? { ...o, inRouteOrder: position, status: "in_route" as const }
             : o,
-        )
-        return { ...s, orders: updatedOrders }
-      })
+        );
+        return { ...s, orders: updatedOrders };
+      });
     }
-  }
+  };
 
   const toggleOrderInRoute = (orderId: string): void => {
     updateSheet((s) => {
-      const order = s.orders.find((o: any) => o.id === orderId)
-      if (!order) return s
+      const order = s.orders.find((o: any) => o.id === orderId);
+      if (!order) return s;
 
       if (order.inRouteOrder != null) {
-        const currentOrderPos = order.inRouteOrder
+        const currentOrderPos = order.inRouteOrder;
         return {
           ...s,
           orders: s.orders.map((o: any) => {
             if (o.id === orderId) {
-              return { ...o, inRouteOrder: null, status: "new" as const }
+              return { ...o, inRouteOrder: null, status: "new" as const };
             }
             if (o.inRouteOrder != null && o.inRouteOrder > currentOrderPos) {
-              return { ...o, inRouteOrder: o.inRouteOrder - 1 }
+              return { ...o, inRouteOrder: o.inRouteOrder - 1 };
             }
-            return o
+            return o;
           }),
-        }
+        };
       }
 
-      const maxOrder = Math.max(0, ...s.orders.map((o: any) => o.inRouteOrder || 0))
+      const maxOrder = Math.max(
+        0,
+        ...s.orders.map((o: any) => o.inRouteOrder || 0),
+      );
       return {
         ...s,
         orders: s.orders.map((o: any) =>
@@ -1732,20 +1810,22 @@ export function OrdersSandbox() {
               }
             : o,
         ),
-      }
-    })
-  }
+      };
+    });
+  };
 
   const saveOrderEdit = (updatedOrder: OrderItem): void => {
     updateSheet((s) => ({
       ...s,
-      orders: s.orders.map((o: any) => (o.id === updatedOrder.id ? updatedOrder : o)),
-    }))
-    setSelectedOrderForEdit(null)
-  }
+      orders: s.orders.map((o: any) =>
+        o.id === updatedOrder.id ? updatedOrder : o,
+      ),
+    }));
+    setSelectedOrderForEdit(null);
+  };
 
   const addNote = (): void => {
-    if (!newNoteText.trim()) return
+    if (!newNoteText.trim()) return;
     updateSheet((s) => ({
       ...s,
       notes: [
@@ -1759,31 +1839,32 @@ export function OrdersSandbox() {
           orderId: null,
         },
       ],
-    }))
-    setNewNoteText("")
-    setShowAddNoteDialog(false)
-  }
+    }));
+    setNewNoteText("");
+    setShowAddNoteDialog(false);
+  };
 
   const updateNoteText = (noteId: string, text: string): void =>
     updateSheet((s) => ({
       ...s,
       notes: s.notes.map((n: any) => (n.id === noteId ? { ...n, text } : n)),
-    }))
+    }));
 
   const removeNote = (noteId: string): void =>
     updateSheet((s) => ({
       ...s,
       notes: s.notes.filter((n: any) => n.id !== noteId),
-    }))
+    }));
 
   const clearCanvas = async (): Promise<void> => {
     const ok = await confirm({
       title: "Очистить лист?",
-      description: "С листа уйдут заказы, заметки, связи и группы. Сами заказы останутся в базе.",
+      description:
+        "С листа уйдут заказы, заметки, связи и группы. Сами заказы останутся в базе.",
       confirmLabel: "Очистить",
       destructive: true,
-    })
-    if (!ok) return
+    });
+    if (!ok) return;
 
     updateSheet((s) => ({
       ...s,
@@ -1791,23 +1872,23 @@ export function OrdersSandbox() {
       notes: [],
       connections: [],
       groups: [],
-    }))
-  }
+    }));
+  };
 
   const renderConnections = (): React.ReactNode => {
     return activeSheet.connections.map((conn: any) => {
-      const from = activeSheet.orders.find((o: any) => o.id === conn.from)
-      const to = activeSheet.orders.find((o: any) => o.id === conn.to)
-      if (!from || !to) return null
+      const from = activeSheet.orders.find((o: any) => o.id === conn.from);
+      const to = activeSheet.orders.find((o: any) => o.id === conn.to);
+      if (!from || !to) return null;
 
-      const x1 = from.x + CARD_WIDTH / 2
-      const y1 = from.y + 80
-      const x2 = to.x + CARD_WIDTH / 2
-      const y2 = to.y + 80
-      const midX = (x1 + x2) / 2
-      const midY = (y1 + y2) / 2
+      const x1 = from.x + CARD_WIDTH / 2;
+      const y1 = from.y + 80;
+      const x2 = to.x + CARD_WIDTH / 2;
+      const y2 = to.y + 80;
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
 
-      const path = `M ${x1} ${y1} Q ${midX} ${y1}, ${midX} ${midY} T ${x2} ${y2}`
+      const path = `M ${x1} ${y1} Q ${midX} ${y1}, ${midX} ${midY} T ${x2} ${y2}`;
 
       return (
         <g key={conn.id} className="group/conn">
@@ -1874,41 +1955,48 @@ export function OrdersSandbox() {
             />
           </g>
         </g>
-      )
-    })
-  }
+      );
+    });
+  };
 
   const routeOrders = activeSheet.orders
     .filter((o: any) => o.inRouteOrder)
-    .sort((a, b) => (a.inRouteOrder ?? 0) - (b.inRouteOrder ?? 0))
+    .sort((a, b) => (a.inRouteOrder ?? 0) - (b.inRouteOrder ?? 0));
 
   const routeCalculation = useMemo(() => {
-    let totalPrice = 0
-    let totalWeight = 0
-    let effectiveDistance = 0
+    let totalPrice = 0;
+    let totalWeight = 0;
+    let effectiveDistance = 0;
 
-    const processedGroups = new Set<string>()
+    const processedGroups = new Set<string>();
 
     routeOrders.forEach((order: any) => {
-      totalPrice += order.price
-      totalWeight += order.weight
+      totalPrice += order.price;
+      totalWeight += order.weight;
 
       if (order.groupId) {
         if (!processedGroups.has(order.groupId)) {
-          const groupOrders = routeOrders.filter((o: any) => o.groupId === order.groupId)
-          const maxDistance = Math.max(...groupOrders.map((o: any) => o.distance))
-          effectiveDistance += maxDistance
-          processedGroups.add(order.groupId)
+          const groupOrders = routeOrders.filter(
+            (o: any) => o.groupId === order.groupId,
+          );
+          const maxDistance = Math.max(
+            ...groupOrders.map((o: any) => o.distance),
+          );
+          effectiveDistance += maxDistance;
+          processedGroups.add(order.groupId);
         }
       } else {
-        effectiveDistance += order.distance
+        effectiveDistance += order.distance;
       }
-    })
+    });
 
     const pricePerKm =
-      effectiveDistance > 0 ? Math.round(totalPrice / effectiveDistance) : 0
-    const naiveDistance = routeOrders.reduce((sum: any, o: any) => sum + o.distance, 0)
-    const savedDistance = naiveDistance - effectiveDistance
+      effectiveDistance > 0 ? Math.round(totalPrice / effectiveDistance) : 0;
+    const naiveDistance = routeOrders.reduce(
+      (sum: any, o: any) => sum + o.distance,
+      0,
+    );
+    const savedDistance = naiveDistance - effectiveDistance;
 
     return {
       totalPrice,
@@ -1918,8 +2006,8 @@ export function OrdersSandbox() {
       savedDistance,
       pricePerKm,
       hasGroups: processedGroups.size > 0,
-    }
-  }, [routeOrders])
+    };
+  }, [routeOrders]);
 
   useEffect(() => {
     // если маршрут не собран — сбрасываем ETA
@@ -1927,16 +2015,16 @@ export function OrdersSandbox() {
       routeCalculation.effectiveDistance <= 0 ||
       routeCalculation.totalWeight <= 0
     ) {
-      setEtaPreview(null)
-      return
+      setEtaPreview(null);
+      return;
     }
 
     try {
-      const distanceKm = routeCalculation.effectiveDistance
-      const totalWeightKg = routeCalculation.totalWeight
-      const baseSpeedKmH = 60 // базовая скорость для песочницы
+      const distanceKm = routeCalculation.effectiveDistance;
+      const totalWeightKg = routeCalculation.totalWeight;
+      const baseSpeedKmH = 60; // базовая скорость для песочницы
 
-      const durationBaseSec = (distanceKm / baseSpeedKmH) * 3600
+      const durationBaseSec = (distanceKm / baseSpeedKmH) * 3600;
 
       const etaRequest: ETARequest = {
         origin: { lat: 0, lng: 0 },
@@ -1950,12 +2038,12 @@ export function OrdersSandbox() {
           type: "truck",
         },
         useCache: false,
-      }
+      };
 
-      const coeffs = calculateAllCoefficients(etaRequest, distanceKm)
-      const durationWithTrafficSec = Math.round(durationBaseSec * coeffs.total)
-      const risk = calculateRiskFactors(coeffs, etaRequest, distanceKm)
-      const cost = calculateRouteCost(distanceKm, etaRequest.vehicle)
+      const coeffs = calculateAllCoefficients(etaRequest, distanceKm);
+      const durationWithTrafficSec = Math.round(durationBaseSec * coeffs.total);
+      const risk = calculateRiskFactors(coeffs, etaRequest, distanceKm);
+      const cost = calculateRouteCost(distanceKm, etaRequest.vehicle);
 
       setEtaPreview({
         durationBaseSec: Math.round(durationBaseSec),
@@ -1965,27 +2053,27 @@ export function OrdersSandbox() {
         fuelCost: cost.fuel,
         tollsCost: cost.tolls,
         totalCost: cost.total,
-      })
+      });
     } catch (e) {
-      console.error("[Sandbox ETA] calculation error", e)
-      setEtaPreview(null)
+      console.error("[Sandbox ETA] calculation error", e);
+      setEtaPreview(null);
     }
-  }, [routeCalculation.effectiveDistance, routeCalculation.totalWeight])
+  }, [routeCalculation.effectiveDistance, routeCalculation.totalWeight]);
 
   // ==================== Автопредложения (rules-based, MVP) ====================
   const availableCapacityKg =
     capacityHint?.capacityKg != null
       ? Math.max(0, capacityHint.capacityKg - routeCalculation.totalWeight)
-      : null
+      : null;
 
   const autoProposals = useMemo<AutoProposal[]>(() => {
-    const proposals: AutoProposal[] = []
+    const proposals: AutoProposal[] = [];
 
-    const routeCities = new Set<string>()
+    const routeCities = new Set<string>();
     routeOrders.forEach((o: any) => {
-      routeCities.add(normalizeCity(o.routeFrom))
-      routeCities.add(normalizeCity(o.routeTo))
-    })
+      routeCities.add(normalizeCity(o.routeFrom));
+      routeCities.add(normalizeCity(o.routeTo));
+    });
 
     // 1) vehicle_match
     if (routeOrders.length > 0) {
@@ -2001,7 +2089,7 @@ export function OrdersSandbox() {
             "Можно искать догруз под свободную ёмкость.",
           ],
           score: 90,
-        })
+        });
       } else {
         proposals.push({
           id: "vehicle_match:need_capacity",
@@ -2015,12 +2103,12 @@ export function OrdersSandbox() {
             "Кнопка использует /api/fleet и ничего не сохраняет.",
           ],
           score: 60,
-        })
+        });
       }
     }
 
     // 2) docs_missing / profit_boost — по заказам на холсте
-    const canvasOrders = activeSheet.orders
+    const canvasOrders = activeSheet.orders;
     for (const o of canvasOrders) {
       if (!o.clientPhone) {
         proposals.push({
@@ -2032,7 +2120,7 @@ export function OrdersSandbox() {
           reasons: ["Без контакта сложнее подтверждать/закрывать документы."],
           existingOrderId: o.id,
           score: 55,
-        })
+        });
       }
       if ((o.price ?? 0) === 0) {
         proposals.push({
@@ -2047,7 +2135,7 @@ export function OrdersSandbox() {
           ],
           existingOrderId: o.id,
           score: 50,
-        })
+        });
       } else if ((o.pricePerKm ?? 0) > 0 && (o.pricePerKm ?? 0) < 30) {
         proposals.push({
           id: `profit_boost:${o.id}:low_ppk`,
@@ -2055,31 +2143,33 @@ export function OrdersSandbox() {
           status: "open",
           title: "Низкая цена за км",
           subtitle: `${o.pricePerKm} ₽/км • ${o.routeFrom?.split(",")[0]} → ${o.routeTo?.split(",")[0]}`,
-          reasons: ["Проверьте возможность поднять ставку или подобрать догруз/сборку."],
+          reasons: [
+            "Проверьте возможность поднять ставку или подобрать догруз/сборку.",
+          ],
           existingOrderId: o.id,
           score: 45,
-        })
+        });
       }
     }
 
     // 3) bundle — сгруппировать похожие направления на холсте
-    const byCorridor = new Map<string, OrderItem[]>()
+    const byCorridor = new Map<string, OrderItem[]>();
     for (const o of canvasOrders) {
-      const from = normalizeCity(o.routeFrom)
-      const to = normalizeCity(o.routeTo)
-      if (!from || !to) continue
-      const key = `${from}→${to}`
-      const arr = byCorridor.get(key) ?? []
-      arr.push(o)
-      byCorridor.set(key, arr)
+      const from = normalizeCity(o.routeFrom);
+      const to = normalizeCity(o.routeTo);
+      if (!from || !to) continue;
+      const key = `${from}→${to}`;
+      const arr = byCorridor.get(key) ?? [];
+      arr.push(o);
+      byCorridor.set(key, arr);
     }
 
     for (const [key, list] of byCorridor.entries()) {
-      const ungrouped = list.filter((o: any) => !o.groupId)
-      if (ungrouped.length < 2) continue
+      const ungrouped = list.filter((o: any) => !o.groupId);
+      if (ungrouped.length < 2) continue;
 
-      const totalWeight = ungrouped.reduce((s: any, o: any) => s + o.weight, 0)
-      const totalPrice = ungrouped.reduce((s: any, o: any) => s + o.price, 0)
+      const totalWeight = ungrouped.reduce((s: any, o: any) => s + o.weight, 0);
+      const totalPrice = ungrouped.reduce((s: any, o: any) => s + o.price, 0);
 
       proposals.push({
         id: `bundle:${key}`,
@@ -2092,7 +2182,7 @@ export function OrdersSandbox() {
         ],
         orderIds: ungrouped.map((o: any) => o.id),
         score: 65,
-      })
+      });
     }
 
     // 4) dogruz — кандидаты из ATI под текущий маршрут
@@ -2100,57 +2190,58 @@ export function OrdersSandbox() {
       const candidates = atiOrders
         .filter((a: any) => !usedAtiIds.has(a.id))
         .map((a: any) => {
-          const fromCity = normalizeCity(a.from)
-          const toCity = normalizeCity(a.to)
+          const fromCity = normalizeCity(a.from);
+          const toCity = normalizeCity(a.to);
 
-          const pricePerKm = a.distance > 0 && a.price > 0 ? Math.round(a.price / a.distance) : 0
+          const pricePerKm =
+            a.distance > 0 && a.price > 0
+              ? Math.round(a.price / a.distance)
+              : 0;
 
-          let score = 0
-          const reasons: string[] = []
+          let score = 0;
+          const reasons: string[] = [];
 
           if (fromCity && routeCities.has(fromCity)) {
-            score += 4
-            reasons.push("Погрузка на вашем коридоре")
+            score += 4;
+            reasons.push("Погрузка на вашем коридоре");
           }
           if (toCity && routeCities.has(toCity)) {
-            score += 4
-            reasons.push("Выгрузка на вашем коридоре")
+            score += 4;
+            reasons.push("Выгрузка на вашем коридоре");
           }
 
           if (pricePerKm > 0) {
             if (pricePerKm >= Math.max(30, routeCalculation.pricePerKm)) {
-              score += 2
-              reasons.push(`Экономика: ${pricePerKm} ₽/км`)
+              score += 2;
+              reasons.push(`Экономика: ${pricePerKm} ₽/км`);
             } else if (pricePerKm < 25) {
-              score -= 1
-              reasons.push(`Ниже среднего: ${pricePerKm} ₽/км`)
+              score -= 1;
+              reasons.push(`Ниже среднего: ${pricePerKm} ₽/км`);
             }
           }
 
           if (availableCapacityKg != null) {
             if (a.weight <= availableCapacityKg) {
-              score += 3
+              score += 3;
               reasons.push(
                 `Влезает по ёмкости (≈ ${(availableCapacityKg / 1000).toFixed(1)}т свободно)`,
-              )
+              );
             } else {
-              score -= 6
-              reasons.push("Похоже, не влезает по ёмкости")
+              score -= 6;
+              reasons.push("Похоже, не влезает по ёмкости");
             }
           } else {
-            reasons.push("Проверьте грузоподъёмность при назначении ТС")
+            reasons.push("Проверьте грузоподъёмность при назначении ТС");
           }
 
           if (a.loadingDate) {
-            reasons.push(
-              `Дата погрузки: ${formatLocalDate(a.loadingDate)}`,
-            )
+            reasons.push(`Дата погрузки: ${formatLocalDate(a.loadingDate)}`);
           }
 
-          return { a, score, reasons, pricePerKm }
+          return { a, score, reasons, pricePerKm };
         })
         .sort((x, y) => y.score - x.score)
-        .slice(0, 10)
+        .slice(0, 10);
 
       for (const c of candidates) {
         proposals.push({
@@ -2164,19 +2255,20 @@ export function OrdersSandbox() {
           reasons: c.reasons.slice(0, 4),
           atiOrderId: c.a.id,
           score: c.score,
-        })
+        });
       }
     }
 
     // статусы: sent/hidden/snoozed
-    const now = Date.now()
+    const now = Date.now();
     return proposals.map((p: any) => {
-      if (sentProposalIds.has(p.id)) return { ...p, status: "sent" as const }
-      if (hiddenProposalIds.has(p.id)) return { ...p, status: "hidden" as const }
-      const until = snoozedUntilById[p.id]
-      if (until && until > now) return { ...p, status: "snoozed" as const }
-      return p
-    })
+      if (sentProposalIds.has(p.id)) return { ...p, status: "sent" as const };
+      if (hiddenProposalIds.has(p.id))
+        return { ...p, status: "hidden" as const };
+      const until = snoozedUntilById[p.id];
+      if (until && until > now) return { ...p, status: "snoozed" as const };
+      return p;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     atiOrders,
@@ -2191,22 +2283,22 @@ export function OrdersSandbox() {
     sentProposalIds,
     snoozedUntilById,
     timeTick,
-  ])
+  ]);
 
-  const openProposals = autoProposals.filter((p: any) => p.status === "open")
+  const openProposals = autoProposals.filter((p: any) => p.status === "open");
 
   // ==================== ОФОРМЛЕНИЕ РЕЙСА: ПОДБОР МАШИНЫ ====================
   const handleAssembleRoute = async (): Promise<void> => {
-    if (routeOrders.length === 0) return
-    setShowVehicleDialog(true)
-    setLoadingVehicles(true)
+    if (routeOrders.length === 0) return;
+    setShowVehicleDialog(true);
+    setLoadingVehicles(true);
 
     try {
       // Автопарк запрашивается при каждой попытке собрать рейс — берём из кеша,
       // чтобы диалог подбора машины открывался без ожидания
-      const data = await fetchJsonCached<any>("/api/fleet")
+      const data = await fetchJsonCached<any>("/api/fleet");
 
-      const vehiclesRaw = Array.isArray(data.vehicles) ? data.vehicles : []
+      const vehiclesRaw = Array.isArray(data.vehicles) ? data.vehicles : [];
 
       const vehicles: VehicleWithDriver[] = vehiclesRaw.map((v: any) => ({
         id: v.id,
@@ -2226,48 +2318,49 @@ export function OrdersSandbox() {
               status: v.driver.status,
             }
           : undefined,
-      }))
+      }));
 
-      setAvailableVehicles(vehicles)
+      setAvailableVehicles(vehicles);
 
-      const totalWeight = routeCalculation.totalWeight
-      const candidates = vehicles.filter((v: any) => v.status === "available" && v.capacity >= totalWeight,
-      )
+      const totalWeight = routeCalculation.totalWeight;
+      const candidates = vehicles.filter(
+        (v: any) => v.status === "available" && v.capacity >= totalWeight,
+      );
 
       if (candidates.length > 0) {
-        const best = [...candidates].sort((a, b) => a.capacity - b.capacity)[0]
-        setSelectedVehicle(best)
+        const best = [...candidates].sort((a, b) => a.capacity - b.capacity)[0];
+        setSelectedVehicle(best);
       } else {
-        setSelectedVehicle(null)
+        setSelectedVehicle(null);
       }
     } catch (e: any) {
-      console.error("Failed to load fleet:", e)
-      toast.error(e.message || "Ошибка загрузки автопарка")
-      setAvailableVehicles([])
-      setSelectedVehicle(null)
+      console.error("Failed to load fleet:", e);
+      toast.error(e.message || "Ошибка загрузки автопарка");
+      setAvailableVehicles([]);
+      setSelectedVehicle(null);
     } finally {
-      setLoadingVehicles(false)
+      setLoadingVehicles(false);
     }
-  }
+  };
 
   const confirmRoute = async (): Promise<void> => {
     if (!selectedVehicle) {
-      toast.error("Выберите машину")
-      return
+      toast.error("Выберите машину");
+      return;
     }
 
-    const fits = selectedVehicle.capacity >= routeCalculation.totalWeight
+    const fits = selectedVehicle.capacity >= routeCalculation.totalWeight;
     if (!fits) {
-      toast.error("Выбранная машина не подходит по грузоподъёмности")
-      return
+      toast.error("Выбранная машина не подходит по грузоподъёмности");
+      return;
     }
 
     if (selectedVehicle.status !== "available") {
-      toast.error("Машина сейчас занята или на ТО")
-      return
+      toast.error("Машина сейчас занята или на ТО");
+      return;
     }
 
-    setSavingRoute(true)
+    setSavingRoute(true);
 
     try {
       const res = await fetch("/api/routes", {
@@ -2279,7 +2372,10 @@ export function OrdersSandbox() {
           // заказы, которые уже есть у организации, привязываются к рейсу по id
           orderIds: routeOrders
             .map((o: any) => o.orderId)
-            .filter((value: unknown): value is string => typeof value === "string" && !!value),
+            .filter(
+              (value: unknown): value is string =>
+                typeof value === "string" && !!value,
+            ),
           // грузы без заказа (например, из живого поиска ATI) создаются на месте
           orders: routeOrders
             .filter((o: any) => !o.orderId)
@@ -2299,13 +2395,13 @@ export function OrdersSandbox() {
           totalDistance: routeCalculation.effectiveDistance,
           totalWeight: routeCalculation.totalWeight,
         }),
-      })
+      });
 
       const data = (await res.json()) as {
-        success?: boolean
-        error?: string
-        code?: string
-      }
+        success?: boolean;
+        error?: string;
+        code?: string;
+      };
 
       if (data.success) {
         // Рейс уехал из песочницы в раздел «Маршруты» — сразу это и показываем:
@@ -2323,42 +2419,51 @@ export function OrdersSandbox() {
             },
             duration: 8000,
           },
-        )
+        );
 
         updateSheet((s) => ({
           ...s,
           orders: s.orders.filter((o: any) => !o.inRouteOrder),
-          groups: s.groups.filter((g: any) => !routeOrders.some((o: any) => o.groupId === g.id)),
-        }))
+          groups: s.groups.filter(
+            (g: any) => !routeOrders.some((o: any) => o.groupId === g.id),
+          ),
+        }));
 
         // Машина занята рейсом — автопарк в кеше устарел
-        invalidateCache("/api/fleet")
-        invalidateCache("/api/routes")
+        invalidateCache("/api/fleet");
+        invalidateCache("/api/routes");
 
-        setShowVehicleDialog(false)
-        setSelectedVehicle(null)
-        setMode("select")
+        setShowVehicleDialog(false);
+        setSelectedVehicle(null);
+        setMode("select");
       } else if (data.code === "orders_not_agreed") {
         toast.error("На холст попадают только согласованные заказы", {
-          description: data.error || "Проведите согласование, затем соберите рейс снова",
+          description:
+            data.error || "Проведите согласование, затем соберите рейс снова",
           duration: 8000,
-        })
+        });
       } else {
-        toast.error(data.error || "Ошибка сохранения рейса")
+        toast.error(data.error || "Ошибка сохранения рейса");
       }
     } catch {
-      toast.error("Ошибка связи с сервером")
+      toast.error("Ошибка связи с сервером");
     } finally {
-      setSavingRoute(false)
+      setSavingRoute(false);
     }
-  }
+  };
 
   // ==================== РЕНДЕР ====================
   return (
     <TooltipProvider>
       <div className="flex h-[calc(100vh-200px)] min-h-[500px] bg-slate-950 text-white overflow-hidden rounded-xl border border-slate-800 relative select-none w-full">
-        {/* Боковая панель ATI */}
-        <div className="w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col">
+        {/* Боковая панель ATI (скрыта, если организация не работает с биржей) */}
+        <div
+          className={
+            atiEnabled
+              ? "w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col"
+              : "hidden"
+          }
+        >
           <div className="p-4 border-b border-slate-800">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
@@ -2372,7 +2477,9 @@ export function OrdersSandbox() {
                 onClick={() => void loadAtiOrders()}
                 disabled={loadingAti}
               >
-                <RefreshCw className={cn("h-3.5 w-3.5", loadingAti && "animate-spin")} />
+                <RefreshCw
+                  className={cn("h-3.5 w-3.5", loadingAti && "animate-spin")}
+                />
               </Button>
             </div>
             <p className="text-xs text-slate-500">
@@ -2391,7 +2498,10 @@ export function OrdersSandbox() {
                 <p className="text-sm">Нет грузов</p>
                 <p className="text-xs mt-1">
                   Возьмите груз в работу на странице{" "}
-                  <Link href="/search" className="text-orange-400 hover:underline">
+                  <Link
+                    href="/search"
+                    className="text-orange-400 hover:underline"
+                  >
                     «Поиск грузов»
                   </Link>
                 </p>
@@ -2399,9 +2509,9 @@ export function OrdersSandbox() {
             ) : (
               <div className="space-y-2 pr-4">
                 {atiOrders.map((order: any) => {
-                  const isUsed = usedAtiIds.has(order.id)
+                  const isUsed = usedAtiIds.has(order.id);
                   // на холст берём только согласованные заказы (канон — lib/orders/stages.ts)
-                  const canTakeToCanvas = isOrderRouteable(order.status)
+                  const canTakeToCanvas = isOrderRouteable(order.status);
 
                   return (
                     <div
@@ -2448,7 +2558,9 @@ export function OrdersSandbox() {
 
                       <button
                         type="button"
-                        onClick={() => setNegotiationOrderId(order.orderId ?? order.id)}
+                        onClick={() =>
+                          setNegotiationOrderId(order.orderId ?? order.id)
+                        }
                         className="absolute top-1 right-7 p-1 rounded hover:bg-orange-500/20 opacity-0 group-hover:opacity-100"
                         title="Согласование: переговоры, торг, лента"
                       >
@@ -2460,24 +2572,29 @@ export function OrdersSandbox() {
                         onClick={() => {
                           if (isUsed) {
                             const existing = activeSheet.orders.find(
-                              (o: any) => o.orderId === order.id || o.atiCacheId === order.id,
-                            )
+                              (o: any) =>
+                                o.orderId === order.id ||
+                                o.atiCacheId === order.id,
+                            );
                             if (existing) {
-                              setHighlightOrderId(existing.id)
-                              window.setTimeout(() => setHighlightOrderId(null), 2500)
+                              setHighlightOrderId(existing.id);
+                              window.setTimeout(
+                                () => setHighlightOrderId(null),
+                                2500,
+                              );
                             }
-                            toast.message("Этот груз уже на холсте")
-                            return
+                            toast.message("Этот груз уже на холсте");
+                            return;
                           }
                           if (!canTakeToCanvas) {
                             toast.message("Заказ ещё не согласован", {
                               description:
                                 "Откройте карточку заказа и проведите согласование — тогда его можно взять в рейс",
                               duration: 6000,
-                            })
-                            return
+                            });
+                            return;
                           }
-                          addOrderFromAti(order)
+                          addOrderFromAti(order);
                         }}
                       >
                         <div className="flex items-center gap-1.5 mb-1.5 pr-4">
@@ -2498,7 +2615,9 @@ export function OrdersSandbox() {
                         {order.phone && (
                           <div className="flex items-center gap-1 text-[10px] text-emerald-400 mb-1.5">
                             <Phone className="h-3 w-3" />
-                            <span className="font-mono truncate">{order.phone}</span>
+                            <span className="font-mono truncate">
+                              {order.phone}
+                            </span>
                           </div>
                         )}
                         <div className="flex items-center justify-between text-[11px]">
@@ -2509,12 +2628,14 @@ export function OrdersSandbox() {
                             variant="outline"
                             className="text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
                           >
-                            {order.price > 0 ? `${(order.price / 1000).toFixed(0)}к` : "Договорная"}
+                            {order.price > 0
+                              ? `${(order.price / 1000).toFixed(0)}к`
+                              : "Договорная"}
                           </Badge>
                         </div>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             )}
@@ -2531,9 +2652,9 @@ export function OrdersSandbox() {
                     <button
                       type="button"
                       onClick={() => {
-                        setMode("select")
-                        setConnectingFrom(null)
-                        setActiveGroupId(null)
+                        setMode("select");
+                        setConnectingFrom(null);
+                        setActiveGroupId(null);
                       }}
                       className={cn(
                         "px-3 py-1.5 rounded-md flex items-center gap-1.5 text-sm",
@@ -2553,8 +2674,8 @@ export function OrdersSandbox() {
                     <button
                       type="button"
                       onClick={() => {
-                        setMode("connect")
-                        setActiveGroupId(null)
+                        setMode("connect");
+                        setActiveGroupId(null);
                       }}
                       className={cn(
                         "px-3 py-1.5 rounded-md flex items-center gap-1.5 text-sm",
@@ -2574,8 +2695,8 @@ export function OrdersSandbox() {
                     <button
                       type="button"
                       onClick={() => {
-                        setMode("group")
-                        setShowCreateGroupDialog(true)
+                        setMode("group");
+                        setShowCreateGroupDialog(true);
                       }}
                       className={cn(
                         "px-3 py-1.5 rounded-md flex items-center gap-1.5 text-sm",
@@ -2588,15 +2709,17 @@ export function OrdersSandbox() {
                       Группа
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>Объединить грузы в сборный рейс</TooltipContent>
+                  <TooltipContent>
+                    Объединить грузы в сборный рейс
+                  </TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
                       onClick={() => {
-                        setMode("route")
-                        setActiveGroupId(null)
+                        setMode("route");
+                        setActiveGroupId(null);
                       }}
                       className={cn(
                         "px-3 py-1.5 rounded-md flex items-center gap-1.5 text-sm",
@@ -2612,7 +2735,10 @@ export function OrdersSandbox() {
                   <TooltipContent>Собрать маршрут</TooltipContent>
                 </Tooltip>
               </div>
-              <Separator orientation="vertical" className="h-6 bg-slate-700 mx-1" />
+              <Separator
+                orientation="vertical"
+                className="h-6 bg-slate-700 mx-1"
+              />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -2648,7 +2774,9 @@ export function OrdersSandbox() {
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
               <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 animate-pulse">
                 <Info className="h-4 w-4" />
-                {connectingFrom ? "Кликните на вторую карточку" : "Кликните на первую карточку"}
+                {connectingFrom
+                  ? "Кликните на вторую карточку"
+                  : "Кликните на первую карточку"}
               </div>
             </div>
           )}
@@ -2668,8 +2796,8 @@ export function OrdersSandbox() {
                 <button
                   type="button"
                   onClick={() => {
-                    setMode("select")
-                    setActiveGroupId(null)
+                    setMode("select");
+                    setActiveGroupId(null);
                   }}
                   className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs"
                 >
@@ -2689,11 +2817,13 @@ export function OrdersSandbox() {
                 mode === "group" && "bg-purple-950/20",
               )}
               style={{
-                backgroundImage: "radial-gradient(circle, #334155 1px, transparent 1px)",
+                backgroundImage:
+                  "radial-gradient(circle, #334155 1px, transparent 1px)",
                 backgroundSize: "24px 24px",
               }}
               onClick={() => {
-                if (mode === "connect" && connectingFrom) setConnectingFrom(null)
+                if (mode === "connect" && connectingFrom)
+                  setConnectingFrom(null);
               }}
             >
               <svg
@@ -2716,7 +2846,9 @@ export function OrdersSandbox() {
               </svg>
 
               {activeSheet.groups.map((group: any) => {
-                const groupOrders = activeSheet.orders.filter((o: any) => o.groupId === group.id)
+                const groupOrders = activeSheet.orders.filter(
+                  (o: any) => o.groupId === group.id,
+                );
                 return (
                   <GroupContainer
                     key={group.id}
@@ -2724,7 +2856,7 @@ export function OrdersSandbox() {
                     orders={groupOrders}
                     onRemoveGroup={() => removeGroup(group.id)}
                   />
-                )
+                );
               })}
 
               {activeSheet.orders.map((order: any) => (
@@ -2736,14 +2868,18 @@ export function OrdersSandbox() {
                   isConnectionStart={connectingFrom === order.id}
                   isHighlighted={highlightOrderId === order.id}
                   allOrders={activeSheet.orders}
-                  group={activeSheet.groups.find((g: any) => g.id === order.groupId)}
+                  group={activeSheet.groups.find(
+                    (g: any) => g.id === order.groupId,
+                  )}
                   attachedNotes={attachedNotesByOrderId.get(order.id) ?? []}
                   onDoubleClick={() => setSelectedOrderForEdit(order)}
                   onConnectStart={() => handleConnectStart(order.id)}
                   onConnectEnd={() => handleConnectEnd(order.id)}
                   onRemove={() => removeOrder(order.id)}
                   onRouteToggle={() => toggleOrderInRoute(order.id)}
-                  onSetRoutePosition={(pos) => setOrderRoutePosition(order.id, pos)}
+                  onSetRoutePosition={(pos) =>
+                    setOrderRoutePosition(order.id, pos)
+                  }
                   onSendDocuments={() => setSelectedOrderForDocs(order)}
                   onAddToGroup={() => addOrderToGroup(order.id)}
                   onRemoveFromGroup={() => removeOrderFromGroup(order.id)}
@@ -2763,15 +2899,18 @@ export function OrdersSandbox() {
                   />
                 ))}
 
-              {activeSheet.orders.length === 0 && activeSheet.notes.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center text-slate-600">
-                    <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />
-                    <p className="text-lg mb-2">Холст пуст</p>
-                    <p className="text-sm">Добавьте заказы из панели ATI слева</p>
+              {activeSheet.orders.length === 0 &&
+                activeSheet.notes.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center text-slate-600">
+                      <Package className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                      <p className="text-lg mb-2">Холст пуст</p>
+                      <p className="text-sm">
+                        Добавьте заказы из панели ATI слева
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           </DndContext>
 
@@ -2788,17 +2927,18 @@ export function OrdersSandbox() {
                       variant="outline"
                       className="text-purple-400 border-purple-500/30"
                     >
-                      <Layers className="h-3 w-3 mr-1" />
-                      С группами
+                      <Layers className="h-3 w-3 mr-1" />С группами
                     </Badge>
                   )}
                 </div>
                 <div className="space-y-2">
                   {routeOrders.map((order: any, idx: any) => {
-                    const group = activeSheet.groups.find((g: any) => g.id === order.groupId)
+                    const group = activeSheet.groups.find(
+                      (g: any) => g.id === order.groupId,
+                    );
                     const groupColor = group
                       ? GROUP_COLORS.find((c: any) => c.id === group.color)
-                      : null
+                      : null;
 
                     return (
                       <div
@@ -2851,7 +2991,7 @@ export function OrdersSandbox() {
                           <X className="h-4 w-4 text-slate-400 hover:text-red-400" />
                         </button>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               </div>
@@ -2915,19 +3055,28 @@ export function OrdersSandbox() {
                           </span>
                           <div className="text-right">
                             <div className="text-sm font-medium text-slate-100">
-                              {formatEtaDuration(etaPreview.durationWithTrafficSec)}
+                              {formatEtaDuration(
+                                etaPreview.durationWithTrafficSec,
+                              )}
                             </div>
                             <div className="text-[10px] text-slate-500">
-                              план: {formatEtaDuration(etaPreview.durationBaseSec)}
+                              план:{" "}
+                              {formatEtaDuration(etaPreview.durationBaseSec)}
                             </div>
                           </div>
                         </div>
 
                         <div className="flex justify-between items-start">
-                          <span className="text-slate-400">Прогноз расходов</span>
+                          <span className="text-slate-400">
+                            Прогноз расходов
+                          </span>
                           <div className="text-right text-[11px] text-slate-300">
-                            <div>Топливо: {etaPreview.fuelCost.toLocaleString()} ₽</div>
-                            <div>Платные: {etaPreview.tollsCost.toLocaleString()} ₽</div>
+                            <div>
+                              Топливо: {etaPreview.fuelCost.toLocaleString()} ₽
+                            </div>
+                            <div>
+                              Платные: {etaPreview.tollsCost.toLocaleString()} ₽
+                            </div>
                             <div className="font-medium">
                               Итого: {etaPreview.totalCost.toLocaleString()} ₽
                             </div>
@@ -2953,7 +3102,8 @@ export function OrdersSandbox() {
                             {etaPreview.riskLevel === "low" && "Низкий"}
                             {etaPreview.riskLevel === "medium" && "Средний"}
                             {etaPreview.riskLevel === "high" && "Высокий"}
-                            {etaPreview.riskLevel === "critical" && "Критический"}
+                            {etaPreview.riskLevel === "critical" &&
+                              "Критический"}
                             <span className="ml-1 opacity-80">
                               {Math.round(etaPreview.delayProbability)}%
                             </span>
@@ -3016,14 +3166,18 @@ export function OrdersSandbox() {
               </div>
               {!autoPanelCollapsed && (
                 <div className="min-w-0">
-                  <div className="font-semibold text-white">Автопредложения</div>
+                  <div className="font-semibold text-white">
+                    Автопредложения
+                  </div>
                   <div className="text-xs text-slate-500">
                     {openProposals.length} активных • рынок идей
                   </div>
                 </div>
               )}
               {autoPanelCollapsed && (
-                <div className="text-[10px] text-slate-400">{openProposals.length}</div>
+                <div className="text-[10px] text-slate-400">
+                  {openProposals.length}
+                </div>
               )}
             </button>
 
@@ -3103,11 +3257,13 @@ export function OrdersSandbox() {
                         "reroute",
                       ] as AutoProposalType[]
                     ).map((type: any) => {
-                      const items = openProposals.filter((p: any) => p.type === type)
-                      if (items.length === 0) return null
+                      const items = openProposals.filter(
+                        (p: any) => p.type === type,
+                      );
+                      if (items.length === 0) return null;
 
-                      const collapsed = !!(collapsedProposalTypes as any)[type]
-                      const meta = (AUTOPROPOSAL_TYPE_META as any)[type]
+                      const collapsed = !!(collapsedProposalTypes as any)[type];
+                      const meta = (AUTOPROPOSAL_TYPE_META as any)[type];
 
                       return (
                         <div
@@ -3153,10 +3309,12 @@ export function OrdersSandbox() {
                               {items.map((p: any) => {
                                 const canAddFromAti =
                                   p.atiOrderId &&
-                                  atiOrders.some((a: any) => a.id === p.atiOrderId)
+                                  atiOrders.some(
+                                    (a: any) => a.id === p.atiOrderId,
+                                  );
                                 const isAlreadyOnCanvas = p.atiOrderId
                                   ? usedAtiIds.has(p.atiOrderId)
-                                  : false
+                                  : false;
 
                                 return (
                                   <div
@@ -3187,12 +3345,19 @@ export function OrdersSandbox() {
 
                                     {p.reasons && p.reasons.length > 0 && (
                                       <ul className="mt-2 space-y-1 text-[11px] text-slate-400">
-                                        {p.reasons.slice(0, 4).map((r: any, idx: any) => (
-                                          <li key={idx} className="flex gap-2">
-                                            <span className="mt-[6px] h-1 w-1 rounded-full bg-slate-600 flex-shrink-0" />
-                                            <span className="min-w-0">{r}</span>
-                                          </li>
-                                        ))}
+                                        {p.reasons
+                                          .slice(0, 4)
+                                          .map((r: any, idx: any) => (
+                                            <li
+                                              key={idx}
+                                              className="flex gap-2"
+                                            >
+                                              <span className="mt-[6px] h-1 w-1 rounded-full bg-slate-600 flex-shrink-0" />
+                                              <span className="min-w-0">
+                                                {r}
+                                              </span>
+                                            </li>
+                                          ))}
                                       </ul>
                                     )}
 
@@ -3204,26 +3369,38 @@ export function OrdersSandbox() {
                                             className="h-8 bg-slate-200 text-slate-950 hover:bg-white"
                                             disabled={!canAddFromAti}
                                             onClick={() => {
-                                              const ati = atiOrders.find((a: any) => a.id === p.atiOrderId,
-                                              )
-                                              if (!ati) return
+                                              const ati = atiOrders.find(
+                                                (a: any) =>
+                                                  a.id === p.atiOrderId,
+                                              );
+                                              if (!ati) return;
 
                                               if (isAlreadyOnCanvas) {
-                                                const existing = activeSheet.orders.find((o: any) => o.atiCacheId === ati.id,
-                                                )
+                                                const existing =
+                                                  activeSheet.orders.find(
+                                                    (o: any) =>
+                                                      o.atiCacheId === ati.id,
+                                                  );
                                                 if (existing) {
-                                                  setHighlightOrderId(existing.id)
+                                                  setHighlightOrderId(
+                                                    existing.id,
+                                                  );
                                                   window.setTimeout(
-                                                    () => setHighlightOrderId(null),
+                                                    () =>
+                                                      setHighlightOrderId(null),
                                                     2500,
-                                                  )
+                                                  );
                                                 }
-                                                toast.message("Этот груз уже на холсте")
-                                                return
+                                                toast.message(
+                                                  "Этот груз уже на холсте",
+                                                );
+                                                return;
                                               }
 
-                                              addOrderFromAti(ati)
-                                              toast.success("Добавлено в холст")
+                                              addOrderFromAti(ati);
+                                              toast.success(
+                                                "Добавлено в холст",
+                                              );
                                             }}
                                           >
                                             В холст
@@ -3234,13 +3411,14 @@ export function OrdersSandbox() {
                                             variant="secondary"
                                             className="h-8"
                                             onClick={() => {
-                                              markSent(p.id, true)
-                                              pushUndo("Отправлено на подтверждение", () =>
-                                                markSent(p.id, false),
-                                              )
+                                              markSent(p.id, true);
+                                              pushUndo(
+                                                "Отправлено на подтверждение",
+                                                () => markSent(p.id, false),
+                                              );
                                               toast.success(
                                                 "Отправлено логисту на подтверждение (MVP)",
-                                              )
+                                              );
                                             }}
                                           >
                                             <Send className="h-4 w-4 mr-2" />
@@ -3257,42 +3435,55 @@ export function OrdersSandbox() {
                                             variant="secondary"
                                             className="h-8"
                                             onClick={() => {
-                                              const ids = p.orderIds ?? []
-                                              const existingOrders = activeSheet.orders.filter((o: any) =>
-                                                ids.includes(o.id),
-                                              )
-                                              if (existingOrders.length < 2) return
+                                              const ids = p.orderIds ?? [];
+                                              const existingOrders =
+                                                activeSheet.orders.filter(
+                                                  (o: any) =>
+                                                    ids.includes(o.id),
+                                                );
+                                              if (existingOrders.length < 2)
+                                                return;
 
                                               const name = `Bundle: ${
-                                                existingOrders[0].routeFrom?.split(",")[0]
+                                                existingOrders[0].routeFrom?.split(
+                                                  ",",
+                                                )[0]
                                               } → ${
-                                                existingOrders[0].routeTo?.split(",")[0]
-                                              } (${existingOrders.length})`
+                                                existingOrders[0].routeTo?.split(
+                                                  ",",
+                                                )[0]
+                                              } (${existingOrders.length})`;
 
-                                              const newGroupId = `group-${Date.now()}`
+                                              const newGroupId = `group-${Date.now()}`;
                                               const newGroup: OrderGroup = {
                                                 id: newGroupId,
                                                 name,
                                                 color: "purple",
-                                                orderIds: existingOrders.map((o: any) => o.id),
-                                              }
+                                                orderIds: existingOrders.map(
+                                                  (o: any) => o.id,
+                                                ),
+                                              };
 
                                               updateSheet((s) => ({
                                                 ...s,
                                                 groups: [...s.groups, newGroup],
-                                                orders: s.orders.map((o: any) =>
-                                                  ids.includes(o.id)
-                                                    ? { ...o, groupId: newGroupId }
-                                                    : o,
+                                                orders: s.orders.map(
+                                                  (o: any) =>
+                                                    ids.includes(o.id)
+                                                      ? {
+                                                          ...o,
+                                                          groupId: newGroupId,
+                                                        }
+                                                      : o,
                                                 ),
-                                              }))
+                                              }));
 
-                                              toast.success("Группа создана")
-                                              setHidden(p.id, true)
+                                              toast.success("Группа создана");
+                                              setHidden(p.id, true);
                                               pushUndo(
                                                 "Группа создана (предложение скрыто)",
                                                 () => setHidden(p.id, false),
-                                              )
+                                              );
                                             }}
                                           >
                                             <Layers className="h-4 w-4 mr-2" />
@@ -3308,10 +3499,12 @@ export function OrdersSandbox() {
                                             variant="secondary"
                                             className="h-8"
                                             onClick={() => {
-                                              const o = activeSheet.orders.find((x: any) => x.id === p.existingOrderId,
-                                              )
-                                              if (!o) return
-                                              setSelectedOrderForEdit(o)
+                                              const o = activeSheet.orders.find(
+                                                (x: any) =>
+                                                  x.id === p.existingOrderId,
+                                              );
+                                              if (!o) return;
+                                              setSelectedOrderForEdit(o);
                                             }}
                                           >
                                             <Eye className="h-4 w-4 mr-2" />
@@ -3320,7 +3513,8 @@ export function OrdersSandbox() {
                                         )}
 
                                       {p.type === "vehicle_match" &&
-                                        p.id === "vehicle_match:need_capacity" && (
+                                        p.id ===
+                                          "vehicle_match:need_capacity" && (
                                           <Button
                                             size="sm"
                                             variant="secondary"
@@ -3343,12 +3537,15 @@ export function OrdersSandbox() {
                                         variant="ghost"
                                         className="h-8 text-slate-400 hover:text-slate-100"
                                         onClick={() => {
-                                          snooze(p.id, AUTOPROPOSALS_SNOOZE_MINUTES)
+                                          snooze(
+                                            p.id,
+                                            AUTOPROPOSALS_SNOOZE_MINUTES,
+                                          );
                                           pushUndo(
                                             `Отложено на ${AUTOPROPOSALS_SNOOZE_MINUTES} мин`,
                                             () => unsnooze(p.id),
-                                          )
-                                          toast.message("Предложение отложено")
+                                          );
+                                          toast.message("Предложение отложено");
                                         }}
                                       >
                                         <Clock className="h-4 w-4 mr-2" />
@@ -3360,10 +3557,10 @@ export function OrdersSandbox() {
                                         variant="ghost"
                                         className="h-8 text-slate-400 hover:text-red-300"
                                         onClick={() => {
-                                          setHidden(p.id, true)
+                                          setHidden(p.id, true);
                                           pushUndo("Предложение скрыто", () =>
                                             setHidden(p.id, false),
-                                          )
+                                          );
                                         }}
                                       >
                                         <X className="h-4 w-4 mr-2" />
@@ -3371,12 +3568,12 @@ export function OrdersSandbox() {
                                       </Button>
                                     </div>
                                   </div>
-                                )
+                                );
                               })}
                             </div>
                           )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 )}
@@ -3393,9 +3590,9 @@ export function OrdersSandbox() {
                       variant="secondary"
                       className="h-7"
                       onClick={() => {
-                        undoBanner.undo()
-                        setUndoBanner(null)
-                        toast.message("Действие отменено")
+                        undoBanner.undo();
+                        setUndoBanner(null);
+                        toast.message("Действие отменено");
                       }}
                     >
                       <Undo2 className="h-4 w-4 mr-2" />
@@ -3435,8 +3632,8 @@ export function OrdersSandbox() {
                   // pointer-events/scroll старого диалога снимается после
                   // установки нового, и страница «залипает» без кликов.
                   // Сначала закрываем диалог, панель согласования — следующим тиком.
-                  setSelectedOrderForEdit(null)
-                  window.setTimeout(() => setNegotiationOrderId(orderId), 0)
+                  setSelectedOrderForEdit(null);
+                  window.setTimeout(() => setNegotiationOrderId(orderId), 0);
                 }}
               />
             ) : null}
@@ -3462,24 +3659,29 @@ export function OrdersSandbox() {
                 rows={4}
               />
               <div className="flex gap-2">
-                {(Object.keys(NOTE_COLORS) as NoteItem["color"][]).map((color: any) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setNewNoteColor(color)}
-                    className={cn(
-                      "w-8 h-8 rounded-lg border-2",
-                      (NOTE_COLORS as any)[color].split(" ")[0],
-                      newNoteColor === color
-                        ? "border-white scale-110"
-                        : "border-transparent",
-                    )}
-                  />
-                ))}
+                {(Object.keys(NOTE_COLORS) as NoteItem["color"][]).map(
+                  (color: any) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setNewNoteColor(color)}
+                      className={cn(
+                        "w-8 h-8 rounded-lg border-2",
+                        (NOTE_COLORS as any)[color].split(" ")[0],
+                        newNoteColor === color
+                          ? "border-white scale-110"
+                          : "border-transparent",
+                      )}
+                    />
+                  ),
+                )}
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setShowAddNoteDialog(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowAddNoteDialog(false)}
+              >
                 Отмена
               </Button>
               <Button onClick={addNote} disabled={!newNoteText.trim()}>
@@ -3489,7 +3691,10 @@ export function OrdersSandbox() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={showCreateGroupDialog} onOpenChange={setShowCreateGroupDialog}>
+        <Dialog
+          open={showCreateGroupDialog}
+          onOpenChange={setShowCreateGroupDialog}
+        >
           <DialogContent className="bg-slate-900 border-slate-700 text-white sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -3536,7 +3741,10 @@ export function OrdersSandbox() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setShowCreateGroupDialog(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowCreateGroupDialog(false)}
+              >
                 Отмена
               </Button>
               <Button
@@ -3558,8 +3766,8 @@ export function OrdersSandbox() {
                 Подбор машины
               </DialogTitle>
               <DialogDescription className="text-slate-400">
-                Требуется: {(routeCalculation.totalWeight / 1000).toFixed(1)} т •{" "}
-                {routeCalculation.effectiveDistance} км
+                Требуется: {(routeCalculation.totalWeight / 1000).toFixed(1)} т
+                • {routeCalculation.effectiveDistance} км
                 {routeCalculation.savedDistance > 0 && (
                   <span className="text-green-400 ml-2">
                     (экономия {routeCalculation.savedDistance} км)
@@ -3580,38 +3788,38 @@ export function OrdersSandbox() {
               ) : (
                 [...availableVehicles]
                   .sort((a, b) => {
-                    const aAvail = a.status === "available"
-                    const bAvail = b.status === "available"
-                    if (aAvail !== bAvail) return aAvail ? -1 : 1
+                    const aAvail = a.status === "available";
+                    const bAvail = b.status === "available";
+                    if (aAvail !== bAvail) return aAvail ? -1 : 1;
 
                     const aTime =
                       a.nextAvailableAt &&
                       !Number.isNaN(new Date(a.nextAvailableAt).getTime())
                         ? new Date(a.nextAvailableAt).getTime()
-                        : Number.POSITIVE_INFINITY
+                        : Number.POSITIVE_INFINITY;
                     const bTime =
                       b.nextAvailableAt &&
                       !Number.isNaN(new Date(b.nextAvailableAt).getTime())
                         ? new Date(b.nextAvailableAt).getTime()
-                        : Number.POSITIVE_INFINITY
-                    return aTime - bTime
+                        : Number.POSITIVE_INFINITY;
+                    return aTime - bTime;
                   })
                   .map((v: any) => {
-                    const fits = v.capacity >= routeCalculation.totalWeight
-                    const isAvailable = v.status === "available"
+                    const fits = v.capacity >= routeCalculation.totalWeight;
+                    const isAvailable = v.status === "available";
                     const nextAvailable =
                       v.nextAvailableAt &&
                       !Number.isNaN(new Date(v.nextAvailableAt).getTime())
                         ? new Date(v.nextAvailableAt)
-                        : null
+                        : null;
 
-                    const disabled = !fits || !isAvailable
+                    const disabled = !fits || !isAvailable;
 
                     return (
                       <div
                         key={v.id}
                         onClick={() => {
-                          if (!disabled) setSelectedVehicle(v)
+                          if (!disabled) setSelectedVehicle(v);
                         }}
                         className={cn(
                           "p-4 rounded-lg border cursor-pointer transition-all",
@@ -3662,12 +3870,15 @@ export function OrdersSandbox() {
                           <div className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" />
                             {nextAvailable
-                              ? `Занята до ${nextAvailable.toLocaleString("ru-RU", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}`
+                              ? `Занята до ${nextAvailable.toLocaleString(
+                                  "ru-RU",
+                                  {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}`
                               : "Сейчас занята"}
                           </div>
                         )}
@@ -3678,7 +3889,7 @@ export function OrdersSandbox() {
                           </div>
                         )}
                       </div>
-                    )
+                    );
                   })
               )}
             </div>
@@ -3686,12 +3897,16 @@ export function OrdersSandbox() {
               {selectedVehicle && !selectedVehicle.driver && (
                 <p className="flex items-start gap-2 text-xs text-yellow-500 text-left">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                  У машины нет водителя. Рейс создастся, но водитель его не увидит —
-                  назначьте водителя в карточке рейса на странице «Маршруты».
+                  У машины нет водителя. Рейс создастся, но водитель его не
+                  увидит — назначьте водителя в карточке рейса на странице
+                  «Маршруты».
                 </p>
               )}
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setShowVehicleDialog(false)}>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowVehicleDialog(false)}
+                >
                   Отмена
                 </Button>
                 <Button
@@ -3718,10 +3933,13 @@ export function OrdersSandbox() {
         <Sheet
           open={negotiationOrderId !== null}
           onOpenChange={(open) => {
-            if (!open) setNegotiationOrderId(null)
+            if (!open) setNegotiationOrderId(null);
           }}
         >
-          <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-xl overflow-y-auto"
+          >
             <SheetHeader className="text-left">
               <SheetTitle>Согласование заказа</SheetTitle>
               <SheetDescription>
@@ -3748,7 +3966,7 @@ export function OrdersSandbox() {
         </Sheet>
       </div>
     </TooltipProvider>
-  )
+  );
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ ====================
@@ -3756,21 +3974,24 @@ function SendDocumentsDialog({
   order,
   onClose,
 }: {
-  order: OrderItem | null
-  onClose: () => void
+  order: OrderItem | null;
+  onClose: () => void;
 }) {
-  const [selectedDocs, setSelectedDocs] = useState<string[]>(["tn", "contract"])
-  const [isSending, setIsSending] = useState(false)
+  const [selectedDocs, setSelectedDocs] = useState<string[]>([
+    "tn",
+    "contract",
+  ]);
+  const [isSending, setIsSending] = useState(false);
 
   const handleSend = async (): Promise<void> => {
-    setIsSending(true)
+    setIsSending(true);
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, 1000)
-    })
-    setIsSending(false)
-    onClose()
-    toast.success(`Документы отправлены (${selectedDocs.length})`)
-  }
+      setTimeout(resolve, 1000);
+    });
+    setIsSending(false);
+    onClose();
+    toast.success(`Документы отправлены (${selectedDocs.length})`);
+  };
 
   return (
     <Dialog open={!!order} onOpenChange={onClose}>
@@ -3824,7 +4045,7 @@ function SendDocumentsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function OrderEditForm({
@@ -3833,13 +4054,13 @@ function OrderEditForm({
   onCancel,
   onOpenNegotiation,
 }: {
-  order: OrderItem
-  onSave: (o: OrderItem) => void
-  onCancel: () => void
+  order: OrderItem;
+  onSave: (o: OrderItem) => void;
+  onCancel: () => void;
   /** Открыть панель согласования настоящего заказа (если элемент из песочницы). */
-  onOpenNegotiation?: (orderId: string) => void
+  onOpenNegotiation?: (orderId: string) => void;
 }) {
-  const [formData, setFormData] = useState<OrderItem>(order)
+  const [formData, setFormData] = useState<OrderItem>(order);
 
   const handleChange = <K extends keyof OrderItem>(
     field: K,
@@ -3848,15 +4069,15 @@ function OrderEditForm({
     setFormData((prev) => ({
       ...prev,
       [field]: value,
-    }))
-  }
+    }));
+  };
 
-  const parsedDistance = formData.distance || 0
-  const parsedPrice = formData.price || 0
+  const parsedDistance = formData.distance || 0;
+  const parsedPrice = formData.price || 0;
   const effectivePricePerKm =
-    parsedDistance > 0 ? Math.round(parsedPrice / parsedDistance) : 0
+    parsedDistance > 0 ? Math.round(parsedPrice / parsedDistance) : 0;
 
-  const displayPrice: number | "" = formData.price === 0 ? "" : formData.price
+  const displayPrice: number | "" = formData.price === 0 ? "" : formData.price;
 
   return (
     <div className="space-y-6 pb-2">
@@ -3937,21 +4158,21 @@ function OrderEditForm({
             type="number"
             value={displayPrice}
             onChange={(e) => {
-              const raw = e.target.value
+              const raw = e.target.value;
               if (raw === "") {
-                handleChange("price", 0)
-                return
+                handleChange("price", 0);
+                return;
               }
-              const parsed = parseInt(raw, 10)
-              handleChange("price", Number.isNaN(parsed) ? 0 : parsed)
+              const parsed = parseInt(raw, 10);
+              handleChange("price", Number.isNaN(parsed) ? 0 : parsed);
             }}
             className="bg-slate-800 border-slate-600 mt-1"
             placeholder="0 — договорная, введите ставку при необходимости"
           />
           {formData.price === 0 && (
             <p className="mt-1 text-[11px] text-slate-500">
-              Сейчас считается договорной. Как только узнаете ставку — введите сумму,
-              и она пойдёт в расчёт рентабельности.
+              Сейчас считается договорной. Как только узнаете ставку — введите
+              сумму, и она пойдёт в расчёт рентабельности.
             </p>
           )}
         </div>
@@ -4072,7 +4293,8 @@ function OrderEditForm({
               variant="outline"
               className={cn(
                 "px-2 py-0.5",
-                formData.status === "search" && "border-sky-500/50 text-sky-300",
+                formData.status === "search" &&
+                  "border-sky-500/50 text-sky-300",
                 formData.status === "negotiation" &&
                   "border-amber-500/50 text-amber-300",
                 formData.status === "agreed" &&
@@ -4087,7 +4309,8 @@ function OrderEditForm({
                   "border-orange-500/50 text-orange-300",
                 formData.status === "delivered" &&
                   "border-slate-500/50 text-slate-300",
-                isOrderClosed(formData.status) && "border-red-500/50 text-red-300",
+                isOrderClosed(formData.status) &&
+                  "border-red-500/50 text-red-300",
               )}
             >
               {orderStatusLabel(formData.status)}
@@ -4115,7 +4338,9 @@ function OrderEditForm({
                 className="h-7 text-slate-300 hover:bg-slate-800"
                 asChild
               >
-                <Link href={`/orders/${formData.orderId}`}>Полная карточка</Link>
+                <Link href={`/orders/${formData.orderId}`}>
+                  Полная карточка
+                </Link>
               </Button>
             </div>
           )}
@@ -4171,5 +4396,5 @@ function OrderEditForm({
         <Button onClick={() => onSave(formData)}>Сохранить</Button>
       </div>
     </div>
-  )
+  );
 }

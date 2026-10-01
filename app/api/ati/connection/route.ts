@@ -10,52 +10,63 @@
 // Живая проверка токена — POST /api/ati/connection/check (отдельно, чтобы
 // сохранение не зависело от доступности ATI.SU).
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 
-import { requireStaff } from "@/lib/auth/session"
-import { requireOrganization } from "@/lib/org"
+import { requireStaff } from "@/lib/auth/session";
+import { requireOrganization } from "@/lib/org";
 import {
   connectionStatus,
   disconnectAti,
   saveManualToken,
-} from "@/lib/ati/connection"
-import { logAudit } from "@/lib/audit"
-import { getClientIp } from "@/lib/rate-limiter"
+} from "@/lib/ati/connection";
+import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/rate-limiter";
+import { atiFeatureGate } from "@/lib/org-settings";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
+  const atiGate = await atiFeatureGate(org.organizationId);
+  if (atiGate) return atiGate;
 
-  const status = await connectionStatus(org.organizationId)
-  return NextResponse.json({ success: true, ...status })
+  const status = await connectionStatus(org.organizationId);
+  return NextResponse.json({ success: true, ...status });
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
+  const atiGate = await atiFeatureGate(org.organizationId);
+  if (atiGate) return atiGate;
 
   // Подключение затрагивает всю организацию — только админ
   if (auth.value.user.role !== "admin") {
     return NextResponse.json(
-      { success: false, error: "Подключать ATI.SU может только администратор организации" },
+      {
+        success: false,
+        error: "Подключать ATI.SU может только администратор организации",
+      },
       { status: 403 },
-    )
+    );
   }
 
-  let body: { token?: unknown }
+  let body: { token?: unknown };
   try {
-    body = await request.json()
+    body = await request.json();
   } catch {
-    return NextResponse.json({ success: false, error: "Некорректное тело запроса" }, { status: 400 })
+    return NextResponse.json(
+      { success: false, error: "Некорректное тело запроса" },
+      { status: 400 },
+    );
   }
 
-  const token = String(body.token ?? "").trim()
+  const token = String(body.token ?? "").trim();
   if (!token || token.length > 500) {
     return NextResponse.json(
       {
@@ -64,11 +75,11 @@ export async function POST(request: NextRequest) {
           "Нужен access_token ATI.SU: создайте его в разделе «Мои токены» (ati.su/developers/tokens) по client_id нашего продукта",
       },
       { status: 400 },
-    )
+    );
   }
 
   try {
-    await saveManualToken(org.organizationId, token)
+    await saveManualToken(org.organizationId, token);
     await logAudit({
       actorId: org.userId,
       actorEmail: auth.value.user?.email ?? null,
@@ -76,34 +87,39 @@ export async function POST(request: NextRequest) {
       targetType: "ati_connection",
       organizationId: org.organizationId,
       ip: getClientIp(request),
-    })
+    });
     return NextResponse.json({
       success: true,
       // токен сохранён, но ещё не проверен — предложим нажать «Проверить»
       verified: false,
-    })
+    });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error?.message || "Не удалось сохранить токен" },
       { status: 500 },
-    )
+    );
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
+  const atiGate = await atiFeatureGate(org.organizationId);
+  if (atiGate) return atiGate;
 
   if (auth.value.user.role !== "admin") {
     return NextResponse.json(
-      { success: false, error: "Отключать ATI.SU может только администратор организации" },
+      {
+        success: false,
+        error: "Отключать ATI.SU может только администратор организации",
+      },
       { status: 403 },
-    )
+    );
   }
 
-  await disconnectAti(org.organizationId)
+  await disconnectAti(org.organizationId);
   await logAudit({
     actorId: org.userId,
     actorEmail: auth.value.user?.email ?? null,
@@ -111,6 +127,6 @@ export async function DELETE(request: NextRequest) {
     targetType: "ati_connection",
     organizationId: org.organizationId,
     ip: getClientIp(request),
-  })
-  return NextResponse.json({ success: true })
+  });
+  return NextResponse.json({ success: true });
 }

@@ -1,137 +1,146 @@
-"use client"
+"use client";
 
 // components/clients/client-card-dialog.tsx
 //
 // Карточка клиента (задача 5): контакты, статистика оплат и надёжности,
 // история заказов и свежие фото по его заказам.
 
-import { useCallback, useEffect, useState } from "react"
-import { Loader2, Pencil, Phone } from "lucide-react"
-import { toast } from "sonner"
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Pencil, Phone, PackagePlus, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { orderStatusLabel } from "@/lib/orders/stages"
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { orderStatusLabel } from "@/lib/orders/stages";
+import { NewOrderDialog } from "./new-order-dialog";
 
-import { ClientFormDialog, clientToForm } from "./client-form-dialog"
+import { ClientFormDialog, clientToForm } from "./client-form-dialog";
 
 type Stats = {
-  total: number
-  delivered: number
-  cancelled: number
-  active: number
-  revenueRub: number
-  paidRub: number
-  unpaidRub: number
-  overdueRub: number
-  overdueCount: number
-  avgPaymentDays: number | null
-  reliabilityPercent: number | null
-  lastOrderAt: string | null
-}
+  total: number;
+  delivered: number;
+  cancelled: number;
+  active: number;
+  revenueRub: number;
+  paidRub: number;
+  unpaidRub: number;
+  overdueRub: number;
+  overdueCount: number;
+  avgPaymentDays: number | null;
+  reliabilityPercent: number | null;
+  lastOrderAt: string | null;
+};
 
 type CardOrder = {
-  id: string
-  status: string
-  routeFrom: string
-  routeTo: string
-  price: number | null
-  agreedPrice: number | null
-  isPaid: boolean
-  createdAt: string
-  deadline: string | null
-  routeId: string | null
-  driverName: string | null
-}
+  id: string;
+  status: string;
+  routeFrom: string;
+  routeTo: string;
+  price: number | null;
+  agreedPrice: number | null;
+  isPaid: boolean;
+  createdAt: string;
+  deadline: string | null;
+  routeId: string | null;
+  driverName: string | null;
+};
 
 type Card = {
-  client: Record<string, any>
-  stats: Stats
-  orders: CardOrder[]
-  photos: Array<{ id: string; url: string; type: string; createdAt: string }>
-}
+  client: Record<string, any>;
+  stats: Stats;
+  orders: CardOrder[];
+  photos: Array<{ id: string; url: string; type: string; createdAt: string }>;
+};
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "наличные",
   bank: "безнал",
   card: "карта",
-}
+};
 
 const VAT_LABELS: Record<string, string> = {
   none: "без НДС",
   vat20: "НДС 20%",
   vat10: "НДС 10%",
   included: "НДС включён",
-}
+};
 
 function money(value: number) {
-  return `${Math.round(value).toLocaleString("ru-RU")} ₽`
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 }
 
 function date(value: string | null | undefined) {
-  if (!value) return "—"
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return "—"
-  return parsed.toLocaleDateString("ru-RU")
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("ru-RU");
 }
 
 function reliabilityTone(percent: number | null) {
-  if (percent === null) return "secondary" as const
-  if (percent >= 90) return "default" as const
-  if (percent >= 70) return "secondary" as const
-  return "destructive" as const
+  if (percent === null) return "secondary" as const;
+  if (percent >= 90) return "default" as const;
+  if (percent >= 70) return "secondary" as const;
+  return "destructive" as const;
 }
 
 interface ClientCardDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  clientId: string | null
-  onChanged: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  clientId: string | null;
+  onChanged: () => void;
 }
 
-export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: ClientCardDialogProps) {
-  const [card, setCard] = useState<Card | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [isEditOpen, setIsEditOpen] = useState(false)
+export function ClientCardDialog({
+  open,
+  onOpenChange,
+  clientId,
+  onChanged,
+}: ClientCardDialogProps) {
+  const [card, setCard] = useState<Card | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  // «Новый заказ» и «Повторить» — заказ от клиента сразу в воронку
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+  const [repeatOrderId, setRepeatOrderId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!clientId) return
+    if (!clientId) return;
 
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const res = await fetch(`/api/clients/${clientId}`)
-      const data = await res.json().catch(() => null)
+      const res = await fetch(`/api/clients/${clientId}`);
+      const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Не удалось открыть карточку")
+        throw new Error(data?.error || "Не удалось открыть карточку");
       }
 
-      setCard(data as Card)
+      setCard(data as Card);
     } catch (e: any) {
-      setError(e?.message || "Не удалось открыть карточку")
+      setError(e?.message || "Не удалось открыть карточку");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [clientId])
+  }, [clientId]);
 
   useEffect(() => {
-    if (open && clientId) void load()
-    if (!open) setCard(null)
-  }, [open, clientId, load])
+    if (open && clientId) void load();
+    if (!open) setCard(null);
+  }, [open, clientId, load]);
 
-  const client = card?.client
-  const stats = card?.stats
+  const client = card?.client;
+  const stats = card?.stats;
 
   const contactRows: Array<[string, string | null]> = client
     ? [
@@ -141,12 +150,25 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
         ["Адрес", client.address],
         ["ИНН", client.inn],
         ["КПП", client.kpp],
-        ["Оплата", client.paymentType ? PAYMENT_LABELS[client.paymentType] ?? client.paymentType : null],
-        ["НДС", client.vatType ? VAT_LABELS[client.vatType] ?? client.vatType : null],
-        ["Отсрочка", client.deferredDays !== null ? `${client.deferredDays} дн.` : null],
+        [
+          "Оплата",
+          client.paymentType
+            ? (PAYMENT_LABELS[client.paymentType] ?? client.paymentType)
+            : null,
+        ],
+        [
+          "НДС",
+          client.vatType
+            ? (VAT_LABELS[client.vatType] ?? client.vatType)
+            : null,
+        ],
+        [
+          "Отсрочка",
+          client.deferredDays !== null ? `${client.deferredDays} дн.` : null,
+        ],
         ["Примечание", client.notes],
       ]
-    : []
+    : [];
 
   return (
     <>
@@ -165,10 +187,26 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
                 </DialogDescription>
               </div>
               {client && (
-                <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
-                  <Pencil className="mr-2 h-3.5 w-3.5" />
-                  Изменить
-                </Button>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setRepeatOrderId(null);
+                      setIsNewOrderOpen(true);
+                    }}
+                  >
+                    <PackagePlus className="mr-2 h-3.5 w-3.5" />
+                    Новый заказ
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditOpen(true)}
+                  >
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Изменить
+                  </Button>
+                </div>
               )}
             </div>
           </DialogHeader>
@@ -201,14 +239,18 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
                 </div>
                 <div className="rounded-lg border p-3">
                   <div className="text-xs text-muted-foreground">Выручка</div>
-                  <div className="text-lg font-semibold">{money(stats.revenueRub)}</div>
+                  <div className="text-lg font-semibold">
+                    {money(stats.revenueRub)}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     без отменённых заказов
                   </div>
                 </div>
                 <div className="rounded-lg border p-3">
                   <div className="text-xs text-muted-foreground">Получено</div>
-                  <div className="text-lg font-semibold text-emerald-600">{money(stats.paidRub)}</div>
+                  <div className="text-lg font-semibold text-emerald-600">
+                    {money(stats.paidRub)}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {stats.avgPaymentDays !== null
                       ? `в среднем за ${stats.avgPaymentDays} дн.`
@@ -249,14 +291,21 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
                     {client.phone}
                   </a>
                 )}
-                {client?.source === "import" && <Badge variant="outline">из импорта</Badge>}
+                {client?.source === "import" && (
+                  <Badge variant="outline">из импорта</Badge>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1 rounded-lg border p-3 text-sm">
-                  <div className="text-xs font-medium text-muted-foreground">Реквизиты и контакты</div>
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Реквизиты и контакты
+                  </div>
                   {contactRows.map(([label, value]) => (
-                    <div key={label} className="flex justify-between gap-3 text-xs">
+                    <div
+                      key={label}
+                      className="flex justify-between gap-3 text-xs"
+                    >
                       <span className="text-muted-foreground">{label}</span>
                       <span className="text-right">{value || "—"}</span>
                     </div>
@@ -264,27 +313,50 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">История заказов</div>
+                  <div className="text-xs font-medium text-muted-foreground">
+                    История заказов
+                  </div>
                   {card.orders.length === 0 ? (
                     <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                      Заказов пока нет. При импорте базы заказы привязываются к карточкам
-                      по названию клиента.
+                      Заказов пока нет. При импорте базы заказы привязываются к
+                      карточкам по названию клиента.
                     </div>
                   ) : (
                     <ScrollArea className="h-48 rounded-lg border">
                       <div className="divide-y">
                         {card.orders.map((order) => (
-                          <div key={order.id} className="p-2 text-xs">
+                          <div
+                            key={order.id}
+                            className="group/order p-2 text-xs"
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <span className="truncate font-medium">
                                 {order.routeFrom} — {order.routeTo}
                               </span>
-                              <span className="shrink-0">{money(order.agreedPrice ?? order.price ?? 0)}</span>
+                              <span className="flex shrink-0 items-center gap-1.5">
+                                <span>
+                                  {money(order.agreedPrice ?? order.price ?? 0)}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 transition-opacity group-hover/order:opacity-100"
+                                  title="Повторить заказ"
+                                  onClick={() => {
+                                    setRepeatOrderId(order.id);
+                                    setIsNewOrderOpen(true);
+                                  }}
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </Button>
+                              </span>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
                               <span>{date(order.createdAt)}</span>
                               <span>{orderStatusLabel(order.status)}</span>
-                              {order.driverName && <span>{order.driverName}</span>}
+                              {order.driverName && (
+                                <span>{order.driverName}</span>
+                              )}
                               <Badge
                                 variant={order.isPaid ? "secondary" : "outline"}
                                 className="text-[10px]"
@@ -302,7 +374,9 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
 
               {card.photos.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">Фото по заказам</div>
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Фото по заказам
+                  </div>
                   <div className="grid grid-cols-4 gap-2">
                     {card.photos.map((photo) => (
                       <a
@@ -328,17 +402,42 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
       </Dialog>
 
       {client && (
-        <ClientFormDialog
-          open={isEditOpen}
-          onOpenChange={setIsEditOpen}
-          clientId={clientId}
-          initial={clientToForm(client)}
-          onSaved={() => {
-            void load()
-            onChanged()
-          }}
-        />
+        <>
+          <NewOrderDialog
+            open={isNewOrderOpen}
+            onOpenChange={(next) => {
+              setIsNewOrderOpen(next);
+              if (!next) setRepeatOrderId(null);
+            }}
+            client={
+              client
+                ? {
+                    id: client.id,
+                    name: client.name,
+                    contactName: client.contactName,
+                    phone: client.phone,
+                    paymentType: client.paymentType,
+                    vatType: client.vatType,
+                    deferredDays: client.deferredDays,
+                  }
+                : null
+            }
+            repeatOrderId={repeatOrderId}
+            onCreated={() => void load()}
+          />
+
+          <ClientFormDialog
+            open={isEditOpen}
+            onOpenChange={setIsEditOpen}
+            clientId={clientId}
+            initial={clientToForm(client)}
+            onSaved={() => {
+              void load();
+              onChanged();
+            }}
+          />
+        </>
       )}
     </>
-  )
+  );
 }

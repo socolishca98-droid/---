@@ -16,41 +16,46 @@
 //  3. Внутри организации один груз берётся один раз: @@unique([organizationId, atiCacheId])
 //     → повторный запрос возвращает 409 и уже созданный заказ.
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server";
 
-import { prisma } from "@/lib/prisma"
-import { requireStaff } from "@/lib/auth/session"
-import { requireOrganization, scopedWhere } from "@/lib/org"
-import { linkOrderToClientByName } from "@/lib/clients/service"
-import { logAudit } from "@/lib/audit"
-import { getClientIp } from "@/lib/rate-limiter"
-import { normalizeOrderStatus, orderStageOf, orderStatusLabel } from "@/lib/orders/stages"
-import { fetchFirmContacts } from "@/lib/ati/contacts"
-import { getActiveAtiToken } from "@/lib/ati/connection"
+import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth/session";
+import { requireOrganization, scopedWhere } from "@/lib/org";
+import { linkOrderToClientByName } from "@/lib/clients/service";
+import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/rate-limiter";
+import {
+  normalizeOrderStatus,
+  orderStageOf,
+  orderStatusLabel,
+} from "@/lib/orders/stages";
+import { fetchFirmContacts } from "@/lib/ati/contacts";
+import { getActiveAtiToken } from "@/lib/ati/connection";
+import { atiFeatureGate } from "@/lib/org-settings";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 /** Груз можно взять в работу, пока он не помечен снятым/неактуальным. */
-const UNAVAILABLE_CACHE_STATUSES = ["expired", "archived"] as const
+const UNAVAILABLE_CACHE_STATUSES = ["expired", "archived"] as const;
 
 function publicOrder(order: {
-  id: string
-  status: string
-  atiCacheId: string | null
-  routeFrom: string
-  routeTo: string
-  distance: number
-  weight: number
-  price: number | null
-  agreedPrice: number | null
-  negotiationStatus: string
-  cargoType: string
-  clientName: string | null
-  clientContact: string
-  deadline: Date
-  createdAt: Date
+  id: string;
+  status: string;
+  atiCacheId: string | null;
+  routeFrom: string;
+  routeTo: string;
+  distance: number;
+  weight: number;
+  price: number | null;
+  agreedPrice: number | null;
+  negotiationStatus: string;
+  cargoType: string;
+  clientName: string | null;
+  clientContact: string;
+  deadline: Date;
+  createdAt: Date;
 }) {
-  const status = normalizeOrderStatus(order.status) ?? "search"
+  const status = normalizeOrderStatus(order.status) ?? "search";
   return {
     ...order,
     status,
@@ -58,47 +63,58 @@ function publicOrder(order: {
     statusLabel: orderStatusLabel(status),
     createdAt: order.createdAt.toISOString(),
     deadline: order.deadline.toISOString(),
-  }
+  };
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireStaff(request)
-  if (!auth.ok) return auth.response
+  const auth = await requireStaff(request);
+  if (!auth.ok) return auth.response;
 
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
+  const atiGate = await atiFeatureGate(org.organizationId);
+  if (atiGate) return atiGate;
 
-  let body: { cacheId?: unknown; fetchContacts?: unknown }
+  let body: { cacheId?: unknown; fetchContacts?: unknown };
   try {
-    body = await request.json()
+    body = await request.json();
   } catch {
-    return NextResponse.json({ success: false, error: "Некорректное тело запроса" }, { status: 400 })
+    return NextResponse.json(
+      { success: false, error: "Некорректное тело запроса" },
+      { status: 400 },
+    );
   }
 
-  const cacheId = String(body.cacheId ?? "").trim()
+  const cacheId = String(body.cacheId ?? "").trim();
   if (!cacheId || cacheId.length > 100) {
     return NextResponse.json(
-      { success: false, error: "Нужен cacheId — идентификатор груза в накопленной базе" },
+      {
+        success: false,
+        error: "Нужен cacheId — идентификатор груза в накопленной базе",
+      },
       { status: 400 },
-    )
+    );
   }
 
   try {
     // org-audit: ok — груз ищется по id, но принадлежит ли он организации
     // сессии проверяется сразу: чужая строка базы неотличима от несуществующей
-    const cache = await prisma.atiCache.findUnique({ where: { id: cacheId } })
+    const cache = await prisma.atiCache.findUnique({ where: { id: cacheId } });
     if (!cache || cache.organizationId !== org.organizationId) {
       return NextResponse.json(
         { success: false, error: "Груз в накопленной базе не найден" },
         { status: 404 },
-      )
+      );
     }
 
     if (UNAVAILABLE_CACHE_STATUSES.includes(cache.status as never)) {
       return NextResponse.json(
-        { success: false, error: "Груз снят или неактуален — взять в работу нельзя" },
+        {
+          success: false,
+          error: "Груз снят или неактуален — взять в работу нельзя",
+        },
         { status: 410 },
-      )
+      );
     }
 
     // Этот груз уже взят нашей организацией? Не плодим дубликаты.
@@ -121,7 +137,7 @@ export async function POST(request: NextRequest) {
         deadline: true,
         createdAt: true,
       },
-    })
+    });
     if (existing) {
       return NextResponse.json(
         {
@@ -131,36 +147,45 @@ export async function POST(request: NextRequest) {
           order: publicOrder(existing),
         },
         { status: 409 },
-      )
+      );
     }
 
     // Контакты добираем живым запросом к ATI только по явному флагу: это
     // обращение во внешнюю систему, по умолчанию оно не выполняется. Запрос
     // идёт с токеном ОРГАНИЗАЦИИ (её аккаунт, её лимиты); без подключения
     // контакты просто останутся пустыми.
-    let contactPhone: string | null = cache.contactPhone || null
-    let contactName: string | null = cache.contactName || null
-    let contactEmail: string | null = null
-    if (body.fetchContacts === true && cache.firmId && (!contactPhone || !contactName)) {
+    let contactPhone: string | null = cache.contactPhone || null;
+    let contactName: string | null = cache.contactName || null;
+    let contactEmail: string | null = null;
+    if (
+      body.fetchContacts === true &&
+      cache.firmId &&
+      (!contactPhone || !contactName)
+    ) {
       try {
-        const ati = await getActiveAtiToken(org.organizationId)
-        const fetched = await fetchFirmContacts(cache.firmId, ati.ok ? ati.token : null, org.organizationId)
-        contactPhone = contactPhone || fetched.phone || null
-        contactName = contactName || fetched.name || null
-        contactEmail = fetched.email || null
+        const ati = await getActiveAtiToken(org.organizationId);
+        const fetched = await fetchFirmContacts(
+          cache.firmId,
+          ati.ok ? ati.token : null,
+          org.organizationId,
+        );
+        contactPhone = contactPhone || fetched.phone || null;
+        contactName = contactName || fetched.name || null;
+        contactEmail = fetched.email || null;
         if (contactPhone || contactName) {
           await prisma.atiCache.updateMany({
             where: { id: cache.id, organizationId: org.organizationId },
             data: { contactPhone, contactName },
-          })
+          });
         }
       } catch (error) {
         // живой ATI недоступен — груз всё равно можно взять в работу
-        console.error("[orders/from-cache] контакты не получены:", error)
+        console.error("[orders/from-cache] контакты не получены:", error);
       }
     }
 
-    const loadingDate = cache.loadingDate instanceof Date ? cache.loadingDate : null
+    const loadingDate =
+      cache.loadingDate instanceof Date ? cache.loadingDate : null;
     const created = await prisma.order.create({
       data: {
         organizationId: org.organizationId,
@@ -207,7 +232,7 @@ export async function POST(request: NextRequest) {
         deadline: true,
         createdAt: true,
       },
-    })
+    });
 
     // Клиентская база (задача 5): груз из общей базы тоже попадает в историю
     // клиента, если его карточка уже заведена. Нет карточки — не выдумываем.
@@ -216,7 +241,7 @@ export async function POST(request: NextRequest) {
         organizationId: org.organizationId,
         orderId: created.id,
         clientName: created.clientName,
-      })
+      });
     }
 
     await logAudit({
@@ -234,7 +259,7 @@ export async function POST(request: NextRequest) {
         status: created.status,
       },
       ip: getClientIp(request),
-    })
+    });
 
     return NextResponse.json({
       success: true,
@@ -247,11 +272,15 @@ export async function POST(request: NextRequest) {
         firmId: cache.firmId ? String(cache.firmId) : null,
       },
       message: "Груз взят в работу — этап «Поиск». Дальше согласование.",
-    })
+    });
   } catch (error) {
     // Нарушение уникальности (гонка двух одновременных «взять в работу»)
-    const message = error instanceof Error ? error.message : "Неизвестная ошибка"
-    if (/Unique constraint/i.test(message) || /organizationId_atiCacheId/.test(message)) {
+    const message =
+      error instanceof Error ? error.message : "Неизвестная ошибка";
+    if (
+      /Unique constraint/i.test(message) ||
+      /organizationId_atiCacheId/.test(message)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -259,12 +288,12 @@ export async function POST(request: NextRequest) {
           code: "already_taken",
         },
         { status: 409 },
-      )
+      );
     }
-    console.error("[orders/from-cache] error:", message)
+    console.error("[orders/from-cache] error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось взять груз в работу" },
       { status: 500 },
-    )
+    );
   }
 }
