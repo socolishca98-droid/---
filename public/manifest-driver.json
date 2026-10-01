@@ -1,10 +1,12 @@
 {
-  "name": "Loginex",
-  "short_name": "Loginex",
-  "description": "Транспортная платформа: заказы, рейсы, водители и экономика",
+  "name": "Loginex — водитель",
+  "short_name": "Водитель",
+  "description": "Мобильное приложение водителя: заказы, статусы, фото, чеки и SOS",
   "lang": "ru",
-  "start_url": "/",
+  "start_url": "/m",
+  "scope": "/m",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#09090b",
   "theme_color": "#09090b",
   "icons": [

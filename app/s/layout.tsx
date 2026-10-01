@@ -1,15 +1,15 @@
 import type { Metadata, Viewport } from "next";
 
-import { PwaRegister } from "@/components/pwa-register";
+import { StaffMobileShell } from "@/components/staff-mobile/shell";
 
 export const metadata: Metadata = {
-  title: "Водитель | АИ Логистика",
-  description: "Мобильное приложение водителя",
-  manifest: "/manifest-driver.json",
+  title: "Loginex — диспетчер",
+  description: "Мобильный пульт логиста: решения, рейсы, чат и показатели дня",
+  manifest: "/manifest-staff.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "АИ Логистика",
+    title: "Loginex",
   },
 };
 
@@ -22,16 +22,15 @@ export const viewport: Viewport = {
   themeColor: "#09090b",
 };
 
-export default function MobileLayout({
+export default function StaffMobileLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-[#09090b] text-white flex justify-center">
+    <div className="min-h-screen text-zinc-100 flex justify-center">
       <div className="w-full max-w-md mx-auto relative">
-        {children}
-        <PwaRegister />
+        <StaffMobileShell>{children}</StaffMobileShell>
       </div>
     </div>
   );

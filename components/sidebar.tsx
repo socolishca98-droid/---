@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { useAuth } from "@/lib/auth-context"
-import { useSidebar } from "@/lib/sidebar-context"
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { useSidebar } from "@/lib/sidebar-context";
 import {
   LayoutDashboard,
   Package,
@@ -24,25 +24,26 @@ import {
   Users,
   Building2,
   Search,
+  Smartphone,
   Plug,
   Fuel,
   Wrench,
   ScrollText,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { PRODUCT_NAME } from "@/lib/auth/constants"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PRODUCT_NAME } from "@/lib/auth/constants";
 
 /** Какие счётчики может показывать пункт меню. */
-type BadgeKey = "orders" | "chat"
+type BadgeKey = "orders" | "chat";
 
 const navigation: Array<{
-  name: string
-  href: string
-  icon: any
-  badgeKey?: BadgeKey
+  name: string;
+  href: string;
+  icon: any;
+  badgeKey?: BadgeKey;
   /** Пункт виден только администратору организации */
-  adminOnly?: boolean
+  adminOnly?: boolean;
 }> = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
   // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
@@ -50,6 +51,7 @@ const navigation: Array<{
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
   { name: "Поиск грузов", href: "/search", icon: Search },
   { name: "Кабинет ATI", href: "/ati", icon: Plug },
+  { name: "Мобильный пульт", href: "/s", icon: Smartphone },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
   { name: "Топливо", href: "/fuel", icon: Fuel },
@@ -63,58 +65,60 @@ const navigation: Array<{
   { name: "Журнал", href: "/audit", icon: ScrollText, adminOnly: true },
   { name: "Сотрудники", href: "/users", icon: Users },
   { name: "Организация", href: "/organization", icon: Building2 },
-]
+];
 
-const EMPTY_COUNTS: Record<BadgeKey, number> = { orders: 0, chat: 0 }
+const EMPTY_COUNTS: Record<BadgeKey, number> = { orders: 0, chat: 0 };
 
 export function Sidebar() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const { user, logout } = useAuth()
-  const { isCollapsed, toggle } = useSidebar()
-  const [counts, setCounts] = useState<Record<BadgeKey, number>>(EMPTY_COUNTS)
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
+  const { isCollapsed, toggle } = useSidebar();
+  const [counts, setCounts] = useState<Record<BadgeKey, number>>(EMPTY_COUNTS);
 
   // Счётчики обновляются при переходе между разделами, раз в минуту и когда
   // вкладка снова становится видимой. Ошибка не ломает меню — бейджи просто
   // не показываются.
   useEffect(() => {
-    let active = true
+    let active = true;
 
     const load = async () => {
       try {
-        const response = await fetch("/api/sidebar-counts", { credentials: "include" })
-        if (!response.ok) return
-        const data = await response.json()
-        if (!active) return
+        const response = await fetch("/api/sidebar-counts", {
+          credentials: "include",
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!active) return;
         setCounts({
           orders: Number(data?.orders) || 0,
           chat: Number(data?.chat) || 0,
-        })
+        });
       } catch {
         /* счётчики — не критично */
       }
-    }
+    };
 
-    load()
-    const interval = window.setInterval(load, 60_000)
+    load();
+    const interval = window.setInterval(load, 60_000);
     const onVisible = () => {
-      if (!document.hidden) load()
-    }
-    document.addEventListener("visibilitychange", onVisible)
+      if (!document.hidden) load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      active = false
-      window.clearInterval(interval)
-      document.removeEventListener("visibilitychange", onVisible)
-    }
-  }, [pathname])
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [pathname]);
 
   const handleLogout = async () => {
     // Серверный выход: сессия отзывается в БД, httpOnly-cookie удаляется
-    await logout()
-    router.replace("/login")
-    router.refresh()
-  }
+    await logout();
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <aside
@@ -169,52 +173,52 @@ export function Sidebar() {
           {navigation
             .filter((item) => !item.adminOnly || user?.role === "admin")
             .map((item) => {
-            const isActive = pathname === item.href
-            const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0
-            const badgeLabel = badgeValue > 99 ? "99+" : String(badgeValue)
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium group",
-                  "transition-[background-color,color,transform] duration-200 ease-out",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-primary"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground hover:translate-x-0.5",
-                )}
-                title={isCollapsed ? item.name : undefined}
-              >
-                {/* Активный раздел помечен полосой: видно боковым зрением */}
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_12px_var(--primary)]" />
-                )}
-                <item.icon className="h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-105" />
-                {!isCollapsed && (
-                  <>
-                    <span className="flex-1">{item.name}</span>
-                    {badgeValue > 0 && (
-                      <Badge
-                        variant="default"
-                        className="h-5 min-w-5 px-1.5 text-xs bg-primary text-primary-foreground"
-                      >
-                        {badgeLabel}
-                      </Badge>
-                    )}
-                  </>
-                )}
-                {/* Бейдж в свёрнутом режиме */}
-                {isCollapsed && badgeValue > 0 && (
-                  <Badge
-                    variant="default"
-                    className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px] bg-primary text-primary-foreground"
-                  >
-                    {badgeLabel}
-                  </Badge>
-                )}
-              </Link>
-            )
-          })}
+              const isActive = pathname === item.href;
+              const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0;
+              const badgeLabel = badgeValue > 99 ? "99+" : String(badgeValue);
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium group",
+                    "transition-[background-color,color,transform] duration-200 ease-out",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-primary"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground hover:translate-x-0.5",
+                  )}
+                  title={isCollapsed ? item.name : undefined}
+                >
+                  {/* Активный раздел помечен полосой: видно боковым зрением */}
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_12px_var(--primary)]" />
+                  )}
+                  <item.icon className="h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-105" />
+                  {!isCollapsed && (
+                    <>
+                      <span className="flex-1">{item.name}</span>
+                      {badgeValue > 0 && (
+                        <Badge
+                          variant="default"
+                          className="h-5 min-w-5 px-1.5 text-xs bg-primary text-primary-foreground"
+                        >
+                          {badgeLabel}
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                  {/* Бейдж в свёрнутом режиме */}
+                  {isCollapsed && badgeValue > 0 && (
+                    <Badge
+                      variant="default"
+                      className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px] bg-primary text-primary-foreground"
+                    >
+                      {badgeLabel}
+                    </Badge>
+                  )}
+                </Link>
+              );
+            })}
         </nav>
 
         {/* Bottom Section */}
@@ -259,5 +263,5 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
-  )
+  );
 }
