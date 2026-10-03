@@ -31,6 +31,9 @@ prisma/*.db-journal
 prisma/*.db-wal
 prisma/*.db-shm
 
+# Бэкапы базы (scripts/backup-db.mjs) — только локально
+backups/
+
 # --- Логи ---
 *.log
 npm-debug.log*
