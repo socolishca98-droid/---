@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T10:33:37.506Z",
+  "generatedAt": "2026-10-03T19:08:23.983Z",
   "endpoints": [
     {
       "method": "GET",
@@ -14,6 +14,11 @@
     {
       "method": "GET",
       "route": "/api/assistant/briefing",
+      "group": "assistant"
+    },
+    {
+      "method": "GET",
+      "route": "/api/assistant/plan",
       "group": "assistant"
     },
     {

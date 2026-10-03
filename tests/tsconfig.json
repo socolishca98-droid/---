@@ -4,13 +4,8 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -28,6 +23,7 @@
     "../lib/routes/model.ts",
     "../lib/orders/stages.ts",
     "../lib/routes/optimizer.ts",
+    "../lib/assistant/planner.ts",
     "../lib/fleet/insights.ts",
     "../lib/payments/summary.ts",
     "../lib/ocr/parse.ts",

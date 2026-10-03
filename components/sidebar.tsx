@@ -30,6 +30,7 @@ import {
   Wrench,
   ScrollText,
   Crown,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,7 @@ const navigation: Array<{
   { name: "Кабинет ATI", href: "/ati", icon: Plug, atiOnly: true },
   { name: "Мобильный пульт", href: "/s", icon: Smartphone },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
+  { name: "Виртуальный логист", href: "/planner", icon: Wand2 },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
   { name: "Топливо", href: "/fuel", icon: Fuel },
   { name: "Обслуживание", href: "/maintenance", icon: Wrench },
