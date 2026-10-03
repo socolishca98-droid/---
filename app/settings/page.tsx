@@ -26,6 +26,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { AtiConnectionCard } from "@/components/organization/ati-connection-card";
 import { Switch } from "@/components/ui/switch";
+import { PushEnableButton } from "@/components/push-enable-button";
 import { useAuth } from "@/lib/auth-context";
 
 const THEME_STORAGE_KEY = "tms_map_theme";
@@ -437,6 +438,9 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Пуш-уведомления на телефон (работает, когда заданы ключи VAPID) */}
+        <PushEnableButton />
 
         {/* Подключение ATI.SU — настройка интеграции, поэтому живёт здесь.
             Когда биржа выключена, карточка подключения не показывается. */}

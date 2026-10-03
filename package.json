@@ -8,6 +8,7 @@
     "dev:db": "prisma db push && next dev -p 3000 -H 0.0.0.0",
     "build": "npm run docs:api && prisma generate && next build",
     "start": "next start -p 3000 -H 0.0.0.0",
+    "backup:db": "node scripts/backup-db.mjs",
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:vitest && npm run test:isolation",
@@ -72,6 +73,7 @@
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.3.1",
     "tesseract.js": "^7.0.0",
+    "web-push": "^3.6.7",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -80,6 +82,7 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "baseline-browser-mapping": "^2.9.14",
     "dotenv": "^17.2.3",
     "postcss": "^8.5",

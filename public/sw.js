@@ -38,7 +38,9 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
+        Promise.all(
+          keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)),
+        ),
       ),
   );
   self.clients.claim();
@@ -52,7 +54,8 @@ function fallbackFor(pathname) {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
+  if (event.request.method !== "GET" || url.origin !== self.location.origin)
+    return;
 
   // Данные — только сеть: кэш не должен подменять заказы, деньги и чат
   if (url.pathname.startsWith("/api/")) return;
@@ -87,5 +90,46 @@ self.addEventListener("fetch", (event) => {
         .catch(() => hit);
       return hit || refresh;
     }),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Пуш-уведомления: SOS, сообщения чата и согласования приходят на телефон
+// даже из закрытого приложения.
+// ---------------------------------------------------------------------------
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "Loginex", body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "Loginex";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "/icons/icon-512.png",
+      badge: "/icons/icon-512.png",
+      tag: data.tag || undefined,
+      data: { url: data.url || "/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((list) => {
+        for (const client of list) {
+          if (client.url.includes(url) && "focus" in client)
+            return client.focus();
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(url);
+        return undefined;
+      }),
   );
 });

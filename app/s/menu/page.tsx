@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
+import { PushEnableButton } from "@/components/push-enable-button";
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Администратор",
@@ -151,6 +152,9 @@ export default function StaffMobileMenu() {
           </p>
         </div>
       </header>
+
+      {/* Пуш-уведомления: SOS, чат и согласования прямо на телефон */}
+      <PushEnableButton />
 
       {(installEvent || installed) && (
         <button

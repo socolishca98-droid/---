@@ -1,13 +1,13 @@
 // app/m/profile/page.tsx
 
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback } from "react"
-import { BottomNav } from "@/components/driver-mobile/bottom-nav"
-import Link from "next/link"
-import { useDriverSession } from "@/hooks/use-driver-session"
-import { useConfirm } from "@/components/ui/confirm-dialog"
-import { formatPhone, telHref } from "@/lib/ui/phone"
+import { useState, useEffect, useCallback } from "react";
+import { BottomNav } from "@/components/driver-mobile/bottom-nav";
+import Link from "next/link";
+import { useDriverSession } from "@/hooks/use-driver-session";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { formatPhone, telHref } from "@/lib/ui/phone";
 import {
   Phone,
   Truck,
@@ -21,72 +21,77 @@ import {
   Shield,
   Award,
   Wrench,
-} from "lucide-react"
-import { TruckLoader } from "@/components/ui/truck-loader"
+} from "lucide-react";
+import { TruckLoader } from "@/components/ui/truck-loader";
+import { PushEnableButton } from "@/components/push-enable-button";
 
 interface DriverProfile {
-  id: string
-  name: string
-  phone: string
-  vehicleType?: string
-  vehiclePlate?: string
-  status: string
-  rating: number
-  ordersCompleted: number
-  licenseNumber?: string
-  licenseExpiry?: string
-  medicalExpiry?: string
-  hiredAt?: string
+  id: string;
+  name: string;
+  phone: string;
+  vehicleType?: string;
+  vehiclePlate?: string;
+  status: string;
+  rating: number;
+  ordersCompleted: number;
+  licenseNumber?: string;
+  licenseExpiry?: string;
+  medicalExpiry?: string;
+  hiredAt?: string;
 }
 
 interface DriverStats {
-  totalOrders: number
-  totalEarnings: number
-  totalDistance: number
+  totalOrders: number;
+  totalEarnings: number;
+  totalDistance: number;
 }
 
 export default function MobileProfilePage() {
-  const confirm = useConfirm()
+  const confirm = useConfirm();
   // Сессия — серверная (httpOnly-cookie), а не запись в localStorage:
   // раньше страница читала «driver_session», которой после задачи 1 больше
   // не существует, и любой вход заканчивался возвратом на экран логина
-  const { driver: session, isLoading: isSessionLoading, logout } = useDriverSession()
-  const [driver, setDriver] = useState<DriverProfile | null>(null)
-  const [stats, setStats] = useState<DriverStats | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const {
+    driver: session,
+    isLoading: isSessionLoading,
+    logout,
+  } = useDriverSession();
+  const [driver, setDriver] = useState<DriverProfile | null>(null);
+  const [stats, setStats] = useState<DriverStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const fetchProfile = useCallback(async (driverId: string) => {
     try {
-      const driverRes = await fetch(`/api/drivers/${driverId}`)
-      const driverData = await driverRes.json()
+      const driverRes = await fetch(`/api/drivers/${driverId}`);
+      const driverData = await driverRes.json();
 
       if (driverData.success && driverData.driver) {
-        setDriver(driverData.driver as DriverProfile)
+        setDriver(driverData.driver as DriverProfile);
       }
 
       const ordersRes = await fetch(
-        `/api/m/orders?driverId=${driverId}&status=history`
-      )
-      const ordersData = await ordersRes.json()
+        `/api/m/orders?driverId=${driverId}&status=history`,
+      );
+      const ordersData = await ordersRes.json();
 
       if (ordersData.success) {
         setStats({
           totalOrders: ordersData.stats?.completedOrders || 0,
           totalEarnings: ordersData.stats?.totalEarnings || 0,
           totalDistance: ordersData.stats?.totalDistance || 0,
-        })
+        });
       }
     } catch (error) {
-      console.error("Failed to fetch profile:", error)
+      console.error("Failed to fetch profile:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    if (isSessionLoading) return
-    if (session?.id) void fetchProfile(session.id)
-  }, [isSessionLoading, session?.id, fetchProfile])
+    if (isSessionLoading) return;
+    if (session?.id) void fetchProfile(session.id);
+  }, [isSessionLoading, session?.id, fetchProfile]);
 
   // Пока профиль не догрузился, показываем данные из сессии — без пустого экрана
   const shown: DriverProfile | null =
@@ -106,43 +111,44 @@ export default function MobileProfilePage() {
           medicalExpiry: session.medicalExpiry ?? undefined,
           hiredAt: session.hiredAt ?? undefined,
         }
-      : null)
+      : null);
 
   const handleLogout = async () => {
     const ok = await confirm({
       title: "Выйти из аккаунта?",
-      description: "Чтобы вернуться к рейсам, нужно будет снова войти по телефону и паролю.",
+      description:
+        "Чтобы вернуться к рейсам, нужно будет снова войти по телефону и паролю.",
       confirmLabel: "Выйти",
-    })
-    if (!ok) return
+    });
+    if (!ok) return;
 
-    await logout()
-  }
+    await logout();
+  };
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return "—"
-    return new Date(dateString).toLocaleDateString("ru-RU")
-  }
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("ru-RU");
+  };
 
   const isExpiringSoon = (dateString?: string) => {
-    if (!dateString) return false
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffDays = (date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-    return diffDays < 30 && diffDays > 0
-  }
+    if (!dateString) return false;
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = (date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays < 30 && diffDays > 0;
+  };
 
   const isExpired = (dateString?: string) => {
-    if (!dateString) return false
-    return new Date(dateString) < new Date()
-  }
+    if (!dateString) return false;
+    return new Date(dateString) < new Date();
+  };
 
   if (isSessionLoading || !shown) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <TruckLoader className="text-orange-500" />
       </div>
-    )
+    );
   }
 
   const initials = shown.name
@@ -150,7 +156,7 @@ export default function MobileProfilePage() {
     .map((n: any) => n[0])
     .join("")
     .slice(0, 2)
-    .toUpperCase()
+    .toUpperCase();
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white m-nav-pad">
@@ -231,9 +237,7 @@ export default function MobileProfilePage() {
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
                 <p className="text-2xl font-bold">{stats.totalOrders}</p>
-                <p className="text-[11px] text-gray-500 uppercase">
-                  Рейсов
-                </p>
+                <p className="text-[11px] text-gray-500 uppercase">Рейсов</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-orange-400">
@@ -241,9 +245,7 @@ export default function MobileProfilePage() {
                     ? `${(stats.totalDistance / 1000).toFixed(0)}к`
                     : stats.totalDistance}
                 </p>
-                <p className="text-[11px] text-gray-500 uppercase">
-                  Км
-                </p>
+                <p className="text-[11px] text-gray-500 uppercase">Км</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-emerald-400">
@@ -251,9 +253,7 @@ export default function MobileProfilePage() {
                     ? `${(stats.totalEarnings / 1000).toFixed(0)}к`
                     : stats.totalEarnings}
                 </p>
-                <p className="text-[11px] text-gray-500 uppercase">
-                  ₽
-                </p>
+                <p className="text-[11px] text-gray-500 uppercase">₽</p>
               </div>
             </div>
           </div>
@@ -285,8 +285,8 @@ export default function MobileProfilePage() {
                     isExpired(shown.licenseExpiry)
                       ? "text-red-400"
                       : isExpiringSoon(shown.licenseExpiry)
-                      ? "text-yellow-400"
-                      : "text-gray-500"
+                        ? "text-yellow-400"
+                        : "text-gray-500"
                   }`}
                 >
                   <p className="text-xs">до</p>
@@ -300,9 +300,7 @@ export default function MobileProfilePage() {
             {/* Мед справка */}
             <div className="p-4 flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400">
-                  Медицинская справка
-                </p>
+                <p className="text-sm text-gray-400">Медицинская справка</p>
                 <p className="font-medium">
                   {shown.medicalExpiry ? "Действует" : "Не указана"}
                 </p>
@@ -313,8 +311,8 @@ export default function MobileProfilePage() {
                     isExpired(shown.medicalExpiry)
                       ? "text-red-400"
                       : isExpiringSoon(shown.medicalExpiry)
-                      ? "text-yellow-400"
-                      : "text-gray-500"
+                        ? "text-yellow-400"
+                        : "text-gray-500"
                   }`}
                 >
                   <p className="text-xs">до</p>
@@ -330,9 +328,7 @@ export default function MobileProfilePage() {
               <div className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-400">В компании с</p>
-                  <p className="font-medium">
-                    {formatDate(shown.hiredAt)}
-                  </p>
+                  <p className="font-medium">{formatDate(shown.hiredAt)}</p>
                 </div>
                 <Calendar className="h-5 w-5 text-gray-600" />
               </div>
@@ -369,7 +365,9 @@ export default function MobileProfilePage() {
           className="w-full py-4 bg-[#151518] hover:bg-[#1a1a1f] border border-gray-800 rounded-2xl font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
         >
           <Truck className="h-5 w-5 text-sky-400" />
-          {shown.vehiclePlate ? `Моя машина: ${shown.vehiclePlate}` : "Выбрать машину"}
+          {shown.vehiclePlate
+            ? `Моя машина: ${shown.vehiclePlate}`
+            : "Выбрать машину"}
         </Link>
 
         {/* Кнопка: ТО / ремонт */}
@@ -380,6 +378,9 @@ export default function MobileProfilePage() {
           <Wrench className="h-5 w-5 text-amber-400" />
           ТО / ремонт
         </Link>
+
+        {/* Пуш-уведомления: новые заказы, сообщения и SOS */}
+        <PushEnableButton />
 
         {/* Выход */}
         <button
@@ -393,5 +394,5 @@ export default function MobileProfilePage() {
 
       <BottomNav />
     </div>
-  )
+  );
 }

@@ -2,40 +2,41 @@
 // Водитель отправляет SOS-сигнал. Список сигналов и их обработка —
 // штабная операция и живёт в /api/sos (доступ только для admin/logist).
 
-import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-import { SOS_LABELS } from "@/lib/sos-labels"
-import { requireDriver } from "@/lib/auth/session"
-import { requireOrganization, scopedWhere } from "@/lib/org"
-import { logRouteEvent } from "@/lib/routes/service"
+import { SOS_LABELS } from "@/lib/sos-labels";
+import { requireDriver } from "@/lib/auth/session";
+import { requireOrganization, scopedWhere } from "@/lib/org";
+import { logRouteEvent } from "@/lib/routes/service";
+import { firePush, pushToOrgStaff } from "@/lib/push";
 // POST - отправить SOS сигнал
 export async function POST(request: NextRequest) {
-  const auth = await requireDriver(request)
-  if (!auth.ok) return auth.response
-  const org = requireOrganization(auth.value)
-  if (!org.ok) return org.response
+  const auth = await requireDriver(request);
+  if (!auth.ok) return auth.response;
+  const org = requireOrganization(auth.value);
+  if (!org.ok) return org.response;
 
   // Автор сигнала — водитель из проверенной сессии
-  const driverId = auth.value.driver.id
+  const driverId = auth.value.driver.id;
 
   try {
-    const body = await request.json()
-    const { type, latitude, longitude, message, orderId } = body
+    const body = await request.json();
+    const { type, latitude, longitude, message, orderId } = body;
 
     // Валидация
     if (!type) {
       return NextResponse.json(
         { success: false, error: "type is required" },
         { status: 400 },
-      )
+      );
     }
 
     if (latitude === undefined || longitude === undefined) {
       return NextResponse.json(
         { success: false, error: "GPS coordinates required for SOS" },
         { status: 400 },
-      )
+      );
     }
 
     // Данные водителя — из карточки, привязанной к сессии
@@ -47,31 +48,34 @@ export async function POST(request: NextRequest) {
         vehiclePlate: true,
         vehicleType: true,
       },
-    })
+    });
 
     if (!driver) {
       return NextResponse.json(
         { success: false, error: "Карточка водителя не найдена" },
         { status: 404 },
-      )
+      );
     }
 
     // orderId приходит из тела запроса, поэтому проверяем его принадлежность
     // организации водителя: чужой заказ — 404 (как в /api/m/photos).
     // Иначе в записях организации А осталась бы ссылка на данные организации Б,
     // и она всплыла бы в списке сигналов (/api/sos отдаёт строку сигнала целиком).
-    let linkedOrder: { id: string; routeId: string | null; assignedVehicleId: string | null } | null =
-      null
+    let linkedOrder: {
+      id: string;
+      routeId: string | null;
+      assignedVehicleId: string | null;
+    } | null = null;
     if (orderId) {
       linkedOrder = await prisma.order.findFirst({
         where: scopedWhere(org.organizationId, { id: orderId }),
         select: { id: true, routeId: true, assignedVehicleId: true },
-      })
+      });
       if (!linkedOrder) {
         return NextResponse.json(
           { success: false, error: "Заказ не найден" },
           { status: 404 },
-        )
+        );
       }
     }
 
@@ -87,10 +91,10 @@ export async function POST(request: NextRequest) {
         orderId: linkedOrder?.id ?? null,
         status: "active",
       },
-    })
+    });
 
     // Создаём уведомление для логистов
-    const sosLabel = SOS_LABELS[type] || SOS_LABELS.other
+    const sosLabel = SOS_LABELS[type] || SOS_LABELS.other;
 
     await prisma.notification.create({
       data: {
@@ -107,7 +111,7 @@ export async function POST(request: NextRequest) {
         sosId: sos.id,
         priority: "critical",
       },
-    })
+    });
 
     // Добавляем сообщение в чат как системное уведомление
     await prisma.chatMessage.create({
@@ -122,13 +126,23 @@ export async function POST(request: NextRequest) {
         isImportant: true,
         importantReason: "SOS сигнал",
       },
-    })
+    });
+
+    // Пуш на телефоны логистов: SOS нужно увидеть сразу, даже вне приложения
+    firePush(
+      pushToOrgStaff(org.organizationId, {
+        title: "🆘 SOS от водителя",
+        body: `${driver.name}: ${sosLabel}${message ? ` — ${message}` : ""}`,
+        url: "/dashboard",
+        tag: `sos-${sos.id}`,
+      }),
+    );
 
     // Событие в таймлайне рейса (если SOS связан с заказом, у которого есть маршрут)
     try {
       // Заказ уже проверен на принадлежность организации — берём его рейс и машину
-      const routeId = linkedOrder?.routeId ?? null
-      const vehicleId = linkedOrder?.assignedVehicleId ?? null
+      const routeId = linkedOrder?.routeId ?? null;
+      const vehicleId = linkedOrder?.assignedVehicleId ?? null;
 
       if (routeId) {
         await logRouteEvent(prisma, {
@@ -142,27 +156,26 @@ export async function POST(request: NextRequest) {
           latitude,
           longitude,
           data: message ? JSON.stringify({ message }) : null,
-        })
+        });
       }
     } catch (e) {
-      console.error("[SOS API] routeEvent error:", e)
+      console.error("[SOS API] routeEvent error:", e);
     }
 
     console.log(
       `🆘 SOS Alert created: ${sos.id} | Driver: ${driver.name} | Type: ${type}`,
-    )
+    );
 
     return NextResponse.json({
       success: true,
       sosId: sos.id,
       message: "SOS сигнал отправлен",
-    })
+    });
   } catch (error: any) {
-    console.error("[SOS API] Error:", error)
+    console.error("[SOS API] Error:", error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 },
-    )
+    );
   }
 }
-

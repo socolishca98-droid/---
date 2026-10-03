@@ -821,6 +821,7 @@ model Organization {
   fleetSettings     FleetSettings[]
   atiScanConfigs    AtiScanConfig[]
   settings          OrganizationSettings?
+  pushSubscriptions PushSubscription[]
   auditLogs         AuditLog[]
   inviteCodes       InviteCode[]
 
@@ -849,6 +850,24 @@ model OrganizationSettings {
   atiEnabled     Boolean      @default(true)
   updatedAt      DateTime     @updatedAt
 
+  @@index([organizationId])
+}
+
+model PushSubscription {
+  id             String        @id @default(cuid())
+  /// Организация-владелец: подписка сотрудника или её водителя.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Endpoint браузерной подписки — уникален (одна подписка = одна строка).
+  endpoint       String        @unique
+  p256dh         String
+  auth           String
+  userAgent      String?
+  createdAt      DateTime      @default(now())
+
+  @@index([userId])
   @@index([organizationId])
 }
 
@@ -974,6 +993,7 @@ model User {
   updatedAt DateTime  @updatedAt
 
   sessions  Session[]
+  pushSubscriptions PushSubscription[]
 
   @@index([status])
   @@index([role])
