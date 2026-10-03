@@ -16,7 +16,7 @@ import {
   type DocumentRoute,
   type DocumentTable,
   type PrintDocument,
-} from "./types"
+} from "./types";
 
 const MONTHS_RU = [
   "января",
@@ -31,66 +31,71 @@ const MONTHS_RU = [
   "октября",
   "ноября",
   "декабря",
-]
+];
 
 /** Пустое значение печатается прочерком-местом для заполнения. */
-export function orBlank(value: string | number | null | undefined): string | null {
-  if (value === null || value === undefined) return null
-  const text = String(value).trim()
-  return text.length > 0 ? text : null
+export function orBlank(
+  value: string | number | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
 }
 
 /** 24.09.2026 */
 export function formatDate(value: Date | null | undefined): string | null {
-  if (!value) return null
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  const day = String(date.getDate()).padStart(2, "0")
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  return `${day}.${month}.${date.getFullYear()}`
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.${date.getFullYear()}`;
 }
 
 /** «24 сентября 2026 г.» — для текста договора. */
 export function formatDateLong(value: Date | null | undefined): string | null {
-  if (!value) return null
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return `${date.getDate()} ${MONTHS_RU[date.getMonth()]} ${date.getFullYear()} г.`
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getDate()} ${MONTHS_RU[date.getMonth()]} ${date.getFullYear()} г.`;
 }
 
 /** 24.09.2026 08:30 */
 export function formatDateTime(value: Date | null | undefined): string | null {
-  if (!value) return null
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
-  return `${formatDate(date)} ${time}`
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${formatDate(date)} ${time}`;
 }
 
 /** 45 000 ₽ (пробел как разделитель разрядов — как принято в документах). */
 export function formatMoney(value: number | null | undefined): string | null {
-  if (value === null || value === undefined || !Number.isFinite(value)) return null
-  const rounded = Math.round(value)
-  return `${rounded.toLocaleString("ru-RU").replace(/\u00a0/g, " ")} ₽`
+  if (value === null || value === undefined || !Number.isFinite(value))
+    return null;
+  const rounded = Math.round(value);
+  return `${rounded.toLocaleString("ru-RU").replace(/\u00a0/g, " ")} ₽`;
 }
 
 /** 10 000 кг (10,0 т) */
 export function formatWeight(kg: number | null | undefined): string | null {
-  if (kg === null || kg === undefined || !Number.isFinite(kg) || kg <= 0) return null
+  if (kg === null || kg === undefined || !Number.isFinite(kg) || kg <= 0)
+    return null;
   const tons = (kg / 1000).toLocaleString("ru-RU", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
-  })
-  return `${kg.toLocaleString("ru-RU").replace(/\u00a0/g, " ")} кг (${tons.replace(/\u00a0/g, " ")} т)`
+  });
+  return `${kg.toLocaleString("ru-RU").replace(/\u00a0/g, " ")} кг (${tons.replace(/\u00a0/g, " ")} т)`;
 }
 
 /** Стоимость перевозки: согласованная цена важнее прайса из заказа. */
 export function orderPrice(order: DocumentOrder): number | null {
   if (typeof order.agreedPriceRub === "number" && order.agreedPriceRub > 0) {
-    return order.agreedPriceRub
+    return order.agreedPriceRub;
   }
-  if (typeof order.priceRub === "number" && order.priceRub > 0) return order.priceRub
-  return null
+  if (typeof order.priceRub === "number" && order.priceRub > 0)
+    return order.priceRub;
+  return null;
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -99,29 +104,33 @@ const PAYMENT_LABELS: Record<string, string> = {
   bank: "безналичный расчёт",
   transfer: "переводом",
   noncash: "безналичный расчёт",
-}
+};
 
 const VAT_LABELS: Record<string, string> = {
   none: "без НДС",
   included: "НДС включён в стоимость",
   vat20: "НДС 20%",
   vat10: "НДС 10%",
-}
+};
 
 export function paymentTerms(order: DocumentOrder): string | null {
-  const parts: string[] = []
+  const parts: string[] = [];
 
-  const payment = order.paymentType ? PAYMENT_LABELS[order.paymentType] ?? order.paymentType : null
-  if (payment) parts.push(payment)
+  const payment = order.paymentType
+    ? (PAYMENT_LABELS[order.paymentType] ?? order.paymentType)
+    : null;
+  if (payment) parts.push(payment);
 
-  const vat = order.vatType ? VAT_LABELS[order.vatType] ?? order.vatType : null
-  if (vat) parts.push(vat)
+  const vat = order.vatType
+    ? (VAT_LABELS[order.vatType] ?? order.vatType)
+    : null;
+  if (vat) parts.push(vat);
 
   if (typeof order.deferredDays === "number" && order.deferredDays > 0) {
-    parts.push(`отсрочка ${order.deferredDays} дн.`)
+    parts.push(`отсрочка ${order.deferredDays} дн.`);
   }
 
-  return parts.length > 0 ? parts.join(", ") : null
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 /**
@@ -130,19 +139,27 @@ export function paymentTerms(order: DocumentOrder): string | null {
  * претендует на бухгалтерскую нумерацию: он нужен, чтобы документы рейса
  * отличались друг от друга и находились по названию.
  */
-export function routeDocumentNumber(route: DocumentRoute, index: number, orderIndex?: number): string {
-  const date = formatDate(route.createdAt) ?? ""
-  const [day, month, year] = date.split(".")
-  const stamp = year && month && day ? `${year}-${month}-${day}` : "без-даты"
-  const base = `Р-${stamp}-${index + 1}`
-  return orderIndex === undefined ? base : `${base}/${orderIndex + 1}`
+export function routeDocumentNumber(
+  route: DocumentRoute,
+  index: number,
+  orderIndex?: number,
+): string {
+  const date = formatDate(route.createdAt) ?? "";
+  const [day, month, year] = date.split(".");
+  const stamp = year && month && day ? `${year}-${month}-${day}` : "без-даты";
+  const prefix = route.numberPrefix ?? "Р";
+  const base = `${prefix}-${stamp}-${index + 1}`;
+  return orderIndex === undefined ? base : `${base}/${orderIndex + 1}`;
 }
 
 function carrierBlock(carrier: CarrierRequisites): DocumentBlock {
   return {
     title: "Перевозчик",
     fields: [
-      { label: "Наименование", value: orBlank(carrier.legalName) ?? orBlank(carrier.name) },
+      {
+        label: "Наименование",
+        value: orBlank(carrier.legalName) ?? orBlank(carrier.name),
+      },
       { label: "ИНН", value: orBlank(carrier.inn) },
       { label: "КПП", value: orBlank(carrier.kpp) },
       { label: "ОГРН / ОГРНИП", value: orBlank(carrier.ogrn) },
@@ -150,7 +167,7 @@ function carrierBlock(carrier: CarrierRequisites): DocumentBlock {
       { label: "Телефон", value: orBlank(carrier.phone) },
       { label: "E-mail", value: orBlank(carrier.email) },
     ],
-  }
+  };
 }
 
 function bankBlock(carrier: CarrierRequisites): DocumentBlock {
@@ -161,18 +178,22 @@ function bankBlock(carrier: CarrierRequisites): DocumentBlock {
       { label: "БИК", value: orBlank(carrier.bankBic) },
       { label: "Расчётный счёт", value: orBlank(carrier.bankAccount) },
     ],
-  }
+  };
 }
 
 function signatureLine(carrier: CarrierRequisites): string {
-  const position = orBlank(carrier.signerPosition) ?? "Перевозчик"
-  const name = orBlank(carrier.signerName)
-  return name ? `${position} ______________ / ${name} /` : `${position} ______________ / ______________ /`
+  const position = orBlank(carrier.signerPosition) ?? "Перевозчик";
+  const name = orBlank(carrier.signerName);
+  return name
+    ? `${position} ______________ / ${name} /`
+    : `${position} ______________ / ______________ /`;
 }
 
 function crewFields(route: DocumentRoute): DocumentBlock {
-  const { crew } = route
-  const vehicleName = [crew.vehicleBrand, crew.vehicleModel].filter(Boolean).join(" ")
+  const { crew } = route;
+  const vehicleName = [crew.vehicleBrand, crew.vehicleModel]
+    .filter(Boolean)
+    .join(" ");
 
   return {
     title: "Транспорт и водитель",
@@ -180,17 +201,27 @@ function crewFields(route: DocumentRoute): DocumentBlock {
       { label: "Госномер", value: orBlank(crew.vehiclePlate) },
       { label: "Тип ТС", value: orBlank(crew.vehicleType) },
       { label: "Марка, модель", value: orBlank(vehicleName) },
-      { label: "Грузоподъёмность", value: formatWeight(crew.vehicleCapacityKg) },
+      {
+        label: "Грузоподъёмность",
+        value: formatWeight(crew.vehicleCapacityKg),
+      },
       { label: "Водитель", value: orBlank(crew.driverName) },
       { label: "Телефон водителя", value: orBlank(crew.driverPhone) },
     ],
-  }
+  };
 }
 
 function cargoTable(orders: DocumentOrder[]): DocumentTable {
   return {
     title: "Груз",
-    columns: ["№", "Маршрут", "Наименование груза", "Вес", "Объём, м³", "Стоимость перевозки"],
+    columns: [
+      "№",
+      "Маршрут",
+      "Наименование груза",
+      "Вес",
+      "Объём, м³",
+      "Стоимость перевозки",
+    ],
     rows: orders.map((order, index) => [
       String(index + 1),
       `${order.routeFrom} — ${order.routeTo}`,
@@ -199,15 +230,18 @@ function cargoTable(orders: DocumentOrder[]): DocumentTable {
       order.volumeM3 ? String(order.volumeM3) : "—",
       formatMoney(orderPrice(order)) ?? "—",
     ]),
-  }
+  };
 }
 
 function routeTitle(route: DocumentRoute): string {
-  const points = route.orders.map((order) => order.routeFrom)
-  const last = route.orders.length > 0 ? route.orders[route.orders.length - 1].routeTo : null
-  const cities = [...points, ...(last ? [last] : [])]
-  if (cities.length === 0) return orBlank(route.name) ?? "маршрут не задан"
-  return cities.join(" — ")
+  const points = route.orders.map((order) => order.routeFrom);
+  const last =
+    route.orders.length > 0
+      ? route.orders[route.orders.length - 1].routeTo
+      : null;
+  const cities = [...points, ...(last ? [last] : [])];
+  if (cities.length === 0) return orBlank(route.name) ?? "маршрут не задан";
+  return cities.join(" — ");
 }
 
 // ---------------------------------------------------------------------------
@@ -218,10 +252,13 @@ export function buildTtn(
   route: DocumentRoute,
   order: DocumentOrder,
   carrier: CarrierRequisites,
-  orderIndex: number,
+  orderIndex?: number,
 ): PrintDocument {
-  const price = orderPrice(order)
-  const total = route.orders.reduce((sum, item) => sum + (orderPrice(item) ?? 0), 0)
+  const price = orderPrice(order);
+  const total = route.orders.reduce(
+    (sum, item) => sum + (orderPrice(item) ?? 0),
+    0,
+  );
 
   return {
     kind: "ttn",
@@ -253,10 +290,19 @@ export function buildTtn(
         fields: [
           { label: "Дата погрузки", value: formatDate(order.deadline) },
           { label: "Срок доставки", value: formatDate(order.deadline) },
-          { label: "Порядковый номер в рейсе", value: String(orderIndex + 1) },
-          { label: "Рейс", value: orBlank(route.name) ?? routeDocumentNumber(route, 0) },
+          {
+            label: "Порядковый номер в рейсе",
+            value: orderIndex === undefined ? null : String(orderIndex + 1),
+          },
+          {
+            label: "Рейс",
+            value: orBlank(route.name) ?? routeDocumentNumber(route, 0),
+          },
           { label: "Стоимость перевозки", value: formatMoney(price) },
-          { label: "Стоимость по рейсу целиком", value: total > 0 ? formatMoney(total) : null },
+          {
+            label: "Стоимость по рейсу целиком",
+            value: total > 0 ? formatMoney(total) : null,
+          },
         ],
       },
     ],
@@ -271,20 +317,36 @@ export function buildTtn(
       "Груз к перевозке принял (водитель) ______________ / ______________ /",
       signatureLine(carrier),
     ],
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Путевой лист — один на рейс
 // ---------------------------------------------------------------------------
 
-export function buildWaybill(route: DocumentRoute, carrier: CarrierRequisites): PrintDocument {
-  const totalWeight = route.orders.reduce((sum, order) => sum + order.weightKg, 0)
-  const totalPrice = route.orders.reduce((sum, order) => sum + (orderPrice(order) ?? 0), 0)
+export function buildWaybill(
+  route: DocumentRoute,
+  carrier: CarrierRequisites,
+): PrintDocument {
+  const totalWeight = route.orders.reduce(
+    (sum, order) => sum + order.weightKg,
+    0,
+  );
+  const totalPrice = route.orders.reduce(
+    (sum, order) => sum + (orderPrice(order) ?? 0),
+    0,
+  );
 
   const taskTable: DocumentTable = {
     title: "Задание на рейс",
-    columns: ["№", "Пункт отправления", "Пункт назначения", "Груз", "Вес", "Срок доставки"],
+    columns: [
+      "№",
+      "Пункт отправления",
+      "Пункт назначения",
+      "Груз",
+      "Вес",
+      "Срок доставки",
+    ],
     rows: route.orders.map((order, index) => [
       String(index + 1),
       order.routeFrom,
@@ -293,7 +355,7 @@ export function buildWaybill(route: DocumentRoute, carrier: CarrierRequisites): 
       formatWeight(order.weightKg) ?? "—",
       formatDate(order.deadline) ?? "—",
     ]),
-  }
+  };
 
   return {
     kind: "waybill",
@@ -320,9 +382,17 @@ export function buildWaybill(route: DocumentRoute, carrier: CarrierRequisites): 
       {
         title: "Итоги рейса (заполняется по возвращении)",
         fields: [
-          { label: "Пробег, км", value: String(route.tripDistanceKm ?? route.totalDistanceKm ?? "") || null },
+          {
+            label: "Пробег, км",
+            value:
+              String(route.tripDistanceKm ?? route.totalDistanceKm ?? "") ||
+              null,
+          },
           { label: "Груз, всего", value: formatWeight(totalWeight) },
-          { label: "Стоимость перевозок", value: totalPrice > 0 ? formatMoney(totalPrice) : null },
+          {
+            label: "Стоимость перевозок",
+            value: totalPrice > 0 ? formatMoney(totalPrice) : null,
+          },
           { label: "Расход топлива", value: formatMoney(route.fuelExpenseRub) },
           { label: "Расходы по рейсу", value: formatMoney(route.totalCostRub) },
         ],
@@ -338,7 +408,7 @@ export function buildWaybill(route: DocumentRoute, carrier: CarrierRequisites): 
       "Водитель ______________ / ______________ /",
       signatureLine(carrier),
     ],
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +421,7 @@ export function buildContract(
   carrier: CarrierRequisites,
   orderIndex: number,
 ): PrintDocument {
-  const price = orderPrice(order)
+  const price = orderPrice(order);
 
   return {
     kind: "contract",
@@ -389,8 +459,160 @@ export function buildContract(
       `Перевозчик обязуется доставить груз по маршруту ${order.routeFrom} — ${order.routeTo}, Заказчик — обеспечить погрузку/выгрузку и оплатить перевозку.`,
       order.notes ? `Условия заказа: ${order.notes}` : "",
     ].filter(Boolean),
-    signatures: ["Заказчик ______________ / ______________ /", signatureLine(carrier)],
-  }
+    signatures: [
+      "Заказчик ______________ / ______________ /",
+      signatureLine(carrier),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Акт оказанных услуг — по заказу (печать из карточки заказа)
+// ---------------------------------------------------------------------------
+
+export function buildAct(
+  route: DocumentRoute,
+  order: DocumentOrder,
+  carrier: CarrierRequisites,
+): PrintDocument {
+  const price = orderPrice(order);
+
+  return {
+    kind: "act",
+    number: routeDocumentNumber(route, 0),
+    title: DOCUMENT_TITLES.act,
+    subtitle: `${order.routeFrom} — ${order.routeTo}`,
+    blocks: [
+      carrierBlock(carrier),
+      {
+        title: "Заказчик",
+        fields: [
+          { label: "Наименование", value: orBlank(order.clientName) },
+          { label: "Контактное лицо", value: orBlank(order.clientContact) },
+          { label: "ИНН / КПП", value: null },
+          { label: "Адрес", value: null },
+        ],
+      },
+      {
+        title: "Оказанные услуги",
+        fields: [
+          {
+            label: "Услуга",
+            value: `Перевозка груза по маршруту ${order.routeFrom} — ${order.routeTo}`,
+          },
+          { label: "Дата перевозки", value: formatDateLong(order.deadline) },
+          {
+            label: "Дата составления акта",
+            value: formatDateLong(route.completedAt ?? new Date()),
+          },
+          {
+            label: "Стоимость",
+            value: formatMoney(price) ?? "по договорённости",
+          },
+          { label: "Порядок оплаты", value: paymentTerms(order) },
+        ],
+      },
+      crewFields(route),
+    ],
+    tables: [cargoTable([order])],
+    notes: [
+      "Услуги оказаны полностью и в срок. Заказчик претензий по объёму, качеству и срокам оказания услуг не имеет.",
+      order.notes ? `Условия заказа: ${order.notes}` : "",
+    ].filter(Boolean),
+    signatures: [
+      "Услуги принял (Заказчик) ______________ / ______________ /",
+      `Услуги оказал (${orBlank(carrier.signerPosition) ?? "Перевозчик"}) ______________ / ${orBlank(carrier.signerName) ?? "______________"} /`,
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Счёт на оплату — по заказу (печать из карточки заказа)
+// ---------------------------------------------------------------------------
+
+export function buildInvoice(
+  route: DocumentRoute,
+  order: DocumentOrder,
+  carrier: CarrierRequisites,
+): PrintDocument {
+  const price = orderPrice(order);
+  const due =
+    typeof order.deferredDays === "number" &&
+    order.deferredDays > 0 &&
+    order.deadline
+      ? new Date(
+          order.deadline.getTime() + order.deferredDays * 24 * 60 * 60 * 1000,
+        )
+      : null;
+
+  const vatNote = order.vatType
+    ? ({
+        none: "НДС не облагается.",
+        included: "В том числе НДС (уточнить в договоре).",
+        vat20: "В том числе НДС 20%.",
+        vat10: "В том числе НДС 10%.",
+      }[order.vatType] ?? "")
+    : "";
+
+  return {
+    kind: "invoice",
+    number: routeDocumentNumber(route, 0),
+    title: DOCUMENT_TITLES.invoice,
+    subtitle: `от ${formatDate(route.createdAt) ?? "____________"}`,
+    blocks: [
+      {
+        title: "Поставщик (перевозчик)",
+        fields: [
+          {
+            label: "Наименование",
+            value: orBlank(carrier.legalName) ?? orBlank(carrier.name),
+          },
+          { label: "ИНН", value: orBlank(carrier.inn) },
+          { label: "КПП", value: orBlank(carrier.kpp) },
+          { label: "Банк", value: orBlank(carrier.bankName) },
+          { label: "БИК", value: orBlank(carrier.bankBic) },
+          { label: "Расчётный счёт", value: orBlank(carrier.bankAccount) },
+        ],
+      },
+      {
+        title: "Плательщик (заказчик)",
+        fields: [
+          { label: "Наименование", value: orBlank(order.clientName) },
+          { label: "ИНН / КПП", value: null },
+          { label: "Адрес", value: null },
+        ],
+      },
+    ],
+    tables: [
+      {
+        title: "К оплате",
+        columns: ["№", "Наименование услуги", "Кол-во", "Цена", "Сумма"],
+        rows: [
+          [
+            "1",
+            `Транспортные услуги: перевозка груза ${order.routeFrom} — ${order.routeTo}`,
+            "1",
+            formatMoney(price) ?? "—",
+            formatMoney(price) ?? "—",
+          ],
+        ],
+      },
+    ],
+    notes: [
+      `Итого к оплате: ${formatMoney(price) ?? "____________"}${vatNote ? `. ${vatNote}` : ""}`,
+      due
+        ? `Срок оплаты: до ${formatDate(due)} (отсрочка ${order.deferredDays} дн. от даты доставки).`
+        : order.deferredDays && order.deferredDays > 0
+          ? `Отсрочка платежа: ${order.deferredDays} дн.`
+          : "",
+      `Назначение платежа: «Оплата по счёту ${routeDocumentNumber(route, 0)}, перевозка груза ${order.routeFrom} — ${order.routeTo}»`,
+      "Счёт действителен для оплаты в течение 10 банковских дней.",
+    ].filter(Boolean),
+    signatures: [
+      `${orBlank(carrier.signerPosition) ?? "Руководитель"} ______________ / ${orBlank(carrier.signerName) ?? "______________"} /`,
+      "Главный бухгалтер ______________ / ______________ /",
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -406,17 +628,17 @@ export function buildContract(
  * точек), а ТТН и заявки — нет: печатать пустой бланк без груза бессмысленно.
  */
 export function buildRouteDocuments(input: {
-  route: DocumentRoute
-  carrier: CarrierRequisites
-  kinds: DocumentKind[]
+  route: DocumentRoute;
+  carrier: CarrierRequisites;
+  kinds: DocumentKind[];
 }): PrintDocument[] {
-  const { route, carrier, kinds } = input
-  const documents: PrintDocument[] = []
+  const { route, carrier, kinds } = input;
+  const documents: PrintDocument[] = [];
 
   for (const kind of kinds) {
     if (kind === "waybill") {
-      documents.push(buildWaybill(route, carrier))
-      continue
+      documents.push(buildWaybill(route, carrier));
+      continue;
     }
 
     route.orders.forEach((order, index) => {
@@ -424,9 +646,34 @@ export function buildRouteDocuments(input: {
         kind === "ttn"
           ? buildTtn(route, order, carrier, index)
           : buildContract(route, order, carrier, index),
-      )
-    })
+      );
+    });
   }
 
-  return documents
+  return documents;
+}
+
+/**
+ * Документы одного заказа (ТТН / акт / счёт) — печать из карточки заказа.
+ * Заказ может быть ещё не в рейсе: данные машины и водителя берутся из его
+ * назначения (assignedDriver/assignedVehicle), пустые поля остаются пустыми.
+ */
+export function buildOrderDocuments(input: {
+  route: DocumentRoute;
+  order: DocumentOrder;
+  carrier: CarrierRequisites;
+  kinds: DocumentKind[];
+}): PrintDocument[] {
+  const { route, order, carrier, kinds } = input;
+  const documents: PrintDocument[] = [];
+
+  for (const kind of kinds) {
+    if (kind === "ttn") documents.push(buildTtn(route, order, carrier));
+    else if (kind === "act") documents.push(buildAct(route, order, carrier));
+    else if (kind === "invoice")
+      documents.push(buildInvoice(route, order, carrier));
+    // waybill и contract — документы рейса, в комплект заказа не входят
+  }
+
+  return documents;
 }

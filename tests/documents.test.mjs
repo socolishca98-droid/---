@@ -8,17 +8,22 @@
  *
  * Запуск: npm run test:unit
  */
-import test from "node:test"
-import assert from "node:assert/strict"
-import { createRequire } from "node:module"
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url)
+const require = createRequire(import.meta.url);
 const {
   DOCUMENT_KINDS,
+  ORDER_DOCUMENT_KINDS,
   parseDocumentKinds,
-} = require("../.test-build/lib/documents/types.js")
+  parseOrderDocumentKinds,
+} = require("../.test-build/lib/documents/types.js");
 const {
+  buildAct,
   buildContract,
+  buildInvoice,
+  buildOrderDocuments,
   buildRouteDocuments,
   buildTtn,
   buildWaybill,
@@ -28,7 +33,7 @@ const {
   orderPrice,
   paymentTerms,
   routeDocumentNumber,
-} = require("../.test-build/lib/documents/build.js")
+} = require("../.test-build/lib/documents/build.js");
 
 const CARRIER = {
   name: "ИП Фролов Иван Александрович",
@@ -44,7 +49,7 @@ const CARRIER = {
   bankAccount: "40802810000000000001",
   signerName: "Фролов И. А.",
   signerPosition: "Индивидуальный предприниматель",
-}
+};
 
 const order = (extra = {}) => ({
   id: "order-1",
@@ -63,7 +68,7 @@ const order = (extra = {}) => ({
   deadline: new Date("2026-09-30T00:00:00"),
   notes: null,
   ...extra,
-})
+});
 
 const route = (extra = {}) => ({
   id: "route-1",
@@ -89,151 +94,215 @@ const route = (extra = {}) => ({
     driverPhone: "+7 900 000-00-01",
   },
   ...extra,
-})
+});
 
 test("виды документов: параметр печати понимает галочки и не молчит на опечатке", () => {
-  assert.deepEqual(DOCUMENT_KINDS, ["ttn", "waybill", "contract"])
+  assert.deepEqual(DOCUMENT_KINDS, ["ttn", "waybill", "contract"]);
 
-  assert.deepEqual(parseDocumentKinds("ttn"), ["ttn"])
-  assert.deepEqual(parseDocumentKinds("waybill,ttn"), ["ttn", "waybill"])
-  assert.deepEqual(parseDocumentKinds(["contract", "ttn", "ttn"]), ["ttn", "contract"])
+  assert.deepEqual(parseDocumentKinds("ttn"), ["ttn"]);
+  assert.deepEqual(parseDocumentKinds("waybill,ttn"), ["ttn", "waybill"]);
+  assert.deepEqual(parseDocumentKinds(["contract", "ttn", "ttn"]), [
+    "ttn",
+    "contract",
+  ]);
   // ничего не выбрано — печатаем полный комплект, а не пустой лист
-  assert.deepEqual(parseDocumentKinds(""), [...DOCUMENT_KINDS])
-  assert.deepEqual(parseDocumentKinds(null), [...DOCUMENT_KINDS])
-})
+  assert.deepEqual(parseDocumentKinds(""), [...DOCUMENT_KINDS]);
+  assert.deepEqual(parseDocumentKinds(null), [...DOCUMENT_KINDS]);
+});
 
 test("деньги, вес и даты печатаются так, как принято в документах", () => {
-  assert.equal(formatMoney(45000), "45 000 ₽")
-  assert.equal(formatMoney(null), null)
-  assert.equal(formatWeight(12000), "12 000 кг (12,0 т)")
-  assert.equal(formatWeight(0), null)
-  assert.equal(formatDateLong(new Date("2026-09-24T00:00:00")), "24 сентября 2026 г.")
-})
+  assert.equal(formatMoney(45000), "45 000 ₽");
+  assert.equal(formatMoney(null), null);
+  assert.equal(formatWeight(12000), "12 000 кг (12,0 т)");
+  assert.equal(formatWeight(0), null);
+  assert.equal(
+    formatDateLong(new Date("2026-09-24T00:00:00")),
+    "24 сентября 2026 г.",
+  );
+});
 
 test("цена берётся из согласованной, если она есть", () => {
-  assert.equal(orderPrice(order()), 45000)
-  assert.equal(orderPrice(order({ agreedPriceRub: 40000 })), 40000)
-  assert.equal(orderPrice(order({ priceRub: null })), null)
-})
+  assert.equal(orderPrice(order()), 45000);
+  assert.equal(orderPrice(order({ agreedPriceRub: 40000 })), 40000);
+  assert.equal(orderPrice(order({ priceRub: null })), null);
+});
 
 test("порядок оплаты собирается из формы оплаты, НДС и отсрочки", () => {
-  assert.equal(paymentTerms(order()), "безналичный расчёт, НДС 20%, отсрочка 5 дн.")
-  assert.equal(paymentTerms(order({ paymentType: null, vatType: null, deferredDays: null })), null)
-})
+  assert.equal(
+    paymentTerms(order()),
+    "безналичный расчёт, НДС 20%, отсрочка 5 дн.",
+  );
+  assert.equal(
+    paymentTerms(
+      order({ paymentType: null, vatType: null, deferredDays: null }),
+    ),
+    null,
+  );
+});
 
 test("комплект: накладные и заявки — по заказу, путевой лист — один на рейс", () => {
   const documents = buildRouteDocuments({
-    route: route({ orders: [order(), order({ id: "order-2", routeFrom: "Москва", routeTo: "Тверь" })] }),
+    route: route({
+      orders: [
+        order(),
+        order({ id: "order-2", routeFrom: "Москва", routeTo: "Тверь" }),
+      ],
+    }),
     carrier: CARRIER,
     kinds: ["ttn", "waybill", "contract"],
-  })
+  });
 
-  assert.equal(documents.length, 5)
+  assert.equal(documents.length, 5);
   assert.deepEqual(
     documents.map((doc) => doc.kind),
     ["ttn", "ttn", "waybill", "contract", "contract"],
-  )
+  );
 
   // номера внутри рейса различаются по порядку точки
-  const numbers = documents.filter((doc) => doc.kind === "ttn").map((doc) => doc.number)
-  assert.equal(numbers[0].endsWith("/1"), true)
-  assert.equal(numbers[1].endsWith("/2"), true)
-})
+  const numbers = documents
+    .filter((doc) => doc.kind === "ttn")
+    .map((doc) => doc.number);
+  assert.equal(numbers[0].endsWith("/1"), true);
+  assert.equal(numbers[1].endsWith("/2"), true);
+});
 
 test("в рейсе без заказов печатается только путевой лист", () => {
   const documents = buildRouteDocuments({
     route: route({ orders: [] }),
     carrier: CARRIER,
     kinds: ["ttn", "waybill", "contract"],
-  })
+  });
 
   assert.deepEqual(
     documents.map((doc) => doc.kind),
     ["waybill"],
-  )
-})
+  );
+});
 
 test("транспортная накладная: реквизиты перевозчика, груз и подписи", () => {
-  const ttn = buildTtn(route(), order(), CARRIER, 0)
+  const ttn = buildTtn(route(), order(), CARRIER, 0);
 
-  const carrier = ttn.blocks.find((block) => block.title === "Перевозчик")
-  const carrierFields = Object.fromEntries(carrier.fields.map((f) => [f.label, f.value]))
-  assert.equal(carrierFields["Наименование"], "ИП Фролов Иван Александрович")
-  assert.equal(carrierFields["ИНН"], "760100000000")
-  assert.equal(carrierFields["КПП"], null)
-  assert.equal(carrierFields["Адрес"], "150000, г. Ярославль, ул. Промышленная, д. 5")
+  const carrier = ttn.blocks.find((block) => block.title === "Перевозчик");
+  const carrierFields = Object.fromEntries(
+    carrier.fields.map((f) => [f.label, f.value]),
+  );
+  assert.equal(carrierFields["Наименование"], "ИП Фролов Иван Александрович");
+  assert.equal(carrierFields["ИНН"], "760100000000");
+  assert.equal(carrierFields["КПП"], null);
+  assert.equal(
+    carrierFields["Адрес"],
+    "150000, г. Ярославль, ул. Промышленная, д. 5",
+  );
 
-  const consignor = ttn.blocks.find((block) => block.title === "Грузоотправитель")
-  assert.equal(consignor.fields[0].value, "ООО Ромашка")
+  const consignor = ttn.blocks.find(
+    (block) => block.title === "Грузоотправитель",
+  );
+  assert.equal(consignor.fields[0].value, "ООО Ромашка");
 
   // данных грузополучателя в заказе нет — поле остаётся пустым, а не выдумывается
-  const consignee = ttn.blocks.find((block) => block.title === "Грузополучатель")
-  assert.equal(consignee.fields[0].value, null)
-  assert.equal(consignee.fields[1].value, "Москва")
+  const consignee = ttn.blocks.find(
+    (block) => block.title === "Грузополучатель",
+  );
+  assert.equal(consignee.fields[0].value, null);
+  assert.equal(consignee.fields[1].value, "Москва");
 
-  const cargo = ttn.tables[0]
-  assert.equal(cargo.rows.length, 1)
-  assert.equal(cargo.rows[0][2], "Бытовая техника")
-  assert.equal(cargo.rows[0][3], "12 000 кг (12,0 т)")
-  assert.equal(cargo.rows[0][5], "45 000 ₽")
+  const cargo = ttn.tables[0];
+  assert.equal(cargo.rows.length, 1);
+  assert.equal(cargo.rows[0][2], "Бытовая техника");
+  assert.equal(cargo.rows[0][3], "12 000 кг (12,0 т)");
+  assert.equal(cargo.rows[0][5], "45 000 ₽");
 
-  assert.equal(ttn.signatures.length, 4)
-  assert.match(ttn.signatures[2], /водитель/i)
-})
+  assert.equal(ttn.signatures.length, 4);
+  assert.match(ttn.signatures[2], /водитель/i);
+});
 
 test("путевой лист: один на рейс, задание по точкам и время работы", () => {
   const waybill = buildWaybill(
-    route({ orders: [order(), order({ id: "order-2", routeFrom: "Москва", routeTo: "Тверь", weightKg: 5000 })] }),
+    route({
+      orders: [
+        order(),
+        order({
+          id: "order-2",
+          routeFrom: "Москва",
+          routeTo: "Тверь",
+          weightKg: 5000,
+        }),
+      ],
+    }),
     CARRIER,
-  )
+  );
 
-  assert.equal(waybill.kind, "waybill")
-  assert.equal(waybill.tables[0].rows.length, 2)
-  assert.equal(waybill.tables[0].rows[1][1], "Москва")
+  assert.equal(waybill.kind, "waybill");
+  assert.equal(waybill.tables[0].rows.length, 2);
+  assert.equal(waybill.tables[0].rows[1][1], "Москва");
 
-  const crew = waybill.blocks.find((block) => block.title === "Транспорт и водитель")
-  const crewFields = Object.fromEntries(crew.fields.map((f) => [f.label, f.value]))
-  assert.equal(crewFields["Госномер"], "А001АА76")
-  assert.equal(crewFields["Марка, модель"], "Volvo FH")
-  assert.equal(crewFields["Водитель"], "Сидоров Пётр")
+  const crew = waybill.blocks.find(
+    (block) => block.title === "Транспорт и водитель",
+  );
+  const crewFields = Object.fromEntries(
+    crew.fields.map((f) => [f.label, f.value]),
+  );
+  assert.equal(crewFields["Госномер"], "А001АА76");
+  assert.equal(crewFields["Марка, модель"], "Volvo FH");
+  assert.equal(crewFields["Водитель"], "Сидоров Пётр");
 
-  const time = waybill.blocks.find((block) => block.title === "Время работы")
-  assert.equal(time.fields[0].value, "24.09.2026 06:30")
-  assert.equal(time.fields[1].value, null)
+  const time = waybill.blocks.find((block) => block.title === "Время работы");
+  assert.equal(time.fields[0].value, "24.09.2026 06:30");
+  assert.equal(time.fields[1].value, null);
 
-  const totals = waybill.blocks.find((block) => block.title.startsWith("Итоги рейса"))
-  const totalsFields = Object.fromEntries(totals.fields.map((f) => [f.label, f.value]))
-  assert.equal(totalsFields["Пробег, км"], "270")
-  assert.equal(totalsFields["Груз, всего"], "17 000 кг (17,0 т)")
-  assert.equal(totalsFields["Расход топлива"], "7 000 ₽")
-})
+  const totals = waybill.blocks.find((block) =>
+    block.title.startsWith("Итоги рейса"),
+  );
+  const totalsFields = Object.fromEntries(
+    totals.fields.map((f) => [f.label, f.value]),
+  );
+  assert.equal(totalsFields["Пробег, км"], "270");
+  assert.equal(totalsFields["Груз, всего"], "17 000 кг (17,0 т)");
+  assert.equal(totalsFields["Расход топлива"], "7 000 ₽");
+});
 
 test("договор-заявка: маршрут, стоимость и порядок оплаты", () => {
-  const contract = buildContract(route(), order(), CARRIER, 0)
+  const contract = buildContract(route(), order(), CARRIER, 0);
 
-  const subject = contract.blocks.find((block) => block.title === "Предмет заявки")
-  const fields = Object.fromEntries(subject.fields.map((f) => [f.label, f.value]))
-  assert.equal(fields["Маршрут"], "Ярославль — Москва")
-  assert.equal(fields["Дата погрузки"], "30 сентября 2026 г.")
-  assert.equal(fields["Стоимость перевозки"], "45 000 ₽")
-  assert.equal(fields["Порядок оплаты"], "безналичный расчёт, НДС 20%, отсрочка 5 дн.")
+  const subject = contract.blocks.find(
+    (block) => block.title === "Предмет заявки",
+  );
+  const fields = Object.fromEntries(
+    subject.fields.map((f) => [f.label, f.value]),
+  );
+  assert.equal(fields["Маршрут"], "Ярославль — Москва");
+  assert.equal(fields["Дата погрузки"], "30 сентября 2026 г.");
+  assert.equal(fields["Стоимость перевозки"], "45 000 ₽");
+  assert.equal(
+    fields["Порядок оплаты"],
+    "безналичный расчёт, НДС 20%, отсрочка 5 дн.",
+  );
 
-  assert.equal(contract.signatures[0].startsWith("Заказчик"), true)
-  assert.equal(contract.signatures[1].includes("Фролов И. А."), true)
-})
+  assert.equal(contract.signatures[0].startsWith("Заказчик"), true);
+  assert.equal(contract.signatures[1].includes("Фролов И. А."), true);
+});
 
 test("без цены заявка говорит «по договорённости», а не ноль", () => {
-  const contract = buildContract(route(), order({ priceRub: null, agreedPriceRub: null }), CARRIER, 0)
-  const subject = contract.blocks.find((block) => block.title === "Предмет заявки")
-  const price = subject.fields.find((field) => field.label === "Стоимость перевозки")
-  assert.equal(price.value, "по договорённости")
-})
+  const contract = buildContract(
+    route(),
+    order({ priceRub: null, agreedPriceRub: null }),
+    CARRIER,
+    0,
+  );
+  const subject = contract.blocks.find(
+    (block) => block.title === "Предмет заявки",
+  );
+  const price = subject.fields.find(
+    (field) => field.label === "Стоимость перевозки",
+  );
+  assert.equal(price.value, "по договорённости");
+});
 
 test("номер документа привязан к дате создания рейса", () => {
-  const document = route()
-  assert.equal(routeDocumentNumber(document, 0), "Р-2026-09-24-1")
-  assert.equal(routeDocumentNumber(document, 0, 1), "Р-2026-09-24-1/2")
-})
+  const document = route();
+  assert.equal(routeDocumentNumber(document, 0), "Р-2026-09-24-1");
+  assert.equal(routeDocumentNumber(document, 0, 1), "Р-2026-09-24-1/2");
+});
 
 test("незаполненные реквизиты не превращаются в чужие данные", () => {
   const empty = {
@@ -242,14 +311,113 @@ test("незаполненные реквизиты не превращаютс�
     inn: null,
     legalAddress: null,
     signerName: null,
-  }
-  const ttn = buildTtn(route(), order(), empty, 0)
-  const carrier = ttn.blocks.find((block) => block.title === "Перевозчик")
-  const fields = Object.fromEntries(carrier.fields.map((f) => [f.label, f.value]))
+  };
+  const ttn = buildTtn(route(), order(), empty, 0);
+  const carrier = ttn.blocks.find((block) => block.title === "Перевозчик");
+  const fields = Object.fromEntries(
+    carrier.fields.map((f) => [f.label, f.value]),
+  );
 
   // наименование падает на название организации, остальное — пусто
-  assert.equal(fields["Наименование"], "ИП Фролов Иван Александрович")
-  assert.equal(fields["ИНН"], null)
-  assert.equal(fields["Адрес"], null)
-  assert.equal(ttn.signatures[3].includes("Фролов"), false)
-})
+  assert.equal(fields["Наименование"], "ИП Фролов Иван Александрович");
+  assert.equal(fields["ИНН"], null);
+  assert.equal(fields["Адрес"], null);
+  assert.equal(ttn.signatures[3].includes("Фролов"), false);
+});
+
+// ---------------------------------------------------------------------------
+// Документы заказа: ТТН, акт оказанных услуг, счёт на оплату
+// ---------------------------------------------------------------------------
+
+const orderRoute = (extra = {}) =>
+  route({ numberPrefix: "З", orders: [order()], ...extra });
+
+test("виды документов заказа: полный комплект по умолчанию, рейсовые виды не попадают", () => {
+  assert.deepEqual(ORDER_DOCUMENT_KINDS, ["ttn", "act", "invoice"]);
+
+  assert.deepEqual(parseOrderDocumentKinds("act"), ["act"]);
+  assert.deepEqual(parseOrderDocumentKinds("invoice,act"), ["act", "invoice"]);
+  assert.deepEqual(parseOrderDocumentKinds(""), [...ORDER_DOCUMENT_KINDS]);
+  // waybill — документ рейса: в комплект заказа не берётся
+  assert.deepEqual(parseOrderDocumentKinds("waybill"), [
+    ...ORDER_DOCUMENT_KINDS,
+  ]);
+});
+
+test("комплект документов заказа: накладная, акт и счёт с номером З-…", () => {
+  const documents = buildOrderDocuments({
+    route: orderRoute(),
+    order: order(),
+    carrier: CARRIER,
+    kinds: ["ttn", "act", "invoice"],
+  });
+
+  assert.deepEqual(
+    documents.map((d) => d.kind),
+    ["ttn", "act", "invoice"],
+  );
+  assert.equal(documents[0].number, "З-2026-09-24-1");
+  assert.equal(documents[1].title, "Акт оказанных услуг");
+  assert.equal(documents[2].title, "Счёт на оплату");
+});
+
+test("акт: услуга, дата перевозки, стоимость и подписи сторон", () => {
+  const act = buildAct(orderRoute(), order(), CARRIER);
+  const services = act.blocks.find((b) => b.title === "Оказанные услуги");
+  const fields = Object.fromEntries(
+    services.fields.map((f) => [f.label, f.value]),
+  );
+
+  assert.equal(
+    fields["Услуга"],
+    "Перевозка груза по маршруту Ярославль — Москва",
+  );
+  assert.equal(fields["Дата перевозки"], "30 сентября 2026 г.");
+  assert.equal(fields["Стоимость"], "45 000 ₽");
+  assert.equal(act.signatures[0].startsWith("Услуги принял"), true);
+  assert.equal(act.signatures[1].includes("Фролов И. А."), true);
+});
+
+test("счёт: реквизиты, сумма, НДС, отсрочка и назначение платежа", () => {
+  const invoice = buildInvoice(orderRoute(), order(), CARRIER);
+  const supplier = invoice.blocks.find(
+    (b) => b.title === "Поставщик (перевозчик)",
+  );
+  const fields = Object.fromEntries(
+    supplier.fields.map((f) => [f.label, f.value]),
+  );
+
+  assert.equal(fields["ИНН"], "760100000000");
+  assert.equal(fields["Расчётный счёт"], "40802810000000000001");
+
+  const row = invoice.tables[0].rows[0];
+  assert.equal(row[4], "45 000 ₽");
+  assert.ok(row[1].includes("Ярославль — Москва"));
+
+  assert.ok(
+    invoice.notes.some((n) => n.includes("45 000 ₽") && n.includes("НДС 20%")),
+  );
+  assert.ok(invoice.notes.some((n) => n.includes("до 05.10.2026")));
+  assert.ok(
+    invoice.notes.some((n) => n.includes("Оплата по счёту З-2026-09-24-1")),
+  );
+});
+
+test("счёт без цены и реквизитов: пустые поля, а не выдуманные значения", () => {
+  const empty = { ...CARRIER, inn: null, bankAccount: null, signerName: null };
+  const invoice = buildInvoice(
+    orderRoute(),
+    order({ priceRub: null, agreedPriceRub: null }),
+    empty,
+  );
+  const supplier = invoice.blocks.find(
+    (b) => b.title === "Поставщик (перевозчик)",
+  );
+  const fields = Object.fromEntries(
+    supplier.fields.map((f) => [f.label, f.value]),
+  );
+
+  assert.equal(fields["ИНН"], null);
+  assert.equal(fields["Расчётный счёт"], null);
+  assert.equal(invoice.tables[0].rows[0][4], "—");
+});

@@ -1,10 +1,15 @@
 {
-  "generatedAt": "2026-10-01T19:42:53.061Z",
+  "generatedAt": "2026-10-02T19:53:14.083Z",
   "endpoints": [
     {
       "method": "GET",
       "route": "/api/admin/audit",
       "group": "admin"
+    },
+    {
+      "method": "GET",
+      "route": "/api/assistant/briefing",
+      "group": "assistant"
     },
     {
       "method": "GET",
@@ -498,6 +503,11 @@
     },
     {
       "method": "GET",
+      "route": "/api/orders/:id/documents",
+      "group": "orders"
+    },
+    {
+      "method": "GET",
       "route": "/api/orders/:id/negotiation",
       "group": "orders"
     },
@@ -605,6 +615,21 @@
       "method": "POST",
       "route": "/api/photos/upload",
       "group": "photos"
+    },
+    {
+      "method": "POST",
+      "route": "/api/push/subscribe",
+      "group": "push"
+    },
+    {
+      "method": "DELETE",
+      "route": "/api/push/subscribe",
+      "group": "push"
+    },
+    {
+      "method": "GET",
+      "route": "/api/push/vapid",
+      "group": "push"
     },
     {
       "method": "GET",

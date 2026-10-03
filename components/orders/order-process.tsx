@@ -31,10 +31,12 @@ import {
   Phone,
   PhoneCall,
   Plus,
+  Printer,
   RotateCcw,
   StickyNote,
   Truck,
   XCircle,
+  Lightbulb,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -78,6 +80,8 @@ import {
   type OrderStatus,
 } from "@/lib/orders/stages";
 import { orderSourceLabel } from "@/lib/orders/sources";
+import type { OrderHint } from "@/lib/assistant/order-hints";
+import { cn } from "@/lib/utils";
 
 /** Виды записей, которые логист добавляет руками (остальные пишет сервер). */
 const MANUAL_KINDS = [
@@ -200,6 +204,8 @@ export function OrderProcess({
 }) {
   const [order, setOrder] = useState<OrderRecord | null>(null);
   const [entries, setEntries] = useState<FeedEntry[]>([]);
+  // Подсказки ассистента приходят вместе с заказом (GET /api/orders/[id])
+  const [hints, setHints] = useState<OrderHint[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -233,6 +239,9 @@ export function OrderProcess({
       }
       const feedData = await feedRes.json();
       setOrder(orderData.order as OrderRecord);
+      setHints(
+        Array.isArray(orderData.hints) ? (orderData.hints as OrderHint[]) : [],
+      );
       setEntries(Array.isArray(feedData.entries) ? feedData.entries : []);
       setAgreedPriceInput(
         orderData.order?.agreedPrice != null
@@ -408,6 +417,28 @@ export function OrderProcess({
           )}
         </div>
       </div>
+
+      {/* ── Подсказки ассистента ─────────────────────────────────────────── */}
+      {hints.length > 0 && (
+        <div className="space-y-1.5">
+          {hints.map((hint) => (
+            <div
+              key={hint.kind}
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-2.5 text-xs leading-relaxed",
+                hint.severity === "danger"
+                  ? "border-red-500/25 bg-red-500/[0.07] text-red-300"
+                  : hint.severity === "warn"
+                    ? "border-amber-500/25 bg-amber-500/[0.07] text-amber-300"
+                    : "border-cyan-500/20 bg-cyan-500/[0.06] text-cyan-300",
+              )}
+            >
+              <Lightbulb className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 opacity-80" />
+              <span>{hint.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Степпер этапов ────────────────────────────────────────────────── */}
       {closed ? (
@@ -631,6 +662,14 @@ export function OrderProcess({
             >
               <XCircle className="h-4 w-4 mr-1.5" />
               Не договорились
+            </Button>
+
+            {/* Документы заказа: ТТН, акт и счёт — печать/PDF в новой вкладке */}
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/print/order/${order.id}`} target="_blank">
+                <Printer className="h-4 w-4 mr-1.5" />
+                Документы
+              </Link>
             </Button>
 
             {order.atiCacheId && !order.routeId && !closed && (

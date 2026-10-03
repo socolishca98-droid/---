@@ -25,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DOCUMENT_HINTS, DOCUMENT_KINDS, DOCUMENT_TITLES, type DocumentKind } from "@/lib/documents/types"
+import { DOCUMENT_HINTS, DOCUMENT_KINDS, DOCUMENT_TITLES } from "@/lib/documents/types"
 
 interface RouteDocumentsDialogProps {
   routeId: string
@@ -47,7 +47,7 @@ export function RouteDocumentsDialog({
   onOpenChange,
 }: RouteDocumentsDialogProps) {
   // По умолчанию — полный комплект: обычно печатают всё сразу
-  const [kinds, setKinds] = useState<Record<DocumentKind, boolean>>({
+  const [kinds, setKinds] = useState<Record<(typeof DOCUMENT_KINDS)[number], boolean>>({
     ttn: true,
     waybill: true,
     contract: true,
