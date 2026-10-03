@@ -5,7 +5,9 @@
 // Карточка утреннего брифинга: что сегодня важно — одним списком.
 // Рендерит пункты движка правил (lib/assistant/briefing.ts) через
 // /api/assistant/briefing; каждый пункт ведёт на экран, где проблема
-// решается. Пустой список = «всё спокойно» (это тоже информация).
+// решается, а рутинные пункты ассистент выполняет сам — кнопкой действия
+// (POST /api/assistant/act, lib/assistant/actions.ts).
+// Пустой список = «всё спокойно» (это тоже информация).
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -14,6 +16,7 @@ import {
   CalendarClock,
   ChevronRight,
   HandCoins,
+  Loader2,
   MessagesSquare,
   Radio,
   RefreshCw,
@@ -21,6 +24,7 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import type { BriefingItem, BriefingSeverity } from "@/lib/assistant/briefing";
@@ -46,6 +50,7 @@ const TONES: Record<BriefingSeverity, string> = {
 export function BriefingCard({ compact = false }: { compact?: boolean }) {
   const [items, setItems] = useState<BriefingItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,6 +70,36 @@ export function BriefingCard({ compact = false }: { compact?: boolean }) {
     const timer = window.setInterval(load, 5 * 60_000);
     return () => window.clearInterval(timer);
   }, [load]);
+
+  /**
+   * «Руки» ассистента: безопасное рутинное действие выполняется на сервере
+   * (POST /api/assistant/act) в границах организации, брифинг перезагружается.
+   */
+  const runAction = useCallback(
+    async (action: NonNullable<BriefingItem["action"]>) => {
+      setBusyAction(action.id);
+      try {
+        const res = await fetch("/api/assistant/act", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action.id }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || "Действие не выполнено");
+        }
+        toast.success(data.message || "Готово", {
+          description: "Ассистент выполнил действие",
+        });
+        await load();
+      } catch (e: any) {
+        toast.error(e?.message || "Действие не выполнено");
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [load],
+  );
 
   return (
     <section
@@ -101,10 +136,10 @@ export function BriefingCard({ compact = false }: { compact?: boolean }) {
           {items.map((item) => {
             const Icon = ICONS[item.kind] ?? Sparkles;
             return (
-              <li key={item.id}>
+              <li key={item.id} className="flex items-stretch gap-2">
                 <Link
                   href={item.href}
-                  className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.03] p-3 transition-colors hover:bg-white/[0.06]"
+                  className="flex flex-1 items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.03] p-3 transition-colors hover:bg-white/[0.06]"
                 >
                   <span
                     className={cn(
@@ -124,6 +159,22 @@ export function BriefingCard({ compact = false }: { compact?: boolean }) {
                   </span>
                   <ChevronRight className="h-4 w-4 flex-shrink-0 text-zinc-600" />
                 </Link>
+
+                {item.action ? (
+                  <button
+                    type="button"
+                    disabled={busyAction !== null}
+                    onClick={() => void runAction(item.action!)}
+                    className="flex max-w-[110px] flex-shrink-0 items-center justify-center gap-1.5 rounded-xl border border-orange-500/25 bg-orange-500/[0.08] px-2.5 text-center text-[11px] font-medium leading-tight text-orange-300 transition-colors hover:bg-orange-500/[0.14] disabled:opacity-50"
+                    title={`Ассистент выполнит: ${item.action.label}`}
+                  >
+                    {busyAction === item.action!.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      item.action.label
+                    )}
+                  </button>
+                ) : null}
               </li>
             );
           })}

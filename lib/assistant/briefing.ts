@@ -8,6 +8,7 @@
 // где проблема решается. UI (десктоп и мобильный пульт) только рендерит.
 
 import { prisma } from "@/lib/prisma";
+import type { AssistantActionId } from "./actions";
 import { scopedWhere } from "@/lib/org";
 
 export type BriefingSeverity = "danger" | "warn" | "info" | "good";
@@ -26,6 +27,11 @@ export interface BriefingItem {
   title: string;
   message: string;
   href: string;
+  /**
+   * Действие «в один клик» — виртуальный логист может выполнить рутину сам
+   * (lib/assistant/actions.ts). Есть только у пунктов, где действие безопасно.
+   */
+  action?: { id: AssistantActionId; label: string };
 }
 
 const money = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -157,6 +163,7 @@ export async function buildBriefing(
       title: `Просрочено ${overdueCount} ${plural(overdueCount, ["оплата", "оплаты", "оплат"])}`,
       message: `Клиенты должны ${money.format(sum)} ₽ — напомните или остановите новые заказы.`,
       href: "/payments",
+      action: { id: "remind_overdue", label: "Напомнить о просрочке" },
     });
   }
 
@@ -183,6 +190,7 @@ export async function buildBriefing(
       title: `Пора связаться: ${followups}`,
       message: "Напоминание о контакте просрочено — клиент ждёт ответа.",
       href: "/orders",
+      action: { id: "snooze_followups", label: "Отложить на завтра" },
     });
   }
 
