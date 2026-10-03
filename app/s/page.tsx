@@ -9,8 +9,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  Bell,
   ChevronRight,
   CircleCheck,
   Package,
@@ -22,6 +20,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting";
 import { TruckLoader } from "@/components/ui/truck-loader";
+import { BriefingCard } from "@/components/assistant/briefing-card";
 
 interface Stats {
   revenue: number;
@@ -36,14 +35,6 @@ interface DecisionOrder {
   price: number | null;
   weight: number | null;
   negotiationStatus: string | null;
-}
-
-interface AlertItem {
-  id: string;
-  type: string;
-  title: string;
-  message: string | null;
-  createdAt: string;
 }
 
 const money = new Intl.NumberFormat("ru-RU", {
@@ -85,30 +76,19 @@ export default function StaffMobileHome() {
   const { user } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [decisions, setDecisions] = useState<DecisionOrder[]>([]);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, ordersRes, notesRes] = await Promise.all([
+      const [statsRes, ordersRes] = await Promise.all([
         fetch("/api/dashboard/stats", { cache: "no-store" }),
         fetch("/api/orders?status=negotiation&limit=20", { cache: "no-store" }),
-        fetch("/api/notifications", { cache: "no-store" }),
       ]);
       const statsData = await statsRes.json().catch(() => null);
       const ordersData = await ordersRes.json().catch(() => null);
-      const notesData = await notesRes.json().catch(() => null);
       if (statsData?.success) setStats(statsData.stats);
       setDecisions(Array.isArray(ordersData?.orders) ? ordersData.orders : []);
-      const notes: AlertItem[] = Array.isArray(notesData?.notifications)
-        ? notesData.notifications
-        : [];
-      setAlerts(
-        notes
-          .filter((n) => n.type.startsWith("sos") || n.type.includes("payment"))
-          .slice(0, 3),
-      );
     } finally {
       setLoading(false);
     }
@@ -217,34 +197,8 @@ export default function StaffMobileHome() {
             )}
           </section>
 
-          <section className="space-y-2">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
-              <Bell className="h-3.5 w-3.5" />
-              Важное
-            </h2>
-            {alerts.length === 0 ? (
-              <p className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4 text-xs text-zinc-500">
-                SOS и просроченных оплат нет.
-              </p>
-            ) : (
-              alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.07] p-3.5"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{alert.title}</p>
-                    {alert.message && (
-                      <p className="mt-0.5 text-[11px] text-zinc-400">
-                        {alert.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </section>
+          {/* Ассистент: SOS, просрочки, молчащие рейсы и итоги дня */}
+          <BriefingCard compact />
         </>
       )}
     </div>

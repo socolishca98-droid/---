@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { BottomNav } from "@/components/driver-mobile/bottom-nav"
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { BottomNav } from "@/components/driver-mobile/bottom-nav";
 import {
   Camera,
   ImageIcon,
@@ -17,15 +17,16 @@ import {
   ChevronLeft,
   Trash2,
   Check,
-} from "lucide-react"
-import { toast } from "sonner"
-import { useConfirm } from "@/components/ui/confirm-dialog"
-import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue"
-import { useDriverSession } from "@/hooks/use-driver-session"
-import { TruckLoader } from "@/components/ui/truck-loader"
+} from "lucide-react";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { getPhotoQueue, uploadPhotoOrQueue } from "@/lib/offline/photo-queue";
+import { useDriverSession } from "@/hooks/use-driver-session";
+import { TruckLoader } from "@/components/ui/truck-loader";
+import { photoUploadHint } from "@/lib/assistant/driver-hints";
 
 // Этот экспорт всё равно оставим для надёжности
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 type PhotoCategory =
   | "cargo_before"
@@ -33,44 +34,39 @@ type PhotoCategory =
   | "receipt"
   | "waybill"
   | "damage"
-  | "document"
+  | "document";
 
 type PhotoContext =
-  | "loading"
-  | "unloading"
-  | "fueling"
-  | "damage"
-  | "document"
-  | "generic"
+  "loading" | "unloading" | "fueling" | "damage" | "document" | "generic";
 
 interface DriverSession {
-  id: string
-  name: string
+  id: string;
+  name: string;
 }
 
 interface Order {
-  id: string
-  routeFrom: string
-  routeTo: string
-  cargoType: string
-  status: string
-  createdAt?: string
+  id: string;
+  routeFrom: string;
+  routeTo: string;
+  cargoType: string;
+  status: string;
+  createdAt?: string;
 }
 
 interface Photo {
-  id: string
-  url: string
-  type: PhotoCategory
-  orderId?: string | null
-  description?: string | null
-  createdAt: string
+  id: string;
+  url: string;
+  type: PhotoCategory;
+  orderId?: string | null;
+  description?: string | null;
+  createdAt: string;
 }
 
 const CATEGORIES: {
-  id: PhotoCategory
-  label: string
-  shortLabel: string
-  icon: typeof Truck
+  id: PhotoCategory;
+  label: string;
+  shortLabel: string;
+  icon: typeof Truck;
 }[] = [
   {
     id: "cargo_before",
@@ -108,139 +104,139 @@ const CATEGORIES: {
     shortLabel: "Дефект",
     icon: AlertCircle,
   },
-]
+];
 
 function mapContextToCategory(context: PhotoContext): PhotoCategory {
   switch (context) {
     case "loading":
-      return "cargo_before"
+      return "cargo_before";
     case "unloading":
-      return "cargo_after"
+      return "cargo_after";
     case "fueling":
-      return "receipt"
+      return "receipt";
     case "damage":
-      return "damage"
+      return "damage";
     case "document":
-      return "document"
+      return "document";
     default:
-      return "cargo_before"
+      return "cargo_before";
   }
 }
 
 // Внутренний компонент с логикой
 function PhotoPageContent() {
-  const confirm = useConfirm()
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const confirm = useConfirm();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const { driver } = useDriverSession()
-  const [activeOrders, setActiveOrders] = useState<Order[]>([])
-  const [recentOrders, setRecentOrders] = useState<Order[]>([])
-  const [photos, setPhotos] = useState<Photo[]>([])
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const { driver } = useDriverSession();
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedCategory, setSelectedCategory] =
-    useState<PhotoCategory>("cargo_before")
-  const [isUploading, setIsUploading] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [showOrderPicker, setShowOrderPicker] = useState(false)
-  const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
+    useState<PhotoCategory>("cargo_before");
+  const [isUploading, setIsUploading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showOrderPicker, setShowOrderPicker] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null);
 
   // Сессия — серверная (httpOnly-cookie): localStorage со «driver_session»
   // после задачи 1 пуст, поэтому раньше эта страница сразу уводила на логин
 
   useEffect(() => {
-    const ctxRaw = searchParams?.get("context") ?? "generic"
-    const ctx = ctxRaw as PhotoContext
-    setSelectedCategory(mapContextToCategory(ctx))
-  }, [searchParams])
+    const ctxRaw = searchParams?.get("context") ?? "generic";
+    const ctx = ctxRaw as PhotoContext;
+    setSelectedCategory(mapContextToCategory(ctx));
+  }, [searchParams]);
 
   const fetchOrders = useCallback(async () => {
-    if (!driver?.id) return
+    if (!driver?.id) return;
 
     try {
       const [activeRes, historyRes] = await Promise.all([
         fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
         fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
-      ])
+      ]);
 
-      const activeData = await activeRes.json()
-      const historyData = await historyRes.json()
+      const activeData = await activeRes.json();
+      const historyData = await historyRes.json();
 
-      let active: Order[] = []
-      let recent: Order[] = []
+      let active: Order[] = [];
+      let recent: Order[] = [];
 
       if (activeData.success) {
-        active = activeData.orders as Order[]
-        setActiveOrders(active)
+        active = activeData.orders as Order[];
+        setActiveOrders(active);
       }
 
       if (historyData.success) {
-        const allHistory = historyData.orders as Order[]
-        const now = new Date()
-        const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
+        const allHistory = historyData.orders as Order[];
+        const now = new Date();
+        const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
         recent = allHistory.filter((o: any) => {
-          if (!o.createdAt) return false
-          return new Date(o.createdAt) >= twoWeeksAgo
-        })
-        setRecentOrders(recent)
+          if (!o.createdAt) return false;
+          return new Date(o.createdAt) >= twoWeeksAgo;
+        });
+        setRecentOrders(recent);
       }
 
       if (!selectedOrder && active.length > 0) {
-        setSelectedOrder(active[0])
+        setSelectedOrder(active[0]);
       }
     } catch (error) {
-      console.error("Failed to fetch orders:", error)
+      console.error("Failed to fetch orders:", error);
     }
-  }, [driver?.id, selectedOrder])
+  }, [driver?.id, selectedOrder]);
 
   const fetchPhotos = useCallback(async () => {
-    if (!driver?.id) return
+    if (!driver?.id) return;
 
     try {
       const url = selectedOrder
         ? `/api/m/photos?driverId=${driver.id}&orderId=${selectedOrder.id}`
-        : `/api/m/photos?driverId=${driver.id}`
+        : `/api/m/photos?driverId=${driver.id}`;
 
-      const res = await fetch(url)
-      const data = await res.json()
+      const res = await fetch(url);
+      const data = await res.json();
       if (data.success) {
-        setPhotos(data.photos as Photo[])
+        setPhotos(data.photos as Photo[]);
       }
     } catch (error) {
-      console.error("Failed to fetch photos:", error)
+      console.error("Failed to fetch photos:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [driver?.id, selectedOrder])
+  }, [driver?.id, selectedOrder]);
 
   useEffect(() => {
     if (driver?.id) {
-      fetchOrders()
-      fetchPhotos()
+      fetchOrders();
+      fetchPhotos();
     }
-  }, [driver?.id, fetchOrders, fetchPhotos])
+  }, [driver?.id, fetchOrders, fetchPhotos]);
 
   // Очередь может отправить фото сама (связь вернулась) — тогда список
   // обновляем без участия водителя, а о распознанном чеке сообщаем тостом
   useEffect(() => {
-    const queue = getPhotoQueue()
-    if (!queue) return
+    const queue = getPhotoQueue();
+    if (!queue) return;
 
     const unsubscribe = queue.onUploaded((_item, result) => {
-      void fetchPhotos()
+      void fetchPhotos();
 
-      const ocr = result.ocr as { total?: number | null } | null
+      const ocr = result.ocr as { total?: number | null } | null;
       if (ocr?.total) {
         toast.success(`Чек распознан: ${ocr.total.toLocaleString("ru-RU")} ₽`, {
           description: "Расход можно записать в карточке рейса",
-        })
+        });
       } else {
-        toast.success("Фото из очереди загружено")
+        toast.success("Фото из очереди загружено");
       }
-    })
+    });
 
-    return unsubscribe
-  }, [fetchPhotos])
+    return unsubscribe;
+  }, [fetchPhotos]);
 
   /**
    * Загрузка фото (задача 7).
@@ -252,14 +248,14 @@ function PhotoPageContent() {
    * вернётся: чек, снятый на трассе, не теряется.
    */
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length || !driver?.id) return
+    const files = e.target.files;
+    if (!files?.length || !driver?.id) return;
 
-    setIsUploading(true)
+    setIsUploading(true);
 
-    let sentCount = 0
-    let queuedCount = 0
-    let recognizedSum = 0
+    let sentCount = 0;
+    let queuedCount = 0;
+    let recognizedSum = 0;
 
     for (const file of Array.from(files)) {
       try {
@@ -268,48 +264,58 @@ function PhotoPageContent() {
           fileName: file.name || "photo.jpg",
           photoType: selectedCategory,
           orderId: selectedOrder?.id ?? null,
-        })
+        });
 
         if (result.sent) {
-          sentCount++
+          sentCount++;
 
           // Чек: сервер уже распознал сумму — показываем её водителю
-          const ocr = result.ocr as { total?: number | null; number?: string | null } | null
-          if (selectedCategory === "receipt" && ocr?.total) recognizedSum += ocr.total
+          const ocr = result.ocr as {
+            total?: number | null;
+            number?: string | null;
+          } | null;
+          if (selectedCategory === "receipt" && ocr?.total)
+            recognizedSum += ocr.total;
 
           if (selectedCategory === "waybill" && ocr?.number) {
             toast.success(`Накладная № ${ocr.number} распознана`, {
               description: "Документ привязан к заказу",
-            })
+            });
           }
         } else if (result.queued) {
-          queuedCount++
+          queuedCount++;
         } else {
-          toast.error(result.error || "Не удалось загрузить фото")
+          toast.error(result.error || "Не удалось загрузить фото");
         }
       } catch (error) {
-        console.error("Upload failed:", error)
-        toast.error("Не удалось загрузить фото")
+        console.error("Upload failed:", error);
+        toast.error("Не удалось загрузить фото");
       }
     }
 
     if (sentCount > 0) {
+      // Помощник водителя: на финальной стадии фото — намёк отметить доставку
+      const deliveryHint = photoUploadHint((selectedOrder as any)?.status);
       toast.success(`Загружено фото: ${sentCount}`, {
         icon: <Check className="h-4 w-4" />,
-        description: recognizedSum > 0 ? `Чек распознан: ${recognizedSum.toLocaleString("ru-RU")} ₽` : undefined,
-      })
-      await fetchPhotos()
+        description:
+          deliveryHint ||
+          (recognizedSum > 0
+            ? `Чек распознан: ${recognizedSum.toLocaleString("ru-RU")} ₽`
+            : undefined),
+      });
+      await fetchPhotos();
     }
 
     if (queuedCount > 0) {
       toast.info(`Фото сохранено: ${queuedCount}`, {
         description: "Связи нет — фото уйдёт само, когда появится сеть",
-      })
+      });
     }
 
-    setIsUploading(false)
-    e.target.value = ""
-  }
+    setIsUploading(false);
+    e.target.value = "";
+  };
 
   const handleDelete = async (photoId: string) => {
     const ok = await confirm({
@@ -317,40 +323,40 @@ function PhotoPageContent() {
       description: "Снимок исчезнет и из галереи, и из истории рейса.",
       confirmLabel: "Удалить",
       destructive: true,
-    })
-    if (!ok) return
+    });
+    if (!ok) return;
 
     try {
       const res = await fetch(`/api/m/photos?id=${photoId}`, {
         method: "DELETE",
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (data.success) {
-        setPhotos((prev) => prev.filter((p: any) => p.id !== photoId))
-        setPreviewPhoto(null)
-        toast.success("Фото удалено")
+        setPhotos((prev) => prev.filter((p: any) => p.id !== photoId));
+        setPreviewPhoto(null);
+        toast.success("Фото удалено");
       } else {
-        toast.error(data.error || "Ошибка удаления")
+        toast.error(data.error || "Ошибка удаления");
       }
     } catch (error) {
-      console.error("Delete failed:", error)
-      toast.error("Ошибка удаления")
+      console.error("Delete failed:", error);
+      toast.error("Ошибка удаления");
     }
-  }
+  };
 
   const getCategoryInfo = (type: string) => {
-    return CATEGORIES.find((c: any) => c.id === type) || CATEGORIES[0]
-  }
+    return CATEGORIES.find((c: any) => c.id === type) || CATEGORIES[0];
+  };
 
   if (!driver) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <TruckLoader className="text-orange-500" />
       </div>
-    )
+    );
   }
 
-  const hasOrders = activeOrders.length > 0 || recentOrders.length > 0
+  const hasOrders = activeOrders.length > 0 || recentOrders.length > 0;
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white m-nav-pad">
@@ -409,7 +415,7 @@ function PhotoPageContent() {
           </p>
           <div className="grid grid-cols-3 gap-2">
             {CATEGORIES.map((cat: any) => {
-              const isSelected = selectedCategory === cat.id
+              const isSelected = selectedCategory === cat.id;
               return (
                 <button
                   key={cat.id}
@@ -433,7 +439,7 @@ function PhotoPageContent() {
                     {cat.shortLabel}
                   </span>
                 </button>
-              )
+              );
             })}
           </div>
         </div>
@@ -495,7 +501,7 @@ function PhotoPageContent() {
             </p>
             <div className="grid grid-cols-3 gap-2">
               {photos.map((photo: any) => {
-                const catInfo = getCategoryInfo(photo.type)
+                const catInfo = getCategoryInfo(photo.type);
                 return (
                   <button
                     key={photo.id}
@@ -515,7 +521,7 @@ function PhotoPageContent() {
                       {catInfo.label}
                     </p>
                   </button>
-                )
+                );
               })}
             </div>
           </div>
@@ -555,8 +561,8 @@ function PhotoPageContent() {
             <div className="overflow-y-auto max-h-[65vh]">
               <button
                 onClick={() => {
-                  setSelectedOrder(null)
-                  setShowOrderPicker(false)
+                  setSelectedOrder(null);
+                  setShowOrderPicker(false);
                 }}
                 className={`w-full p-4 text-left border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
                   !selectedOrder ? "bg-orange-500/10" : ""
@@ -577,8 +583,8 @@ function PhotoPageContent() {
                     <button
                       key={order.id}
                       onClick={() => {
-                        setSelectedOrder(order)
-                        setShowOrderPicker(false)
+                        setSelectedOrder(order);
+                        setShowOrderPicker(false);
                       }}
                       className={`w-full p-4 text-left border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
                         selectedOrder?.id === order.id ? "bg-orange-500/10" : ""
@@ -602,8 +608,8 @@ function PhotoPageContent() {
                     <button
                       key={order.id}
                       onClick={() => {
-                        setSelectedOrder(order)
-                        setShowOrderPicker(false)
+                        setSelectedOrder(order);
+                        setShowOrderPicker(false);
                       }}
                       className={`w-full p-4 text-left border-b border-gray-800 hover:bg-gray-800/50 transition-colors ${
                         selectedOrder?.id === order.id ? "bg-orange-500/10" : ""
@@ -665,18 +671,20 @@ function PhotoPageContent() {
 
       <BottomNav />
     </div>
-  )
+  );
 }
 
 // Обертка Suspense для безопасного useSearchParams
 export default function PhotoPageWrapper() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <TruckLoader className="text-orange-500" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+          <TruckLoader className="text-orange-500" />
+        </div>
+      }
+    >
       <PhotoPageContent />
     </Suspense>
-  )
+  );
 }

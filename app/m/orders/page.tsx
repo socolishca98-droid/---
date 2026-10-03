@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useCallback } from "react"
-import { BottomNav } from "@/components/driver-mobile/bottom-nav"
-import Link from "next/link"
-import { useDriverSession } from "@/hooks/use-driver-session"
+import { useEffect, useState, useCallback } from "react";
+import { BottomNav } from "@/components/driver-mobile/bottom-nav";
+import Link from "next/link";
+import { useDriverSession } from "@/hooks/use-driver-session";
 import {
   MapPin,
   ChevronRight,
@@ -12,74 +12,79 @@ import {
   XCircle,
   Package,
   RefreshCw,
-} from "lucide-react"
-import { TruckLoader } from "@/components/ui/truck-loader"
+  Sparkles,
+} from "lucide-react";
+import { TruckLoader } from "@/components/ui/truck-loader";
+import { nextStepForStatus } from "@/lib/assistant/driver-hints";
 
 interface DriverSession {
-  id: string
-  name: string
+  id: string;
+  name: string;
 }
 
 interface Order {
-  id: string
-  routeFrom: string
-  routeTo: string
-  distance: number | null
-  price: number | null
-  cargoType: string
-  status: string
-  createdAt: string
+  id: string;
+  routeFrom: string;
+  routeTo: string;
+  distance: number | null;
+  price: number | null;
+  cargoType: string;
+  status: string;
+  createdAt: string;
 }
 
-type Tab = "active" | "history"
+type Tab = "active" | "history";
 
 export default function DriverOrdersPage() {
   // Сессия водителя — серверная (httpOnly-cookie): страница раньше читала
   // «driver_session» из localStorage, которой после задачи 1 не существует,
   // и любой вход заканчивался возвратом на экран логина
-  const { driver } = useDriverSession()
-  const [activeOrders, setActiveOrders] = useState<Order[]>([])
-  const [historyOrders, setHistoryOrders] = useState<Order[]>([])
-  const [tab, setTab] = useState<Tab>("active")
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const { driver } = useDriverSession();
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
+  const [tab, setTab] = useState<Tab>("active");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchOrders = useCallback(async (showRefresh = false) => {
-    if (!driver?.id) return
+  const fetchOrders = useCallback(
+    async (showRefresh = false) => {
+      if (!driver?.id) return;
 
-    if (showRefresh) setIsRefreshing(true)
-    else setIsLoading(true)
+      if (showRefresh) setIsRefreshing(true);
+      else setIsLoading(true);
 
-    try {
-      const [activeRes, historyRes] = await Promise.all([
-        fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
-        fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
-      ])
+      try {
+        const [activeRes, historyRes] = await Promise.all([
+          fetch(`/api/m/orders?driverId=${driver.id}&status=active`),
+          fetch(`/api/m/orders?driverId=${driver.id}&status=history`),
+        ]);
 
-      const activeData = await activeRes.json()
-      const historyData = await historyRes.json()
+        const activeData = await activeRes.json();
+        const historyData = await historyRes.json();
 
-      if (activeData.success) {
-        setActiveOrders(activeData.orders as Order[])
+        if (activeData.success) {
+          setActiveOrders(activeData.orders as Order[]);
+        }
+        if (historyData.success) {
+          setHistoryOrders(historyData.orders as Order[]);
+        }
+      } catch (e) {
+        console.error("Failed to fetch orders:", e);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
       }
-      if (historyData.success) {
-        setHistoryOrders(historyData.orders as Order[])
-      }
-    } catch (e) {
-      console.error("Failed to fetch orders:", e)
-    } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
-    }
-  }, [driver?.id])
+    },
+    [driver?.id],
+  );
 
   useEffect(() => {
     if (driver?.id) {
-      fetchOrders()
+      fetchOrders();
     }
-  }, [driver?.id, fetchOrders])
+  }, [driver?.id, fetchOrders]);
 
-  const orders = tab === "active" ? activeOrders : historyOrders
+  const orders = tab === "active" ? activeOrders : historyOrders;
 
   const getStatusInfo = (status: string) => {
     switch (status) {
@@ -88,96 +93,96 @@ export default function DriverOrdersPage() {
           label: "Завершён",
           icon: CheckCircle2,
           className: "bg-emerald-500/15 text-emerald-400",
-        }
+        };
       case "cancelled":
         return {
           label: "Отменён",
           icon: XCircle,
           className: "bg-red-500/15 text-red-400",
-        }
+        };
       case "loading":
         return {
           label: "Погрузка",
           icon: Package,
           className: "bg-blue-500/15 text-blue-400",
-        }
+        };
       case "unloading":
         return {
           label: "Выгрузка",
           icon: Package,
           className: "bg-emerald-500/15 text-emerald-400",
-        }
+        };
       case "in_transit":
       case "control":
         return {
           label: "В пути",
           icon: Clock,
           className: "bg-orange-500/15 text-orange-400",
-        }
+        };
       // канон этапов заказа — lib/orders/stages.ts
       case "search":
         return {
           label: "Поиск",
           icon: Clock,
           className: "bg-slate-500/15 text-slate-300",
-        }
+        };
       case "negotiation":
         return {
           label: "Согласование",
           icon: Clock,
           className: "bg-amber-500/15 text-amber-400",
-        }
+        };
       case "agreed":
         return {
           label: "Согласован",
           icon: CheckCircle2,
           className: "bg-cyan-500/15 text-cyan-400",
-        }
+        };
       case "in_route":
         return {
           label: "В рейсе",
           icon: Clock,
           className: "bg-blue-500/15 text-blue-400",
-        }
+        };
       case "documents":
         return {
           label: "Документы",
           icon: Package,
           className: "bg-violet-500/15 text-violet-400",
-        }
+        };
       case "assigned":
         return {
           label: "Назначен",
           icon: CheckCircle2,
           className: "bg-emerald-500/15 text-emerald-400",
-        }
+        };
       case "rejected":
         return {
           label: "Отклонён",
           icon: XCircle,
           className: "bg-red-500/15 text-red-400",
-        }
+        };
       case "expired":
         return {
           label: "Просрочен",
           icon: XCircle,
           className: "bg-slate-500/15 text-slate-300",
-        }
+        };
       default:
         return {
           label: "В работе",
           icon: Clock,
           className: "bg-orange-500/15 text-orange-400",
-        }
+        };
     }
-  }
+  };
 
   if (!driver) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <TruckLoader className="text-orange-500" />
       </div>
-    )
+    );
   }
 
   return (
@@ -252,8 +257,8 @@ export default function DriverOrdersPage() {
           </div>
         ) : (
           orders.map((order: any) => {
-            const statusInfo = getStatusInfo(order.status)
-            const StatusIcon = statusInfo.icon
+            const statusInfo = getStatusInfo(order.status);
+            const StatusIcon = statusInfo.icon;
 
             return (
               <Link
@@ -299,6 +304,14 @@ export default function DriverOrdersPage() {
                   </div>
                 </div>
 
+                {/* Помощник водителя: что делать следующим шагом */}
+                {nextStepForStatus(order.status) && (
+                  <p className="flex items-start gap-2 rounded-xl border border-sky-500/20 bg-sky-500/[0.07] p-2.5 text-[11px] leading-relaxed text-sky-300">
+                    <Sparkles className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                    {nextStepForStatus(order.status)}
+                  </p>
+                )}
+
                 {/* Нижняя часть: расстояние + цена */}
                 <div className="flex items-center justify-between pt-3 border-t border-gray-800">
                   <div className="flex items-center gap-1.5 text-gray-500">
@@ -317,12 +330,12 @@ export default function DriverOrdersPage() {
                   </div>
                 </div>
               </Link>
-            )
+            );
           })
         )}
       </main>
 
       <BottomNav />
     </div>
-  )
+  );
 }

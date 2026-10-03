@@ -475,6 +475,15 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
       foreign: "id",
     },
   },
+  pushSubscription: {
+    organization: {
+      model: "organization",
+      many: false,
+      local: "organizationId",
+      foreign: "id",
+    },
+    user: { model: "user", many: false, local: "userId", foreign: "id" },
+  },
 };
 
 /** Уникальности (как в prisma/schema.prisma). */
@@ -503,6 +512,7 @@ const UNIQUE: Record<string, string[][]> = {
   auditLog: [["id"]],
   atiScanConfig: [["id"]],
   organizationSettings: [["id"], ["organizationId"]],
+  pushSubscription: [["id"], ["endpoint"]],
   atiConnection: [["id"], ["organizationId"]],
   atiCache: [["id"], ["organizationId", "atiLoadId"]],
   geoCache: [["id"]],
@@ -965,9 +975,11 @@ function makeDelegate(model: string) {
             : (() => {
                 const counts: Row = {};
                 for (const field of Object.keys(args._count as Row))
-                  counts[field] = rows.filter(
-                    (row) => row[field] != null,
-                  ).length;
+                  // _all в настоящей Prisma — число всех строк, а не поле записи
+                  counts[field] =
+                    field === "_all"
+                      ? rows.length
+                      : rows.filter((row) => row[field] != null).length;
                 return counts;
               })();
       for (const kind of ["_sum", "_avg", "_min", "_max"] as const) {

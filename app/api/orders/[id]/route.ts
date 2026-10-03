@@ -16,6 +16,7 @@ import {
   statusFromNegotiation,
   type OrderStatus,
 } from "@/lib/orders/stages"
+import { orderHints } from "@/lib/assistant/order-hints";
 
 /**
  * Поля заказа, которые разрешено менять через PATCH /api/orders/[id].
@@ -112,7 +113,16 @@ export async function GET(_request: NextRequest,
       )
     }
 
-    return NextResponse.json({ success: true, order })
+    // Подсказки ассистента (lib/assistant/order-hints.ts): не блокируют выдачу
+    // заказа — если правила упали, карточка просто без подсказок.
+    let hints: unknown[] = []
+    try {
+      hints = await orderHints(__org.organizationId, order)
+    } catch (hintError) {
+      console.error("[Order API] hints error:", hintError)
+    }
+
+    return NextResponse.json({ success: true, order, hints })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Order GET error"
     console.error("[Order API] GET Error:", message)

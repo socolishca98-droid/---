@@ -1,45 +1,62 @@
 // app/orders/page.tsx
 
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth-context"
-import { useSidebar } from "@/lib/sidebar-context"
-import { Sidebar } from "@/components/sidebar"
-import { Header } from "@/components/header"
-import Link from "next/link"
-import { OrdersSandbox } from "@/components/orders/orders-sandbox"
-import { TextParsePanel } from "@/components/orders/text-parse-panel"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Package, Bot, Search } from "lucide-react"
-import { TruckLoader } from "@/components/ui/truck-loader"
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { useSidebar } from "@/lib/sidebar-context";
+import { Sidebar } from "@/components/sidebar";
+import { Header } from "@/components/header";
+import Link from "next/link";
+import { OrdersSandbox } from "@/components/orders/orders-sandbox";
+import { TextParsePanel } from "@/components/orders/text-parse-panel";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Package, Bot, Search } from "lucide-react";
+import { TruckLoader } from "@/components/ui/truck-loader";
+import { BriefingCard } from "@/components/assistant/briefing-card";
 
 export default function OrdersPage() {
-  const [tab, setTab] = useState<"orders" | "parser">("orders")
+  const [tab, setTab] = useState<"orders" | "parser">("orders");
+  // Организация может не работать через ATI — кнопка «Найти груз» не нужна
+  const [atiEnabled, setAtiEnabled] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/org-settings", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.success)
+          setAtiEnabled(data.settings?.atiEnabled !== false);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Разбор текста положил заказ в песочницу — открываем вкладку песочницы
   useEffect(() => {
     const onTab = (event: Event) => {
-      const detail = (event as CustomEvent).detail
-      if (detail === "orders" || detail === "parser") setTab(detail)
-    }
-    window.addEventListener("tms:orders-tab", onTab)
-    return () => window.removeEventListener("tms:orders-tab", onTab)
-  }, [])
+      const detail = (event as CustomEvent).detail;
+      if (detail === "orders" || detail === "parser") setTab(detail);
+    };
+    window.addEventListener("tms:orders-tab", onTab);
+    return () => window.removeEventListener("tms:orders-tab", onTab);
+  }, []);
 
-  const { user, isLoading } = useAuth()
-  const { isCollapsed } = useSidebar()
-  const router = useRouter()
+  const { user, isLoading } = useAuth();
+  const { isCollapsed } = useSidebar();
+  const router = useRouter();
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace("/login")
+      router.replace("/login");
     }
     // Водителей через этот логин больше нет, поэтому
     // редирект на /m тут не нужен.
-  }, [user, isLoading, router])
+  }, [user, isLoading, router]);
 
   if (isLoading || !user) {
     // Подложка прозрачная: живой фон приложения виден и во время загрузки
@@ -47,7 +64,7 @@ export default function OrdersPage() {
       <div className="min-h-screen flex items-center justify-center bg-transparent">
         <TruckLoader className="text-primary" />
       </div>
-    )
+    );
   }
 
   return (
@@ -63,20 +80,30 @@ export default function OrdersPage() {
             <div>
               <h1 className="text-2xl font-bold">Заказы</h1>
               <p className="text-muted-foreground">
-                Поиск → Согласование → Маршрут → Документы → Назначение → Контроль
+                Поиск → Согласование → Маршрут → Документы → Назначение →
+                Контроль
               </p>
             </div>
             {/* Поиск грузов — по требованию, на отдельной странице: он не
                 занимает постоянную вкладку и не уводит из заказов */}
-            <Button asChild>
-              <Link href="/search">
-                <Search className="h-4 w-4 mr-2" />
-                Найти груз
-              </Link>
-            </Button>
+            {atiEnabled && (
+              <Button asChild>
+                <Link href="/search">
+                  <Search className="h-4 w-4 mr-2" />
+                  Найти груз
+                </Link>
+              </Button>
+            )}
           </div>
 
-          <Tabs value={tab} onValueChange={(value) => setTab(value as "orders" | "parser")} className="space-y-6">
+          {/* Брифинг ассистента: что сегодня важно — одним списком */}
+          <BriefingCard />
+
+          <Tabs
+            value={tab}
+            onValueChange={(value) => setTab(value as "orders" | "parser")}
+            className="space-y-6"
+          >
             <TabsList className="bg-secondary w-full justify-start p-1">
               <TabsTrigger value="orders" className="gap-2 px-6">
                 <Package className="h-4 w-4" />
@@ -102,5 +129,5 @@ export default function OrdersPage() {
         </main>
       </div>
     </div>
-  )
+  );
 }
