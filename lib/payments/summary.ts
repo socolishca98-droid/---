@@ -10,95 +10,95 @@
 // Модуль чистый: без Prisma и Next, поэтому проверяется тестами без базы.
 
 export type PaymentOrderInput = {
-  id: string
-  clientId?: string | null
-  clientName?: string | null
-  clientContact?: string | null
-  routeFrom?: string | null
-  routeTo?: string | null
-  distance?: number | null
-  cargoType?: string | null
-  status?: string | null
-  createdAt?: Date | null
-  deadline?: Date | null
+  id: string;
+  clientId?: string | null;
+  clientName?: string | null;
+  clientContact?: string | null;
+  routeFrom?: string | null;
+  routeTo?: string | null;
+  distance?: number | null;
+  cargoType?: string | null;
+  status?: string | null;
+  createdAt?: Date | null;
+  deadline?: Date | null;
   /** Фактическая доставка: от неё считаем отсрочку. */
-  deliveredAt?: Date | null
-  price?: number | null
-  agreedPrice?: number | null
-  paymentType?: string | null
-  vatType?: string | null
-  deferredDays?: number | null
-  dueDate?: Date | null
-  isPaid?: boolean | null
-  paidAt?: Date | null
-  client?: { id: string; name: string; inn?: string | null } | null
-}
+  deliveredAt?: Date | null;
+  price?: number | null;
+  agreedPrice?: number | null;
+  paymentType?: string | null;
+  vatType?: string | null;
+  deferredDays?: number | null;
+  dueDate?: Date | null;
+  isPaid?: boolean | null;
+  paidAt?: Date | null;
+  client?: { id: string; name: string; inn?: string | null } | null;
+};
 
-export type ReminderInfo = { lastAt: Date | null; count: number }
+export type ReminderInfo = { lastAt: Date | null; count: number };
 
 export type PaymentRow = {
-  id: string
-  clientId: string | null
-  clientName: string
-  clientContact: string | null
-  inn: string | null
-  routeFrom: string
-  routeTo: string
-  distance: number
-  cargoType: string
-  status: string | null
-  createdAt: Date | null
-  amount: number
-  paymentType: string | null
-  vatType: string | null
-  deferredDays: number
-  dueDate: Date | null
+  id: string;
+  clientId: string | null;
+  clientName: string;
+  clientContact: string | null;
+  inn: string | null;
+  routeFrom: string;
+  routeTo: string;
+  distance: number;
+  cargoType: string;
+  status: string | null;
+  createdAt: Date | null;
+  amount: number;
+  paymentType: string | null;
+  vatType: string | null;
+  deferredDays: number;
+  dueDate: Date | null;
   /** Отсрочка есть (deferredDays > 0 или задан срок оплаты). */
-  isDeferred: boolean
-  isPaid: boolean
-  paidAt: Date | null
-  isOverdue: boolean
+  isDeferred: boolean;
+  isPaid: boolean;
+  paidAt: Date | null;
+  isOverdue: boolean;
   /** На сколько дней срок оплаты уже прошёл (0 — не просрочен). */
-  overdueDays: number
-  remindedAt: Date | null
-  reminderCount: number
-}
+  overdueDays: number;
+  remindedAt: Date | null;
+  reminderCount: number;
+};
 
 export type PaymentsSummary = {
-  totalPending: number
-  totalDeferred: number
-  totalOverdue: number
-  totalPaid: number
-  totalRevenue: number
-  pendingCount: number
-  deferredCount: number
-  overdueCount: number
-  paidCount: number
-  totalOrders: number
+  totalPending: number;
+  totalDeferred: number;
+  totalOverdue: number;
+  totalPaid: number;
+  totalRevenue: number;
+  pendingCount: number;
+  deferredCount: number;
+  overdueCount: number;
+  paidCount: number;
+  totalOrders: number;
   /** Среднее число дней от срока оплаты до фактической оплаты. */
-  avgPaymentDays: number | null
-}
+  avgPaymentDays: number | null;
+};
 
 export type Debtor = {
-  key: string
-  clientId: string | null
-  clientName: string
-  inn: string | null
-  debt: number
-  overdue: number
-  ordersCount: number
-  overdueCount: number
-  maxOverdueDays: number
+  key: string;
+  clientId: string | null;
+  clientName: string;
+  inn: string | null;
+  debt: number;
+  overdue: number;
+  ordersCount: number;
+  overdueCount: number;
+  maxOverdueDays: number;
   /** Самый ранний неоплаченный срок — с него и надо начинать разговор. */
-  oldestDueDate: Date | null
-  lastOrderAt: Date | null
-}
+  oldestDueDate: Date | null;
+  lastOrderAt: Date | null;
+};
 
 export const PAYMENT_TYPE_LABELS: Record<string, string> = {
   cash: "Наличные",
   bank: "Безнал",
   card: "Карта",
-}
+};
 
 const VAT_LABELS: Record<string, string> = {
   none: "Без НДС",
@@ -110,13 +110,14 @@ const VAT_LABELS: Record<string, string> = {
   "0": "Без НДС",
   "10": "НДС 10%",
   "20": "НДС 20%",
-}
+};
 
 /** Сумма заказа: согласованная цена важнее первоначальной. */
 export function orderAmount(order: PaymentOrderInput): number {
-  const agreed = typeof order.agreedPrice === "number" ? order.agreedPrice : null
-  const price = typeof order.price === "number" ? order.price : null
-  return agreed ?? price ?? 0
+  const agreed =
+    typeof order.agreedPrice === "number" ? order.agreedPrice : null;
+  const price = typeof order.price === "number" ? order.price : null;
+  return agreed ?? price ?? 0;
 }
 
 /**
@@ -124,69 +125,82 @@ export function orderAmount(order: PaymentOrderInput): number {
  * В базе встречаются и старые значения («bank_transfer», «deferred», «нал»),
  * поэтому распознаём их, а неизвестное отдаём как null — врать не будем.
  */
-export function normalizePaymentType(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const value = raw.trim().toLowerCase()
+export function normalizePaymentType(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw) return null;
+  const value = raw.trim().toLowerCase();
 
-  if (["cash", "нал", "наличные", "наличный"].includes(value)) return "cash"
-  if (["bank", "bank_transfer", "безнал", "безналичный", "счет", "счёт"].includes(value)) return "bank"
-  if (["card", "карта", "картой", "эквайринг"].includes(value)) return "card"
-  if (value === "deferred" || value === "отсрочка" || value === "рассрочка") return "bank"
+  if (["cash", "нал", "наличные", "наличный"].includes(value)) return "cash";
+  if (
+    ["bank", "bank_transfer", "безнал", "безналичный", "счет", "счёт"].includes(
+      value,
+    )
+  )
+    return "bank";
+  if (["card", "карта", "картой", "эквайринг"].includes(value)) return "card";
+  if (value === "deferred" || value === "отсрочка" || value === "рассрочка")
+    return "bank";
 
-  return null
+  return null;
 }
 
 export function paymentTypeLabel(raw: string | null | undefined): string {
-  const canonical = normalizePaymentType(raw)
-  if (canonical) return PAYMENT_TYPE_LABELS[canonical]
-  return raw?.trim() ? raw.trim() : "Не указана"
+  const canonical = normalizePaymentType(raw);
+  if (canonical) return PAYMENT_TYPE_LABELS[canonical];
+  return raw?.trim() ? raw.trim() : "Не указана";
 }
 
 export function vatLabel(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const value = raw.trim().toLowerCase()
-  return VAT_LABELS[value] ?? raw.trim()
+  if (!raw) return null;
+  const value = raw.trim().toLowerCase();
+  return VAT_LABELS[value] ?? raw.trim();
 }
 
 function startOfDay(date: Date): Date {
-  const copy = new Date(date)
-  copy.setHours(0, 0, 0, 0)
-  return copy
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
 }
 
 export function daysBetween(from: Date, to: Date): number {
-  const ms = startOfDay(to).getTime() - startOfDay(from).getTime()
-  return Math.round(ms / 86_400_000)
+  const ms = startOfDay(to).getTime() - startOfDay(from).getTime();
+  return Math.round(ms / 86_400_000);
 }
 
 /** Срок оплаты: явная дата важнее расчёта по отсрочке. */
 export function paymentDueDate(order: PaymentOrderInput): Date | null {
-  if (order.dueDate) return order.dueDate
+  if (order.dueDate) return order.dueDate;
 
-  const deferred = typeof order.deferredDays === "number" ? order.deferredDays : 0
-  if (deferred <= 0) return null
+  const deferred =
+    typeof order.deferredDays === "number" ? order.deferredDays : 0;
+  if (deferred <= 0) return null;
 
-  const base = order.deliveredAt ?? order.deadline ?? order.createdAt
-  if (!base) return null
+  const base = order.deliveredAt ?? order.deadline ?? order.createdAt;
+  if (!base) return null;
 
-  const due = new Date(base)
-  due.setDate(due.getDate() + deferred)
-  return due
+  const due = new Date(base);
+  due.setDate(due.getDate() + deferred);
+  return due;
 }
 
 /** Есть ли у заказа отсрочка: либо дни, либо заданный срок оплаты. */
 export function isDeferredOrder(order: PaymentOrderInput): boolean {
-  const deferred = typeof order.deferredDays === "number" ? order.deferredDays : 0
-  return deferred > 0 || Boolean(order.dueDate)
+  const deferred =
+    typeof order.deferredDays === "number" ? order.deferredDays : 0;
+  return deferred > 0 || Boolean(order.dueDate);
 }
 
 /** Сколько дней оплата уже просрочена (0 — не просрочена или уже оплачена). */
-export function overdueDaysFor(order: PaymentOrderInput, now: Date = new Date()): number {
-  if (order.isPaid) return 0
-  const due = paymentDueDate(order)
-  if (!due) return 0
-  const diff = daysBetween(due, now)
-  return diff > 0 ? diff : 0
+export function overdueDaysFor(
+  order: PaymentOrderInput,
+  now: Date = new Date(),
+): number {
+  if (order.isPaid) return 0;
+  const due = paymentDueDate(order);
+  if (!due) return 0;
+  const diff = daysBetween(due, now);
+  return diff > 0 ? diff : 0;
 }
 
 /** Строка списка оплат: что показываем логисту и бухгалтеру. */
@@ -195,8 +209,8 @@ export function buildPaymentRow(
   now: Date = new Date(),
   reminder?: ReminderInfo,
 ): PaymentRow {
-  const dueDate = paymentDueDate(order)
-  const overdueDays = overdueDaysFor(order, now)
+  const dueDate = paymentDueDate(order);
+  const overdueDays = overdueDaysFor(order, now);
 
   return {
     id: order.id,
@@ -213,7 +227,8 @@ export function buildPaymentRow(
     amount: orderAmount(order),
     paymentType: normalizePaymentType(order.paymentType),
     vatType: order.vatType ?? null,
-    deferredDays: typeof order.deferredDays === "number" ? order.deferredDays : 0,
+    deferredDays:
+      typeof order.deferredDays === "number" ? order.deferredDays : 0,
     dueDate,
     isDeferred: isDeferredOrder(order),
     isPaid: Boolean(order.isPaid),
@@ -222,48 +237,48 @@ export function buildPaymentRow(
     overdueDays,
     remindedAt: reminder?.lastAt ?? null,
     reminderCount: reminder?.count ?? 0,
-  }
+  };
 }
 
 /** Сводка по оплатам: суммы и количество по состояниям. */
 export function buildPaymentsSummary(rows: PaymentRow[]): PaymentsSummary {
-  let totalPending = 0
-  let totalDeferred = 0
-  let totalOverdue = 0
-  let totalPaid = 0
-  let totalRevenue = 0
-  let pendingCount = 0
-  let deferredCount = 0
-  let overdueCount = 0
-  let paidCount = 0
+  let totalPending = 0;
+  let totalDeferred = 0;
+  let totalOverdue = 0;
+  let totalPaid = 0;
+  let totalRevenue = 0;
+  let pendingCount = 0;
+  let deferredCount = 0;
+  let overdueCount = 0;
+  let paidCount = 0;
 
-  const paymentTerms: number[] = []
+  const paymentTerms: number[] = [];
 
   for (const row of rows) {
-    totalRevenue += row.amount
+    totalRevenue += row.amount;
 
     if (row.isPaid) {
-      totalPaid += row.amount
-      paidCount += 1
+      totalPaid += row.amount;
+      paidCount += 1;
 
       if (row.paidAt && row.dueDate) {
-        const days = daysBetween(row.dueDate, row.paidAt)
-        if (Number.isFinite(days)) paymentTerms.push(days)
+        const days = daysBetween(row.dueDate, row.paidAt);
+        if (Number.isFinite(days)) paymentTerms.push(days);
       }
-      continue
+      continue;
     }
 
-    totalPending += row.amount
-    pendingCount += 1
+    totalPending += row.amount;
+    pendingCount += 1;
 
     if (row.isDeferred) {
-      totalDeferred += row.amount
-      deferredCount += 1
+      totalDeferred += row.amount;
+      deferredCount += 1;
     }
 
     if (row.isOverdue) {
-      totalOverdue += row.amount
-      overdueCount += 1
+      totalOverdue += row.amount;
+      overdueCount += 1;
     }
   }
 
@@ -280,9 +295,12 @@ export function buildPaymentsSummary(rows: PaymentRow[]): PaymentsSummary {
     totalOrders: rows.length,
     avgPaymentDays:
       paymentTerms.length > 0
-        ? Math.round(paymentTerms.reduce((sum, value) => sum + value, 0) / paymentTerms.length)
+        ? Math.round(
+            paymentTerms.reduce((sum, value) => sum + value, 0) /
+              paymentTerms.length,
+          )
         : null,
-  }
+  };
 }
 
 /**
@@ -292,56 +310,58 @@ export function buildPaymentsSummary(rows: PaymentRow[]): PaymentsSummary {
  * имени. Так «ООО "Ромашка"» и «Ромашка» не превращаются в двух должников.
  */
 export function buildDebtors(rows: PaymentRow[]): Debtor[] {
-  const groups = new Map<string, Debtor>()
+  const groups = new Map<string, Debtor>();
 
   for (const row of rows) {
-    if (row.isPaid || row.amount <= 0) continue
+    if (row.isPaid || row.amount <= 0) continue;
 
-    const key = row.clientId ?? `name:${normNameKey(row.clientName)}`
-    const current: Debtor =
-      groups.get(key) ??
-      {
-        key,
-        clientId: row.clientId,
-        clientName: row.clientName,
-        inn: row.inn,
-        debt: 0,
-        overdue: 0,
-        ordersCount: 0,
-        overdueCount: 0,
-        maxOverdueDays: 0,
-        oldestDueDate: null,
-        lastOrderAt: null,
-      }
+    const key = row.clientId ?? `name:${normNameKey(row.clientName)}`;
+    const current: Debtor = groups.get(key) ?? {
+      key,
+      clientId: row.clientId,
+      clientName: row.clientName,
+      inn: row.inn,
+      debt: 0,
+      overdue: 0,
+      ordersCount: 0,
+      overdueCount: 0,
+      maxOverdueDays: 0,
+      oldestDueDate: null,
+      lastOrderAt: null,
+    };
 
-    current.debt += row.amount
-    current.ordersCount += 1
+    current.debt += row.amount;
+    current.ordersCount += 1;
 
     if (row.isOverdue) {
-      current.overdue += row.amount
-      current.overdueCount += 1
-      if (row.overdueDays > current.maxOverdueDays) current.maxOverdueDays = row.overdueDays
+      current.overdue += row.amount;
+      current.overdueCount += 1;
+      if (row.overdueDays > current.maxOverdueDays)
+        current.maxOverdueDays = row.overdueDays;
     }
 
     if (row.dueDate) {
       if (!current.oldestDueDate || row.dueDate < current.oldestDueDate) {
-        current.oldestDueDate = row.dueDate
+        current.oldestDueDate = row.dueDate;
       }
     }
 
-    if (row.createdAt && (!current.lastOrderAt || row.createdAt > current.lastOrderAt)) {
-      current.lastOrderAt = row.createdAt
+    if (
+      row.createdAt &&
+      (!current.lastOrderAt || row.createdAt > current.lastOrderAt)
+    ) {
+      current.lastOrderAt = row.createdAt;
     }
 
-    if (!current.inn && row.inn) current.inn = row.inn
+    if (!current.inn && row.inn) current.inn = row.inn;
 
-    groups.set(key, current)
+    groups.set(key, current);
   }
 
   return [...groups.values()].sort((a, b) => {
-    if (b.overdue !== a.overdue) return b.overdue - a.overdue
-    return b.debt - a.debt
-  })
+    if (b.overdue !== a.overdue) return b.overdue - a.overdue;
+    return b.debt - a.debt;
+  });
 }
 
 /** Ключ сравнения названий: без правовой формы, кавычек и регистра. */
@@ -353,14 +373,14 @@ function normNameKey(name: string): string {
     .replace(/(^|\s)(ооо|оао|зао|пао|ип|ao|ltd|llc|inc)(\s|$)/g, " ")
     .replace(/[.,]/g, " ")
     .replace(/\s+/g, " ")
-    .trim()
+    .trim();
 }
 
 export type AccountingColumn = {
-  key: string
-  title: string
-  width?: number
-}
+  key: string;
+  title: string;
+  width?: number;
+};
 
 export const ACCOUNTING_COLUMNS: AccountingColumn[] = [
   { key: "orderId", title: "Заказ" },
@@ -375,26 +395,26 @@ export const ACCOUNTING_COLUMNS: AccountingColumn[] = [
   { key: "state", title: "Состояние" },
   { key: "paidAt", title: "Оплачено" },
   { key: "overdueDays", title: "Просрочка, дней" },
-]
+];
 
 function csvDate(date: Date | null | undefined): string {
-  if (!date) return ""
-  const day = String(date.getDate()).padStart(2, "0")
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  return `${day}.${month}.${date.getFullYear()}`
+  if (!date) return "";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.${date.getFullYear()}`;
 }
 
 function csvCell(value: unknown): string {
-  const text = value === null || value === undefined ? "" : String(value)
-  if (/[";\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`
-  return text
+  const text = value === null || value === undefined ? "" : String(value);
+  if (/[";\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
 }
 
 export function paymentStateLabel(row: PaymentRow): string {
-  if (row.isPaid) return "Оплачен"
-  if (row.isOverdue) return `Просрочен на ${row.overdueDays} дн.`
-  if (row.dueDate) return "Ожидает оплаты"
-  return "Срок не задан"
+  if (row.isPaid) return "Оплачен";
+  if (row.isOverdue) return `Просрочен на ${row.overdueDays} дн.`;
+  if (row.dueDate) return "Ожидает оплаты";
+  return "Срок не задан";
 }
 
 /**
@@ -403,8 +423,10 @@ export function paymentStateLabel(row: PaymentRow): string {
  * чтобы Excel открыл файл в правильной кодировке без танцев.
  */
 export function buildAccountingCsv(rows: PaymentRow[]): string {
-  const lines: string[] = []
-  lines.push(ACCOUNTING_COLUMNS.map((column) => csvCell(column.title)).join(";"))
+  const lines: string[] = [];
+  lines.push(
+    ACCOUNTING_COLUMNS.map((column) => csvCell(column.title)).join(";"),
+  );
 
   for (const row of rows) {
     const values: Record<string, unknown> = {
@@ -420,32 +442,179 @@ export function buildAccountingCsv(rows: PaymentRow[]): string {
       state: paymentStateLabel(row),
       paidAt: csvDate(row.paidAt),
       overdueDays: row.overdueDays > 0 ? row.overdueDays : "",
-    }
+    };
 
-    lines.push(ACCOUNTING_COLUMNS.map((column) => csvCell(values[column.key])).join(";"))
+    lines.push(
+      ACCOUNTING_COLUMNS.map((column) => csvCell(values[column.key])).join(";"),
+    );
   }
 
-  return `\uFEFF${lines.join("\r\n")}\r\n`
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
 /** Текст напоминания об оплате — один и тот же для уведомления и для списка. */
-export function overdueReminderText(row: PaymentRow): { title: string; message: string } {
-  const amount = `${row.amount.toLocaleString("ru-RU")} ₽`
-  const title = "Просрочена оплата"
-  const contact = row.clientContact ? ` Контакт: ${row.clientContact}.` : ""
+export function overdueReminderText(row: PaymentRow): {
+  title: string;
+  message: string;
+} {
+  const amount = `${row.amount.toLocaleString("ru-RU")} ₽`;
+  const title = "Просрочена оплата";
+  const contact = row.clientContact ? ` Контакт: ${row.clientContact}.` : "";
   const due = row.dueDate
     ? ` Срок был ${String(row.dueDate.getDate()).padStart(2, "0")}.${String(
         row.dueDate.getMonth() + 1,
-      ).padStart(2, "0")}.${row.dueDate.getFullYear()}, просрочка ${row.overdueDays} дн.`
-    : ""
+      ).padStart(
+        2,
+        "0",
+      )}.${row.dueDate.getFullYear()}, просрочка ${row.overdueDays} дн.`
+    : "";
 
   return {
     title,
     message: `${row.clientName}: ${amount} по заказу ${row.id} (${row.routeFrom} → ${row.routeTo}).${due}${contact}`,
-  }
+  };
 }
 
 /** Оплата считается просроченной, только если срок прошёл и денег нет. */
 export function isOverdueRow(row: PaymentRow): boolean {
-  return !row.isPaid && row.isOverdue
+  return !row.isPaid && row.isOverdue;
+}
+
+// ---------------------------------------------------------------------------
+// Календарь оплат: лента «ближайшие 7 дней» + просроченные (пакет «Календарь»)
+// ---------------------------------------------------------------------------
+
+/** Заказ внутри дня календаря — коротко: кто, откуда/куда и сколько. */
+export type CalendarOrder = {
+  id: string;
+  clientName: string;
+  routeFrom: string;
+  routeTo: string;
+  amount: number;
+  overdueDays: number;
+};
+
+/** День календаря: дата, человекочитаемая подпись и оплаты этого дня. */
+export type CalendarDay = {
+  /** Локальный ключ дня, «2026-10-02». */
+  dateKey: string;
+  /** «Сегодня», «Завтра» или «05.10.2026». */
+  label: string;
+  /** «Пн», «Вт», … */
+  weekday: string;
+  count: number;
+  amount: number;
+  orders: CalendarOrder[];
+};
+
+export type PaymentsCalendar = {
+  /** Просроченные, сгруппированные по дням; самые старые первыми. */
+  overdue: CalendarDay[];
+  /** Ближайшие 7 дней (включая сегодня) — только дни с оплатами. */
+  upcoming: CalendarDay[];
+  /** Все 7 дней ленты (включая пустые) — для ровной сетки в интерфейсе. */
+  week: CalendarDay[];
+};
+
+const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function dayKeyOf(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function dayLabel(date: Date, today: Date): string {
+  const diffDays = Math.round(
+    (startOfLocalDay(date).getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  if (diffDays === 0) return "Сегодня";
+  if (diffDays === 1) return "Завтра";
+  if (diffDays === -1) return "Вчера";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${day}.${month}.${date.getFullYear()}`;
+}
+
+function makeDay(date: Date, today: Date): CalendarDay {
+  return {
+    dateKey: dayKeyOf(date),
+    label: dayLabel(date, today),
+    weekday: WEEKDAYS_RU[date.getDay()],
+    count: 0,
+    amount: 0,
+    orders: [],
+  };
+}
+
+function pushOrder(day: CalendarDay, row: PaymentRow): void {
+  day.count += 1;
+  day.amount += row.amount;
+  day.orders.push({
+    id: row.id,
+    clientName: row.clientName,
+    routeFrom: row.routeFrom,
+    routeTo: row.routeTo,
+    amount: row.amount,
+    overdueDays: row.overdueDays,
+  });
+}
+
+/**
+ * Календарь оплат по неоплаченным заказам: просрочка (по дням, старые сверху)
+ * и лента ближайших 7 дней, включая сегодня. Оплаченные заказы и заказы без
+ * срока в календарь не попадают.
+ */
+export function buildPaymentsCalendar(
+  rows: PaymentRow[],
+  now: Date = new Date(),
+): PaymentsCalendar {
+  const today = startOfLocalDay(now);
+
+  const overdueByDay = new Map<string, CalendarDay>();
+  const upcomingByDay = new Map<string, CalendarDay>();
+  const horizon = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  for (const row of rows) {
+    if (row.isPaid || !row.dueDate) continue;
+    const due =
+      row.dueDate instanceof Date ? row.dueDate : new Date(row.dueDate);
+    if (Number.isNaN(due.getTime())) continue;
+
+    if (row.isOverdue) {
+      const key = dayKeyOf(due);
+      const day = overdueByDay.get(key) ?? makeDay(due, today);
+      pushOrder(day, row);
+      overdueByDay.set(key, day);
+      continue;
+    }
+
+    if (due >= today && due < horizon) {
+      const key = dayKeyOf(due);
+      const day = upcomingByDay.get(key) ?? makeDay(due, today);
+      pushOrder(day, row);
+      upcomingByDay.set(key, day);
+    }
+  }
+
+  const overdue = [...overdueByDay.values()].sort((a, b) =>
+    a.dateKey < b.dateKey ? -1 : 1,
+  );
+  const upcoming = [...upcomingByDay.values()].sort((a, b) =>
+    a.dateKey < b.dateKey ? -1 : 1,
+  );
+
+  // Полная сетка недели: 7 дней подряд, пустые — с нулями
+  const week: CalendarDay[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = new Date(today.getTime() + i * 24 * 60 * 60 * 1000);
+    const filled = upcomingByDay.get(dayKeyOf(date));
+    week.push(filled ?? makeDay(date, today));
+  }
+
+  return { overdue, upcoming, week };
 }

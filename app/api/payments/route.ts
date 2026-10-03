@@ -9,13 +9,14 @@
 //         (Notification), а не просто текст в ответе. Напоминание по одному
 //         заказу или по всем просроченным сразу; повтор в тот же день не плодится.
 
-import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
-import { requireStaff } from "@/lib/auth/session"
-import { requireOrganization, scopedWhere } from "@/lib/org"
-import { DATE_KEY_PATTERN, endOfLocalDay, parseDateValue } from "@/lib/dates"
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth/session";
+import { requireOrganization, scopedWhere } from "@/lib/org";
+import { DATE_KEY_PATTERN, endOfLocalDay, parseDateValue } from "@/lib/dates";
 import {
   buildDebtors,
+  buildPaymentsCalendar,
   buildPaymentsSummary,
   buildPaymentRow,
   isOverdueRow,
@@ -24,14 +25,14 @@ import {
   paymentDueDate,
   type PaymentRow,
   type ReminderInfo,
-} from "@/lib/payments/summary"
+} from "@/lib/payments/summary";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
-const TABS = ["all", "pending", "deferred", "overdue", "paid"] as const
-type Tab = (typeof TABS)[number]
+const TABS = ["all", "pending", "deferred", "overdue", "paid"] as const;
+type Tab = (typeof TABS)[number];
 
-const REMINDER_TYPE = "payment_overdue"
+const REMINDER_TYPE = "payment_overdue";
 
 const ORDER_SELECT = {
   id: true,
@@ -55,9 +56,9 @@ const ORDER_SELECT = {
   isPaid: true,
   paidAt: true,
   client: { select: { id: true, name: true, inn: true } },
-} as const
+} as const;
 
-type OrderRow = Parameters<typeof buildPaymentRow>[0]
+type OrderRow = Parameters<typeof buildPaymentRow>[0];
 
 /**
  * Напоминания, уже отправленные по заказам.
@@ -73,66 +74,73 @@ async function loadReminders(
     select: { orderId: true, createdAt: true },
     orderBy: { createdAt: "desc" },
     take: 2000,
-  })) as { orderId: string | null; createdAt: Date }[]
+  })) as { orderId: string | null; createdAt: Date }[];
 
-  const map = new Map<string, ReminderInfo>()
+  const map = new Map<string, ReminderInfo>();
 
   for (const notification of notifications) {
-    if (!notification.orderId) continue
-    const current = map.get(notification.orderId)
+    if (!notification.orderId) continue;
+    const current = map.get(notification.orderId);
     if (!current) {
-      map.set(notification.orderId, { lastAt: notification.createdAt, count: 1 })
-      continue
+      map.set(notification.orderId, {
+        lastAt: notification.createdAt,
+        count: 1,
+      });
+      continue;
     }
-    current.count += 1
+    current.count += 1;
     if (notification.createdAt > (current.lastAt ?? new Date(0))) {
-      current.lastAt = notification.createdAt
+      current.lastAt = notification.createdAt;
     }
   }
 
-  return map
+  return map;
 }
 
 function applyTab(rows: PaymentRow[], tab: Tab): PaymentRow[] {
   switch (tab) {
     case "pending":
-      return rows.filter((row) => !row.isPaid)
+      return rows.filter((row) => !row.isPaid);
     case "deferred":
-      return rows.filter((row) => !row.isPaid && row.isDeferred)
+      return rows.filter((row) => !row.isPaid && row.isDeferred);
     case "overdue":
-      return rows.filter((row) => isOverdueRow(row))
+      return rows.filter((row) => isOverdueRow(row));
     case "paid":
-      return rows.filter((row) => row.isPaid)
+      return rows.filter((row) => row.isPaid);
     default:
-      return rows
+      return rows;
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireStaff(request)
-    if (!auth.ok) return auth.response
-    const org = requireOrganization(auth.value)
-    if (!org.ok) return org.response
+    const auth = await requireStaff(request);
+    if (!auth.ok) return auth.response;
+    const org = requireOrganization(auth.value);
+    if (!org.ok) return org.response;
 
-    const { searchParams } = new URL(request.url)
-    const tabParam = (searchParams.get("tab") || "all") as Tab
-    const tab: Tab = (TABS as readonly string[]).includes(tabParam) ? tabParam : "all"
-    const query = searchParams.get("q")?.trim().toLowerCase() ?? ""
-    const clientId = searchParams.get("clientId")
-    const from = searchParams.get("from")
-    const to = searchParams.get("to")
+    const { searchParams } = new URL(request.url);
+    const tabParam = (searchParams.get("tab") || "all") as Tab;
+    const tab: Tab = (TABS as readonly string[]).includes(tabParam)
+      ? tabParam
+      : "all";
+    const query = searchParams.get("q")?.trim().toLowerCase() ?? "";
+    const clientId = searchParams.get("clientId");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
 
     // Границы фильтра — календарные дни: «2026-10-01» читаем как начало
     // местных суток, «2026-10-05» — как их конец (lib/dates.ts). Раньше `from`
     // был полуночью UTC и в Москве отрезал первые три часа первого дня, а
     // полное ISO-значение в `to` не разбиралось вовсе.
-    const createdAt: Record<string, Date> = {}
-    const fromDate = parseDateValue(from)
-    if (fromDate) createdAt.gte = fromDate
-    const toDate = parseDateValue(to)
+    const createdAt: Record<string, Date> = {};
+    const fromDate = parseDateValue(from);
+    if (fromDate) createdAt.gte = fromDate;
+    const toDate = parseDateValue(to);
     if (toDate) {
-      createdAt.lte = DATE_KEY_PATTERN.test((to ?? "").trim()) ? endOfLocalDay(toDate) : toDate
+      createdAt.lte = DATE_KEY_PATTERN.test((to ?? "").trim())
+        ? endOfLocalDay(toDate)
+        : toDate;
     }
 
     const orders = (await prisma.order.findMany({
@@ -141,17 +149,17 @@ export async function GET(request: NextRequest) {
       }),
       select: ORDER_SELECT,
       orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-    })) as OrderRow[]
+    })) as OrderRow[];
 
-    const now = new Date()
-    const reminders = await loadReminders(org.organizationId)
+    const now = new Date();
+    const reminders = await loadReminders(org.organizationId);
 
     // Заказ с нулевой суммой в оплатах смысла не имеет: выставлять нечего.
     const allRows = orders
       .map((order) => buildPaymentRow(order, now, reminders.get(order.id)))
-      .filter((row) => row.amount > 0)
+      .filter((row) => row.amount > 0);
 
-    let filtered = applyTab(allRows, tab)
+    let filtered = applyTab(allRows, tab);
 
     if (query) {
       filtered = filtered.filter((row) =>
@@ -159,22 +167,32 @@ export async function GET(request: NextRequest) {
           .join(" ")
           .toLowerCase()
           .includes(query),
-      )
+      );
     }
 
-    if (clientId) filtered = filtered.filter((row) => row.clientId === clientId)
+    if (clientId)
+      filtered = filtered.filter((row) => row.clientId === clientId);
 
     return NextResponse.json({
       success: true,
       orders: filtered,
       stats: buildPaymentsSummary(allRows),
       debtors: buildDebtors(allRows),
+      // Календарь считается по всем неоплаченным, а не по текущей вкладке:
+      // лента «ближайшие 7 дней» и просрочки видны на любой вкладке
+      calendar: buildPaymentsCalendar(allRows, now),
       tab,
-    })
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Ошибка получения данных по оплатам"
-    console.error("[api/payments GET] Error:", message)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Ошибка получения данных по оплатам";
+    console.error("[api/payments GET] Error:", message);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 },
+    );
   }
 }
 
@@ -187,136 +205,185 @@ const EDITABLE_FIELDS = [
   "dueDate",
   "price",
   "agreedPrice",
-] as const
+] as const;
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireStaff(request)
-    if (!auth.ok) return auth.response
-    const org = requireOrganization(auth.value)
-    if (!org.ok) return org.response
+    const auth = await requireStaff(request);
+    if (!auth.ok) return auth.response;
+    const org = requireOrganization(auth.value);
+    if (!org.ok) return org.response;
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    const body = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
     if (!body) {
-      return NextResponse.json({ success: false, error: "Некорректное тело запроса" }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: "Некорректное тело запроса" },
+        { status: 400 },
+      );
     }
 
-    const orderId = typeof body.orderId === "string" ? body.orderId : null
+    const orderId = typeof body.orderId === "string" ? body.orderId : null;
     if (!orderId) {
-      return NextResponse.json({ success: false, error: "orderId обязателен" }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: "orderId обязателен" },
+        { status: 400 },
+      );
     }
 
     const unknown = Object.keys(body).filter(
-      (key) => key !== "orderId" && !(EDITABLE_FIELDS as readonly string[]).includes(key),
-    )
+      (key) =>
+        key !== "orderId" &&
+        !(EDITABLE_FIELDS as readonly string[]).includes(key),
+    );
     if (unknown.length > 0) {
       return NextResponse.json(
-        { success: false, error: `Неизвестные поля оплаты: ${unknown.join(", ")}` },
+        {
+          success: false,
+          error: `Неизвестные поля оплаты: ${unknown.join(", ")}`,
+        },
         { status: 400 },
-      )
+      );
     }
 
     const existing = (await prisma.order.findFirst({
       where: scopedWhere(org.organizationId, { id: orderId }),
-      select: { id: true, createdAt: true, deliveredAt: true, deadline: true, price: true, agreedPrice: true },
+      select: {
+        id: true,
+        createdAt: true,
+        deliveredAt: true,
+        deadline: true,
+        price: true,
+        agreedPrice: true,
+      },
     })) as {
-      id: string
-      createdAt: Date
-      deliveredAt: Date | null
-      deadline: Date | null
-      price: number | null
-      agreedPrice: number | null
-    } | null
+      id: string;
+      createdAt: Date;
+      deliveredAt: Date | null;
+      deadline: Date | null;
+      price: number | null;
+      agreedPrice: number | null;
+    } | null;
 
     if (!existing) {
-      return NextResponse.json({ success: false, error: "Заказ не найден" }, { status: 404 })
+      return NextResponse.json(
+        { success: false, error: "Заказ не найден" },
+        { status: 404 },
+      );
     }
 
-    const data: Record<string, unknown> = {}
+    const data: Record<string, unknown> = {};
 
     if (typeof body.isPaid === "boolean") {
-      data.isPaid = body.isPaid
-      data.paidAt = body.isPaid ? new Date() : null
+      data.isPaid = body.isPaid;
+      data.paidAt = body.isPaid ? new Date() : null;
     }
 
     if ("paymentType" in body) {
-      const raw = body.paymentType
-      if (raw === null || raw === "") data.paymentType = null
-      else if (typeof raw === "string") data.paymentType = normalizePaymentType(raw) ?? raw.trim()
+      const raw = body.paymentType;
+      if (raw === null || raw === "") data.paymentType = null;
+      else if (typeof raw === "string")
+        data.paymentType = normalizePaymentType(raw) ?? raw.trim();
       else {
-        return NextResponse.json({ success: false, error: "Форма оплаты указана неверно" }, { status: 400 })
+        return NextResponse.json(
+          { success: false, error: "Форма оплаты указана неверно" },
+          { status: 400 },
+        );
       }
     }
 
     if ("vatType" in body) {
-      const raw = body.vatType
-      data.vatType = raw === null || raw === "" ? null : typeof raw === "string" ? raw.trim() : null
+      const raw = body.vatType;
+      data.vatType =
+        raw === null || raw === ""
+          ? null
+          : typeof raw === "string"
+            ? raw.trim()
+            : null;
     }
 
     if ("price" in body) {
-      const price = Number(body.price)
+      const price = Number(body.price);
       if (!Number.isFinite(price) || price < 0) {
-        return NextResponse.json({ success: false, error: "Сумма заказа указана неверно" }, { status: 400 })
+        return NextResponse.json(
+          { success: false, error: "Сумма заказа указана неверно" },
+          { status: 400 },
+        );
       }
-      data.price = Math.round(price)
+      data.price = Math.round(price);
     }
 
     if ("agreedPrice" in body) {
-      if (body.agreedPrice === null || body.agreedPrice === "") data.agreedPrice = null
+      if (body.agreedPrice === null || body.agreedPrice === "")
+        data.agreedPrice = null;
       else {
-        const agreed = Number(body.agreedPrice)
+        const agreed = Number(body.agreedPrice);
         if (!Number.isFinite(agreed) || agreed < 0) {
           return NextResponse.json(
             { success: false, error: "Согласованная сумма указана неверно" },
             { status: 400 },
-          )
+          );
         }
-        data.agreedPrice = Math.round(agreed)
+        data.agreedPrice = Math.round(agreed);
       }
     }
 
     if ("deferredDays" in body) {
       if (body.deferredDays === null || body.deferredDays === "") {
-        data.deferredDays = null
-        if (!("dueDate" in body)) data.dueDate = null
+        data.deferredDays = null;
+        if (!("dueDate" in body)) data.dueDate = null;
       } else {
-        const days = Number(body.deferredDays)
+        const days = Number(body.deferredDays);
         if (!Number.isInteger(days) || days < 0 || days > 365) {
           return NextResponse.json(
-            { success: false, error: "Отсрочка — целое число дней от 0 до 365" },
+            {
+              success: false,
+              error: "Отсрочка — целое число дней от 0 до 365",
+            },
             { status: 400 },
-          )
+          );
         }
-        data.deferredDays = days
+        data.deferredDays = days;
         // Срок оплаты считается той же функцией, что и в списке платежей:
         // сначала дата доставки, затем срок по заказу, затем дата оформления.
         // Иначе список и сохранённый срок показывали бы разные даты.
         if (!("dueDate" in body)) {
-          data.dueDate = days > 0 ? paymentDueDate({
-            id: existing.id,
-            deliveredAt: existing.deliveredAt,
-            deadline: existing.deadline,
-            createdAt: existing.createdAt,
-            deferredDays: days,
-          }) : null
+          data.dueDate =
+            days > 0
+              ? paymentDueDate({
+                  id: existing.id,
+                  deliveredAt: existing.deliveredAt,
+                  deadline: existing.deadline,
+                  createdAt: existing.createdAt,
+                  deferredDays: days,
+                })
+              : null;
         }
       }
     }
 
     if ("dueDate" in body) {
-      if (body.dueDate === null || body.dueDate === "") data.dueDate = null
+      if (body.dueDate === null || body.dueDate === "") data.dueDate = null;
       else {
         // Срок оплаты приходит из <input type="date"> — читаем как местный день
-        const due = parseDateValue(String(body.dueDate))
+        const due = parseDateValue(String(body.dueDate));
         if (!due) {
-          return NextResponse.json({ success: false, error: "Срок оплаты указан неверно" }, { status: 400 })
+          return NextResponse.json(
+            { success: false, error: "Срок оплаты указан неверно" },
+            { status: 400 },
+          );
         }
-        data.dueDate = due
+        data.dueDate = due;
       }
     }
 
     if (Object.keys(data).length === 0) {
-      return NextResponse.json({ success: false, error: "Нечего сохранять" }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: "Нечего сохранять" },
+        { status: 400 },
+      );
     }
 
     // org-audit: ok — заказ найден выше через scopedWhere(organizationId)
@@ -324,59 +391,81 @@ export async function PATCH(request: NextRequest) {
       where: { id: orderId },
       data,
       select: ORDER_SELECT,
-    })
+    });
 
-    const reminders = await loadReminders(org.organizationId)
-    const row = buildPaymentRow(updated as OrderRow, new Date(), reminders.get(orderId))
+    const reminders = await loadReminders(org.organizationId);
+    const row = buildPaymentRow(
+      updated as OrderRow,
+      new Date(),
+      reminders.get(orderId),
+    );
 
-    return NextResponse.json({ success: true, order: row })
+    return NextResponse.json({ success: true, order: row });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Не удалось обновить оплату"
-    console.error("[api/payments PATCH] Error:", message)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    const message =
+      error instanceof Error ? error.message : "Не удалось обновить оплату";
+    console.error("[api/payments PATCH] Error:", message);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 },
+    );
   }
 }
 
 /** Сколько заказов упомянуто в напоминании: один или все просроченные. */
 type ReminderResult = {
-  created: number
-  skipped: number
-  orders: { orderId: string; clientName: string; amount: number; overdueDays: number }[]
-}
+  created: number;
+  skipped: number;
+  orders: {
+    orderId: string;
+    clientName: string;
+    amount: number;
+    overdueDays: number;
+  }[];
+};
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireStaff(request)
-    if (!auth.ok) return auth.response
-    const org = requireOrganization(auth.value)
-    if (!org.ok) return org.response
+    const auth = await requireStaff(request);
+    if (!auth.ok) return auth.response;
+    const org = requireOrganization(auth.value);
+    if (!org.ok) return org.response;
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
-    const orderId = typeof body?.orderId === "string" ? body.orderId : null
-    const allOverdue = body?.allOverdue === true
+    const body = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    const orderId = typeof body?.orderId === "string" ? body.orderId : null;
+    const allOverdue = body?.allOverdue === true;
 
     if (!orderId && !allOverdue) {
       return NextResponse.json(
         { success: false, error: "Укажите orderId или allOverdue: true" },
         { status: 400 },
-      )
+      );
     }
 
-    const now = new Date()
+    const now = new Date();
 
     const orders = (await prisma.order.findMany({
-      where: scopedWhere(org.organizationId, orderId ? { id: orderId } : { isPaid: false }),
+      where: scopedWhere(
+        org.organizationId,
+        orderId ? { id: orderId } : { isPaid: false },
+      ),
       select: ORDER_SELECT,
-    })) as OrderRow[]
+    })) as OrderRow[];
 
     if (orderId && orders.length === 0) {
-      return NextResponse.json({ success: false, error: "Заказ не найден" }, { status: 404 })
+      return NextResponse.json(
+        { success: false, error: "Заказ не найден" },
+        { status: 404 },
+      );
     }
 
-    const reminders = await loadReminders(org.organizationId)
+    const reminders = await loadReminders(org.organizationId);
     const overdueRows = orders
       .map((order) => buildPaymentRow(order, now, reminders.get(order.id)))
-      .filter((row) => isOverdueRow(row))
+      .filter((row) => isOverdueRow(row));
 
     if (overdueRows.length === 0) {
       return NextResponse.json({
@@ -385,23 +474,23 @@ export async function POST(request: NextRequest) {
         skipped: 0,
         orders: [],
         message: "Просроченных оплат нет — напоминать не о чем",
-      })
+      });
     }
 
-    const result: ReminderResult = { created: 0, skipped: 0, orders: [] }
+    const result: ReminderResult = { created: 0, skipped: 0, orders: [] };
 
     for (const row of overdueRows) {
       // Повтор в тот же день не нужен: логист уже видел это напоминание.
-      const lastAt = row.remindedAt
+      const lastAt = row.remindedAt;
       const remindedToday =
-        lastAt !== null && lastAt.toDateString() === now.toDateString()
+        lastAt !== null && lastAt.toDateString() === now.toDateString();
 
       if (remindedToday) {
-        result.skipped += 1
-        continue
+        result.skipped += 1;
+        continue;
       }
 
-      const { title, message } = overdueReminderText(row)
+      const { title, message } = overdueReminderText(row);
 
       await prisma.notification.create({
         data: {
@@ -416,18 +505,18 @@ export async function POST(request: NextRequest) {
           orderId: row.id,
           priority: row.overdueDays >= 7 ? "high" : "normal",
         },
-      })
+      });
 
-      result.created += 1
+      result.created += 1;
       result.orders.push({
         orderId: row.id,
         clientName: row.clientName,
         amount: row.amount,
         overdueDays: row.overdueDays,
-      })
+      });
     }
 
-    const total = result.orders.reduce((sum, item) => sum + item.amount, 0)
+    const total = result.orders.reduce((sum, item) => sum + item.amount, 0);
 
     return NextResponse.json({
       success: true,
@@ -437,10 +526,16 @@ export async function POST(request: NextRequest) {
         result.created > 0
           ? `Напоминаний отправлено: ${result.created} на сумму ${total.toLocaleString("ru-RU")} ₽`
           : "Сегодня по этим заказам уже напоминали",
-    })
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Не удалось отправить напоминание"
-    console.error("[api/payments POST] Error:", message)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Не удалось отправить напоминание";
+    console.error("[api/payments POST] Error:", message);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 },
+    );
   }
 }

@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
 // components/payments/payments-view.tsx
 //
 // Оплаты (задача 6): реальные данные заказов, напоминания о просрочке,
 // список должников по клиентам и выгрузка для бухгалтерии.
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -23,82 +23,110 @@ import {
   Search,
   Settings2,
   Users,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
-import { ClientCardDialog } from "@/components/clients/client-card-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ClientCardDialog } from "@/components/clients/client-card-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { PaymentTermsDialog, type PaymentTermsTarget } from "./payment-terms-dialog"
-import { TableSkeleton, KpiSkeleton } from "@/components/ui/skeletons"
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
-import { fetchJsonCached, peekCache } from "@/lib/client-cache"
+import {
+  PaymentTermsDialog,
+  type PaymentTermsTarget,
+} from "./payment-terms-dialog";
+import { TableSkeleton, KpiSkeleton } from "@/components/ui/skeletons";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { fetchJsonCached, peekCache } from "@/lib/client-cache";
 
 type PaymentRow = {
-  id: string
-  clientId: string | null
-  clientName: string
-  clientContact: string | null
-  inn: string | null
-  routeFrom: string
-  routeTo: string
-  distance: number
-  cargoType: string
-  status: string | null
-  createdAt: string | null
-  amount: number
-  paymentType: string | null
-  vatType: string | null
-  deferredDays: number
-  dueDate: string | null
-  isDeferred: boolean
-  isPaid: boolean
-  paidAt: string | null
-  isOverdue: boolean
-  overdueDays: number
-  remindedAt: string | null
-  reminderCount: number
-}
+  id: string;
+  clientId: string | null;
+  clientName: string;
+  clientContact: string | null;
+  inn: string | null;
+  routeFrom: string;
+  routeTo: string;
+  distance: number;
+  cargoType: string;
+  status: string | null;
+  createdAt: string | null;
+  amount: number;
+  paymentType: string | null;
+  vatType: string | null;
+  deferredDays: number;
+  dueDate: string | null;
+  isDeferred: boolean;
+  isPaid: boolean;
+  paidAt: string | null;
+  isOverdue: boolean;
+  overdueDays: number;
+  remindedAt: string | null;
+  reminderCount: number;
+};
 
 type Stats = {
-  totalPending: number
-  totalDeferred: number
-  totalOverdue: number
-  totalPaid: number
-  totalRevenue: number
-  pendingCount: number
-  deferredCount: number
-  overdueCount: number
-  paidCount: number
-  totalOrders: number
-  avgPaymentDays: number | null
-}
+  totalPending: number;
+  totalDeferred: number;
+  totalOverdue: number;
+  totalPaid: number;
+  totalRevenue: number;
+  pendingCount: number;
+  deferredCount: number;
+  overdueCount: number;
+  paidCount: number;
+  totalOrders: number;
+  avgPaymentDays: number | null;
+};
 
 type PaymentsPayload = {
-  success?: boolean
-  orders?: PaymentRow[]
-  stats?: Stats
-  debtors?: Debtor[]
-  error?: string
-}
+  success?: boolean;
+  orders?: PaymentRow[];
+  stats?: Stats;
+  debtors?: Debtor[];
+  calendar?: PaymentsCalendar;
+  error?: string;
+};
 
 type Debtor = {
-  key: string
-  clientId: string | null
-  clientName: string
-  inn: string | null
-  debt: number
-  overdue: number
-  ordersCount: number
-  overdueCount: number
-  maxOverdueDays: number
-  oldestDueDate: string | null
-  lastOrderAt: string | null
-}
+  key: string;
+  clientId: string | null;
+  clientName: string;
+  inn: string | null;
+  debt: number;
+  overdue: number;
+  ordersCount: number;
+  overdueCount: number;
+  maxOverdueDays: number;
+  oldestDueDate: string | null;
+  lastOrderAt: string | null;
+};
+
+type CalendarOrder = {
+  id: string;
+  clientName: string;
+  routeFrom: string;
+  routeTo: string;
+  amount: number;
+  overdueDays: number;
+};
+
+type CalendarDay = {
+  dateKey: string;
+  label: string;
+  weekday: string;
+  count: number;
+  amount: number;
+  orders: CalendarOrder[];
+};
+
+type PaymentsCalendar = {
+  overdue: CalendarDay[];
+  upcoming: CalendarDay[];
+  week: CalendarDay[];
+};
 
 const EMPTY_STATS: Stats = {
   totalPending: 0,
@@ -112,45 +140,44 @@ const EMPTY_STATS: Stats = {
   paidCount: 0,
   totalOrders: 0,
   avgPaymentDays: null,
-}
-
+};
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: "Наличные",
   bank: "Безнал",
   card: "Карта",
-}
+};
 
 const VAT_LABELS: Record<string, string> = {
   none: "Без НДС",
   vat20: "НДС 20%",
   vat10: "НДС 10%",
   included: "НДС включён",
-}
+};
 
 function money(value: number) {
-  return `${Math.round(value).toLocaleString("ru-RU")} ₽`
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 }
 
 function shortMoney(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} млн ₽`
-  if (value >= 1_000) return `${Math.round(value / 1000)} тыс. ₽`
-  return money(value)
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} млн ₽`;
+  if (value >= 1_000) return `${Math.round(value / 1000)} тыс. ₽`;
+  return money(value);
 }
 
 function date(value: string | null) {
-  if (!value) return "—"
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return "—"
-  return parsed.toLocaleDateString("ru-RU")
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("ru-RU");
 }
 
 function plural(count: number, one: string, few: string, many: string): string {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return one
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few
-  return many
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -162,269 +189,284 @@ function EmptyState({ text }: { text: string }) {
         Суммы, сроки и должники считаются по заказам вашей организации.
       </p>
     </div>
-  )
+  );
 }
 
 export function PaymentsView() {
-  const [orders, setOrders] = useState<PaymentRow[]>([])
-  const [stats, setStats] = useState<Stats>(EMPTY_STATS)
-  const [debtors, setDebtors] = useState<Debtor[]>([])
-  const [tab, setTab] = useState("pending")
-  const [search, setSearch] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [updatingId, setUpdatingId] = useState<string | null>(null)
-  const [isReminding, setIsReminding] = useState(false)
+  const [orders, setOrders] = useState<PaymentRow[]>([]);
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
+  const [debtors, setDebtors] = useState<Debtor[]>([]);
+  const [calendar, setCalendar] = useState<PaymentsCalendar | null>(null);
+  const [tab, setTab] = useState("pending");
+  const [search, setSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [isReminding, setIsReminding] = useState(false);
 
-  const [termsTarget, setTermsTarget] = useState<PaymentTermsTarget | null>(null)
-  const [isTermsOpen, setIsTermsOpen] = useState(false)
-  const [cardClientId, setCardClientId] = useState<string | null>(null)
-  const [isCardOpen, setIsCardOpen] = useState(false)
+  const [termsTarget, setTermsTarget] = useState<PaymentTermsTarget | null>(
+    null,
+  );
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [cardClientId, setCardClientId] = useState<string | null>(null);
+  const [isCardOpen, setIsCardOpen] = useState(false);
 
   const load = useCallback(
     async (options?: { tab?: string; search?: string; quiet?: boolean }) => {
-      const activeTab = options?.tab ?? tab
-      const activeSearch = options?.search ?? search
+      const activeTab = options?.tab ?? tab;
+      const activeSearch = options?.search ?? search;
 
-      if (options?.quiet) setIsRefreshing(true)
-      else setIsLoading(true)
-      setError(null)
+      if (options?.quiet) setIsRefreshing(true);
+      else setIsLoading(true);
+      setError(null);
 
       try {
-        const params = new URLSearchParams()
+        const params = new URLSearchParams();
         // «Кто должен» — тот же неоплаченный список, но разложенный по клиентам:
         // должников считает сервер, здесь только переключается вид
-        params.set("tab", activeTab === "debtors" ? "pending" : activeTab)
-        if (activeSearch.trim()) params.set("q", activeSearch.trim())
+        params.set("tab", activeTab === "debtors" ? "pending" : activeTab);
+        if (activeSearch.trim()) params.set("q", activeSearch.trim());
 
         // Через кеш: возврат на вкладку рисуется мгновенно из памяти,
         // а свежие суммы подставляются, когда ответит сервер
         const data = await fetchJsonCached<PaymentsPayload>(
           `/api/payments?${params.toString()}`,
           { force: options?.quiet === true },
-        )
+        );
 
-        setOrders(data.orders ?? [])
-        setStats(data.stats ?? EMPTY_STATS)
-        setDebtors(data.debtors ?? [])
+        setOrders(data.orders ?? []);
+        setStats(data.stats ?? EMPTY_STATS);
+        setDebtors(data.debtors ?? []);
+        setCalendar(data.calendar ?? null);
       } catch (e: any) {
-        setError(e?.message || "Не удалось загрузить оплаты")
+        setError(e?.message || "Не удалось загрузить оплаты");
       } finally {
-        setIsLoading(false)
-        setIsRefreshing(false)
+        setIsLoading(false);
+        setIsRefreshing(false);
       }
     },
     [tab, search],
-  )
+  );
 
   useEffect(() => {
     // Смена вкладки: если данные уже приносили — показываем сразу, без скелетона.
     // Поиск применяется по кнопке или Enter (там load вызывается явно).
-    const params = new URLSearchParams()
-    params.set("tab", tab === "debtors" ? "pending" : tab)
-    if (search.trim()) params.set("q", search.trim())
-    if (peekCache(`/api/payments?${params.toString()}`)) setIsLoading(false)
+    const params = new URLSearchParams();
+    params.set("tab", tab === "debtors" ? "pending" : tab);
+    if (search.trim()) params.set("q", search.trim());
+    if (peekCache(`/api/payments?${params.toString()}`)) setIsLoading(false);
 
-    void load()
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+  }, [tab]);
 
   const remindedToday = useCallback((row: PaymentRow) => {
-    if (!row.remindedAt) return false
-    return new Date(row.remindedAt).toDateString() === new Date().toDateString()
-  }, [])
+    if (!row.remindedAt) return false;
+    return (
+      new Date(row.remindedAt).toDateString() === new Date().toDateString()
+    );
+  }, []);
 
   const handleTogglePaid = async (row: PaymentRow) => {
-    setUpdatingId(row.id)
+    setUpdatingId(row.id);
 
     try {
       const res = await fetch("/api/payments", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: row.id, isPaid: !row.isPaid }),
-      })
-      const data = await res.json().catch(() => null)
+      });
+      const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Не удалось обновить статус оплаты")
+        throw new Error(data?.error || "Не удалось обновить статус оплаты");
       }
 
       toast.success(
         row.isPaid
           ? "Отметка об оплате снята — заказ снова в списке к получению"
           : `Оплата зафиксирована: ${money(row.amount)}`,
-      )
-      await load({ quiet: true })
+      );
+      await load({ quiet: true });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось обновить статус оплаты")
+      toast.error(e?.message || "Не удалось обновить статус оплаты");
     } finally {
-      setUpdatingId(null)
+      setUpdatingId(null);
     }
-  }
+  };
 
   const handleRemind = async (row: PaymentRow) => {
-    setUpdatingId(row.id)
+    setUpdatingId(row.id);
 
     try {
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: row.id }),
-      })
-      const data = await res.json().catch(() => null)
+      });
+      const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Не удалось отправить напоминание")
+        throw new Error(data?.error || "Не удалось отправить напоминание");
       }
 
       if (data.created === 0) {
         toast.info("Сегодня по этому заказу уже напоминали", {
-          description: "Напоминание логистам ушло раньше — повторять каждый час не нужно.",
-        })
+          description:
+            "Напоминание логистам ушло раньше — повторять каждый час не нужно.",
+        });
       } else {
         toast.success("Напоминание отправлено логистам", {
           description: `${row.clientName}: ${money(row.amount)}, просрочка ${row.overdueDays} дн.`,
-        })
+        });
       }
 
-      await load({ quiet: true })
+      await load({ quiet: true });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось отправить напоминание")
+      toast.error(e?.message || "Не удалось отправить напоминание");
     } finally {
-      setUpdatingId(null)
+      setUpdatingId(null);
     }
-  }
+  };
 
   const handleRemindAll = async () => {
-    setIsReminding(true)
+    setIsReminding(true);
 
     try {
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ allOverdue: true }),
-      })
-      const data = await res.json().catch(() => null)
+      });
+      const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Не удалось отправить напоминания")
+        throw new Error(data?.error || "Не удалось отправить напоминания");
       }
 
       if (data.created === 0) {
-        toast.info(data.message || "Новых напоминаний нет")
+        toast.info(data.message || "Новых напоминаний нет");
       } else {
         toast.success(`Напоминаний отправлено: ${data.created}`, {
           description: `На сумму ${money(data.totalAmount ?? 0)}${
-            data.skipped > 0 ? `. Пропущено (уже напоминали сегодня): ${data.skipped}` : ""
+            data.skipped > 0
+              ? `. Пропущено (уже напоминали сегодня): ${data.skipped}`
+              : ""
           }`,
-        })
+        });
       }
 
-      await load({ quiet: true })
+      await load({ quiet: true });
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось отправить напоминания")
+      toast.error(e?.message || "Не удалось отправить напоминания");
     } finally {
-      setIsReminding(false)
+      setIsReminding(false);
     }
-  }
+  };
 
   const handleExport = () => {
-    const params = new URLSearchParams()
-    params.set("tab", tab === "debtors" ? "pending" : tab)
-    if (search.trim()) params.set("q", search.trim())
+    const params = new URLSearchParams();
+    params.set("tab", tab === "debtors" ? "pending" : tab);
+    if (search.trim()) params.set("q", search.trim());
 
     // Файл выгружает браузер: сервер отдаёт CSV с BOM и «;» — Excel открывает
     // его сразу, без импорта и настройки кодировки
-    const link = document.createElement("a")
-    link.href = `/api/payments/export?${params.toString()}`
-    link.rel = "noopener"
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
+    const link = document.createElement("a");
+    link.href = `/api/payments/export?${params.toString()}`;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 
     toast.success("Выгрузка для бухгалтерии готова", {
       description: "Файл открывается в Excel как есть.",
-    })
-  }
+    });
+  };
 
-const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
-  {
-    key: "client",
-    label: "Клиент",
-    cell: (debtor) => (
-      <>
-        <div className="font-medium">{debtor.clientName}</div>
-        {debtor.inn && <div className="text-xs text-muted-foreground">ИНН {debtor.inn}</div>}
-      </>
-    ),
-  },
-  {
-    key: "debt",
-    label: "Долг",
-    align: "right",
-    cellClassName: "font-medium",
-    cell: (debtor) => money(debtor.debt),
-  },
-  {
-    key: "overdue",
-    label: "Из них просрочено",
-    align: "right",
-    cell: (debtor) =>
-      debtor.overdue > 0 ? (
+  const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
+    {
+      key: "client",
+      label: "Клиент",
+      cell: (debtor) => (
         <>
-          <span className="text-destructive">{money(debtor.overdue)}</span>
-          <div className="text-xs text-destructive">до {debtor.maxOverdueDays} дн.</div>
+          <div className="font-medium">{debtor.clientName}</div>
+          {debtor.inn && (
+            <div className="text-xs text-muted-foreground">
+              ИНН {debtor.inn}
+            </div>
+          )}
         </>
-      ) : (
-        <span className="text-xs text-muted-foreground">нет</span>
       ),
-  },
-  {
-    key: "orders",
-    label: "Заказов",
-    align: "right",
-    cell: (debtor) => (
-      <>
-        {debtor.ordersCount}
-        {debtor.overdueCount > 0 && (
-          <div className="text-xs text-muted-foreground">
-            из них {debtor.overdueCount} с просрочкой
-          </div>
-        )}
-      </>
-    ),
-  },
-  {
-    key: "oldest",
-    label: "Самый старый срок",
-    cellClassName: "text-xs text-muted-foreground",
-    cell: (debtor) => date(debtor.oldestDueDate),
-  },
-  {
-    key: "actions",
-    label: null,
-    align: "right",
-    cell: (debtor) =>
-      debtor.clientId ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(event) => {
-            event.stopPropagation()
-            setCardClientId(debtor.clientId as string)
-            setIsCardOpen(true)
-          }}
-        >
-          Карточка
-        </Button>
-      ) : (
-        <Badge variant="outline" className="text-[10px]">
-          нет карточки клиента
-        </Badge>
+    },
+    {
+      key: "debt",
+      label: "Долг",
+      align: "right",
+      cellClassName: "font-medium",
+      cell: (debtor) => money(debtor.debt),
+    },
+    {
+      key: "overdue",
+      label: "Из них просрочено",
+      align: "right",
+      cell: (debtor) =>
+        debtor.overdue > 0 ? (
+          <>
+            <span className="text-destructive">{money(debtor.overdue)}</span>
+            <div className="text-xs text-destructive">
+              до {debtor.maxOverdueDays} дн.
+            </div>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">нет</span>
+        ),
+    },
+    {
+      key: "orders",
+      label: "Заказов",
+      align: "right",
+      cell: (debtor) => (
+        <>
+          {debtor.ordersCount}
+          {debtor.overdueCount > 0 && (
+            <div className="text-xs text-muted-foreground">
+              из них {debtor.overdueCount} с просрочкой
+            </div>
+          )}
+        </>
       ),
-  },
-]
+    },
+    {
+      key: "oldest",
+      label: "Самый старый срок",
+      cellClassName: "text-xs text-muted-foreground",
+      cell: (debtor) => date(debtor.oldestDueDate),
+    },
+    {
+      key: "actions",
+      label: null,
+      align: "right",
+      cell: (debtor) =>
+        debtor.clientId ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              setCardClientId(debtor.clientId as string);
+              setIsCardOpen(true);
+            }}
+          >
+            Карточка
+          </Button>
+        ) : (
+          <Badge variant="outline" className="text-[10px]">
+            нет карточки клиента
+          </Badge>
+        ),
+    },
+  ];
 
   const emptyLabel: Record<string, string> = {
     pending: "Нет счетов, ожидающих оплаты",
@@ -433,7 +475,7 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
     paid: "Оплаченных заказов пока нет",
     debtors: "Должников нет",
     all: "Оплат пока нет",
-  }
+  };
 
   return (
     <div className="space-y-4">
@@ -451,7 +493,9 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
             onClick={() => void load({ quiet: true })}
             disabled={isRefreshing}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+            />
             Обновить
           </Button>
           <Button variant="outline" size="sm" onClick={handleExport}>
@@ -476,14 +520,16 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
       {isLoading ? (
         <KpiSkeleton />
       ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 stagger-in">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 stagger-in">
           <Card className="card-interactive">
             <CardContent className="flex items-center gap-3 p-4">
               <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
                 <Clock className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xl font-bold">{shortMoney(stats.totalPending)}</p>
+                <p className="text-xl font-bold">
+                  {shortMoney(stats.totalPending)}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   К получению · {stats.pendingCount}{" "}
                   {plural(stats.pendingCount, "заказ", "заказа", "заказов")}
@@ -498,8 +544,12 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                 <Calendar className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xl font-bold">{shortMoney(stats.totalDeferred)}</p>
-                <p className="text-xs text-muted-foreground">С отсрочкой · {stats.deferredCount}</p>
+                <p className="text-xl font-bold">
+                  {shortMoney(stats.totalDeferred)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  С отсрочкой · {stats.deferredCount}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -514,12 +564,16 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
               <div>
                 <p
                   className={
-                    stats.overdueCount > 0 ? "text-xl font-bold text-destructive" : "text-xl font-bold"
+                    stats.overdueCount > 0
+                      ? "text-xl font-bold text-destructive"
+                      : "text-xl font-bold"
                   }
                 >
                   {shortMoney(stats.totalOverdue)}
                 </p>
-                <p className="text-xs text-muted-foreground">Просрочено · {stats.overdueCount}</p>
+                <p className="text-xs text-muted-foreground">
+                  Просрочено · {stats.overdueCount}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -530,7 +584,9 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                 <Banknote className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xl font-bold">{shortMoney(stats.totalPaid)}</p>
+                <p className="text-xl font-bold">
+                  {shortMoney(stats.totalPaid)}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   Получено · {stats.paidCount}
                   {stats.avgPaymentDays !== null
@@ -543,6 +599,101 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
         </div>
       )}
 
+      {/* Календарь оплат: просрочки по дням + лента ближайших 7 дней */}
+      {calendar &&
+        (calendar.overdue.length > 0 || calendar.upcoming.length > 0) && (
+          <Card>
+            <CardContent className="space-y-4 p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  Календарь оплат
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Ближайшие 7 дней и просроченные — по неоплаченным заказам
+                </p>
+              </div>
+
+              {calendar.overdue.length > 0 && (
+                <div className="space-y-1.5">
+                  {calendar.overdue.map((day) => (
+                    <div
+                      key={day.dateKey}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs"
+                    >
+                      <span className="font-semibold text-destructive">
+                        {day.label} · {day.weekday}
+                      </span>
+                      <span className="text-destructive/80">
+                        {day.count}{" "}
+                        {plural(day.count, "оплата", "оплаты", "оплат")} ·{" "}
+                        {money(day.amount)}
+                      </span>
+                      <span className="truncate text-muted-foreground">
+                        {day.orders
+                          .slice(0, 3)
+                          .map(
+                            (order) =>
+                              `${order.clientName} (${order.overdueDays} дн.)`,
+                          )
+                          .join(", ")}
+                        {day.orders.length > 3
+                          ? ` и ещё ${day.orders.length - 3}`
+                          : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                {calendar.week.map((day, index) => (
+                  <div
+                    key={day.dateKey}
+                    title={
+                      day.orders.length > 0
+                        ? day.orders
+                            .map(
+                              (order) =>
+                                `${order.clientName}: ${money(order.amount)}`,
+                            )
+                            .join("\n")
+                        : undefined
+                    }
+                    className={`rounded-lg border p-2 text-center transition-colors ${
+                      day.count > 0
+                        ? "border-primary/30 bg-primary/5"
+                        : "border-border/60 bg-muted/20 opacity-60"
+                    } ${index === 0 ? "ring-1 ring-primary/40" : ""}`}
+                  >
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {index === 0 ? "Сегодня" : day.weekday}
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {Number(day.dateKey.slice(8))}
+                    </p>
+                    {day.count > 0 ? (
+                      <>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          {day.count}{" "}
+                          {plural(day.count, "оплата", "оплаты", "оплат")}
+                        </p>
+                        <p className="text-[11px] font-medium">
+                          {shortMoney(day.amount)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        —
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
       {stats.overdueCount > 0 && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -554,17 +705,25 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                   {plural(stats.overdueCount, "заказе", "заказах", "заказах")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  «Напомнить» ставит задачу логистам в уведомления: по одному заказу в день,
-                  без повторов.
+                  «Напомнить» ставит задачу логистам в уведомления: по одному
+                  заказу в день, без повторов.
                 </p>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setTab("debtors")}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setTab("debtors")}
+              >
                 <Users className="mr-2 h-3.5 w-3.5" />
                 Кто должен
               </Button>
-              <Button size="sm" onClick={() => void handleRemindAll()} disabled={isReminding}>
+              <Button
+                size="sm"
+                onClick={() => void handleRemindAll()}
+                disabled={isReminding}
+              >
                 {isReminding ? (
                   <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                 ) : (
@@ -584,13 +743,17 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void load({ search })
+              if (event.key === "Enter") void load({ search });
             }}
             placeholder="Клиент, город, номер заказа или ИНН — Enter для поиска"
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load({ search })}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void load({ search })}
+        >
           Найти
         </Button>
         {search && (
@@ -598,8 +761,8 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
             variant="ghost"
             size="sm"
             onClick={() => {
-              setSearch("")
-              void load({ search: "" })
+              setSearch("");
+              void load({ search: "" });
             }}
           >
             Сбросить
@@ -649,16 +812,19 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
               rowKey={(debtor) => debtor.key}
               empty={<EmptyState text={emptyLabel.debtors} />}
               onRowClick={(debtor) => {
-                if (!debtor.clientId) return
-                setCardClientId(debtor.clientId)
-                setIsCardOpen(true)
+                if (!debtor.clientId) return;
+                setCardClientId(debtor.clientId);
+                setIsCardOpen(true);
               }}
             />
           ) : orders.length === 0 ? (
             <EmptyState text={emptyLabel[tab] ?? "Ничего не найдено"} />
           ) : (
             orders.map((row) => (
-              <Card key={row.id} className={row.isOverdue ? "border-destructive/30" : ""}>
+              <Card
+                key={row.id}
+                className={row.isOverdue ? "border-destructive/30" : ""}
+              >
                 <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
@@ -670,9 +836,9 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                             : "font-semibold"
                         }
                         onClick={() => {
-                          if (!row.clientId) return
-                          setCardClientId(row.clientId)
-                          setIsCardOpen(true)
+                          if (!row.clientId) return;
+                          setCardClientId(row.clientId);
+                          setIsCardOpen(true);
                         }}
                         disabled={!row.clientId}
                       >
@@ -696,12 +862,18 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                       )}
 
                       {row.isPaid ? (
-                        <Badge variant="outline" className="border-emerald-500/30 text-emerald-600">
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-500/30 text-emerald-600"
+                        >
                           <CheckCircle className="mr-1 h-3 w-3" />
                           Оплачен
                         </Badge>
                       ) : row.isOverdue ? (
-                        <Badge variant="outline" className="border-destructive/40 text-destructive">
+                        <Badge
+                          variant="outline"
+                          className="border-destructive/40 text-destructive"
+                        >
                           <AlertTriangle className="mr-1 h-3 w-3" />
                           Просрочен на {row.overdueDays} дн.
                         </Badge>
@@ -715,7 +887,9 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                         <span className="text-xs text-muted-foreground">
                           <Bell className="mr-1 inline h-3 w-3" />
                           напоминали {date(row.remindedAt)}
-                          {row.reminderCount > 1 ? ` (${row.reminderCount})` : ""}
+                          {row.reminderCount > 1
+                            ? ` (${row.reminderCount})`
+                            : ""}
                         </span>
                       )}
                     </div>
@@ -732,22 +906,34 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Заказ от {date(row.createdAt)}</span>
-                      {row.clientContact && <span>Контакт: {row.clientContact}</span>}
+                      {row.clientContact && (
+                        <span>Контакт: {row.clientContact}</span>
+                      )}
                       {row.dueDate && !row.isPaid && (
-                        <span className={row.isOverdue ? "font-medium text-destructive" : ""}>
+                        <span
+                          className={
+                            row.isOverdue ? "font-medium text-destructive" : ""
+                          }
+                        >
                           Срок оплаты: {date(row.dueDate)}
                         </span>
                       )}
                       {row.isPaid && row.paidAt && (
-                        <span className="text-emerald-600">Оплачено: {date(row.paidAt)}</span>
+                        <span className="text-emerald-600">
+                          Оплачено: {date(row.paidAt)}
+                        </span>
                       )}
                     </div>
                   </div>
 
                   <div className="flex flex-shrink-0 flex-row items-center justify-between gap-3 sm:justify-end lg:flex-col lg:items-end">
                     <div className="text-right">
-                      <p className="text-xl font-bold tracking-tight">{money(row.amount)}</p>
-                      <p className="text-xs text-muted-foreground">Заказ {row.id}</p>
+                      <p className="text-xl font-bold tracking-tight">
+                        {money(row.amount)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Заказ {row.id}
+                      </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -765,7 +951,9 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                           onClick={() => void handleRemind(row)}
                         >
                           <Bell className="mr-1 h-3.5 w-3.5" />
-                          {remindedToday(row) ? "Напомнили сегодня" : "Напомнить"}
+                          {remindedToday(row)
+                            ? "Напомнили сегодня"
+                            : "Напомнить"}
                         </Button>
                       )}
 
@@ -782,8 +970,8 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
                             vatType: row.vatType,
                             deferredDays: row.deferredDays,
                             dueDate: row.dueDate,
-                          })
-                          setIsTermsOpen(true)
+                          });
+                          setIsTermsOpen(true);
                         }}
                       >
                         <Settings2 className="mr-1 h-3.5 w-3.5" />
@@ -837,5 +1025,5 @@ const DEBTOR_COLUMNS: DataTableColumn<Debtor>[] = [
         onChanged={() => void load({ quiet: true })}
       />
     </div>
-  )
+  );
 }
