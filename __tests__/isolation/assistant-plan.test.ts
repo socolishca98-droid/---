@@ -305,6 +305,83 @@ describe("дособорка рейса (GET /api/assistant/plan?routeId=)", () 
     );
     expect(ids).not.toContain(heavyId);
   });
+
+  it("явный vehicleId не перебивает машину рейса", async () => {
+    const routeVehicleId = seedVehicle("busy11", world.orgA, 10000);
+    memoryDb.find("vehicle", routeVehicleId)!.status = "in_route";
+    const freeVehicleId = seedVehicle("free30", world.orgA, 30000);
+    const routeId = seedPlanRoute("route-fixed", world.orgA, {
+      vehicleId: routeVehicleId,
+    });
+    seedPlanOrder("inroute4", world.orgA, {
+      status: "in_route",
+      routeId,
+      routeSequence: 1,
+      weight: 4000,
+    });
+
+    const { data } = await plan(
+      cookieA,
+      `?routeId=${routeId}&vehicleId=${freeVehicleId}`,
+    );
+
+    // груз физически поедет в машине рейса — её бюджет и считаем
+    expect(data.vehicle.id).toBe(routeVehicleId);
+    expect(data.route.freeWeightKg).toBe(6000);
+  });
+
+  it("завершённый рейс дособирать нельзя — 409", async () => {
+    const routeId = seedPlanRoute("route-done", world.orgA, {
+      status: "completed",
+    });
+
+    const { response } = await plan(cookieA, `?routeId=${routeId}`);
+    expect(response.status).toBe(409);
+  });
+
+  it("продолжаем с конечной точки рейса: доставленный заказ учитывается", async () => {
+    const vehicleId = seedVehicle("truck9", world.orgA, 9000);
+    const routeId = seedPlanRoute("route-deliv", world.orgA, { vehicleId });
+    seedPlanOrder("leg1", world.orgA, {
+      status: "in_route",
+      routeId,
+      routeSequence: 1,
+      routeFrom: "Ярославль",
+      routeTo: "Москва",
+      weight: 5000,
+    });
+    seedPlanOrder("leg2", world.orgA, {
+      status: "delivered",
+      routeId,
+      routeSequence: 2,
+      routeFrom: "Москва",
+      routeTo: "Калуга",
+      weight: 2000,
+    });
+
+    const { data } = await plan(cookieA, `?routeId=${routeId}`);
+
+    // машина уже доехала до Калуги — продолжаем оттуда
+    expect(data.route.lastCity).toBe("Калуга");
+    // доставленный груз выгружен: занимает только остаток в рейсе
+    expect(data.route.usedWeightKg).toBe(5000);
+    expect(data.route.freeWeightKg).toBe(4000);
+  });
+
+  it("рейс без машины — честное предупреждение, а не бюджет случайной свободной", async () => {
+    seedVehicle("free15", world.orgA, 15000);
+    const routeId = seedPlanRoute("route-novehicle", world.orgA);
+    seedPlanOrder("wait1", world.orgA, {});
+
+    const { data } = await plan(cookieA, `?routeId=${routeId}`);
+
+    expect(data.vehicle).toBe(null);
+    expect(data.route).toBeTruthy();
+    expect(data.route.freeWeightKg).toBe(null);
+    expect(data.warning).toContain("не назначена");
+    // статистика честная: заказы в базе есть
+    expect(data.stats.candidates).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe("актуальность заказов", () => {

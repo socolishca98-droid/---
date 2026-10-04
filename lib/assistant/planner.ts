@@ -166,7 +166,7 @@ export function orderRelevance(
   if (deadline && deadline.getTime() < now.getTime()) {
     return {
       relevant: false,
-      reason: "Срок доставки истёк — уточнить у клиента",
+      reason: "Срок погрузки истёк — уточнить у клиента",
     };
   }
 
@@ -198,7 +198,8 @@ export function orderRevenue(order: PlannerOrder): number {
 
 /**
  * Актуальный заказ для планирования: не закрыт, ещё не в рейсе.
- * Просроченный дедлайн не исключает заказ — он помечается риском отдельно.
+ * Протухшие (срок истёк, давно без движения) отсеивает orderRelevance —
+ * они возвращаются отдельным списком, а не молча теряются.
  */
 export function isPlanCandidate(order: PlannerOrder): boolean {
   if (order.routeId) return false;

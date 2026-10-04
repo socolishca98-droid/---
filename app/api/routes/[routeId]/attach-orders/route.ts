@@ -52,12 +52,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = (await request.json().catch(() => null)) as {
       orderIds?: unknown;
     } | null;
-    const orderIds = Array.isArray(body?.orderIds)
+    const parsedIds = Array.isArray(body?.orderIds)
       ? body!.orderIds.filter(
           (value): value is string =>
             typeof value === "string" && value.length > 0,
         )
       : [];
+    // Без дублей и строго в порядке запроса: порядок orderIds — это порядок
+    // цепочки, который собрал логист (и который станет порядком объезда).
+    const orderIds = [...new Set(parsedIds)];
 
     if (orderIds.length === 0) {
       return NextResponse.json(
@@ -166,8 +169,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       let sequence = last?.routeSequence ?? 0;
 
       const result: { id: string; status: string }[] = [];
+      const byId = new Map(orders.map((order) => [order.id, order]));
 
-      for (const order of orders) {
+      // Обход строго в порядке запроса: findMany с `in` возвращает строки
+      // в порядке таблицы, а номер в рейсе — это порядок объезда.
+      for (const id of orderIds) {
+        const order = byId.get(id);
+        if (!order) continue; // не найдено — отфильтровано проверкой выше
         sequence += 1;
         const current = normalizeOrderStatus(order.status);
         const next = canChangeOrderStatus(order.status, "in_route")

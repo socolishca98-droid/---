@@ -181,13 +181,15 @@ describe("дособорка рейса (POST /api/routes/[routeId]/attach-order
       routeFrom: "Ярославль",
       routeTo: "Москва",
     });
-    const first = seedOrder("o-first", world.orgA, {
-      routeFrom: "Москва",
-      routeTo: "Тула",
-    });
+    // Намеренно вставляем в таблицу в обратном порядке: нумерация в рейсе
+    // должна идти по порядку цепочки из запроса, а не по выдаче таблицы.
     const second = seedOrder("o-second", world.orgA, {
       routeFrom: "Тула",
       routeTo: "Калуга",
+    });
+    const first = seedOrder("o-first", world.orgA, {
+      routeFrom: "Москва",
+      routeTo: "Тула",
     });
 
     const { response, data } = await attach(cookieA, routeId, [first, second]);
@@ -203,9 +205,9 @@ describe("дособорка рейса (POST /api/routes/[routeId]/attach-order
     const rowSecond = rowOf("order", second);
     expect(rowFirst.routeId).toBe(routeId);
     expect(rowSecond.routeId).toBe(routeId);
-    expect([rowFirst.routeSequence, rowSecond.routeSequence].sort()).toEqual([
-      6, 7,
-    ]);
+    // строго в порядке запроса: first — 6, second — 7
+    expect(rowFirst.routeSequence).toBe(6);
+    expect(rowSecond.routeSequence).toBe(7);
     // статус переведён в «в рейсе», время добавления запомнено
     expect(rowFirst.status).toBe("in_route");
     expect(rowSecond.status).toBe("in_route");

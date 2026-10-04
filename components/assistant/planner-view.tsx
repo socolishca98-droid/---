@@ -37,6 +37,7 @@ import {
   type PlannerProposal,
   type PlannerVehicle,
 } from "@/lib/assistant/planner";
+import { normalizeCity } from "@/lib/routes/optimizer";
 
 type PlanStats = {
   candidates: number;
@@ -61,7 +62,7 @@ type RouteInfo = {
   vehiclePlate: string | null;
   ordersCount: number;
   usedWeightKg: number;
-  freeWeightKg: number;
+  freeWeightKg: number | null;
   lastCity: string | null;
 };
 
@@ -323,7 +324,12 @@ export function PlannerView() {
               <button
                 key={route.id}
                 type="button"
-                onClick={() => setRouteId(route.id)}
+                onClick={() => {
+                  setRouteId(route.id);
+                  // Выбранная свободная машина для дособорки не действует:
+                  // бюджет задаёт машина рейса.
+                  setVehicleId(null);
+                }}
                 className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
                   routeId === route.id
                     ? "border-primary/50 bg-primary/10 font-medium"
@@ -353,9 +359,15 @@ export function PlannerView() {
               <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
                 занято {data.route.usedWeightKg.toLocaleString("ru-RU")} кг
               </span>
-              <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-emerald-300">
-                свободно {data.route.freeWeightKg.toLocaleString("ru-RU")} кг
-              </span>
+              {data.route.freeWeightKg !== null ? (
+                <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-emerald-300">
+                  свободно {data.route.freeWeightKg.toLocaleString("ru-RU")} кг
+                </span>
+              ) : (
+                <span className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-2 py-1 text-amber-300">
+                  машина рейса не назначена
+                </span>
+              )}
               {data.route.lastCity && (
                 <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
                   продолжаем из: {data.route.lastCity}
@@ -367,36 +379,40 @@ export function PlannerView() {
       )}
 
       {/* Выбор машины */}
-      {data && data.vehicles.length > 0 && (
+      {data && (data.vehicles.length > 0 || (routeId && data.vehicle)) && (
         <div className="space-y-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Truck className="h-4 w-4 text-muted-foreground" />
             {routeId && data?.route ? "Машина" : "Свободная машина"}
           </h2>
           <div className="flex flex-wrap gap-2">
-            {routeId &&
-              data.route &&
-              data.vehicle &&
-              !data.vehicles.some((v) => v.id === data.vehicle?.id) && (
-                <span className="rounded-xl border border-primary/50 bg-primary/10 px-3 py-2 text-xs font-medium">
-                  {vehicleLabel(data.vehicle)} · машина рейса
-                </span>
-              )}
-            {data.vehicles.map((vehicle) => (
-              <button
-                key={vehicle.id}
-                type="button"
-                onClick={() => setVehicleId(vehicle.id)}
-                className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
-                  data.vehicle?.id === vehicle.id
-                    ? "border-primary/50 bg-primary/10 font-medium"
-                    : "border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]"
-                }`}
-              >
-                {vehicleLabel(vehicle)}
-              </button>
-            ))}
+            {routeId && data.route?.vehiclePlate && data.vehicle && (
+              <span className="rounded-xl border border-primary/50 bg-primary/10 px-3 py-2 text-xs font-medium">
+                {vehicleLabel(data.vehicle)} · машина рейса
+              </span>
+            )}
+            {(!routeId || !data.route?.vehiclePlate) &&
+              data.vehicles.map((vehicle) => (
+                <button
+                  key={vehicle.id}
+                  type="button"
+                  onClick={() => setVehicleId(vehicle.id)}
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                    data.vehicle?.id === vehicle.id
+                      ? "border-primary/50 bg-primary/10 font-medium"
+                      : "border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]"
+                  }`}
+                >
+                  {vehicleLabel(vehicle)}
+                </button>
+              ))}
           </div>
+          {routeId && data.route && !data.route.vehiclePlate && (
+            <p className="text-[11px] text-muted-foreground">
+              У рейса нет машины — бюджет считаем для выбранной; не забудьте
+              назначить её рейсу.
+            </p>
+          )}
         </div>
       )}
 
@@ -511,7 +527,15 @@ export function PlannerView() {
                       <span className="font-semibold text-primary">
                         {data.route.lastCity}
                       </span>
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      {proposal.orders[0] &&
+                      normalizeCity(proposal.orders[0].routeFrom) !==
+                        normalizeCity(data.route.lastCity) ? (
+                        <span title="порожний перегон" className="flex">
+                          <ArrowRight className="h-3 w-3 text-amber-400" />
+                        </span>
+                      ) : (
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                      )}
                     </>
                   )}
                   {chain.map((point, pointIndex) => (

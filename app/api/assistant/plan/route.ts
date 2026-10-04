@@ -22,6 +22,8 @@ import { requireOrganization, scopedWhere } from "@/lib/org";
 import {
   availableVehicles,
   buildPlanProposals,
+  isPlanCandidate,
+  orderRelevance,
   pickDefaultVehicle,
 } from "@/lib/assistant/planner";
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/routes/model";
@@ -99,55 +101,25 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
-
-    const free = availableVehicles(vehicles);
-
-    // Машина: выбранная логистом (только своя, иначе 404); при дособорке —
-    // машина рейса (она занята, поэтому не в «свободных»); иначе свободная
-    // с наибольшей грузоподъёмностью.
-    let vehicle = null;
-    if (vehicleId) {
-      vehicle = vehicles.find((item: any) => item.id === vehicleId) ?? null;
-      if (!vehicle) {
-        return NextResponse.json(
-          { success: false, error: "Машина не найдена" },
-          { status: 404 },
-        );
-      }
-    } else if (route?.vehicleId) {
-      vehicle =
-        vehicles.find((item: any) => item.id === route.vehicleId) ??
-        pickDefaultVehicle(vehicles);
-    } else {
-      vehicle = pickDefaultVehicle(vehicles);
+    // Завершённый рейс дособирать нельзя — attach-orders всё равно откажет
+    if (
+      route &&
+      (route.status === "completed" || route.status === "cancelled")
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Рейс завершён или отменён — дособирать нельзя",
+        },
+        { status: 409 },
+      );
     }
 
-    if (!vehicle) {
-      return NextResponse.json({
-        success: true,
-        vehicle: null,
-        vehicles: free,
-        route: null,
-        proposals: [],
-        stats: { candidates: 0, overweight: 0, excluded: 0, stale: 0 },
-        staleOrders: [],
-        warning: route
-          ? "У рейса нет машины, а свободных нет — сначала назначьте машину рейсу"
-          : free.length === 0
-            ? "Свободных машин нет: все в рейсах или на обслуживании"
-            : "Не выбрано ни одной машины",
-      });
-    }
-
-    // Дособорка существующего рейса: считаем занятый бюджет машины и город
-    // последней выгрузки — цепочка продолжается с него
-    let routeInfo = null;
-    let startCity: string | null = null;
-    let usedWeightKg = 0;
-    let usedVolumeM3 = 0;
-
+    // Заказы рейса: занятый бюджет и город продолжения цепочки. Считаем до
+    // выбора машины — они нужны даже тогда, когда машины нет.
+    let routeOrders: any[] = [];
     if (route) {
-      const routeOrders = await prisma.order.findMany({
+      routeOrders = await prisma.order.findMany({
         where: scopedWhere(org.organizationId, { routeId: route.id }),
         select: {
           id: true,
@@ -159,34 +131,123 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { routeSequence: "asc" },
       });
-
-      const occupying = routeOrders.filter((order: any) =>
-        (OCCUPYING_ORDER_STATUSES as readonly string[]).includes(order.status),
-      );
-      usedWeightKg = occupying.reduce(
-        (sum: number, order: any) => sum + (order.weight ?? 0),
-        0,
-      );
-      usedVolumeM3 = occupying.reduce(
-        (sum: number, order: any) => sum + (order.volume ?? 0),
-        0,
-      );
-      startCity =
-        occupying.length > 0
-          ? occupying[occupying.length - 1].routeTo
-          : (routeOrders[routeOrders.length - 1]?.routeTo ?? null);
-
-      routeInfo = {
-        id: route.id,
-        name: route.name,
-        status: route.status,
-        vehiclePlate: vehicle.plate ?? null,
-        ordersCount: routeOrders.length,
-        usedWeightKg,
-        freeWeightKg: Math.max(0, vehicle.capacity - usedWeightKg),
-        lastCity: startCity,
-      };
     }
+    const occupying = routeOrders.filter((order: any) =>
+      (OCCUPYING_ORDER_STATUSES as readonly string[]).includes(order.status),
+    );
+    // Вес/объём занимают только незакрытые заказы: доставленное выгружено.
+    const usedWeightKg = occupying.reduce(
+      (sum: number, order: any) => sum + (order.weight ?? 0),
+      0,
+    );
+    const usedVolumeM3 = occupying.reduce(
+      (sum: number, order: any) => sum + (order.volume ?? 0),
+      0,
+    );
+    // Конечная точка машины — последний по порядку НЕотменённый заказ:
+    // доставленный заказ машина уже проехала, отменённый — не поедет.
+    const lastPhysical = [...routeOrders]
+      .reverse()
+      .find(
+        (order: any) =>
+          order.status !== "cancelled" && order.status !== "rejected",
+      );
+    const startCity: string | null = route
+      ? (lastPhysical?.routeTo ?? null)
+      : null;
+
+    const free = availableVehicles(vehicles);
+
+    // Машина: при дособорке бюджет задаёт машина рейса — груз физически
+    // поедет в ней, «выбрать другую» здесь бессмысленно. Если у рейса машины
+    // нет, считаем для выбранной логистом (её он рейсу и назначит). Без
+    // рейса — выбранная логистом или свободная с наибольшей грузоподъёмностью.
+    let vehicle = null;
+    if (route?.vehicleId) {
+      vehicle =
+        vehicles.find((item: any) => item.id === route.vehicleId) ?? null;
+    }
+    if (!vehicle && vehicleId) {
+      vehicle = vehicles.find((item: any) => item.id === vehicleId) ?? null;
+      if (!vehicle) {
+        return NextResponse.json(
+          { success: false, error: "Машина не найдена" },
+          { status: 404 },
+        );
+      }
+    }
+    if (!vehicle && !route) {
+      vehicle = pickDefaultVehicle(vehicles);
+    }
+
+    if (!vehicle) {
+      // Машины нет, но честная статистика важнее нулей: иначе UI решит, что
+      // база пуста. Актуальность — чистые функции, машина для них не нужна.
+      const exclude = new Set(excludeIds);
+      const candidates = (orders as any[]).filter((order) =>
+        isPlanCandidate(order),
+      );
+      const afterExclude = candidates.filter((order) => !exclude.has(order.id));
+      const staleList: any[] = [];
+      afterExclude.forEach((order) => {
+        const verdict = orderRelevance(order);
+        if (!verdict.relevant) {
+          staleList.push({
+            id: order.id,
+            routeFrom: order.routeFrom,
+            routeTo: order.routeTo,
+            clientName: order.clientName,
+            deadline: order.deadline,
+            reason: verdict.reason ?? "Неактуальный заказ",
+          });
+        }
+      });
+      return NextResponse.json({
+        success: true,
+        vehicle: null,
+        vehicles: free,
+        route: route
+          ? {
+              id: route.id,
+              name: route.name,
+              status: route.status,
+              vehiclePlate: null,
+              ordersCount: routeOrders.length,
+              usedWeightKg,
+              freeWeightKg: null,
+              lastCity: startCity,
+            }
+          : null,
+        proposals: [],
+        stats: {
+          candidates: candidates.length,
+          overweight: 0,
+          excluded: candidates.length - afterExclude.length,
+          stale: staleList.length,
+        },
+        staleOrders: staleList,
+        warning: route
+          ? "У рейса не назначена машина — свободный остаток не рассчитать. Назначьте машину рейсу или выберите свободную."
+          : free.length === 0
+            ? "Свободных машин нет: все в рейсах или на обслуживании"
+            : "Не выбрано ни одной машины",
+      });
+    }
+
+    const routeInfo = route
+      ? {
+          id: route.id,
+          name: route.name,
+          status: route.status,
+          // Номер — только если бюджет считала настоящая машина рейса
+          vehiclePlate:
+            route.vehicleId === vehicle.id ? (vehicle.plate ?? null) : null,
+          ordersCount: routeOrders.length,
+          usedWeightKg,
+          freeWeightKg: Math.max(0, vehicle.capacity - usedWeightKg),
+          lastCity: startCity,
+        }
+      : null;
 
     const { proposals, stats, staleOrders } = buildPlanProposals({
       orders,

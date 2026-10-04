@@ -291,7 +291,7 @@ test("актуальность: истёкший срок и долгое без
   });
   const verdictExpired = orderRelevance(expired);
   assert.equal(verdictExpired.relevant, false);
-  assert.ok(verdictExpired.reason.includes("Срок доставки истёк"));
+  assert.ok(verdictExpired.reason.includes("Срок погрузки истёк"));
 
   // несогласованный заказ без движения дольше STALE_AFTER_DAYS дней
   const idle = order({
