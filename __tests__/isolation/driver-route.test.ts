@@ -22,6 +22,7 @@ import {
   cid,
   jsonOf,
   makeRequest,
+  rowOf,
   routeContext,
   seedWorld,
   sessionCookie,
@@ -30,6 +31,7 @@ import {
 
 import { GET as mobileRouteGet } from "@/app/api/m/route/route"
 import { GET as mobileNotificationsGet, POST as mobileNotificationsPost } from "@/app/api/m/notifications/route"
+import { POST as acceptLoadPost } from "@/app/api/m/route/accept-load/route"
 import { PATCH as mobileOrderPatch } from "@/app/api/m/orders/[id]/route"
 import { POST as routesPost } from "@/app/api/routes/route"
 import { PATCH as routePatch } from "@/app/api/routes/[routeId]/route"
@@ -618,5 +620,43 @@ describe("смена статуса своего заказа водителем
     expect(repeatData).toMatchObject({ success: true, status: "control", changed: false })
     expect(memoryDb.rows("orderNegotiation")).toHaveLength(1)
     expect(memoryDb.rows("routeEvent").filter((row) => row.orderId === orderId)).toHaveLength(1)
+  })
+})
+
+describe("рейс адаптируется к действиям водителя мгновенно", () => {
+  it("водитель начал точку — статус рейса становится «в пути»", async () => {
+    const orderId = seedPoint("control-point")
+
+    const response = await mobileOrderPatch(
+      makeRequest("PATCH", `/api/m/orders/${orderId}`, {
+        cookie: cookieDriverA,
+        body: { status: "control" },
+      }),
+      routeContext({ id: orderId }),
+    )
+    expect(response.status).toBe(200)
+
+    const route = rowOf("route", world.routeA)
+    expect(route.status).toBe("in_transit")
+    // диспетчерское имя рейса (без «→») пересчёт не затирает
+    expect(route.name).toBe("Рейс А")
+  })
+
+  it("водитель отклонил догруз — рейс пересчитывается без него", async () => {
+    const orderId = seedPoint("rejected-load", { proposedToDriver: true })
+
+    const response = await acceptLoadPost(
+      makeRequest("POST", "/api/m/route/accept-load", {
+        cookie: cookieDriverA,
+        body: { orderId, accept: false, rejectionReason: "Груз уже занят" },
+      }),
+    )
+    expect(response.status).toBe(200)
+
+    const route = rowOf("route", world.routeA)
+    // единственный заказ отклонён: призрачного груза нет, рейс закрыт
+    expect(route.status).toBe("cancelled")
+    expect(route.cargoWeight).toBe(0)
+    expect(route.totalDistance).toBe(0)
   })
 })

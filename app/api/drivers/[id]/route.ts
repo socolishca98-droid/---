@@ -14,6 +14,7 @@ import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { normalizePhone } from "@/lib/auth/constants"
 import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { parseDateValue } from "@/lib/dates"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 // ✅ Добавлен 'offline' в список разрешённых статусов
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 type DriverStatus = typeof ALLOWED_DRIVER_STATUSES[number]
@@ -233,6 +234,32 @@ export async function DELETE(
       return NextResponse.json(
         { success: false, error: "Driver not found" },
         { status: 404 }
+      )
+    }
+
+    // Водитель с открытым рейсом или активными заказами не удаляется:
+    // иначе рейс молча потеряет водителя посреди исполнения.
+    const openRoutes = await prisma.route.count({
+      where: scopedWhere(org.organizationId, {
+        driverId: id,
+        status: { notIn: ["completed", "cancelled"] },
+      }),
+    })
+    const busyOrders = await prisma.order.count({
+      where: scopedWhere(org.organizationId, {
+        assignedDriverId: id,
+        status: { in: [...OCCUPYING_ORDER_STATUSES] },
+      }),
+    })
+    if (openRoutes > 0 || busyOrders > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "У водителя есть открытые рейсы или активные заказы — сначала завершите их или снимите назначение",
+          code: "driver_busy",
+        },
+        { status: 409 },
       )
     }
 

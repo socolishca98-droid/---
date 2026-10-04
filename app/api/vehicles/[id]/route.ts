@@ -4,6 +4,7 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
 const ALLOWED_VEHICLE_STATUSES = ["available", "in_use", "maintenance"] as const
 type VehicleStatus = typeof ALLOWED_VEHICLE_STATUSES[number]
@@ -221,6 +222,32 @@ export async function DELETE(_request: NextRequest,
       return NextResponse.json(
         { success: false, error: "Vehicle not found" },
         { status: 404 }
+      )
+    }
+
+    // Машина с открытым рейсом или активными заказами не удаляется:
+    // иначе рейс молча потеряет машину посреди исполнения.
+    const openRoutes = await prisma.route.count({
+      where: scopedWhere(__org.organizationId, {
+        vehicleId: id,
+        status: { notIn: ["completed", "cancelled"] },
+      }),
+    })
+    const busyOrders = await prisma.order.count({
+      where: scopedWhere(__org.organizationId, {
+        assignedVehicleId: id,
+        status: { in: [...OCCUPYING_ORDER_STATUSES] },
+      }),
+    })
+    if (openRoutes > 0 || busyOrders > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "У машины есть открытые рейсы или активные заказы — сначала завершите их или снимите назначение",
+          code: "vehicle_busy",
+        },
+        { status: 409 },
       )
     }
 

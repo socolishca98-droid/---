@@ -23,7 +23,7 @@ import {
   normalizeOrderStatus,
   orderStatusLabel,
 } from "@/lib/orders/stages"
-import { logRouteEvent } from "@/lib/routes/service"
+import { logRouteEvent, recalcRoute } from "@/lib/routes/service"
 import { buildTripSummary } from "@/lib/trips/history"
 
 export const dynamic = "force-dynamic"
@@ -278,6 +278,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           order: `${order.routeFrom} → ${order.routeTo}`,
         }),
       })
+    }
+
+    // Рейс адаптируется сразу: водитель начал точку — статус и итоги рейса
+    // обновляются без ручного пересчёта логистом.
+    if (order.routeId) {
+      await recalcRoute(prisma, order.routeId, org.organizationId).catch(() => {})
     }
 
     return NextResponse.json({

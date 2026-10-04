@@ -5,6 +5,7 @@ import { requireStaffAuth } from "@/lib/api-auth";
 import { requireStaffOrganization, scopedWhere } from "@/lib/org";
 import { createOrderSchema, zodErrorResponse } from "@/lib/validators";
 import { linkOrderToClientByName } from "@/lib/clients/service";
+import { recalcRoute } from "@/lib/routes/service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -159,12 +160,24 @@ export async function POST(request: NextRequest) {
     if (routeId) {
       const ownRoute = await prisma.route.findFirst({
         where: scopedWhere(org.organizationId, { id: routeId }),
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (!ownRoute) {
         return NextResponse.json(
           { success: false, error: "Рейс не найден" },
           { status: 404 },
+        );
+      }
+      // Закрытый рейс не оживает: в завершённый или отменённый рейс заказ
+      // добавить нельзя — иначе его итоги и статус снова станут врать.
+      if (ownRoute.status === "completed" || ownRoute.status === "cancelled") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Рейс закрыт — заказ нельзя в него добавить",
+            code: "route_closed",
+          },
+          { status: 409 },
         );
       }
     }
@@ -279,6 +292,11 @@ export async function POST(request: NextRequest) {
 
       return created;
     });
+
+    // Рейс адаптируется сразу: новый заказ меняет итоги и статус рейса.
+    if (routeId) {
+      await recalcRoute(prisma, routeId, org.organizationId).catch(() => {});
+    }
 
     // Клиентская база (задача 5): если карточка этого клиента уже есть,
     // заказ сразу попадает в его историю. Нет карточки — не выдумываем её.

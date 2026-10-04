@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
-import { logRouteEvent } from "@/lib/routes/service"
+import { logRouteEvent, recalcRoute } from "@/lib/routes/service"
 
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
@@ -83,6 +83,11 @@ export async function POST(request: NextRequest) {
         console.error("[Accept Load] routeEvent accept error:", e)
       }
 
+      // Рейс адаптируется сразу: принятый догруз меняет статус и итоги рейса.
+      if (order.routeId) {
+        await recalcRoute(prisma, order.routeId, org.organizationId).catch(() => {})
+      }
+
       return NextResponse.json({
         success: true,
         message: "Догруз принят",
@@ -130,6 +135,11 @@ export async function POST(request: NextRequest) {
         }
       } catch (e) {
         console.error("[Accept Load] routeEvent reject error:", e)
+      }
+
+      // Рейс адаптируется сразу: отклонённый догруз исключается из км/кг и имени.
+      if (order.routeId) {
+        await recalcRoute(prisma, order.routeId, org.organizationId).catch(() => {})
       }
 
       return NextResponse.json({

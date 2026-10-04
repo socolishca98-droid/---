@@ -783,6 +783,8 @@ describe("рейс адаптируется к отмене заказа (PATCH/
     expect(route.status).toBe("cancelled")
     expect(route.cargoWeight).toBe(0)
     expect(route.totalDistance).toBe(0)
+    // автоимя (цепочка городов через «→») пересчитывается: города отменённого заказа исчезают
+    expect(route.name).toBe(null)
   })
 
   it("удаление заказа из рейса пересчитывает итоги без него", async () => {
@@ -799,5 +801,72 @@ describe("рейс адаптируется к отмене заказа (PATCH/
     expect(route.status).toBe("planned")
     expect(route.cargoWeight).toBe(0)
     expect(route.totalDistance).toBe(0)
+    expect(route.name).toBe(null)
+  })
+
+  it("заказ в существующий рейс через POST пересчитывает рейс и бережёт имя диспетчера", async () => {
+    const routeId = cid("route-post-attach")
+    memoryDb.insert("route", {
+      id: routeId,
+      organizationId: world.orgA,
+      name: "Диспетчерский рейс",
+      status: "planned",
+      driverId: null,
+      vehicleId: null,
+      createdAt: new Date(),
+    })
+
+    const response = await ordersPost(
+      makeRequest("POST", "/api/orders", {
+        cookie: cookieA,
+        body: {
+          routeFrom: "Москва",
+          routeTo: "Тула",
+          distance: 180,
+          weight: 2500,
+          price: 20000,
+          routeId,
+        },
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const route = rowOf("route", routeId)
+    // новый заказ сразу попал в итоги рейса; ручное имя автоименем не затёрто
+    expect(route.cargoWeight).toBe(2500)
+    expect(route.totalDistance).toBe(180)
+    expect(route.status).toBe("planned")
+    expect(route.name).toBe("Диспетчерский рейс")
+  })
+
+  it("заказ в закрытый рейс не добавляется — 409", async () => {
+    const routeId = cid("route-closed")
+    memoryDb.insert("route", {
+      id: routeId,
+      organizationId: world.orgA,
+      name: "Отменённый рейс",
+      status: "cancelled",
+      driverId: null,
+      vehicleId: null,
+      createdAt: new Date(),
+    })
+
+    const response = await ordersPost(
+      makeRequest("POST", "/api/orders", {
+        cookie: cookieA,
+        body: {
+          routeFrom: "Москва",
+          routeTo: "Тула",
+          distance: 180,
+          weight: 2500,
+          price: 20000,
+          routeId,
+        },
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    const data = await jsonOf(response)
+    expect(data.code).toBe("route_closed")
   })
 })

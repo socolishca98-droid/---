@@ -490,6 +490,16 @@ describe("водители /api/drivers", () => {
   it("локации водителей: только свои", async () => {
     await expectScopedGet("/api/drivers/locations", driversLocationsGet)
   })
+
+  it("водитель с открытым рейсом не удаляется — 409", async () => {
+    // seedWorld: рейс А — «active», водитель А назначен на него
+    const del = await driverDelete(
+      makeRequest("DELETE", `/api/drivers/${world.driverA}`, { cookie: cookieA }),
+      routeContext({ id: world.driverA }),
+    )
+    expect(del.status).toBe(409)
+    expect(rowOf("driver", world.driverA).name).toBe("Водитель А")
+  })
 })
 
 describe("машины /api/vehicles", () => {
@@ -551,6 +561,16 @@ describe("машины /api/vehicles", () => {
       }),
     )
     expect(otherOrg.status).toBeLessThan(300)
+  })
+
+  it("машина с открытым рейсом не удаляется — 409", async () => {
+    // seedWorld: рейс А — «active», машина А назначена на него
+    const del = await vehicleDelete(
+      makeRequest("DELETE", `/api/vehicles/${world.vehicleA}`, { cookie: cookieA }),
+      routeContext({ id: world.vehicleA }),
+    )
+    expect(del.status).toBe(409)
+    expect(memoryDb.find("vehicle", world.vehicleA)).toBeTruthy()
   })
 })
 

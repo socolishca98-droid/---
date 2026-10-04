@@ -96,7 +96,7 @@ export async function recalcRoute(
   const orders = await listRouteOrders(client, routeId, organizationId)
   const route = await client.route.findFirst({
     where: scopedWhere(organizationId, { id: routeId }),
-    select: { id: true, startedAt: true, completedAt: true, status: true },
+    select: { id: true, name: true, startedAt: true, completedAt: true, status: true },
   })
   if (!route) throw new Error("Рейс не найден")
 
@@ -110,7 +110,10 @@ export async function recalcRoute(
           orders.map((o: { status: string }) => o.status),
           { startedAt: route.startedAt, completedAt: route.completedAt },
         )
-  const name = buildRouteName(orders)
+  // Имя рейса: диспетчерское имя важнее автоматического. Автоимя — цепочка
+  // городов через «→»: только такое (или пустое) имя пересчёт обновляет.
+  const autoName = buildRouteName(orders)
+  const name = route.name && !route.name.includes("→") ? route.name : autoName
 
   await client.route.updateMany({
     where: scopedWhere(organizationId, { id: routeId }),
