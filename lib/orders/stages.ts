@@ -316,13 +316,21 @@ export const NEGOTIATION_KIND_LABELS: Record<NegotiationKind, string> = {
 }
 
 /** Состояние переговоров по заказу. */
-export const NEGOTIATION_STATUSES = ["new", "in_progress", "agreed", "lost"] as const
+export const NEGOTIATION_STATUSES = [
+  "new",
+  "in_progress",
+  "thinking",
+  "agreed",
+  "lost",
+] as const
 
 export type NegotiationStatus = (typeof NEGOTIATION_STATUSES)[number]
 
 export const NEGOTIATION_STATUS_LABELS: Record<NegotiationStatus, string> = {
   new: "Новый",
   in_progress: "В переговорах",
+  /** Клиент взял паузу на раздумья: стоит таймер напоминания (nextFollowUpAt). */
+  thinking: "Клиент думает",
   agreed: "Договорились",
   lost: "Не договорились",
 }

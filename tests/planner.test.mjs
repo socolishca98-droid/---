@@ -18,8 +18,10 @@ const {
   countEmptyLegs,
   isPlanCandidate,
   orderFitsVehicle,
+  orderRelevance,
   orderRevenue,
   pickDefaultVehicle,
+  STALE_AFTER_DAYS,
 } = require("../.test-build/lib/assistant/planner.js");
 
 const FUTURE = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
@@ -276,4 +278,142 @@ test("варианты не дублируются и сортируются п�
   // срочный заказ помечен риском
   const urgent = proposals.flatMap((p) => p.orders).find((o) => o.id === "b");
   assert.equal(urgent.deadlineSoon, true);
+});
+
+// ---------------------------------------------------------------------------
+// Актуальность: живые заказы против протухших
+// ---------------------------------------------------------------------------
+
+test("актуальность: истёкший срок и долгое бездействие — неактуальные", () => {
+  // срок доставки истёк
+  const expired = order({
+    deadline: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  });
+  const verdictExpired = orderRelevance(expired);
+  assert.equal(verdictExpired.relevant, false);
+  assert.ok(verdictExpired.reason.includes("Срок доставки истёк"));
+
+  // несогласованный заказ без движения дольше STALE_AFTER_DAYS дней
+  const idle = order({
+    status: "negotiation",
+    updatedAt: new Date(
+      Date.now() - (STALE_AFTER_DAYS + 3) * 24 * 60 * 60 * 1000,
+    ),
+  });
+  const verdictIdle = orderRelevance(idle);
+  assert.equal(verdictIdle.relevant, false);
+  assert.ok(verdictIdle.reason.includes("Без движения"));
+
+  // свежий заказ — актуален
+  assert.equal(orderRelevance(order({ updatedAt: new Date() })).relevant, true);
+});
+
+test("актуальность: согласованный заказ актуален, даже если давно не меняли", () => {
+  const agreedOld = order({
+    status: "agreed",
+    updatedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+  });
+  assert.equal(orderRelevance(agreedOld).relevant, true);
+});
+
+test("неактуальные заказы не попадают в план, но видны отдельным списком", () => {
+  const stale = order({
+    id: "stale",
+    deadline: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  });
+  const live = order({ id: "live" });
+
+  const { proposals, stats, staleOrders } = buildPlanProposals({
+    orders: [stale, live],
+    vehicle: vehicle(),
+  });
+
+  assert.equal(stats.stale, 1);
+  assert.equal(staleOrders.length, 1);
+  assert.equal(staleOrders[0].id, "stale");
+  assert.ok(staleOrders[0].reason.length > 0);
+
+  const ids = proposals.flatMap((p) => p.orders.map((o) => o.id));
+  assert.ok(ids.includes("live"));
+  assert.ok(!ids.includes("stale"));
+});
+
+// ---------------------------------------------------------------------------
+// Дособорка рейса: продолжение цепочки и свободный бюджет машины
+// ---------------------------------------------------------------------------
+
+test("дособорка: цепочка продолжается с города последней выгрузки", () => {
+  const orders = [
+    order({
+      id: "tula-msk",
+      routeFrom: "Тула",
+      routeTo: "Москва",
+      price: 45000,
+    }),
+    order({
+      id: "msk-tula",
+      routeFrom: "Москва",
+      routeTo: "Тула",
+      price: 45000,
+    }),
+  ];
+
+  // рейс разгрузился в Москве: первым должен встать заказ с погрузкой в Москве,
+  // цепочка Москва → Тула → Москва идёт без порожних перегонов
+  const { proposals } = buildPlanProposals({
+    orders,
+    vehicle: vehicle(),
+    startCity: "Москва",
+  });
+
+  const best = proposals[0];
+  assert.deepEqual(
+    best.orders.map((o) => o.id),
+    ["msk-tula", "tula-msk"],
+  );
+  assert.equal(best.emptyLegs, 0);
+});
+
+test("дособорка: занятый вес уменьшает бюджет, итог включает груз рейса", () => {
+  const truck = vehicle({ capacity: 12000 });
+  const orders = [
+    order({ id: "fits", weight: 5000, price: 20000 }),
+    order({
+      id: "no-fit",
+      weight: 8000,
+      price: 90000,
+      routeFrom: "Москва",
+      routeTo: "Тула",
+    }),
+  ];
+
+  // в машине рейса уже 5000 кг — остаётся 7000 кг
+  const { proposals } = buildPlanProposals({
+    orders,
+    vehicle: truck,
+    startCity: "Москва",
+    usedWeightKg: 5000,
+  });
+
+  const best = proposals[0];
+  const ids = best.orders.map((o) => o.id);
+  assert.ok(ids.includes("fits"));
+  assert.ok(
+    !ids.includes("no-fit"),
+    "8000 кг в оставшиеся 7000 кг не помещаются",
+  );
+  // итоговый вес — с грузом рейса
+  assert.equal(best.totalWeightKg, 5000 + 5000);
+});
+
+test("дособорка: перегон от города рейса к месту погрузки честно виден", () => {
+  const orders = [order({ id: "kazan", routeFrom: "Казань", routeTo: "Уфа" })];
+
+  const { proposals } = buildPlanProposals({
+    orders,
+    vehicle: vehicle(),
+    startCity: "Москва",
+  });
+
+  assert.equal(proposals[0].emptyLegs, 1);
 });

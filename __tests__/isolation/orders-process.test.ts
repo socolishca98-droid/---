@@ -582,6 +582,27 @@ describe("этапы заказа (PATCH /api/orders/:id)", () => {
     expect(rowOf("order", orderId).status).toBe("rejected")
   })
 
+  it("«клиент думает»: пауза с таймером, статус заказа не меняется", async () => {
+    const orderId = seedOrder("think1", world.orgA, { status: "negotiation", negotiationStatus: "in_progress" })
+    const when = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+
+    const response = await orderPatch(
+      makeRequest("PATCH", `/api/orders/${orderId}`, {
+        cookie: cookieA,
+        body: { negotiationStatus: "thinking", nextFollowUpAt: when },
+      }),
+      routeContext({ id: orderId }),
+    )
+
+    expect(response.status).toBe(200)
+    const order = rowOf("order", orderId)
+    expect(order.negotiationStatus).toBe("thinking")
+    // итог не подведён — заказ остаётся в переговорах
+    expect(order.status).toBe("negotiation")
+    // таймер напоминания сохранён
+    expect(order.nextFollowUpAt).toBeTruthy()
+  })
+
   it("чужой заказ не меняется — 404", async () => {
     const before = rowOf("order", world.orderB).status
     const response = await orderPatch(

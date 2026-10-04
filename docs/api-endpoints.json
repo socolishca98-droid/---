@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T19:08:23.983Z",
+  "generatedAt": "2026-10-03T20:40:11.913Z",
   "endpoints": [
     {
       "method": "GET",
@@ -679,6 +679,11 @@
     {
       "method": "POST",
       "route": "/api/routes/:routeId/add-load",
+      "group": "routes"
+    },
+    {
+      "method": "POST",
+      "route": "/api/routes/:routeId/attach-orders",
       "group": "routes"
     },
     {

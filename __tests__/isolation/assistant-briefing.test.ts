@@ -140,6 +140,36 @@ describe("брифинг ассистента (GET /api/assistant/briefing)", ()
     expect(kinds).not.toContain("negotiations");
   });
 
+  it("«клиент думает» с истёкшим таймером — пункт брифинга с напоминанием", async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000);
+    seedOrder("thinkA", world.orgA, {
+      status: "negotiation",
+      negotiationStatus: "thinking",
+      nextFollowUpAt: past,
+    });
+    // чужая организация в брифинг не попадает
+    seedOrder("thinkB", world.orgB, {
+      status: "negotiation",
+      negotiationStatus: "thinking",
+      nextFollowUpAt: past,
+    });
+
+    const data = (await jsonOf(
+      await briefingGet(
+        makeRequest("GET", "/api/assistant/briefing", { cookie: cookieA }),
+      ),
+    )) as any;
+
+    expect(data.success).toBe(true);
+    const item = data.items.find((i: any) => i.kind === "thinking");
+    expect(item).toBeTruthy();
+    expect(item.title).toContain("1 заказ");
+    expect(item.severity).toBe("warn");
+    expect(item.message).toContain("истёк");
+    expect(item.action?.id).toBe("snooze_followups");
+    expect(item.href).toBe("/orders");
+  });
+
   it("без сессии — 401", async () => {
     const response = await briefingGet(
       makeRequest("GET", "/api/assistant/briefing"),

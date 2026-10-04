@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlarmClock,
+  Brain,
   CalendarClock,
   ChevronRight,
   HandCoins,
@@ -31,6 +32,7 @@ import type { BriefingItem, BriefingSeverity } from "@/lib/assistant/briefing";
 
 const ICONS: Record<BriefingItem["kind"], typeof Siren> = {
   negotiations: MessagesSquare,
+  thinking: Brain,
   followups: AlarmClock,
   overdue_payments: HandCoins,
   week_payments: CalendarClock,

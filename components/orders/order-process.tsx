@@ -36,6 +36,7 @@ import {
   StickyNote,
   Truck,
   XCircle,
+  Brain,
   Lightbulb,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -273,6 +274,11 @@ export function OrderProcess({
   const negotiationStatus = isNegotiationStatus(order?.negotiationStatus)
     ? (order!.negotiationStatus as unknown as NegotiationStatus)
     : "new";
+  /** Напоминание «вернуться к клиенту» стоит и уже истекло? */
+  const followUpExpired =
+    !closed &&
+    !!order?.nextFollowUpAt &&
+    new Date(order.nextFollowUpAt).getTime() <= Date.now();
 
   /** Общий вызов изменения заказа с понятными ошибками. */
   const patchOrder = async (
@@ -533,9 +539,16 @@ export function OrderProcess({
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Вернуться к клиенту</p>
-            <p className="text-sm font-medium">
+            <p
+              className={`text-sm font-medium ${followUpExpired ? "text-destructive" : ""}`}
+            >
               {dateTime(order.nextFollowUpAt)}
             </p>
+            {followUpExpired && (
+              <p className="text-xs text-destructive">
+                Таймер истёк — пора вернуться к клиенту
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Срок погрузки</p>
@@ -651,6 +664,30 @@ export function OrderProcess({
             >
               <CalendarClock className="h-4 w-4 mr-1.5" />
               Сохранить цену и срок
+            </Button>
+
+            {/* Пауза на раздумья: статус «клиент думает» + таймер напоминания.
+                Без выбранной даты напоминалка ставится на 2 дня вперёд. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={saving || closed || negotiationStatus === "thinking"}
+              onClick={() => {
+                const followUp = followUpInput
+                  ? new Date(followUpInput).toISOString()
+                  : new Date(
+                      Date.now() + 2 * 24 * 60 * 60 * 1000,
+                    ).toISOString();
+                void patchOrder(
+                  { negotiationStatus: "thinking", nextFollowUpAt: followUp },
+                  followUpInput
+                    ? "Клиент думает: напоминание поставлено"
+                    : "Клиент думает: напоминание через 2 дня",
+                );
+              }}
+            >
+              <Brain className="h-4 w-4 mr-1.5" />
+              Клиент думает
             </Button>
 
             <Button

@@ -31,7 +31,11 @@ export interface PlannerOrder {
   agreedPrice: number | null;
   deadline: Date | string | null;
   status: string | null;
+  /** Состояние переговоров: new | in_progress | thinking | agreed | lost. */
+  negotiationStatus: string | null;
   clientName: string | null;
+  /** Когда заказ последний раз меняли: «без движения N дней» — признак устаревания. */
+  updatedAt: Date | string | null;
   /** Заказ уже в рейсе — планировать нечего. */
   routeId: string | null;
 }
@@ -85,15 +89,32 @@ export type PlanStats = {
   overweight: number;
   /** Исключены логистом вручную. */
   excluded: number;
+  /** Неактуальные: срок истёк или заказ давно без движения. */
+  stale: number;
+};
+
+/** Неактуальный заказ: в план не попадает, пока логист не уточнит его. */
+export type StaleOrder = {
+  id: string;
+  routeFrom: string;
+  routeTo: string;
+  clientName: string | null;
+  deadline: Date | string | null;
+  /** Почему заказ считается неактуальным — показывается как есть. */
+  reason: string;
 };
 
 export type PlanResult = {
   proposals: PlannerProposal[];
   stats: PlanStats;
+  staleOrders: StaleOrder[];
 };
 
 /** Сколько вариантов предлагать максимум. */
 export const MAX_PROPOSALS = 3;
+
+/** Заказ без движения дольше этого срока считается неактуальным (дней). */
+export const STALE_AFTER_DAYS = 14;
 
 /** Срок «горит»: меньше 48 часов до дедлайна (или уже прошёл). */
 const DEADLINE_SOON_MS = 48 * 60 * 60 * 1000;
@@ -122,6 +143,49 @@ function deadlineOf(order: PlannerOrder): Date | null {
   const date =
     order.deadline instanceof Date ? order.deadline : new Date(order.deadline);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateOf(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Актуальность заказа — сортировка «живых» и «протухших»:
+ *   * срок доставки истёк — планировать поздно, нужно уточнять у клиента;
+ *   * несогласованный заказ без движения дольше STALE_AFTER_DAYS дней —
+ *     вероятно, уже уехал к другому перевозчику;
+ *   * согласованные заказы ждут рейса сколько угодно — они актуальны всегда.
+ */
+export function orderRelevance(
+  order: PlannerOrder,
+  now: Date = new Date(),
+): { relevant: boolean; reason: string | null } {
+  const deadline = dateOf(order.deadline);
+  if (deadline && deadline.getTime() < now.getTime()) {
+    return {
+      relevant: false,
+      reason: "Срок доставки истёк — уточнить у клиента",
+    };
+  }
+
+  if (!isOrderRouteable(order.status)) {
+    const updated = dateOf(order.updatedAt);
+    if (updated) {
+      const daysIdle = Math.floor(
+        (now.getTime() - updated.getTime()) / (24 * 60 * 60 * 1000),
+      );
+      if (daysIdle >= STALE_AFTER_DAYS) {
+        return {
+          relevant: false,
+          reason: `Без движения ${daysIdle} дн. — уточнить или закрыть`,
+        };
+      }
+    }
+  }
+
+  return { relevant: true, reason: null };
 }
 
 /** Доход заказа: согласованная цена важнее прайса. */
@@ -252,35 +316,89 @@ export function buildPlanProposals(input: {
   vehicle: PlannerVehicle;
   excludeIds?: readonly string[];
   now?: Date;
+  /** Дособорка рейса: город последней выгрузки — цепочка продолжается с него. */
+  startCity?: string | null;
+  /** Дособорка рейса: сколько кг уже занято в машине. */
+  usedWeightKg?: number;
+  /** Дособорка рейса: сколько м³ уже занято в машине. */
+  usedVolumeM3?: number;
 }): PlanResult {
   const { orders, vehicle } = input;
   const now = input.now ?? new Date();
   const exclude = new Set(input.excludeIds ?? []);
+  const startCity = input.startCity ? normalizeCity(input.startCity) : null;
+  const usedWeight = input.usedWeightKg ?? 0;
+  const usedVolume = input.usedVolumeM3 ?? 0;
+  const capacityLeft = Math.max(0, vehicle.capacity - usedWeight);
+  const volumeLeft =
+    vehicle.volume !== null ? Math.max(0, vehicle.volume - usedVolume) : null;
 
   const actual = orders.filter(isPlanCandidate);
   const excluded = actual.filter((order) => exclude.has(order.id));
   const afterExclude = actual.filter((order) => !exclude.has(order.id));
-  const fitting = afterExclude.filter((order) =>
-    orderFitsVehicle(order, vehicle),
+
+  // Актуальность: протухшие заказы в план не попадают, но показываются списком
+  const staleOrders: StaleOrder[] = [];
+  const relevant = afterExclude.filter((order) => {
+    const verdict = orderRelevance(order, now);
+    if (!verdict.relevant) {
+      staleOrders.push({
+        id: order.id,
+        routeFrom: order.routeFrom,
+        routeTo: order.routeTo,
+        clientName: order.clientName,
+        deadline: order.deadline,
+        reason: verdict.reason ?? "Неактуальный заказ",
+      });
+    }
+    return verdict.relevant;
+  });
+
+  // Дособорка рейса: заказ проверяется против свободного остатка машины,
+  // а не полной вместимости — иначе статистика «не помещаются» врёт.
+  const budgetVehicle: PlannerVehicle = {
+    ...vehicle,
+    capacity: capacityLeft,
+    volume: volumeLeft,
+  };
+  const fitting = relevant.filter((order) =>
+    orderFitsVehicle(order, budgetVehicle),
   );
-  const overweight = afterExclude.length - fitting.length;
+  const overweight = relevant.length - fitting.length;
 
   const stats: PlanStats = {
     candidates: actual.length,
     overweight,
     excluded: excluded.length,
+    stale: staleOrders.length,
   };
 
-  if (fitting.length === 0) return { proposals: [], stats };
+  if (fitting.length === 0) return { proposals: [], stats, staleOrders };
 
   const seen = new Set<string>();
   const proposals: PlannerProposal[] = [];
 
   for (const variant of PLAN_VARIANTS) {
-    const sequence = sequenceOrders(fitting, variant);
+    // Дособорка рейса: сначала заказы, продолжающие цепочку с города последней
+    // выгрузки, затем остальные — машина заполняется максимально плотно.
+    let sequence: string[];
+    if (startCity) {
+      const continuing = fitting.filter(
+        (order) => normalizeCity(order.routeFrom) === startCity,
+      );
+      const others = fitting.filter(
+        (order) => normalizeCity(order.routeFrom) !== startCity,
+      );
+      sequence = [
+        ...sequenceOrders(continuing, variant),
+        ...sequenceOrders(others, variant),
+      ];
+    } else {
+      sequence = sequenceOrders(fitting, variant);
+    }
     const byId = new Map(fitting.map((order) => [order.id, order]));
 
-    // Прореживание по грузоподъёмности: порядок сохранён, тяжёлое пропускаем
+    // Прореживание по свободному бюджету машины: порядок сохранён, тяжёлое пропускаем
     const chain: PlannerProposalOrder[] = [];
     let weight = 0;
     let volume = 0;
@@ -289,9 +407,8 @@ export function buildPlanProposals(input: {
       if (!order) continue;
       const orderWeight = typeof order.weight === "number" ? order.weight : 0;
       const orderVolume = typeof order.volume === "number" ? order.volume : 0;
-      if (weight + orderWeight > vehicle.capacity) continue;
-      if (vehicle.volume !== null && volume + orderVolume > vehicle.volume)
-        continue;
+      if (weight + orderWeight > capacityLeft) continue;
+      if (volumeLeft !== null && volume + orderVolume > volumeLeft) continue;
       weight += orderWeight;
       volume += orderVolume;
       chain.push(toProposalOrder(order, now));
@@ -308,7 +425,11 @@ export function buildPlanProposals(input: {
         sum + (typeof order.distance === "number" ? order.distance : 0),
       0,
     );
-    const emptyLegs = countEmptyLegs(chain);
+    // стык с существующим рейсом: первый заказ грузится не там, где рейс
+    // разгрузился, — это порожний перегон
+    const junctionGap =
+      startCity && normalizeCity(chain[0].routeFrom) !== startCity ? 1 : 0;
+    const emptyLegs = countEmptyLegs(chain) + junctionGap;
 
     proposals.push({
       id: `${variant}-${signature.slice(0, 40)}`,
@@ -317,7 +438,7 @@ export function buildPlanProposals(input: {
       reason: VARIANT_REASONS[variant],
       orders: chain,
       totalDistanceKm: Math.round(distanceKm),
-      totalWeightKg: weight,
+      totalWeightKg: usedWeight + weight,
       revenueRub: chain.reduce((sum, order) => sum + order.revenueRub, 0),
       emptyLegs,
       routeableCount: chain.filter((order) => !order.needsApproval).length,
@@ -327,5 +448,5 @@ export function buildPlanProposals(input: {
   }
 
   proposals.sort((a, b) => b.score - a.score);
-  return { proposals: proposals.slice(0, MAX_PROPOSALS), stats };
+  return { proposals: proposals.slice(0, MAX_PROPOSALS), stats, staleOrders };
 }

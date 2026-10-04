@@ -170,3 +170,188 @@ describe("виртуальный логист (GET /api/assistant/plan)", () => 
     expect(data.warning).toContain("Свободных машин нет");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Дособорка рейса и актуальность заказов
+// ---------------------------------------------------------------------------
+
+function seedPlanRoute(
+  slug: string,
+  organizationId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  const id = cid(slug);
+  memoryDb.insert("route", {
+    id,
+    organizationId,
+    name: `Рейс ${slug}`,
+    status: "planned",
+    vehicleId: null,
+    driverId: null,
+    totalDistance: 0,
+    cargoWeight: 0,
+    createdAt: new Date(),
+    ...overrides,
+  });
+  return id;
+}
+
+describe("дособорка рейса (GET /api/assistant/plan?routeId=)", () => {
+  it("чужой рейс — 404", async () => {
+    const routeId = seedPlanRoute("route-b", world.orgB);
+
+    const { response } = await plan(cookieA, `?routeId=${routeId}`);
+    expect(response.status).toBe(404);
+  });
+
+  it("бюджет машины и город цепочки берутся из рейса", async () => {
+    const vehicleId = seedVehicle("truck12", world.orgA, 12000);
+    const routeId = seedPlanRoute("route-a", world.orgA, { vehicleId });
+    const inRouteId = seedPlanOrder("inroute", world.orgA, {
+      status: "in_route",
+      routeId,
+      routeSequence: 1,
+      weight: 5000,
+    });
+    const freeId = seedPlanOrder("free1", world.orgA, {
+      routeFrom: "Москва",
+      routeTo: "Тула",
+      weight: 5000,
+    });
+
+    const { response, data } = await plan(
+      cookieA,
+      `?routeId=${routeId}&vehicleId=${vehicleId}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(data.route).toBeTruthy();
+    expect(data.route.ordersCount).toBe(1);
+    expect(data.route.usedWeightKg).toBe(5000);
+    // 12000 кг машины − 5000 кг груза рейса
+    expect(data.route.freeWeightKg).toBe(7000);
+    // цепочка продолжается с города последней выгрузки рейса
+    expect(data.route.lastCity).toBe("Москва");
+
+    const ids = data.proposals.flatMap((p: any) =>
+      p.orders.map((o: any) => o.id),
+    );
+    expect(ids).toContain(freeId);
+    expect(ids).not.toContain(inRouteId);
+    // итоговый вес варианта включает груз рейса
+    const best = data.proposals.find((p: any) =>
+      p.orders.some((o: any) => o.id === freeId),
+    );
+    expect(best.totalWeightKg).toBe(10000);
+  });
+
+  it("заказ тяжелее остатка грузоподъёмности не предлагается", async () => {
+    const vehicleId = seedVehicle("truck7", world.orgA, 12000);
+    const routeId = seedPlanRoute("route-full", world.orgA, { vehicleId });
+    seedPlanOrder("inroute2", world.orgA, {
+      status: "in_route",
+      routeId,
+      routeSequence: 1,
+      weight: 5000,
+    });
+    const heavyId = seedPlanOrder("heavy", world.orgA, {
+      routeFrom: "Москва",
+      weight: 8000,
+    });
+
+    const { data } = await plan(
+      cookieA,
+      `?routeId=${routeId}&vehicleId=${vehicleId}`,
+    );
+
+    const ids = data.proposals.flatMap((p: any) =>
+      p.orders.map((o: any) => o.id),
+    );
+    expect(ids).not.toContain(heavyId);
+    expect(data.stats.overweight).toBeGreaterThanOrEqual(1);
+  });
+
+  it("бюджет дособорки задаёт машина рейса, даже если она занята", async () => {
+    // машина рейса занята (в рейсе), 10 000 кг
+    const routeVehicleId = seedVehicle("busy10", world.orgA, 10000);
+    memoryDb.find("vehicle", routeVehicleId)!.status = "in_route";
+    // свободная машина побольше — она НЕ должна задавать бюджет дособорки
+    seedVehicle("free20", world.orgA, 20000);
+
+    const routeId = seedPlanRoute("route-busy", world.orgA, {
+      vehicleId: routeVehicleId,
+    });
+    seedPlanOrder("inroute3", world.orgA, {
+      status: "in_route",
+      routeId,
+      routeSequence: 1,
+      weight: 4000,
+    });
+    const heavyId = seedPlanOrder("heavy7", world.orgA, {
+      routeFrom: "Москва",
+      weight: 7000,
+    });
+
+    const { data } = await plan(cookieA, `?routeId=${routeId}`);
+
+    // бюджет от машины рейса: 10 000 − 4 000 = 6 000 кг
+    expect(data.vehicle.id).toBe(routeVehicleId);
+    expect(data.route.vehiclePlate).toBeTruthy();
+    expect(data.route.freeWeightKg).toBe(6000);
+
+    // 7 000 кг в остаток 6 000 кг не помещаются
+    const ids = data.proposals.flatMap((p: any) =>
+      p.orders.map((o: any) => o.id),
+    );
+    expect(ids).not.toContain(heavyId);
+  });
+});
+
+describe("актуальность заказов", () => {
+  it("истёкший срок и долгое бездействие — вне плана, отдельным списком", async () => {
+    const vehicleId = seedVehicle("truck20", world.orgA, 20000);
+    const expiredId = seedPlanOrder("expired", world.orgA, {
+      deadline: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+    const idleId = seedPlanOrder("idle", world.orgA, {
+      status: "search",
+      updatedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+    });
+    const liveId = seedPlanOrder("live1", world.orgA, {});
+
+    const { data } = await plan(cookieA, `?vehicleId=${vehicleId}`);
+
+    const ids = data.proposals.flatMap((p: any) =>
+      p.orders.map((o: any) => o.id),
+    );
+    expect(ids).toContain(liveId);
+    expect(ids).not.toContain(expiredId);
+    expect(ids).not.toContain(idleId);
+
+    expect(data.stats.stale).toBe(2);
+    const staleIds = data.staleOrders.map((o: any) => o.id);
+    expect(staleIds).toContain(expiredId);
+    expect(staleIds).toContain(idleId);
+
+    const expired = data.staleOrders.find((o: any) => o.id === expiredId);
+    expect(expired.reason).toContain("Срок");
+    const idle = data.staleOrders.find((o: any) => o.id === idleId);
+    expect(idle.reason).toContain("Без движения");
+  });
+
+  it("согласованный заказ актуален, даже если давно без движения", async () => {
+    const vehicleId = seedVehicle("truck21", world.orgA, 20000);
+    const agreedId = seedPlanOrder("old-agreed", world.orgA, {
+      status: "agreed",
+      updatedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+    });
+
+    const { data } = await plan(cookieA, `?vehicleId=${vehicleId}`);
+
+    const ids = data.proposals.flatMap((p: any) =>
+      p.orders.map((o: any) => o.id),
+    );
+    expect(ids).toContain(agreedId);
+    expect(data.stats.stale).toBe(0);
+  });
+});

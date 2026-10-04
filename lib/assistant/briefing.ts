@@ -18,6 +18,7 @@ export interface BriefingItem {
   kind:
     | "negotiations"
     | "followups"
+    | "thinking"
     | "overdue_payments"
     | "week_payments"
     | "sos"
@@ -69,6 +70,7 @@ export async function buildBriefing(
 
   const [
     negotiations,
+    thinkingOrders,
     followups,
     overduePayments,
     weekPayments,
@@ -81,6 +83,15 @@ export async function buildBriefing(
       where: scopedWhere(organizationId, { status: "negotiation" }),
       select: { id: true, updatedAt: true },
       orderBy: { updatedAt: "asc" },
+      take: 200,
+    }),
+    // 2а. «Клиент думает»: сколько и у скольких таймер напоминания истёк
+    prisma.order.findMany({
+      where: scopedWhere(organizationId, {
+        negotiationStatus: "thinking",
+        status: { notIn: CLOSED },
+      }),
+      select: { id: true, nextFollowUpAt: true },
       take: 200,
     }),
     // 2. Просроченные напоминания о контакте
@@ -191,6 +202,33 @@ export async function buildBriefing(
       message: "Напоминание о контакте просрочено — клиент ждёт ответа.",
       href: "/orders",
       action: { id: "snooze_followups", label: "Отложить на завтра" },
+    });
+  }
+
+  // «Клиент думает»: пауза в переговорах с таймером напоминания
+  if (thinkingOrders.length > 0) {
+    const expired = thinkingOrders.filter(
+      (order: any) =>
+        order.nextFollowUpAt && new Date(order.nextFollowUpAt) <= now,
+    ).length;
+    items.push({
+      id: "thinking",
+      kind: "thinking",
+      severity: expired > 0 ? "warn" : "info",
+      title: `Клиент думает: ${thinkingOrders.length} ${plural(thinkingOrders.length, ["заказ", "заказа", "заказов"])}`,
+      message:
+        expired > 0
+          ? `У ${expired} ${plural(expired, ["заказа", "заказов", "заказов"])} истёк таймер напоминания — пора вернуться к клиенту.`
+          : "Пауза на раздумья: напоминания стоят, вернёмся в срок.",
+      href: "/orders",
+      ...(expired > 0
+        ? {
+            action: {
+              id: "snooze_followups" as const,
+              label: "Отложить на завтра",
+            },
+          }
+        : {}),
     });
   }
 

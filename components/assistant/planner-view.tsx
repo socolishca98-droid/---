@@ -5,20 +5,24 @@
 // Виртуальный логист: из базы заказов собирает максимально продуктивный
 // маршрут для свободной машины — не один заказ, а цепочку (выгрузка там,
 // где следующая погрузка). Данные — GET /api/assistant/plan (логика в
-// lib/assistant/planner.ts), создание рейса — проверенный POST /api/routes.
+// lib/assistant/planner.ts), создание рейса — POST /api/routes,
+// дособорка существующего рейса — POST /api/routes/[id]/attach-orders.
 //
-// Логист подтверждает вариант («Создать рейс») или отклоняет отдельные
-// заказы (✕) — планировщик пересобирает цепочки и предлагает другие.
-// Заказы, которые ещё не согласованы, помечаются: в рейс попадут только
-// согласованные, остальным сначала нужно подтвердить цену.
+// Логист подтверждает вариант («Создать рейс» / «Добавить в рейс») или
+// отклоняет отдельные заказы (✕) — планировщик пересобирает цепочки и
+// предлагает другие. Заказы, которые ещё не согласованы, помечаются: в рейс
+// попадут только согласованные. Неактуальные заказы (срок истёк или давно
+// без движения) в план не попадают и показываются отдельным списком.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ArrowRight,
   Loader2,
   MapPin,
+  Plus,
   RefreshCw,
   Sparkles,
   Truck,
@@ -38,19 +42,59 @@ type PlanStats = {
   candidates: number;
   overweight: number;
   excluded: number;
+  stale: number;
+};
+
+type StaleOrder = {
+  id: string;
+  routeFrom: string;
+  routeTo: string;
+  clientName: string | null;
+  deadline: string | null;
+  reason: string;
+};
+
+type RouteInfo = {
+  id: string;
+  name: string | null;
+  status: string;
+  vehiclePlate: string | null;
+  ordersCount: number;
+  usedWeightKg: number;
+  freeWeightKg: number;
+  lastCity: string | null;
 };
 
 type PlanPayload = {
   success?: boolean;
   vehicle: PlannerVehicle | null;
   vehicles: PlannerVehicle[];
+  route: RouteInfo | null;
   proposals: PlannerProposal[];
   stats: PlanStats;
+  staleOrders: StaleOrder[];
   warning?: string | null;
   error?: string;
 };
 
+type RouteOption = {
+  id: string;
+  name: string | null;
+  status: string;
+  ordersCount: number;
+  cities: string | null;
+};
+
 const money = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
+
+/** Русские склонения: 1 заказ, 2 заказа, 5 заказов. */
+function plural(n: number, forms: [string, string, string]): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return forms[0];
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
+  return forms[2];
+}
 
 function formatDate(value: Date | string | null): string | null {
   if (!value) return null;
@@ -70,16 +114,58 @@ export function PlannerView() {
   const router = useRouter();
 
   const [data, setData] = useState<PlanPayload | null>(null);
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
+  const [routeId, setRouteId] = useState<string | null>(null);
   const [excludeIds, setExcludeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingId, setCreatingId] = useState<string | null>(null);
+  const [showStale, setShowStale] = useState(false);
+
+  // Открытые рейсы — для режима «дособрать маршрут»
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/routes?limit=50", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (cancelled || !payload?.success || !Array.isArray(payload.routes))
+          return;
+        setRoutes(
+          payload.routes
+            .filter(
+              (route: any) =>
+                route.status !== "completed" && route.status !== "cancelled",
+            )
+            .map((route: any) => {
+              const orders = Array.isArray(route.orders) ? route.orders : [];
+              const sorted = [...orders].sort(
+                (a: any, b: any) =>
+                  (a.routeSequence ?? 0) - (b.routeSequence ?? 0),
+              );
+              const from = sorted[0]?.routeFrom ?? null;
+              const to = sorted[sorted.length - 1]?.routeTo ?? null;
+              return {
+                id: route.id,
+                name: route.name,
+                status: route.status,
+                ordersCount: orders.length,
+                cities: from && to ? `${from} → ${to}` : null,
+              };
+            }),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (vehicleId) params.set("vehicleId", vehicleId);
+      if (routeId) params.set("routeId", routeId);
       if (excludeIds.length > 0) params.set("exclude", excludeIds.join(","));
       const res = await fetch(`/api/assistant/plan?${params.toString()}`, {
         cache: "no-store",
@@ -96,7 +182,7 @@ export function PlannerView() {
     } finally {
       setLoading(false);
     }
-  }, [vehicleId, excludeIds]);
+  }, [vehicleId, routeId, excludeIds]);
 
   useEffect(() => {
     void load();
@@ -112,7 +198,8 @@ export function PlannerView() {
 
   const resetExcludes = () => setExcludeIds([]);
 
-  const createRoute = async (proposal: PlannerProposal) => {
+  /** Новый рейс (POST /api/routes) или дособорка существующего (attach-orders). */
+  const applyProposal = async (proposal: PlannerProposal) => {
     if (!data?.vehicle) return;
     const orderIds = proposal.orders
       .filter((order) => !order.needsApproval)
@@ -121,26 +208,36 @@ export function PlannerView() {
 
     setCreatingId(proposal.id);
     try {
-      const res = await fetch("/api/routes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderIds, vehicleId: data.vehicle.id }),
-      });
+      const res = routeId
+        ? await fetch(`/api/routes/${routeId}/attach-orders`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderIds }),
+          })
+        : await fetch("/api/routes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderIds, vehicleId: data.vehicle.id }),
+          });
       const payload = await res.json().catch(() => null);
       if (!res.ok || !payload?.success) {
-        throw new Error(payload?.error || "Не удалось создать рейс");
+        throw new Error(payload?.error || "Не удалось собрать рейс");
       }
+      const added = payload.attached ?? orderIds.length;
+      const count = payload.route?.ordersCount ?? added;
       toast.success(
-        `Рейс создан: ${payload.route?.ordersCount ?? orderIds} заказ(ов)`,
+        routeId
+          ? `Добавлено в рейс: ${added} ${plural(added, ["заказ", "заказа", "заказов"])}`
+          : `Рейс создан: ${count} ${plural(count, ["заказ", "заказа", "заказов"])}`,
         {
           description:
-            payload.route?.routeName ||
+            payload.route?.name ||
             "Откройте маршруты, чтобы назначить водителя",
         },
       );
       router.push("/routes");
     } catch (e: any) {
-      toast.error(e?.message || "Не удалось создать рейс");
+      toast.error(e?.message || "Не удалось собрать рейс");
     } finally {
       setCreatingId(null);
     }
@@ -160,6 +257,8 @@ export function PlannerView() {
           <p className="mt-1 text-sm text-muted-foreground">
             Собирает из базы заказов продуктивную цепочку под свободную машину:
             минимум порожних перегонов, учтены вес, объём, сроки и доход.
+            Неактуальные заказы (срок истёк, давно без движения) в план не
+            попадают.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -183,12 +282,68 @@ export function PlannerView() {
         </div>
       </div>
 
+      {/* Режим: новый рейс или дособорка существующего */}
+      {routes.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <Plus className="h-4 w-4 text-muted-foreground" />
+            Что собираем
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setRouteId(null)}
+              className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                routeId === null
+                  ? "border-primary/50 bg-primary/10 font-medium"
+                  : "border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]"
+              }`}
+            >
+              Новый рейс с нуля
+            </button>
+            {routes.map((route) => (
+              <button
+                key={route.id}
+                type="button"
+                onClick={() => setRouteId(route.id)}
+                className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                  routeId === route.id
+                    ? "border-primary/50 bg-primary/10 font-medium"
+                    : "border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]"
+                }`}
+              >
+                Дособрать: {route.name || route.cities || "рейс"}
+                {route.ordersCount > 0 &&
+                  ` · ${route.ordersCount} ${plural(route.ordersCount, ["заказ", "заказа", "заказов"])}`}
+                {route.name && route.cities ? ` · ${route.cities}` : ""}
+              </button>
+            ))}
+          </div>
+          {data?.route && (
+            <p className="text-xs text-muted-foreground">
+              Рейс «{data.route.name || "без названия"}»
+              {data.route.vehiclePlate
+                ? ` · машина ${data.route.vehiclePlate}`
+                : ""}{" "}
+              · заказов: {data.route.ordersCount} · занято{" "}
+              {data.route.usedWeightKg.toLocaleString("ru-RU")} кг · свободно{" "}
+              <span className="font-medium text-foreground">
+                {data.route.freeWeightKg.toLocaleString("ru-RU")} кг
+              </span>
+              {data.route.lastCity
+                ? ` · продолжаем из: ${data.route.lastCity}`
+                : ""}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Выбор машины */}
       {data && data.vehicles.length > 0 && (
         <div className="space-y-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Truck className="h-4 w-4 text-muted-foreground" />
-            Свободная машина
+            {routeId && data?.route ? "Машина" : "Свободная машина"}
           </h2>
           <div className="flex flex-wrap gap-2">
             {data.vehicles.map((vehicle) => (
@@ -212,7 +367,9 @@ export function PlannerView() {
       {/* Сводка */}
       {data && (
         <p className="text-xs text-muted-foreground">
-          Актуальных заказов: {data.stats.candidates}
+          Актуальных заказов:{" "}
+          {data.stats.candidates - data.stats.stale - data.stats.excluded}
+          {data.stats.stale > 0 ? ` · неактуальных: ${data.stats.stale}` : ""}
           {data.stats.overweight > 0
             ? ` · не помещаются в машину: ${data.stats.overweight}`
             : ""}
@@ -254,6 +411,11 @@ export function PlannerView() {
                     <span className="text-sm font-medium">
                       {proposal.variantTitle}
                     </span>
+                    {routeId && (
+                      <span className="rounded-lg border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+                        продолжение рейса
+                      </span>
+                    )}
                   </div>
                   <span className="text-[11px] text-muted-foreground">
                     {proposal.reason}
@@ -268,6 +430,7 @@ export function PlannerView() {
                   </span>
                   <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
                     {proposal.totalWeightKg.toLocaleString("ru-RU")} кг
+                    {routeId && data?.route ? " (с грузом рейса)" : ""}
                   </span>
                   <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-emerald-300">
                     доход {money.format(proposal.revenueRub)} ₽
@@ -291,13 +454,24 @@ export function PlannerView() {
                 {/* Цепочка городов */}
                 <div className="mb-3 flex flex-wrap items-center gap-1 text-xs">
                   <MapPin className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+                  {routeId && data?.route?.lastCity && (
+                    <>
+                      <span className="font-semibold text-primary">
+                        {data.route.lastCity}
+                      </span>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                    </>
+                  )}
                   {chain.map((point, pointIndex) => (
                     <span key={pointIndex} className="flex items-center gap-1">
-                      {pointIndex > 0 && (
-                        <ArrowRight
-                          className={`h-3 w-3 ${point.gapBefore ? "text-amber-400" : "text-muted-foreground"}`}
-                        />
-                      )}
+                      {pointIndex > 0 &&
+                        (point.gapBefore ? (
+                          <span title="порожний перегон" className="flex">
+                            <ArrowRight className="h-3 w-3 text-amber-400" />
+                          </span>
+                        ) : (
+                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        ))}
                       <span className={point.gapBefore ? "text-amber-300" : ""}>
                         {point.city}
                       </span>
@@ -374,14 +548,16 @@ export function PlannerView() {
                       creatingId !== null ||
                       !data?.vehicle
                     }
-                    onClick={() => void createRoute(proposal)}
+                    onClick={() => void applyProposal(proposal)}
                   >
                     {creatingId === proposal.id ? (
                       <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                     ) : (
                       <Truck className="mr-1.5 h-4 w-4" />
                     )}
-                    Создать рейс ({routeableIds.length})
+                    {routeId
+                      ? `Добавить в рейс (${routeableIds.length})`
+                      : `Создать рейс (${routeableIds.length})`}
                   </Button>
                   {proposal.approvalCount > 0 && (
                     <p className="text-[11px] text-muted-foreground">
@@ -401,6 +577,53 @@ export function PlannerView() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* Неактуальные заказы: в план не попали, нужно решение логиста */}
+      {data && data.staleOrders.length > 0 && (
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+          <button
+            type="button"
+            onClick={() => setShowStale((prev) => !prev)}
+            className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm"
+          >
+            <span className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-400" />
+              Неактуальные заказы: {data.staleOrders.length} — в план не попали
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {showStale ? "свернуть" : "показать"}
+            </span>
+          </button>
+          {showStale && (
+            <ul className="space-y-1.5 border-t border-white/[0.05] p-4 text-xs">
+              {data.staleOrders.map((order) => (
+                <li
+                  key={order.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1"
+                >
+                  <span className="font-medium">
+                    {order.routeFrom} → {order.routeTo}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {order.clientName || "клиент не указан"}
+                  </span>
+                  <span className="text-amber-300">{order.reason}</span>
+                </li>
+              ))}
+              <li className="pt-1 text-muted-foreground">
+                Уточните срок у клиента и обновите заказ — он вернётся в
+                планирование.{" "}
+                <Link
+                  href="/orders"
+                  className="text-sky-400 underline-offset-2 hover:underline"
+                >
+                  Открыть заказы
+                </Link>
+              </li>
+            </ul>
+          )}
         </div>
       )}
     </div>

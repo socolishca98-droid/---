@@ -310,7 +310,7 @@ test("лента согласования: виды записей и их по�
 })
 
 test("состояние переговоров и итог, который переводит заказ", () => {
-  assert.deepEqual([...NEGOTIATION_STATUSES], ["new", "in_progress", "agreed", "lost"])
+  assert.deepEqual([...NEGOTIATION_STATUSES], ["new", "in_progress", "thinking", "agreed", "lost"])
   for (const value of NEGOTIATION_STATUSES) {
     assert.ok(NEGOTIATION_STATUS_LABELS[value], `нет подписи ${value}`)
     assert.equal(isNegotiationStatus(value), true)
@@ -323,6 +323,8 @@ test("состояние переговоров и итог, который пе
   // итог ещё не подведён — статус заказа не трогаем
   assert.equal(statusFromNegotiation("new"), null)
   assert.equal(statusFromNegotiation("in_progress"), null)
+  // клиент думает — тоже не итог: заказ остаётся в работе
+  assert.equal(statusFromNegotiation("thinking"), null)
   assert.equal(statusFromNegotiation("неизвестно"), null)
   assert.equal(statusFromNegotiation(null), null)
 
