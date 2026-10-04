@@ -168,7 +168,7 @@ const floatOrNull = z
   .optional()
   .transform((v) => {
     if (v === null || v === undefined || v === "") return null;
-    const n = typeof v === "string" ? parseFloat(v) : v;
+    const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : v;
     return Number.isFinite(n) && n >= 0 ? (n as number) : null;
   })
   .pipe(z.number().nullish());
@@ -199,7 +199,7 @@ export const createVehicleSchema = z.object({
     .optional()
     .transform((v) => {
       if (v === null || v === undefined || v === "") return undefined;
-      const n = typeof v === "string" ? parseFloat(v) : v;
+      const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : v;
       return isNaN(n as number) ? undefined : (n as number);
     })
     .pipe(z.number().min(0).optional().or(z.undefined())),
@@ -208,7 +208,7 @@ export const createVehicleSchema = z.object({
     .optional()
     .transform((v) => {
       if (v === null || v === undefined || v === "") return undefined;
-      const n = typeof v === "string" ? parseFloat(v) : v;
+      const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : v;
       return isNaN(n as number) ? undefined : (n as number);
     })
     .pipe(z.number().min(0).optional().or(z.undefined())),
@@ -217,7 +217,7 @@ export const createVehicleSchema = z.object({
     .optional()
     .transform((v) => {
       if (v === null || v === undefined || v === "") return undefined;
-      const n = typeof v === "string" ? parseFloat(v) : v;
+      const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : v;
       return isNaN(n as number) ? undefined : (n as number);
     })
     .pipe(z.number().min(0).optional().or(z.undefined())),
@@ -226,7 +226,7 @@ export const createVehicleSchema = z.object({
     .optional()
     .transform((v) => {
       if (v === null || v === undefined || v === "") return undefined;
-      const n = typeof v === "string" ? parseFloat(v) : v;
+      const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : v;
       return isNaN(n as number) ? undefined : (n as number);
     })
     .pipe(z.number().min(0).optional().or(z.undefined())),
@@ -269,7 +269,7 @@ export const createOrderSchema = z.object({
     .optional()
     .transform((v) => {
       if (v === null || v === undefined || v === "") return undefined;
-      const n = typeof v === "string" ? parseFloat(v) : v;
+      const n = typeof v === "string" ? parseFloat(v.replace(",", ".")) : v;
       return isNaN(n as number) ? undefined : (n as number);
     })
     .pipe(z.number().min(0).optional().or(z.undefined())),
@@ -311,7 +311,19 @@ export const createOrderSchema = z.object({
       return isNaN(n as number) ? null : (n as number);
     })
     .pipe(z.number().int().min(0).max(365).nullable().optional()),
-  deadline: z.string().or(z.date()).optional(),
+  // Срок — в Date с проверкой: мусорная строка («не дата») раньше долетала до
+  // Prisma как Invalid Date и роняла создание заказа в 500. Пусто — как раньше,
+  // маршрут подставит срок по умолчанию (+7 дней).
+  deadline: z
+    .union([z.string(), z.date(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      return v instanceof Date ? v : new Date(v);
+    })
+    .refine((v) => v === undefined || !Number.isNaN((v as Date).getTime()), {
+      message: "Неверная дата срока (deadline)",
+    }),
   assignedDriverId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   assignedVehicleId: z
     .string()

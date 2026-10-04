@@ -895,4 +895,74 @@ describe("рейс адаптируется к отмене заказа (PATCH/
     const data = await jsonOf(response)
     expect(data.code).toBe("route_closed")
   })
+
+  it("закрытый заказ из накопленной базы не попадает в новый рейс — 409", async () => {
+    seedOrder("closed-cache", world.orgA, {
+      status: "cancelled",
+      atiCacheId: "ati-closed-1",
+    })
+
+    const response = await routesPost(
+      makeRequest("POST", "/api/routes", {
+        cookie: cookieA,
+        body: {
+          orders: [
+            {
+              atiCacheId: "ati-closed-1",
+              routeFrom: "Москва",
+              routeTo: "Казань",
+              distance: 800,
+              weight: 5000,
+              price: 45000,
+              cargo: "Стройматериалы",
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    const data = await jsonOf(response)
+    expect(data.code).toBe("orders_closed")
+  })
+
+  it("числовые поля заказа приводятся и проверяются при изменении", async () => {
+    const orderId = seedOrder("numeric-fields", world.orgA)
+
+    // строки из формы — записываются числами, а не мусором и не падают в 500
+    const strings = await orderPatch(
+      makeRequest("PATCH", `/api/orders/${orderId}`, {
+        cookie: cookieA,
+        body: { price: "45500", weight: "1200", distance: "210", volume: "12,5" },
+      }),
+      routeContext({ id: orderId }),
+    )
+    expect(strings.status).toBe(200)
+    const row = rowOf("order", orderId)
+    expect(row.price).toBe(45500)
+    expect(row.weight).toBe(1200)
+    expect(row.distance).toBe(210)
+    expect(row.volume).toBe(12.5)
+
+    // отрицательный вес — понятный 400, прежнее значение на месте
+    const negative = await orderPatch(
+      makeRequest("PATCH", `/api/orders/${orderId}`, {
+        cookie: cookieA,
+        body: { weight: -5 },
+      }),
+      routeContext({ id: orderId }),
+    )
+    expect(negative.status).toBe(400)
+    expect(rowOf("order", orderId).weight).toBe(1200)
+
+    // мусорная дата — понятный 400
+    const badDate = await orderPatch(
+      makeRequest("PATCH", `/api/orders/${orderId}`, {
+        cookie: cookieA,
+        body: { deadline: "не дата" },
+      }),
+      routeContext({ id: orderId }),
+    )
+    expect(badDate.status).toBe(400)
+  })
 })

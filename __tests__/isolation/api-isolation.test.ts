@@ -217,6 +217,27 @@ describe("доступ к API: организация берётся из про
 })
 
 describe("заказы /api/orders", () => {
+  it("мусорная дата срока отклоняется 400 и не роняет создание", async () => {
+    const response = await ordersPost(
+      makeRequest("POST", "/api/orders", {
+        cookie: cookieA,
+        body: {
+          routeFrom: "Тверь",
+          routeTo: "Рязань",
+          distance: 400,
+          weight: 5,
+          cargoType: "Груз",
+          deadline: "не дата",
+        },
+      }),
+    )
+    expect(response.status).toBe(400)
+    const created = memoryDb
+      .rows("order")
+      .filter((row) => row.routeFrom === "Тверь" && row.routeTo === "Рязань")
+    expect(created).toHaveLength(0)
+  })
+
   it("список: только свои заказы", async () => {
     const payload = await expectScopedGet("/api/orders", ordersGet)
     expect(JSON.stringify(payload)).toContain(world.orderA)

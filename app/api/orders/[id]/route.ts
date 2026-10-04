@@ -228,6 +228,65 @@ export async function PATCH(request: NextRequest,
       }
     }
 
+    // Числовые поля тоже приходят из форм строками: приводим и проверяем,
+    // иначе запись в базу упадёт ошибкой 500 или сохранит мусор (отрицательный
+    // вес, дробные километры). Пределы и приведение — как при создании заказа
+    // (lib/validators.ts): строки режем parseInt/parseFloat, числа округляем.
+    const numericLimits = { distance: 100000, weight: 1000000, price: 100000000 }
+    for (const field of ["distance", "weight", "price"] as const) {
+      if (field in otherFields) {
+        const value = otherFields[field]
+        if (value === null || value === "") {
+          otherFields[field] = 0
+        } else {
+          const parsed = typeof value === "string" ? parseInt(value, 10) : Number(value)
+          if (!Number.isFinite(parsed) || parsed < 0 || parsed > numericLimits[field]) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Неверное значение «${field}»: целое число от 0 до ${numericLimits[field]}`,
+              },
+              { status: 400 }
+            )
+          }
+          otherFields[field] = Math.round(parsed)
+        }
+      }
+    }
+    if ("volume" in otherFields) {
+      const value = otherFields.volume
+      if (value === null || value === "") {
+        otherFields.volume = null
+      } else {
+        const parsed =
+          typeof value === "string" ? parseFloat(value.replace(",", ".")) : Number(value)
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10000) {
+          return NextResponse.json(
+            { success: false, error: "Неверное значение «volume»: число от 0 до 10000" },
+            { status: 400 }
+          )
+        }
+        otherFields.volume = parsed
+      }
+    }
+    if ("deadline" in otherFields) {
+      const value = otherFields.deadline
+      if (value === null || value === "") {
+        return NextResponse.json(
+          { success: false, error: "Срок заказа (deadline) нельзя очистить" },
+          { status: 400 }
+        )
+      }
+      const date = value instanceof Date ? value : new Date(String(value))
+      if (Number.isNaN(date.getTime())) {
+        return NextResponse.json(
+          { success: false, error: "Неверная дата срока (deadline)" },
+          { status: 400 }
+        )
+      }
+      otherFields.deadline = date
+    }
+
     // Рейс из тела запроса проверяем на принадлежность организации:
     // иначе заказ своей организации оказался бы привязан к чужому рейсу
     const nextRouteId = otherFields.routeId
