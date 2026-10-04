@@ -41,6 +41,7 @@ import {
 import { routeOrdersOrderBy, serializeRoute } from "@/lib/routes/service"
 import {
   canChangeOrderStatus,
+  isOrderClosed,
   isOrderRouteable,
   normalizeOrderStatus,
   orderStatusLabel,
@@ -513,6 +514,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Закрытый заказ не оживает: отменённый или доставленный заказ из
+    // накопленной базы нельзя затянуть в новый рейс.
+    const closedByCache = existingByCache.filter((order: any) => isOrderClosed(order.status))
+    if (closedByCache.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Заказы закрыты, в рейс нельзя: ${closedByCache
+            .map((order: any) => `${order.routeFrom} → ${order.routeTo} (${orderStatusLabel(order.status)})`)
+            .join("; ")}`,
+          code: "orders_closed",
+          orderIds: closedByCache.map((order: any) => order.id),
+        },
+        { status: 409 },
+      )
+    }
+
     const totalWeight =
       payloads.reduce((sum, o) => sum + (o.weight || 0), 0) +
       linked.reduce((sum, o) => sum + (o.weight || 0), 0)
@@ -570,7 +588,7 @@ export async function POST(request: NextRequest) {
         const current = normalizeOrderStatus(order.status)
         const next = canChangeOrderStatus(order.status, "in_route") ? "in_route" : current
 
-        await tx.order.updateMany({
+        const linkedTaken = await tx.order.updateMany({
           where: scopedWhere(org.organizationId, { id: order.id, routeId: null }),
           data: {
             routeId: route.id,
@@ -581,6 +599,16 @@ export async function POST(request: NextRequest) {
             ...(driverId && { assignedDriverId: driverId }),
           },
         })
+        if (linkedTaken.count === 0) {
+          // Гонка: заказ успел забрать другой рейс, пока шлась сборка.
+          // Откатываем всю сборку — рейс с призрачным заказом родиться не должен.
+          throw Object.assign(
+            new Error(
+              `Заказ ${order.routeFrom} → ${order.routeTo} уже включён в другой рейс`,
+            ),
+            { code: "order_taken" },
+          )
+        }
 
         if (next && current && next !== current) {
           await logStatusChange(order.id, order.status, next, "включён в рейс")
@@ -604,7 +632,7 @@ export async function POST(request: NextRequest) {
           const current = normalizeOrderStatus(existing.status)
           const next = canChangeOrderStatus(existing.status, "in_route") ? "in_route" : current
 
-          await tx.order.updateMany({
+          const existingTaken = await tx.order.updateMany({
             where: scopedWhere(org.organizationId, { id: existing.id, routeId: null }),
             data: {
               routeId: route.id,
@@ -615,6 +643,15 @@ export async function POST(request: NextRequest) {
               ...(driverId && { assignedDriverId: driverId }),
             },
           })
+          if (existingTaken.count === 0) {
+            // Гонка: заказ на эту строку базы успела забрать другая сборка
+            throw Object.assign(
+              new Error(
+                `Заказ ${existing.routeFrom} → ${existing.routeTo} уже включён в другой рейс`,
+              ),
+              { code: "order_taken" },
+            )
+          }
 
           if (next && current && next !== current) {
             await logStatusChange(existing.id, existing.status, next, "включён в рейс")
@@ -716,9 +753,15 @@ export async function POST(request: NextRequest) {
       route: serializeRoute(created.route),
       stats: summarizeRoute(created.orders),
     })
-  } catch (error) {
+  } catch (error: any) {
     const message = error instanceof Error ? error.message : "Route creation error"
     console.error("[Routes API] POST /api/routes error:", message, error)
+    if (error?.code === "order_taken") {
+      return NextResponse.json(
+        { success: false, error: message, code: "order_taken" },
+        { status: 409 },
+      )
+    }
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

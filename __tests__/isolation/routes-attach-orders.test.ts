@@ -224,4 +224,40 @@ describe("дособорка рейса (POST /api/routes/[routeId]/attach-order
       ),
     ).toBe(true);
   });
+
+  it("перегруженный рейс не собирается — 409 overload, с согласием логиста — собирается", async () => {
+    const vehicleId = cid("veh-cap");
+    memoryDb.insert("vehicle", {
+      id: vehicleId,
+      organizationId: world.orgA,
+      plate: "С001СС77",
+      type: "truck",
+      capacity: 5000,
+      status: "available",
+    });
+    const routeId = seedRoute("overload", world.orgA, { vehicleId });
+    const first = seedOrder("ov-first", world.orgA, { weight: 3000 });
+    const second = seedOrder("ov-second", world.orgA, { weight: 3000 });
+
+    const okFirst = await attach(cookieA, routeId, [first]);
+    expect(okFirst.response.status).toBe(200);
+
+    // 3000 + 3000 > 5000: молчаливого перегруза больше нет
+    const denied = await attach(cookieA, routeId, [second]);
+    expect(denied.response.status).toBe(409);
+    expect(denied.data.code).toBe("overload");
+    expect(denied.data.details.overflow).toBe(1000);
+    expect(rowOf("order", second).routeId).toBe(null);
+
+    // Явное согласие логиста — собираем, ответственность на нём
+    const approved = await attachPost(
+      makeRequest("POST", `/api/routes/${routeId}/attach-orders`, {
+        cookie: cookieA,
+        body: { orderIds: [second], overloadApproved: true },
+      }),
+      routeContext({ routeId }),
+    );
+    expect(approved.status).toBe(200);
+    expect(rowOf("order", second).routeId).toBe(routeId);
+  });
 });

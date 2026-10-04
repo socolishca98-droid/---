@@ -150,8 +150,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           },
         })
         if (vehicle && vehicle.fuelLevelL !== null && vehicle.fuelConsumptionPer100 !== null) {
-          const distanceKm = orders.reduce((sum, order) => sum + (order.distance || 0), 0)
-          const loadKg = orders.reduce((sum, order) => sum + (order.weight || 0), 0)
+          // Отменённые точки не ездили: топливо списываем только за реально
+          // проеханные плечи и реальный вес, а не за призрачный груз.
+          const ridableOrders = orders.filter(
+            (order: any) => !["cancelled", "rejected", "expired"].includes(order.status),
+          )
+          const distanceKm = ridableOrders.reduce((sum, order) => sum + (order.distance || 0), 0)
+          const loadKg = ridableOrders.reduce((sum, order) => sum + (order.weight || 0), 0)
           const used = estimateFuelL(vehicle, distanceKm, loadKg)
           const level = fuelAfterRoute(vehicle, used)
           if (level !== null && level !== vehicle.fuelLevelL) {

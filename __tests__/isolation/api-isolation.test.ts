@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 
 import { memoryDb } from "../__mocks__/prisma-memory"
 import {
+  cid,
   expectNoForeignIds,
   jsonOf,
   makeRequest,
@@ -25,6 +26,7 @@ import {
   sessionCookie,
   type World,
 } from "./helpers"
+import { estimateFuelL } from "@/lib/fleet/fuel";
 
 // — штабные роуты —
 import { GET as ordersGet, POST as ordersPost } from "@/app/api/orders/route"
@@ -628,6 +630,151 @@ describe("рейсы /api/routes", () => {
 
     expect(rowOf("route", world.routeB).status).toBe("active")
     expectNoForeignIds(eventsPayload, world)
+  })
+
+  it("списание топлива при завершении не считает отменённые плечи", async () => {
+    const vehicleId = cid("fuel-veh");
+    memoryDb.insert("vehicle", {
+      id: vehicleId,
+      organizationId: world.orgA,
+      plate: "Т001ТТ77",
+      type: "truck",
+      capacity: 20000,
+      status: "in_use",
+      fuelTankL: 400,
+      fuelConsumptionPer100: 30,
+      fuelLevelL: 300,
+    });
+    const routeId = cid("fuel-route");
+    memoryDb.insert("route", {
+      id: routeId,
+      organizationId: world.orgA,
+      name: "Топливный рейс",
+      status: "active",
+      driverId: null,
+      vehicleId,
+      createdAt: new Date(),
+    });
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    // доставленное плечо: 200 км, 5000 кг — машина его реально проехала
+    memoryDb.insert("order", {
+      id: cid("fuel-delivered"),
+      organizationId: world.orgA,
+      source: "manual",
+      routeFrom: "Москва",
+      routeTo: "Тула",
+      distance: 200,
+      weight: 5000,
+      price: 20000,
+      cargoType: "Груз",
+      clientContact: "",
+      clientName: "Клиент",
+      status: "delivered",
+      deadline: future,
+      routeId,
+      routeSequence: 1,
+    });
+    // отменённое плечо: 800 км, 9000 кг — машина туда не ездила
+    memoryDb.insert("order", {
+      id: cid("fuel-cancelled"),
+      organizationId: world.orgA,
+      source: "manual",
+      routeFrom: "Тула",
+      routeTo: "Казань",
+      distance: 800,
+      weight: 9000,
+      price: 60000,
+      cargoType: "Груз",
+      clientContact: "",
+      clientName: "Клиент",
+      status: "cancelled",
+      deadline: future,
+      routeId,
+      routeSequence: 2,
+    });
+
+    const response = await routeCompletePost(
+      makeRequest("POST", `/api/routes/${routeId}/complete`, { cookie: cookieA }),
+      routeContext({ routeId }),
+    );
+    expect(response.status).toBe(200);
+
+    // топливо списано только за реальное плечо: 200 км и 5000 кг,
+    // а не за 1000 км и 14000 кг с призрачным грузом
+    const used = estimateFuelL(
+      { capacity: 20000, fuelConsumptionPer100: 30, fuelTankL: 400, fuelLevelL: 300 },
+      200,
+      5000,
+    );
+    // остаток округляется до десятых, как это делает fuelAfterRoute
+    const expectedLevel = Math.round((300 - (used ?? 0)) * 10) / 10;
+    expect(rowOf("vehicle", vehicleId).fuelLevelL).toBeCloseTo(expectedLevel, 5);
+  })
+
+  it("номер новой точки догруза не сталкивается с отменённой точкой", async () => {
+    const routeId = cid("seq-route");
+    memoryDb.insert("route", {
+      id: routeId,
+      organizationId: world.orgA,
+      name: "Рейс порядка",
+      status: "active",
+      driverId: null,
+      vehicleId: null,
+      createdAt: new Date(),
+    });
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    memoryDb.insert("order", {
+      id: cid("seq-live"),
+      organizationId: world.orgA,
+      source: "manual",
+      routeFrom: "Москва",
+      routeTo: "Тула",
+      distance: 180,
+      weight: 1000,
+      price: 10000,
+      cargoType: "Груз",
+      clientContact: "",
+      clientName: "Клиент",
+      status: "in_route",
+      deadline: future,
+      routeId,
+      routeSequence: 1,
+    });
+    memoryDb.insert("order", {
+      id: cid("seq-cancelled"),
+      organizationId: world.orgA,
+      source: "manual",
+      routeFrom: "Тула",
+      routeTo: "Калуга",
+      distance: 100,
+      weight: 800,
+      price: 8000,
+      cargoType: "Груз",
+      clientContact: "",
+      clientName: "Клиент",
+      status: "cancelled",
+      deadline: future,
+      routeId,
+      routeSequence: 2,
+    });
+
+    const response = await routeAddLoadPost(
+      makeRequest("POST", `/api/routes/${routeId}/add-load`, {
+        cookie: cookieA,
+        body: {
+          routeFrom: "Калуга",
+          routeTo: "Москва",
+          distance: 200,
+          weight: 500,
+          price: 7000,
+        },
+      }),
+      routeContext({ routeId }),
+    );
+    expect(response.status).toBe(200);
+    const data = await jsonOf(response);
+    // отменённая точка занимает номер 2: новая точка встала за ней, дубля номера нет
+    expect(rowOf("order", data.order.id).routeSequence).toBe(3);
   })
 })
 

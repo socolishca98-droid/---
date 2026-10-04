@@ -51,6 +51,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const body = (await request.json().catch(() => null)) as {
       orderIds?: unknown;
+      overloadApproved?: unknown;
     } | null;
     const parsedIds = Array.isArray(body?.orderIds)
       ? body!.orderIds.filter(
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         routeId: true,
         routeFrom: true,
         routeTo: true,
+        weight: true,
       },
     });
 
@@ -157,6 +159,55 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Грузоподъёмность: рейс не должен молча стать перегруженным.
+    // Перегруз — только с явного согласия логиста (overloadApproved), как в догрузе.
+    if (route.vehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: scopedWhere(org.organizationId, { id: route.vehicleId }),
+        select: { capacity: true },
+      });
+      if (vehicle && vehicle.capacity > 0) {
+        const inRoute: any[] = await prisma.order.findMany({
+          where: scopedWhere(org.organizationId, { routeId: route.id }),
+          select: { status: true, weight: true },
+        });
+        const isRidable = (status: string) => {
+          const normalized = normalizeOrderStatus(status);
+          return (
+            normalized !== "cancelled" &&
+            normalized !== "rejected" &&
+            normalized !== "expired"
+          );
+        };
+        const currentWeight = inRoute
+          .filter((order) => isRidable(order.status))
+          .reduce((sum, order) => sum + (order.weight || 0), 0);
+        const addedWeight = orders.reduce(
+          (sum, order) => sum + (order.weight || 0),
+          0,
+        );
+        if (
+          currentWeight + addedWeight > vehicle.capacity &&
+          body?.overloadApproved !== true
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Превышена грузоподъёмность машины",
+              code: "overload",
+              details: {
+                capacity: vehicle.capacity,
+                currentWeight,
+                addedWeight,
+                overflow: currentWeight + addedWeight - vehicle.capacity,
+              },
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
     const actorName = auth.value.user?.name ?? auth.value.user?.email ?? null;
 
     const attached = await prisma.$transaction(async (tx: any) => {
@@ -182,7 +233,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           ? "in_route"
           : current;
 
-        await tx.order.updateMany({
+        const taken = await tx.order.updateMany({
           where: scopedWhere(org.organizationId, {
             id: order.id,
             routeId: null,
@@ -196,6 +247,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             ...(route.driverId && { assignedDriverId: route.driverId }),
           },
         });
+        if (taken.count === 0) {
+          // Гонка: заказ успел забрать другой рейс, пока шло добавление.
+          // Откатываем всё и честно говорим логисту, а не теряем заказ тихо.
+          throw Object.assign(
+            new Error(
+              `Заказ ${order.routeFrom} → ${order.routeTo} уже включён в другой рейс`,
+            ),
+            { code: "order_taken" },
+          );
+        }
 
         if (next && current && next !== current) {
           await tx.orderNegotiation.create({
@@ -231,12 +292,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ordersCount: summary.totalOrders,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     const message =
       error instanceof Error
         ? error.message
         : "Не удалось добавить заказы в рейс";
     console.error("[api/routes/attach-orders POST] Error:", message);
+    if (error?.code === "order_taken") {
+      return NextResponse.json(
+        { success: false, error: message, code: "order_taken" },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 },

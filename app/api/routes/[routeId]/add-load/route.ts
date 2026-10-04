@@ -118,7 +118,14 @@ export async function POST(
       }
     }
 
-    let routeSequence = existingOrders.length + 1
+    // Номер точки продолжается от последней точки рейса — включая отменённые:
+    // два заказа в рейсе не должны иметь один номер, иначе порядок объезда плывёт.
+    const lastPoint = await prisma.order.findFirst({
+      where: scopedWhere(org.organizationId, { routeId }),
+      orderBy: { routeSequence: "desc" },
+      select: { routeSequence: true },
+    })
+    let routeSequence = Math.max(existingOrders.length, lastPoint?.routeSequence ?? 0) + 1
 
     if (insertAfterOrderId) {
       const insertAfterOrder = existingOrders.find((o) => o.id === insertAfterOrderId)
