@@ -33,7 +33,7 @@ import {
   GET as negotiationGet,
   POST as negotiationPost,
 } from "@/app/api/orders/[id]/negotiation/route"
-import { PATCH as orderPatch } from "@/app/api/orders/[id]/route"
+import { DELETE as orderDelete, PATCH as orderPatch } from "@/app/api/orders/[id]/route"
 import { POST as ordersPost } from "@/app/api/orders/route"
 import { POST as routesPost } from "@/app/api/routes/route"
 
@@ -741,5 +741,63 @@ describe("сборка рейса (POST /api/routes)", () => {
       makeRequest("POST", "/api/routes", { cookie: cookieA, body: {} }),
     )
     expect(response.status).toBe(400)
+  })
+})
+
+describe("рейс адаптируется к отмене заказа (PATCH/DELETE /api/orders/:id)", () => {
+  /** Рейс организации А с одним заказом внутри (заказ сеет seedOrder). */
+  function seedRouteWithOrder(slug: string) {
+    const routeId = cid(`${slug}-route`)
+    memoryDb.insert("route", {
+      id: routeId,
+      organizationId: world.orgA,
+      name: "Москва → Тула",
+      status: "planned",
+      driverId: null,
+      vehicleId: null,
+      cargoWeight: 3000,
+      totalDistance: 180,
+      createdAt: new Date(),
+    })
+    const orderId = seedOrder(`${slug}-order`, world.orgA, {
+      routeId,
+      routeSequence: 1,
+    })
+    return { routeId, orderId }
+  }
+
+  it("отмена единственного заказа в рейсе обнуляет груз и закрывает рейс", async () => {
+    const { routeId, orderId } = seedRouteWithOrder("recalc-cancel")
+
+    const response = await orderPatch(
+      makeRequest("PATCH", `/api/orders/${orderId}`, {
+        cookie: cookieA,
+        body: { status: "cancelled" },
+      }),
+      routeContext({ id: orderId }),
+    )
+
+    expect(response.status).toBe(200)
+    const route = rowOf("route", routeId)
+    // все заказы отменены — рейс отменён, призрачного груза больше нет
+    expect(route.status).toBe("cancelled")
+    expect(route.cargoWeight).toBe(0)
+    expect(route.totalDistance).toBe(0)
+  })
+
+  it("удаление заказа из рейса пересчитывает итоги без него", async () => {
+    const { routeId, orderId } = seedRouteWithOrder("recalc-delete")
+
+    const response = await orderDelete(
+      makeRequest("DELETE", `/api/orders/${orderId}`, { cookie: cookieA }),
+      routeContext({ id: orderId }),
+    )
+
+    expect(response.status).toBe(200)
+    const route = rowOf("route", routeId)
+    // заказов не осталось — рейс снова «planned», итоги нулевые
+    expect(route.status).toBe("planned")
+    expect(route.cargoWeight).toBe(0)
+    expect(route.totalDistance).toBe(0)
   })
 })

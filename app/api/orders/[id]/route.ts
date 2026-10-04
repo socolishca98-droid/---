@@ -17,6 +17,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders/stages"
 import { orderHints } from "@/lib/assistant/order-hints";
+import { recalcRoute } from "@/lib/routes/service";
 
 /**
  * Поля заказа, которые разрешено менять через PATCH /api/orders/[id].
@@ -251,6 +252,7 @@ export async function PATCH(request: NextRequest,
         price: true,
         agreedPrice: true,
         negotiationStatus: true,
+        routeId: true,
         assignedDriverId: true,
         assignedVehicleId: true,
       },
@@ -455,6 +457,20 @@ export async function PATCH(request: NextRequest,
       return order
     })
 
+    // Рейс адаптируется сразу: отмена, цена или вес заказа в рейсе меняют
+    // его итоги, статус и имя — без ожидания ручного пересчёта.
+    // Потерянный рейс (висячая ссылка) обновление заказа не ломает.
+    const touchedRouteIds = new Set<string>()
+    if (typeof existing.routeId === "string" && existing.routeId) {
+      touchedRouteIds.add(existing.routeId)
+    }
+    if (typeof nextRouteId === "string" && nextRouteId) {
+      touchedRouteIds.add(nextRouteId)
+    }
+    for (const touchedRouteId of touchedRouteIds) {
+      await recalcRoute(prisma, touchedRouteId, __org.organizationId).catch(() => {})
+    }
+
     return NextResponse.json({ success: true, order: updatedOrder })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Order PATCH error"
@@ -490,6 +506,7 @@ export async function DELETE(_request: NextRequest,
       select: {
         id: true,
         status: true,
+        routeId: true,
         assignedDriverId: true,
         assignedVehicleId: true,
       },
@@ -541,6 +558,11 @@ export async function DELETE(_request: NextRequest,
         }
       }
     })
+
+    // Рейс адаптируется сразу: итоги пересчитываются после удаления заказа.
+    if (typeof existing.routeId === "string" && existing.routeId) {
+      await recalcRoute(prisma, existing.routeId, __org.organizationId).catch(() => {})
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -14,7 +14,7 @@
 // попадут только согласованные. Неактуальные заказы (срок истёк или давно
 // без движения) в план не попадают и показываются отдельным списком.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -126,6 +126,10 @@ export function PlannerView() {
   const [loading, setLoading] = useState(true);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [showStale, setShowStale] = useState(false);
+  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  // Момент последней загрузки — автообновление при возврате на страницу
+  // не чаще, чем раз в 20 секунд, чтобы не дёргать API на каждое переключение.
+  const lastLoadRef = useRef(0);
 
   // Открытые рейсы — для режима «дособрать маршрут»
   useEffect(() => {
@@ -166,6 +170,7 @@ export function PlannerView() {
   }, []);
 
   const load = useCallback(async () => {
+    lastLoadRef.current = Date.now();
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -182,6 +187,7 @@ export function PlannerView() {
         throw new Error(payload?.error || "Не удалось собрать предложения");
       }
       setData(payload);
+      setLoadedAt(new Date());
     } catch (e: any) {
       toast.error(e?.message || "Не удалось собрать предложения");
     } finally {
@@ -191,6 +197,22 @@ export function PlannerView() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Пока вкладка была в фоне, заказ мог отмениться или согласоваться —
+  // при возврате на страницу план освежается сам.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadRef.current < 20_000) return;
+      void load();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [load]);
 
   const proposals = data?.proposals ?? [];
@@ -226,6 +248,10 @@ export function PlannerView() {
           });
       const payload = await res.json().catch(() => null);
       if (!res.ok || !payload?.success) {
+        // Пока выбирали вариант, мир изменился: заказ отменили, согласовали
+        // или машину занял другой логист (409). Пересобираем план сразу —
+        // показываем свежую реальность, а не устаревший список.
+        if (res.status === 409) void load();
         throw new Error(payload?.error || "Не удалось собрать рейс");
       }
       const added = payload.attached ?? orderIds.length;
@@ -427,6 +453,12 @@ export function PlannerView() {
             : ""}
           {data.stats.excluded > 0
             ? ` · исключено вручную: ${data.stats.excluded}`
+            : ""}
+          {loadedAt
+            ? ` · данные на ${loadedAt.toLocaleTimeString("ru-RU", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}, при возврате на страницу обновятся`
             : ""}
         </p>
       )}
@@ -693,8 +725,10 @@ export function PlannerView() {
                 </li>
               ))}
               <li className="pt-1 text-muted-foreground">
-                Уточните срок у клиента и обновите заказ — он вернётся в
-                планирование.{" "}
+                Как проверяется актуальность: срок погрузки истёк — заказ
+                неактуален; несогласованный заказ без движения 14+ дней — тоже;
+                согласованные ждут рейс без ограничений. Уточните срок у клиента
+                и обновите заказ — он вернётся в планирование.{" "}
                 <Link
                   href="/orders"
                   className="text-sky-400 underline-offset-2 hover:underline"

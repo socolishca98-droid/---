@@ -200,6 +200,10 @@ test("отменённые заказы не дают выручку, но ос�
   assert.equal(summary.totalOrders, 3)
   assert.equal(summary.cancelledOrders, 2)
   assert.equal(summary.pendingOrders, 1)
+  // призрачный груз отменённых не едет: км/кг/м³ считаются по живым заказам
+  assert.equal(summary.totalDistance, 120)
+  assert.equal(summary.cargoWeight, 5000)
+  assert.equal(summary.cargoVolume, 20)
 })
 
 test("итоги пустого рейса — нули", () => {
@@ -252,6 +256,20 @@ test("подряд идущие одинаковые города схлопыв
     order({ id: "o2", routeFrom: "Иваново", routeTo: "Кострома", routeSequence: 2 }),
   ])
   assert.equal(name, "Москва → иваново → Кострома")
+})
+
+test("отменённые заказы не попадают в имя рейса", () => {
+  const name = buildRouteName([
+    order({ routeFrom: "Москва", routeTo: "Тула", routeSequence: 1 }),
+    order({
+      id: "o2",
+      routeFrom: "Тула",
+      routeTo: "Казань",
+      routeSequence: 2,
+      status: "cancelled",
+    }),
+  ])
+  assert.equal(name, "Москва → Тула")
 })
 
 test("пустые города пропускаются, пустой рейс даёт пустое имя", () => {

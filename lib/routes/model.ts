@@ -134,18 +134,22 @@ const toFloat = (value: unknown): number => {
 export function summarizeRoute(orders: readonly RouteOrderLike[]): RouteSummary {
   const list = Array.isArray(orders) ? orders : []
   const delivered = list.filter((o) => normalizeOrderStatus(o.status) === "delivered").length
-  const cancelled = list.filter((o) => {
+  const cancelledList = list.filter((o) => {
     const status = normalizeOrderStatus(o.status)
     return status === "cancelled" || status === "rejected" || status === "expired"
-  }).length
+  })
+  const cancelled = cancelledList.length
   const active = list.filter((o) => isOrderMoving(o.status)).length
+  // Отменённый груз никуда не едет: километры, вес и объём считаем без него.
+  // В составе рейса (totalOrders) и в счётчиках он остаётся — это история.
+  const ridable = list.filter((o) => !cancelledList.includes(o))
 
   return {
     totalOrders: list.length,
-    totalDistance: list.reduce((sum, o) => sum + toInt(o.distance), 0),
-    cargoWeight: list.reduce((sum, o) => sum + toInt(o.weight), 0),
+    totalDistance: ridable.reduce((sum, o) => sum + toInt(o.distance), 0),
+    cargoWeight: ridable.reduce((sum, o) => sum + toInt(o.weight), 0),
     cargoVolume: Number(
-      list.reduce((sum, o) => sum + toFloat(o.volume), 0).toFixed(3),
+      ridable.reduce((sum, o) => sum + toFloat(o.volume), 0).toFixed(3),
     ),
     revenue: list
       .filter((o) => !isOrderClosed(o.status) || normalizeOrderStatus(o.status) === "delivered")
@@ -210,7 +214,12 @@ function sortBySequence(orders: readonly RouteOrderLike[]): RouteOrderLike[] {
  * Точки берутся в порядке routeSequence, подряд идущие дубли схлопываются.
  */
 export function buildRouteName(orders: readonly RouteOrderLike[]): string {
-  const list = sortBySequence(Array.isArray(orders) ? orders : [])
+  // Отменённые заказы в имя не попадают: имя показывает, куда машина
+  // действительно едет, а не куда когда-то планировалось.
+  const list = sortBySequence(Array.isArray(orders) ? orders : []).filter((o) => {
+    const status = normalizeOrderStatus(o.status)
+    return status !== "cancelled" && status !== "rejected" && status !== "expired"
+  })
   const points: string[] = []
 
   const push = (value: unknown) => {
