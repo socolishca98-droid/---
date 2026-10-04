@@ -107,7 +107,11 @@ function formatDate(value: Date | string | null): string | null {
 
 function vehicleLabel(vehicle: PlannerVehicle): string {
   const name = [vehicle.brand, vehicle.model].filter(Boolean).join(" ");
-  return `${vehicle.plate}${name ? ` · ${name}` : ""} · ${vehicle.capacity.toLocaleString("ru-RU")} кг`;
+  const volume =
+    typeof vehicle.volume === "number" && vehicle.volume > 0
+      ? ` · ${vehicle.volume.toLocaleString("ru-RU")} м³`
+      : "";
+  return `${vehicle.plate}${name ? ` · ${name}` : ""} · ${vehicle.capacity.toLocaleString("ru-RU")} кг${volume}`;
 }
 
 export function PlannerView() {
@@ -225,17 +229,31 @@ export function PlannerView() {
       }
       const added = payload.attached ?? orderIds.length;
       const count = payload.route?.ordersCount ?? added;
-      toast.success(
-        routeId
-          ? `Добавлено в рейс: ${added} ${plural(added, ["заказ", "заказа", "заказов"])}`
-          : `Рейс создан: ${count} ${plural(count, ["заказ", "заказа", "заказов"])}`,
-        {
-          description:
-            payload.route?.name ||
-            "Откройте маршруты, чтобы назначить водителя",
-        },
-      );
-      router.push("/routes");
+      if (routeId) {
+        // Дособорка: остаёмся в планировщике — бюджет машины рейса сразу
+        // обновится, можно добавлять следующие заказы.
+        toast.success(
+          `Добавлено в рейс: ${added} ${plural(added, ["заказ", "заказа", "заказов"])}`,
+          {
+            description: payload.route?.name || undefined,
+            action: {
+              label: "Открыть рейс",
+              onClick: () => router.push("/routes"),
+            },
+          },
+        );
+        await load();
+      } else {
+        toast.success(
+          `Рейс создан: ${count} ${plural(count, ["заказ", "заказа", "заказов"])}`,
+          {
+            description:
+              payload.route?.name ||
+              "Откройте маршруты, чтобы назначить водителя",
+          },
+        );
+        router.push("/routes");
+      }
     } catch (e: any) {
       toast.error(e?.message || "Не удалось собрать рейс");
     } finally {
@@ -320,20 +338,30 @@ export function PlannerView() {
             ))}
           </div>
           {data?.route && (
-            <p className="text-xs text-muted-foreground">
-              Рейс «{data.route.name || "без названия"}»
-              {data.route.vehiclePlate
-                ? ` · машина ${data.route.vehiclePlate}`
-                : ""}{" "}
-              · заказов: {data.route.ordersCount} · занято{" "}
-              {data.route.usedWeightKg.toLocaleString("ru-RU")} кг · свободно{" "}
-              <span className="font-medium text-foreground">
-                {data.route.freeWeightKg.toLocaleString("ru-RU")} кг
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="rounded-lg border border-primary/30 bg-primary/10 px-2 py-1 font-medium text-primary">
+                Рейс «{data.route.name || "без названия"}»
               </span>
-              {data.route.lastCity
-                ? ` · продолжаем из: ${data.route.lastCity}`
-                : ""}
-            </p>
+              {data.route.vehiclePlate && (
+                <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
+                  машина {data.route.vehiclePlate}
+                </span>
+              )}
+              <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
+                заказов: {data.route.ordersCount}
+              </span>
+              <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
+                занято {data.route.usedWeightKg.toLocaleString("ru-RU")} кг
+              </span>
+              <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-emerald-300">
+                свободно {data.route.freeWeightKg.toLocaleString("ru-RU")} кг
+              </span>
+              {data.route.lastCity && (
+                <span className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1">
+                  продолжаем из: {data.route.lastCity}
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -346,6 +374,14 @@ export function PlannerView() {
             {routeId && data?.route ? "Машина" : "Свободная машина"}
           </h2>
           <div className="flex flex-wrap gap-2">
+            {routeId &&
+              data.route &&
+              data.vehicle &&
+              !data.vehicles.some((v) => v.id === data.vehicle?.id) && (
+                <span className="rounded-xl border border-primary/50 bg-primary/10 px-3 py-2 text-xs font-medium">
+                  {vehicleLabel(data.vehicle)} · машина рейса
+                </span>
+              )}
             {data.vehicles.map((vehicle) => (
               <button
                 key={vehicle.id}
@@ -376,7 +412,6 @@ export function PlannerView() {
           {data.stats.excluded > 0
             ? ` · исключено вручную: ${data.stats.excluded}`
             : ""}
-          {data.vehicle ? ` · машина: ${vehicleLabel(data.vehicle)}` : ""}
         </p>
       )}
 
@@ -388,10 +423,27 @@ export function PlannerView() {
       ) : data?.warning && proposals.length === 0 ? (
         <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-6 text-center text-sm text-muted-foreground">
           <Sparkles className="mx-auto mb-2 h-5 w-5 text-orange-400" />
-          {data.warning}
+          {data.stats.candidates === 0 && data.staleOrders.length === 0 ? (
+            <>
+              В базе пока нет заказов — создайте первый, и логист соберёт из
+              него маршрут.{" "}
+              <Link
+                href="/orders"
+                className="text-sky-400 underline-offset-2 hover:underline"
+              >
+                Перейти к заказам
+              </Link>
+            </>
+          ) : (
+            data.warning
+          )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div
+          className={`space-y-4 transition-opacity ${
+            loading ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
           {proposals.map((proposal, index) => {
             const chain = chainCities(proposal.orders);
             const routeableIds = proposal.orders
@@ -517,7 +569,7 @@ export function PlannerView() {
                       )}
                       {order.needsApproval ? (
                         <Link
-                          href={`/orders`}
+                          href={`/orders/${order.id}`}
                           className="rounded-md border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300 hover:bg-sky-500/20"
                           title="Заказ не согласован: подтвердите цену в карточке заказа, тогда он попадёт в рейс"
                         >
@@ -603,9 +655,13 @@ export function PlannerView() {
                   key={order.id}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1"
                 >
-                  <span className="font-medium">
+                  <Link
+                    href={`/orders/${order.id}`}
+                    className="font-medium text-sky-400 underline-offset-2 hover:underline"
+                    title="Открыть заказ — уточнить срок или закрыть"
+                  >
                     {order.routeFrom} → {order.routeTo}
-                  </span>
+                  </Link>
                   <span className="text-muted-foreground">
                     {order.clientName || "клиент не указан"}
                   </span>
