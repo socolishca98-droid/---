@@ -343,6 +343,57 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             actorName: auth.value.user?.name ?? auth.value.user?.email ?? null,
           })
         }
+
+        // Ресурсы следуют за рейсом: прежний водитель/машина освобождаются,
+        // если других активных заказов нет, а новые — занимаются. Без этого
+        // после переназначения старые навсегда висят «занятыми» (планировщик
+        // их больше не предложит), а новые остаются «свободными» (двойное бронирование).
+        const routeOpen = route.status !== "completed" && route.status !== "cancelled"
+
+        if (route.driverId && route.driverId !== nextDriverId) {
+          const otherActive = await tx.order.count({
+            where: scopedWhere(org.organizationId, {
+              assignedDriverId: route.driverId,
+              status: { in: [...OCCUPYING_ORDER_STATUSES] },
+            }),
+          })
+          if (otherActive === 0) {
+            await tx.driver.updateMany({
+              where: scopedWhere(org.organizationId, { id: route.driverId }),
+              data: { status: "available" },
+            })
+          }
+        }
+
+        if (route.vehicleId && route.vehicleId !== nextVehicleId) {
+          const otherActive = await tx.order.count({
+            where: scopedWhere(org.organizationId, {
+              assignedVehicleId: route.vehicleId,
+              status: { in: [...OCCUPYING_ORDER_STATUSES] },
+            }),
+          })
+          if (otherActive === 0) {
+            await tx.vehicle.updateMany({
+              where: scopedWhere(org.organizationId, { id: route.vehicleId }),
+              data: { status: "available" },
+            })
+          }
+        }
+
+        if (routeOpen) {
+          if (nextDriverId) {
+            await tx.driver.updateMany({
+              where: scopedWhere(org.organizationId, { id: nextDriverId }),
+              data: { status: "busy" },
+            })
+          }
+          if (nextVehicleId) {
+            await tx.vehicle.updateMany({
+              where: scopedWhere(org.organizationId, { id: nextVehicleId }),
+              data: { status: "in_use" },
+            })
+          }
+        }
       })
     }
 
@@ -355,6 +406,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             error: `Неизвестный статус рейса: ${status}. Доступно: ${ROUTE_STATUSES.join(", ")}`,
           },
           { status: 400 },
+        )
+      }
+
+      // Завершение — только каноническим эндпоинтом: POST /api/routes/[routeId]/complete
+      // помечает точки доставленными, списывает топливо и освобождает экипаж.
+      // PATCH этого не делает — рейс оказался бы завершённым нечестно.
+      if (status === "completed") {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Рейс завершается через «Завершить рейс» (POST /api/routes/[routeId]/complete)",
+            code: "use_complete_endpoint",
+          },
+          { status: 409 },
         )
       }
 

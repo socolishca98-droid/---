@@ -234,12 +234,24 @@ export async function PATCH(request: NextRequest,
     if (typeof nextRouteId === "string" && nextRouteId) {
       const ownRoute = await prisma.route.findFirst({
         where: scopedWhere(__org.organizationId, { id: nextRouteId }),
-        select: { id: true },
+        select: { id: true, status: true },
       })
       if (!ownRoute) {
         return NextResponse.json(
           { success: false, error: "Рейс не найден" },
           { status: 404 }
+        )
+      }
+      // Закрытый рейс не оживает: перенести заказ в завершённый или
+      // отменённый рейс нельзя — иначе его итоги и статус снова станут врать.
+      if (ownRoute.status === "completed" || ownRoute.status === "cancelled") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Рейс закрыт — заказ нельзя в него перенести",
+            code: "route_closed",
+          },
+          { status: 409 }
         )
       }
     }

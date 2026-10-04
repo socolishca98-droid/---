@@ -869,4 +869,30 @@ describe("рейс адаптируется к отмене заказа (PATCH/
     const data = await jsonOf(response)
     expect(data.code).toBe("route_closed")
   })
+
+  it("заказ нельзя перенести в закрытый рейс — 409", async () => {
+    const routeId = cid("route-closed-move")
+    memoryDb.insert("route", {
+      id: routeId,
+      organizationId: world.orgA,
+      name: "Отменённый рейс",
+      status: "cancelled",
+      driverId: null,
+      vehicleId: null,
+      createdAt: new Date(),
+    })
+    const orderId = seedOrder("move-to-closed", world.orgA)
+
+    const response = await orderPatch(
+      makeRequest("PATCH", `/api/orders/${orderId}`, {
+        cookie: cookieA,
+        body: { routeId },
+      }),
+      routeContext({ id: orderId }),
+    )
+
+    expect(response.status).toBe(409)
+    const data = await jsonOf(response)
+    expect(data.code).toBe("route_closed")
+  })
 })

@@ -659,4 +659,83 @@ describe("рейс адаптируется к действиям водител
     expect(route.cargoWeight).toBe(0)
     expect(route.totalDistance).toBe(0)
   })
+
+  it("переназначение экипажа освобождает прежних и занимает новых", async () => {
+    // имитируем исполнение: водитель и машина рейса заняты, точка в рейсе
+    const busyDriver = memoryDb.find("driver", world.driverA)
+    if (busyDriver) busyDriver.status = "busy"
+    const busyVehicle = memoryDb.find("vehicle", world.vehicleA)
+    if (busyVehicle) busyVehicle.status = "in_use"
+    seedPoint("crew-point")
+
+    const driverC = cid("driverc")
+    const vehicleC = cid("vehiclec")
+    memoryDb.insert("driver", {
+      id: driverC,
+      organizationId: world.orgA,
+      name: "Водитель В",
+      phone: "79000000077",
+      vehicleType: "truck",
+      status: "available",
+    })
+    memoryDb.insert("vehicle", {
+      id: vehicleC,
+      organizationId: world.orgA,
+      plate: "В001ВВ77",
+      type: "truck",
+      capacity: 20,
+      status: "available",
+    })
+
+    const response = await routePatch(
+      makeRequest("PATCH", `/api/routes/${world.routeA}`, {
+        cookie: cookieA,
+        body: { driverId: driverC, vehicleId: vehicleC },
+      }),
+      routeContext({ routeId: world.routeA }),
+    )
+    expect(response.status).toBe(200)
+
+    // ресурсы следуют за рейсом: прежний экипаж свободен, новый — занят
+    expect(rowOf("driver", world.driverA).status).toBe("available")
+    expect(rowOf("vehicle", world.vehicleA).status).toBe("available")
+    expect(rowOf("driver", driverC).status).toBe("busy")
+    expect(rowOf("vehicle", vehicleC).status).toBe("in_use")
+  })
+
+  it("отмена рейса через PATCH гасит заказы и освобождает экипаж", async () => {
+    const busyDriver = memoryDb.find("driver", world.driverA)
+    if (busyDriver) busyDriver.status = "busy"
+    const busyVehicle = memoryDb.find("vehicle", world.vehicleA)
+    if (busyVehicle) busyVehicle.status = "in_use"
+    const orderId = seedPoint("cancel-point")
+
+    const response = await routePatch(
+      makeRequest("PATCH", `/api/routes/${world.routeA}`, {
+        cookie: cookieA,
+        body: { status: "cancelled" },
+      }),
+      routeContext({ routeId: world.routeA }),
+    )
+    expect(response.status).toBe(200)
+
+    // заказ не остаётся «в рейсе» навечно: груз свободен, экипаж свободен
+    expect(rowOf("order", orderId).status).toBe("cancelled")
+    expect(rowOf("driver", world.driverA).status).toBe("available")
+    expect(rowOf("vehicle", world.vehicleA).status).toBe("available")
+    expect(rowOf("route", world.routeA).status).toBe("cancelled")
+  })
+
+  it("завершить рейс через PATCH нельзя — только каноническим «Завершить»", async () => {
+    const response = await routePatch(
+      makeRequest("PATCH", `/api/routes/${world.routeA}`, {
+        cookie: cookieA,
+        body: { status: "completed" },
+      }),
+      routeContext({ routeId: world.routeA }),
+    )
+    expect(response.status).toBe(409)
+    const data = await jsonOf(response)
+    expect(data.code).toBe("use_complete_endpoint")
+  })
 })

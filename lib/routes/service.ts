@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { scopedWhere } from "@/lib/org"
+import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 
 import {
   buildRouteName,
@@ -226,6 +227,52 @@ export async function changeRouteStatus(
   if (change.completedAt !== undefined && next !== "cancelled") data.completedAt = change.completedAt
 
   await client.route.updateMany({ where: scopedWhere(organizationId, { id: routeId }), data })
+
+  // Отмена рейса гасит его незакрытые точки и освобождает ресурсы: заказы не
+  // должны вечно висеть «в рейсе», которого больше нет (груз похоронен —
+  // планировщик его уже не предложит), а водитель и машина — оставаться
+  // занятыми. Закрытые точки не трогаем: доставленное осталось доставленным.
+  if (next === "cancelled") {
+    await client.order.updateMany({
+      where: scopedWhere(organizationId, {
+        routeId,
+        status: { notIn: ["delivered", "cancelled", "rejected", "expired"] },
+      }),
+      data: { status: "cancelled", updatedAt: new Date() },
+    })
+
+    if (route.driverId) {
+      const otherActive = await client.order.count({
+        where: scopedWhere(organizationId, {
+          assignedDriverId: route.driverId,
+          routeId: { not: routeId },
+          status: { in: [...OCCUPYING_ORDER_STATUSES] },
+        }),
+      })
+      if (otherActive === 0) {
+        await client.driver.updateMany({
+          where: scopedWhere(organizationId, { id: route.driverId }),
+          data: { status: "available" },
+        })
+      }
+    }
+
+    if (route.vehicleId) {
+      const otherActive = await client.order.count({
+        where: scopedWhere(organizationId, {
+          assignedVehicleId: route.vehicleId,
+          routeId: { not: routeId },
+          status: { in: [...OCCUPYING_ORDER_STATUSES] },
+        }),
+      })
+      if (otherActive === 0) {
+        await client.vehicle.updateMany({
+          where: scopedWhere(organizationId, { id: route.vehicleId }),
+          data: { status: "available" },
+        })
+      }
+    }
+  }
 
   // событие в таймлайн — только если у рейса есть водитель
   // (RouteEvent.driverId обязательное поле)
