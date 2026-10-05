@@ -25,13 +25,14 @@ export type PhotoOcrOutcome =
 /**
  * Путь к файлу фото по его url.
  *
- * Фото хранятся как «/uploads/<организация>/<файл>», поэтому url превращается
- * в путь внутри public. Всё, что выходит за пределы папки uploads (например,
- * «../../etc/passwd»), отбрасывается: чужие ссылки не читаем.
+ * Фото хранятся как «/uploads/<организация>/<файл>»: url превращается в путь
+ * внутри основного хранилища data/uploads (вне public), а если файла там нет —
+ * проверяется legacy-хранилище public/uploads (старые установки). Всё, что
+ * выходит за пределы папки uploads (например, «../../etc/passwd»),
+ * отбрасывается: чужие ссылки не читаем.
  */
 export function uploadPathFromUrl(url: string): string | null {
   if (!url) return null
-  const uploadsRoot = path.join(process.cwd(), "public", "uploads")
   const withoutQuery = url.split("?")[0]
 
   if (!withoutQuery.startsWith("/uploads/")) return null
@@ -39,10 +40,22 @@ export function uploadPathFromUrl(url: string): string | null {
   const relative = withoutQuery.replace(/^\/uploads\//, "")
   if (relative.includes("..") || relative.startsWith("/")) return null
 
-  const absolute = path.join(uploadsRoot, relative)
-  if (!absolute.startsWith(uploadsRoot)) return null
-
-  return absolute
+  const roots = [
+    path.join(process.cwd(), "data", "uploads"),
+    path.join(process.cwd(), "public", "uploads"),
+  ]
+  const paths = roots.map((root) => {
+    const absolute = path.join(root, relative)
+    return absolute.startsWith(root) ? absolute : null
+  })
+  const [primary, legacy] = paths as [string | null, string | null]
+  if (primary === null && legacy === null) return null
+  // По умолчанию основной путь (как раньше: файла нет — вызывающий вернёт
+  // «не найдено»); legacy — только когда файл реально лежит там.
+  if (primary !== null && !fs.existsSync(primary) && legacy !== null && fs.existsSync(legacy)) {
+    return legacy
+  }
+  return primary ?? legacy
 }
 
 /** Данные, которые сохраняются в Photo.ocrText / Photo.ocrData. */

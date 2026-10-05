@@ -63,6 +63,10 @@ prisma/schema.sqlite.prisma
 public/uploads/*
 !public/uploads/.gitkeep
 
+# Приватное хранилище файлов (фото документов) — вне public, доступ только
+# через /api/photos/file с проверкой сессии и организации
+data/
+
 # Локальный стенд e2e (не коммитится)
 .e2e/
 

@@ -12,7 +12,7 @@
 
 import { getAuthSecret } from "./token"
 
-export type StartupIssueCode = "auth_secret"
+export type StartupIssueCode = "auth_secret" | "database_url"
 
 export interface StartupIssue {
   code: StartupIssueCode
@@ -35,6 +35,16 @@ export function collectStartupIssues(
     issues.push({
       code: "auth_secret",
       message: error instanceof Error ? error.message : String(error),
+    })
+  }
+
+  // Без DATABASE_URL сервер поднялся бы, но падал на первом же запросе к базе.
+  // Prisma читает переменную лениво — проверяем её здесь, до старта.
+  if (!env.DATABASE_URL || !env.DATABASE_URL.trim()) {
+    issues.push({
+      code: "database_url",
+      message:
+        'DATABASE_URL не задан: сервер не может подключиться к базе. Добавьте в .env DATABASE_URL="file:./dev.db" (SQLite) или строку подключения PostgreSQL.',
     })
   }
 

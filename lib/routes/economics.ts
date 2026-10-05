@@ -42,6 +42,8 @@ export interface RouteEconomics {
   rubPerKmRevenue: number | null
   costPerKm: number | null
   profitRub: number | null
+  /** Маржинальность, % от выручки. null — себестоимость ещё не определена */
+  marginPercent: number | null
   /** На чём посчитано: на чеках или на оценке */
   basis: "fact" | "estimate" | null
   unprofitable: boolean
@@ -73,6 +75,10 @@ export function routeEconomics(params: {
     rubPerKmRevenue: km !== null ? Math.round(revenueRub / km) : null,
     costPerKm: km !== null && cost !== null ? Math.round(cost / km) : null,
     profitRub: cost !== null ? revenueRub - cost : null,
+    marginPercent:
+      cost !== null && revenueRub > 0
+        ? Math.round(((revenueRub - cost) / revenueRub) * 100)
+        : null,
     basis,
     unprofitable: cost !== null && cost > revenueRub,
   }

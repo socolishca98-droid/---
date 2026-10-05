@@ -1,7 +1,7 @@
 // __tests__/isolation/photos-file.test.ts
 //
-// Фотографии документов лежат в public/uploads — а значит, Next отдаёт их
-// статикой любому, кто знает ссылку. Поэтому обращения к /uploads/**
+// Фотографии документов лежат в data/uploads — вне public, Next не отдаёт их
+// статикой. Обращения к /uploads/**
 // переписываются на /api/photos/file (proxy.ts), который проверяет сессию и
 // организацию. Здесь проверяем сам роут: без входа файла нет, чужая
 // организация — 403, выход за пределы каталога — 400.
@@ -18,7 +18,9 @@ import { jsonOf, seedWorld, sessionCookie, type World } from "./helpers"
 
 import { GET as photoFileGet } from "@/app/api/photos/file/route"
 
-const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads")
+const UPLOADS_ROOT = path.join(process.cwd(), "data", "uploads")
+/** Хранилище до переноса из public: роут обязан дочитывать старые фото. */
+const LEGACY_UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads")
 const DATE_DIR = "2026-09-27"
 const FILE_NAME = "isolation-probe.jpg"
 // Минимальный JPEG-заголовок: роут обязан отдать его как image/jpeg
@@ -118,5 +120,18 @@ describe("GET /api/photos/file", () => {
       fileRequest(`/uploads/${world.orgA}/${DATE_DIR}/нет-такого-файла.jpg`, staffA),
     )
     expect(response.status).toBe(404)
+  })
+
+  it("legacy-фото из public/uploads тоже отдаётся: формат url не менялся", async () => {
+    const legacyDir = path.join(LEGACY_UPLOADS_ROOT, world.orgA, DATE_DIR)
+    mkdirSync(legacyDir, { recursive: true })
+    writeFileSync(path.join(legacyDir, "legacy-probe.jpg"), JPEG_BYTES)
+    createdDirs.add(path.join(LEGACY_UPLOADS_ROOT, world.orgA))
+
+    const response = await photoFileGet(
+      fileRequest(`/uploads/${world.orgA}/${DATE_DIR}/legacy-probe.jpg`, staffA),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("image/jpeg")
   })
 })

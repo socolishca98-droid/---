@@ -107,6 +107,7 @@ interface RouteData {
     rubPerKmRevenue: number | null
     costPerKm: number | null
     profitRub: number | null
+    marginPercent: number | null
     basis: "fact" | "estimate" | null
     unprofitable: boolean
   } | null
@@ -473,6 +474,8 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                       >
                         {route.economics.profitRub >= 0 ? "+" : ""}
                         {route.economics.profitRub.toLocaleString("ru-RU")} ₽
+                        {route.economics.marginPercent !== null &&
+                          ` · маржа ${route.economics.marginPercent}%`}
                         {route.economics.basis === "estimate" && " · оценка"}
                       </div>
                     )}

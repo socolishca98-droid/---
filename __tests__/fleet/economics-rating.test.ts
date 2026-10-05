@@ -35,6 +35,7 @@ describe("цена литра и экономика рейса", () => {
     expect(fact.rubPerKmRevenue).toBe(150)
     expect(fact.costPerKm).toBe(100)
     expect(fact.unprofitable).toBe(false)
+    expect(fact.marginPercent).toBe(33)
 
     const estimate = routeEconomics({
       revenueRub: 5000,
@@ -45,6 +46,7 @@ describe("цена литра и экономика рейса", () => {
     })
     expect(estimate.basis).toBe("estimate")
     expect(estimate.unprofitable).toBe(true)
+    expect(estimate.marginPercent).toBe(-12)
   })
 
   it("без цены литра и расходов экономики нет, а не «ноль»", () => {

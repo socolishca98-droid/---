@@ -21,36 +21,45 @@ const {
 const { getAuthSecret, AuthSecretError } = require("../.test-build/lib/auth/token.js")
 
 const VALID = "test-secret-0123456789abcdefghijklmnopqrstuvwxyz"
+const DB = "file:./dev.db"
 
 test("без AUTH_SECRET старт запрещён: одна проблема с кодом auth_secret", () => {
-  const issues = collectStartupIssues({})
+  const issues = collectStartupIssues({ DATABASE_URL: DB })
   assert.equal(issues.length, 1)
   assert.equal(issues[0].code, "auth_secret")
   assert.match(issues[0].message, /AUTH_SECRET не задан/)
-  assert.throws(() => assertStartupConfig({}), /СЕРВЕР НЕ ЗАПУЩЕН/)
+  assert.throws(() => assertStartupConfig({ DATABASE_URL: DB }), /СЕРВЕР НЕ ЗАПУЩЕН/)
 })
 
 test("пустой AUTH_SECRET (пустая строка и пробелы) — тоже отказ", () => {
   for (const value of ["", "   ", "\t\n"]) {
-    const issues = collectStartupIssues({ AUTH_SECRET: value })
+    const issues = collectStartupIssues({ AUTH_SECRET: value, DATABASE_URL: DB })
     assert.equal(issues.length, 1, `значение ${JSON.stringify(value)} должно блокировать старт`)
     assert.equal(issues[0].code, "auth_secret")
   }
 })
 
 test("короткий AUTH_SECRET (<32 символов) — отказ с понятной причиной", () => {
-  const issues = collectStartupIssues({ AUTH_SECRET: "короткий" })
+  const issues = collectStartupIssues({ AUTH_SECRET: "короткий", DATABASE_URL: DB })
   assert.equal(issues.length, 1)
   assert.match(issues[0].message, /минимум 32 символа/)
 })
 
 test("с валидным AUTH_SECRET старт разрешён", () => {
-  assert.deepEqual(collectStartupIssues({ AUTH_SECRET: VALID }), [])
-  assert.doesNotThrow(() => assertStartupConfig({ AUTH_SECRET: VALID }))
+  assert.deepEqual(collectStartupIssues({ AUTH_SECRET: VALID, DATABASE_URL: DB }), [])
+  assert.doesNotThrow(() => assertStartupConfig({ AUTH_SECRET: VALID, DATABASE_URL: DB }))
+})
+
+test("без DATABASE_URL старт тоже запрещён: база нужна до первого запроса", () => {
+  const issues = collectStartupIssues({ AUTH_SECRET: VALID })
+  assert.equal(issues.length, 1)
+  assert.equal(issues[0].code, "database_url")
+  assert.match(issues[0].message, /DATABASE_URL/)
+  assert.throws(() => assertStartupConfig({ AUTH_SECRET: VALID }), /СЕРВЕР НЕ ЗАПУЩЕН/)
 })
 
 test("пробелы по краям секрета не ломают проверку (секрет тримится)", () => {
-  assert.deepEqual(collectStartupIssues({ AUTH_SECRET: `  ${VALID}  ` }), [])
+  assert.deepEqual(collectStartupIssues({ AUTH_SECRET: `  ${VALID}  `, DATABASE_URL: DB }), [])
   assert.equal(getAuthSecret({ AUTH_SECRET: `  ${VALID}  ` }), VALID)
 })
 
@@ -70,7 +79,9 @@ test("текст отказа объясняет, что сделать (ком�
 
 test("collectStartupIssues по умолчанию читает process.env", () => {
   const saved = process.env.AUTH_SECRET
+  const savedDb = process.env.DATABASE_URL
   try {
+    process.env.DATABASE_URL = DB
     delete process.env.AUTH_SECRET
     assert.equal(collectStartupIssues().length, 1)
     process.env.AUTH_SECRET = VALID
@@ -78,5 +89,7 @@ test("collectStartupIssues по умолчанию читает process.env", ()
   } finally {
     if (saved === undefined) delete process.env.AUTH_SECRET
     else process.env.AUTH_SECRET = saved
+    if (savedDb === undefined) delete process.env.DATABASE_URL
+    else process.env.DATABASE_URL = savedDb
   }
 })

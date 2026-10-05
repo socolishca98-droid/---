@@ -2,11 +2,12 @@
 //
 // Отдаёт файл фотографии ПОСЛЕ проверки доступа.
 //
-// Зачем: фото лежат в public/uploads, а Next отдаёт всё из public статикой —
-// без сессии и без проверки организации. Ссылку на снимок ТТН достаточно
-// переслать в мессенджере, и её откроет кто угодно. Поэтому обращения к
-// /uploads/** переписываются на этот роут (proxy.ts), который проверяет,
-// что человек вошёл и что фото принадлежит его организации.
+// Зачем: обращения к /uploads/** переписываются на этот роут (proxy.ts),
+// который проверяет, что человек вошёл и что фото принадлежит его организации.
+// Сами файлы лежат в data/uploads — вне public: даже если запрос минует прокси
+// (внешний статик-сервер, регистр символов, дрейф конфига), фото не отдастся
+// без сессии — в публичном каталоге его физически нет. Legacy-файлы старых
+// установок дочитываются из public/uploads.
 //
 // Путь берётся из query-параметра path в том же виде, в каком он хранится в
 // Photo.url: /uploads/<организация>/<дата>/<имя файла>.
@@ -18,7 +19,9 @@ import path from "node:path"
 
 import { requireAnySession } from "@/lib/auth/session"
 
-const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads")
+const UPLOADS_ROOT = path.join(process.cwd(), "data", "uploads")
+/** Хранилище до переноса файлов из public: старые фото дочитываются оттуда. */
+const LEGACY_UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads")
 
 /** Расширения, которые реально приходят с телефона водителя и из сканера. */
 const CONTENT_TYPES: Record<string, string> = {
@@ -66,15 +69,22 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Каталог организации — часть пути на диске: public/uploads/<организация>/<дата>/<имя>.
+  // Каталог организации — часть пути на диске: <хранилище>/<организация>/<дата>/<имя>.
   // Берём уже сверенный с сессией сегмент, а не сырую строку из запроса.
-  const resolvedRoot = path.resolve(UPLOADS_ROOT)
-  const absolute = path.resolve(path.join(resolvedRoot, photoOrganizationId, ...rest))
-  if (absolute !== resolvedRoot && !absolute.startsWith(resolvedRoot + path.sep)) {
-    return NextResponse.json({ success: false, error: "Недопустимый путь" }, { status: 400 })
+  // Основное хранилище — data/uploads, legacy — public/uploads: containment
+  // проверяется для обоих корней.
+  const candidates: string[] = []
+  for (const root of [UPLOADS_ROOT, LEGACY_UPLOADS_ROOT]) {
+    const resolvedRoot = path.resolve(root)
+    const absolute = path.resolve(path.join(resolvedRoot, photoOrganizationId, ...rest))
+    if (absolute !== resolvedRoot && !absolute.startsWith(resolvedRoot + path.sep)) {
+      return NextResponse.json({ success: false, error: "Недопустимый путь" }, { status: 400 })
+    }
+    candidates.push(absolute)
   }
 
-  if (!existsSync(absolute)) {
+  const absolute = candidates.find((candidate) => existsSync(candidate))
+  if (!absolute) {
     return NextResponse.json({ success: false, error: "Фото не найдено" }, { status: 404 })
   }
 

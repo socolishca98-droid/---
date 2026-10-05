@@ -9,6 +9,7 @@
     "build": "npm run docs:api && prisma generate && next build",
     "start": "next start -p 3000 -H 0.0.0.0",
     "backup:db": "node scripts/backup-db.mjs",
+    "restore:db": "node scripts/restore-db.mjs",
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:vitest && npm run test:isolation",
