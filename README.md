@@ -121,14 +121,19 @@ npm run db:migrate-orgs
 | `npm run build` / `npm start`                              | прод-сборка и запуск                                                                                                |
 | `npm run typecheck`                                        | `tsc --noEmit`                                                                                                      |
 | `npm test`                                                 | все тесты: unit + vitest + изоляция организаций (работают сразу после клонирования, Prisma Client для них не нужен) |
-| `npm run test:unit`                                        | `tests/*.test.mjs` (node:test), 258 проверок                                                                        |
+| `npm run test:unit`                                        | `tests/*.test.mjs` (node:test), 314 проверок                                                                        |
 | `npm run test:vitest`                                      | `__tests__/**` (vitest)                                                                                             |
-| `npm run test:isolation`                                   | витрина мультитенантности: 248 проверок                                                                             |
+| `npm run test:isolation`                                   | витрина мультитенантности: 361 проверка                                                                             |
 | `npm run check:api`                                        | все вызовы `/api/*` из кода существуют                                                                              |
 | `npm run audit:orgs`                                       | аудит: каждый запрос к БД ограничен организацией                                                                    |
 | `npm run verify:security` / `verify:task2` / `verify:orgs` | проверки задач 1–2                                                                                                  |
 | `npm run docs:api`                                         | перегенерировать `docs/api-endpoints.json` и `openapi.yaml`                                                         |
 | `npm run db:migrate-driver-phones`                         | привести телефоны водителей и их учёток к канону (сухой прогон; `-- --apply` — записать)                            |
+| `npm run backup:db` / `restore:db`                         | бэкап базы и восстановление из него (`--list`, `--file`, `--yes`; см. `docs/backup-db.md`)                           |
+| `npm run schema:postgres`                                  | сгенерировать прод-схему PostgreSQL из канонической схемы (организация обязательна)                                  |
+| `npm run db:postgres:push`                                 | накатить структуру базы на PostgreSQL (ещё `:generate`, `:migrate`)                                                  |
+| `npm run verify:deploy`                                    | проверить конфигурацию перед запуском: секреты, база, каталоги, Sentry                                               |
+| `npm run smoke:roles`                                      | смоук по ролям на живом экземпляре: администратор, логист, водитель, гость                                           |
 
 ## 5. Docker
 
