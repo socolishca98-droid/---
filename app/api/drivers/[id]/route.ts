@@ -151,8 +151,49 @@ export async function PATCH(
       if (medicalExpiry !== undefined) data.medicalExpiry = medicalExpiryDate
     }
     if (currentLocation !== undefined) data.currentLocation = currentLocation
-    if (latitude !== undefined) data.latitude = latitude
-    if (longitude !== undefined) data.longitude = longitude
+    // Координаты приводим и проверяем: строка из формы — в число, пусто — null,
+    // планетарный мусор — 400. Иначе маркер водителя уезжает с карты,
+    // а нечисло роняет весь PATCH в 500.
+    const rawLat = latitude as unknown
+    if (rawLat !== undefined) {
+      if (rawLat === null || rawLat === "") {
+        data.latitude = null
+      } else {
+        const lat =
+          typeof rawLat === "string"
+            ? parseFloat(rawLat.replace(",", "."))
+            : typeof rawLat === "number"
+              ? rawLat
+              : NaN
+        if (!Number.isFinite(lat) || Math.abs(lat) > 90) {
+          return NextResponse.json(
+            { success: false, error: "Неверная широта: число от -90 до 90" },
+            { status: 400 }
+          )
+        }
+        data.latitude = lat
+      }
+    }
+    const rawLng = longitude as unknown
+    if (rawLng !== undefined) {
+      if (rawLng === null || rawLng === "") {
+        data.longitude = null
+      } else {
+        const lng =
+          typeof rawLng === "string"
+            ? parseFloat(rawLng.replace(",", "."))
+            : typeof rawLng === "number"
+              ? rawLng
+              : NaN
+        if (!Number.isFinite(lng) || Math.abs(lng) > 180) {
+          return NextResponse.json(
+            { success: false, error: "Неверная долгота: число от -180 до 180" },
+            { status: 400 }
+          )
+        }
+        data.longitude = lng
+      }
+    }
 
     // Закрепление машины пишется только через единый путь (задача 2):
     // Driver.vehicleId — источник правды, vehicleType/vehiclePlate — кэш,

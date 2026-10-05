@@ -432,6 +432,28 @@ describe("заказы /api/orders", () => {
 })
 
 describe("водители /api/drivers", () => {
+  it("координаты водителя: строки приводятся, планетарный мусор отклоняется", async () => {
+    const garbage = await driverPatch(
+      makeRequest("PATCH", `/api/drivers/${world.driverA}`, {
+        cookie: cookieA,
+        body: { latitude: "9999" },
+      }),
+      routeContext({ id: world.driverA }),
+    )
+    expect(garbage.status).toBe(400)
+
+    const strings = await driverPatch(
+      makeRequest("PATCH", `/api/drivers/${world.driverA}`, {
+        cookie: cookieA,
+        body: { latitude: "57,6261", longitude: "39,8845" },
+      }),
+      routeContext({ id: world.driverA }),
+    )
+    expect(strings.status).toBe(200)
+    const row = rowOf("driver", world.driverA)
+    expect(row.latitude).toBeCloseTo(57.6261)
+    expect(row.longitude).toBeCloseTo(39.8845)
+  })
   it("список: только свои водители", async () => {
     const payload = await expectScopedGet("/api/drivers", driversGet)
     expect(payload.drivers).toHaveLength(1)
@@ -553,6 +575,31 @@ describe("машины /api/vehicles", () => {
     )
     expect(del.status).toBe(404)
     expect(memoryDb.find("vehicle", world.vehicleB)).toBeTruthy()
+  })
+
+  it("грузоподъёмность и габариты машины не принимают мусор", async () => {
+    // отрицательная грузоподъёмность молча отключила бы контроль перегруза
+    const negative = await vehiclePatch(
+      makeRequest("PATCH", `/api/vehicles/${world.vehicleA}`, {
+        cookie: cookieA,
+        body: { capacity: -5 },
+      }),
+      routeContext({ id: world.vehicleA }),
+    )
+    expect(negative.status).toBe(400)
+
+    // строки из формы приводятся, русская запятая понимается
+    const strings = await vehiclePatch(
+      makeRequest("PATCH", `/api/vehicles/${world.vehicleA}`, {
+        cookie: cookieA,
+        body: { capacity: "12000", volume: "40,5" },
+      }),
+      routeContext({ id: world.vehicleA }),
+    )
+    expect(strings.status).toBe(200)
+    const row = rowOf("vehicle", world.vehicleA)
+    expect(row.capacity).toBe(12000)
+    expect(row.volume).toBe(40.5)
   })
 
   it("госномер уникален в рамках организации, а не глобально", async () => {

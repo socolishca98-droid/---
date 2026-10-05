@@ -37,10 +37,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const lat = parseFloat(String(latitude))
-    const lng = parseFloat(String(longitude))
+    const lat = parseFloat(String(latitude).replace(",", "."))
+    const lng = parseFloat(String(longitude).replace(",", "."))
 
-    if (isNaN(lat) || isNaN(lng)) {
+    if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
       return NextResponse.json(
         { success: false, message: "Invalid latitude or longitude values" },
         { status: 400 }

@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Диапазон координат: иначе Infinity или «широта 9999» уезжают в базу
+    // и ломают карту и расчёты ETA.
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      return NextResponse.json(
+        { success: false, error: "Координаты вне диапазона: широта -90..90, долгота -180..180" },
+        { status: 400 },
+      )
+    }
+
     // Карточка водителя гарантированно существует — её проверила сессия
 
     // updateMany с фильтром организации: чужую карточку водителя не изменить

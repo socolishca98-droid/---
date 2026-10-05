@@ -125,11 +125,27 @@ export async function PATCH(request: NextRequest,
 
     if (year !== undefined) {
       const y = typeof year === "string" ? parseInt(year, 10) : year
-      data.year = Number.isNaN(y) ? null : y
+      data.year = Number.isNaN(y) || y < 1900 || y > 2100 ? null : y
     }
     if (capacity !== undefined) {
-      const c = typeof capacity === "string" ? parseInt(capacity, 10) : capacity
-      data.capacity = Number.isNaN(c) ? 0 : c
+      // Грузоподъёмность участвует в проверке перегруза (capacity > 0):
+      // отрицательное или мусорное значение молча отключило бы контроль
+      // перегруза для машины. Пусто — как «не задана» (0), контроль не мешает.
+      if (capacity === null || capacity === "") {
+        data.capacity = 0
+      } else {
+        const c = typeof capacity === "string" ? parseInt(capacity, 10) : capacity
+        if (!Number.isFinite(c) || c < 0 || c > 100000) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Грузоподъёмность должна быть целым числом от 0 до 100000 кг",
+            },
+            { status: 400 }
+          )
+        }
+        data.capacity = Math.round(c)
+      }
     }
     // Топливные поля: число, пусто — сброс в null
     for (const key of ["fuelTankL", "fuelConsumptionPer100", "fuelLevelL"] as const) {
@@ -139,24 +155,24 @@ export async function PATCH(request: NextRequest,
         data[key] = null
         continue
       }
-      const value = typeof raw === "string" ? parseFloat(raw) : raw
+      const value = typeof raw === "string" ? parseFloat(raw.replace(",", ".")) : raw
       data[key] = typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
     }
     if (volume !== undefined) {
-      const v = typeof volume === "string" ? parseFloat(volume) : volume
-      data.volume = Number.isNaN(v) ? null : v
+      const v = typeof volume === "string" ? parseFloat(volume.replace(",", ".")) : volume
+      data.volume = Number.isNaN(v) || v < 0 ? null : v
     }
     if (length !== undefined) {
-      const l = typeof length === "string" ? parseFloat(length) : length
-      data.length = Number.isNaN(l) ? null : l
+      const l = typeof length === "string" ? parseFloat(length.replace(",", ".")) : length
+      data.length = Number.isNaN(l) || l < 0 ? null : l
     }
     if (width !== undefined) {
-      const w = typeof width === "string" ? parseFloat(width) : width
-      data.width = Number.isNaN(w) ? null : w
+      const w = typeof width === "string" ? parseFloat(width.replace(",", ".")) : width
+      data.width = Number.isNaN(w) || w < 0 ? null : w
     }
     if (height !== undefined) {
-      const h = typeof height === "string" ? parseFloat(height) : height
-      data.height = Number.isNaN(h) ? null : h
+      const h = typeof height === "string" ? parseFloat(height.replace(",", ".")) : height
+      data.height = Number.isNaN(h) || h < 0 ? null : h
     }
 
     if (status !== undefined) {
