@@ -29,6 +29,8 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+
+import { DispatcherSearch } from "./dispatcher-search";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -327,7 +329,10 @@ export function PlannerView() {
         </div>
       </div>
 
-      {/* Режим: новый рейс или дособорка существующего */}
+      {/* Умный диспетчер: запрос словами — грузы с ожидаемой прибылью */}
+      <DispatcherSearch vehicleId={vehicleId} onTaken={() => void load()} />
+
+      {/* Режим: новый рейс или дособорка существующого */}
       {routes.length > 0 && (
         <div className="space-y-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold">

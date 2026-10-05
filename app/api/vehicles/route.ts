@@ -4,6 +4,8 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { resolvePlan } from "@/lib/billing/plans"
+import { getOrgSettings } from "@/lib/org-settings"
 import { createVehicleSchema, zodErrorResponse } from "@/lib/validators"
 
 export async function GET(request: NextRequest) {
@@ -76,6 +78,37 @@ export async function POST(request: NextRequest) {
     const { plate, type, brand, model, year, capacity, volume, length, width, height, features, fuelTankL, fuelConsumptionPer100, fuelLevelL } = parsed.data
 
     const featuresJson = Array.isArray(features) || typeof features === "string" ? JSON.stringify(features) : "[]"
+
+    // Лимит машин по тарифу (lib/billing/plans.ts): trial — 14 дней без
+    // ограничения, дальше «Бесплатный» (2 машины), пока не выбран платный план.
+    // Превышение — не тихий приём, а 409 с текущим планом и ссылкой на тарифы.
+    const [orgRow, vehiclesCount, orgSettings] = await Promise.all([
+      prisma.organization.findUnique({
+        where: { id: __org.organizationId },
+        select: { createdAt: true },
+      }) as Promise<{ createdAt?: Date } | null>,
+      prisma.vehicle.count({ where: scopedWhere(__org.organizationId, {}) }),
+      getOrgSettings(__org.organizationId),
+    ])
+    const resolvedPlan = resolvePlan({
+      storedPlan: orgSettings.plan,
+      organizationCreatedAt: orgRow?.createdAt ?? null,
+    })
+    if (
+      resolvedPlan.vehicleLimit !== null &&
+      vehiclesCount >= resolvedPlan.vehicleLimit
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Тариф «${resolvedPlan.label}»: лимит ${resolvedPlan.vehicleLimit} машин(ы). Добавить ещё можно на странице «Тарифы»`,
+          code: "plan_limit",
+          plan: resolvedPlan.plan,
+          limit: resolvedPlan.vehicleLimit,
+        },
+        { status: 409 },
+      )
+    }
 
     const vehicle = await prisma.vehicle.create({
       data: {

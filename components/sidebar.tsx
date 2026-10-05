@@ -31,6 +31,7 @@ import {
   ScrollText,
   Crown,
   Wand2,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,7 @@ const navigation: Array<{
   { name: "Чат", href: "/chat", icon: MessageSquare, badgeKey: "chat" },
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
+  { name: "Тарифы", href: "/pricing", icon: Wallet },
   // журнал действий — для админа: кто и что менял в организации
   { name: "Журнал", href: "/audit", icon: ScrollText, adminOnly: true },
   // режим владельца: все организации платформы (виден только владельцу)

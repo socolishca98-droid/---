@@ -848,6 +848,10 @@ model OrganizationSettings {
   /// которые возят только постоянным клиентам, выключают — интерфейс прячет
   /// ATI-разделы. По умолчанию включено (обратная совместимость).
   atiEnabled     Boolean      @default(true)
+  /// Тарифный план: trial | free | start | park | company (lib/billing/plans.ts).
+  /// Trial — 14 дней от создания организации без ограничений; когда истекает,
+  /// действует «Бесплатный», пока администратор не выбрал платный план.
+  plan           String       @default("trial")
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId])

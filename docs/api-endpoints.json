@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-05T03:29:00.821Z",
+  "generatedAt": "2026-10-05T10:43:14.094Z",
   "endpoints": [
     {
       "method": "GET",
@@ -210,6 +210,11 @@
       "method": "GET",
       "route": "/api/dashboard/stats",
       "group": "dashboard"
+    },
+    {
+      "method": "GET",
+      "route": "/api/dispatcher/search",
+      "group": "dispatcher"
     },
     {
       "method": "GET",

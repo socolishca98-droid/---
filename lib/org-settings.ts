@@ -8,14 +8,18 @@
 
 import { NextResponse } from "next/server";
 
+import { isPlanKey, type PlanKey } from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma";
 
 export interface OrgSettings {
   atiEnabled: boolean;
+  /** Тарифный план (lib/billing/plans.ts); новое значение из тела проверяется isPlanKey */
+  plan: PlanKey;
 }
 
 export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   atiEnabled: true,
+  plan: "trial",
 };
 
 /** Прочитать настройки организации (без строки — значения по умолчанию). */
@@ -25,19 +29,23 @@ export async function getOrgSettings(
   if (!organizationId) return { ...DEFAULT_ORG_SETTINGS };
   const row = await prisma.organizationSettings.findUnique({
     where: { organizationId },
-    select: { atiEnabled: true },
+    select: { atiEnabled: true, plan: true },
   });
   if (!row) return { ...DEFAULT_ORG_SETTINGS };
-  return { atiEnabled: Boolean(row.atiEnabled) };
+  return {
+    atiEnabled: Boolean(row.atiEnabled),
+    plan: isPlanKey(row.plan) ? row.plan : "trial",
+  };
 }
 
 /** Записать настройки организации (upsert: строка создаётся при первом изменении). */
 export async function setOrgSettings(
   organizationId: string,
-  patch: { atiEnabled?: boolean },
+  patch: { atiEnabled?: boolean; plan?: unknown },
 ): Promise<OrgSettings> {
   const data: Record<string, unknown> = {};
   if (typeof patch.atiEnabled === "boolean") data.atiEnabled = patch.atiEnabled;
+  if (isPlanKey(patch.plan)) data.plan = patch.plan;
 
   await prisma.organizationSettings.upsert({
     where: { organizationId },
