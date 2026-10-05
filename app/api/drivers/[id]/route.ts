@@ -212,7 +212,7 @@ export async function PATCH(
 
     let driver
     if (vehicleId !== undefined) {
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.driver.updateMany({
           where: scopedWhere(org.organizationId, { id }),
           data,

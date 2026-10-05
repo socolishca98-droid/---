@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
 
     const now = Date.now()
 
-    const driversOut = drivers.map((d) => {
+    const driversOut = drivers.map((d: any) => {
       const shift = shiftByDriver.get(d.id)
       const driverOrders = activeOrdersByDriver.get(d.id) || []
       const hasActiveOrder = driverOrders.length > 0
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      const vehicle = vehicles.find((v) => v.id === d.vehicleId)
+      const vehicle = vehicles.find((v: any) => v.id === d.vehicleId)
 
       return {
         ...d,
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const vehiclesOut = vehicles.map((v) => {
+    const vehiclesOut = vehicles.map((v: any) => {
       const vehicleOrders = activeOrdersByVehicle.get(v.id) || []
       const hasActiveOrder = vehicleOrders.length > 0
 
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
       // иначе null
       let nextAvailableAt: string | null = null
       if (vehicleOrders.length > 0) {
-        const maxDeadline = vehicleOrders.reduce<Date | null>((max, o) => {
+        const maxDeadline = vehicleOrders.reduce((max: any, o: any): Date | null => {
           if (!o.deadline) return max
           if (!max) return o.deadline
           return o.deadline.getTime() > max.getTime() ? o.deadline : max
@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
 
       // закрепление машины хранится на стороне водителя (Driver.vehicleId);
       // Vehicle.driverId удалён из схемы (задача 2)
-      const driver = driversOut.find((d) => d.vehicleId === v.id)
+      const driver = driversOut.find((d: any) => d.vehicleId === v.id)
 
       return {
         ...v,
@@ -180,18 +180,18 @@ export async function GET(request: NextRequest) {
 
     const vehicleStats = {
       total: vehiclesOut.length,
-      available: vehiclesOut.filter((v) => v.status === "available").length,
-      inUse: vehiclesOut.filter((v) => v.status === "in_use").length,
-      maintenance: vehiclesOut.filter((v) => v.status === "maintenance").length,
+      available: vehiclesOut.filter((v: any) => v.status === "available").length,
+      inUse: vehiclesOut.filter((v: any) => v.status === "in_use").length,
+      maintenance: vehiclesOut.filter((v: any) => v.status === "maintenance").length,
     }
 
     const driverStats = {
       total: driversOut.length,
-      available: driversOut.filter((d) => d.status === "available").length,
-      busy: driversOut.filter((d) =>
+      available: driversOut.filter((d: any) => d.status === "available").length,
+      busy: driversOut.filter((d: any) =>
         ["busy", "driving", "loading", "unloading"].includes(d.status),
       ).length,
-      maintenance: driversOut.filter((d) => d.status === "maintenance").length,
+      maintenance: driversOut.filter((d: any) => d.status === "maintenance").length,
       // «на связи» — по свежей GPS-точке (lib/fleet/presence.ts). Значение
       // uiStatus "offline" здесь означает «нет активной смены», а не потерю связи
       online: countOnlineDrivers(driversOut),

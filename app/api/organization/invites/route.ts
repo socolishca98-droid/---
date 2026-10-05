@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const invites = await listInvites(org.organizationId)
     return NextResponse.json({
       success: true,
-      invites: invites.map((invite) => describeInvite(invite)),
+      invites: invites.map((invite: any) => describeInvite(invite)),
     })
   } catch (error) {
     console.error("GET /api/organization/invites error:", error)

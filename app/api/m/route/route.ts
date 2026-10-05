@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const points = routeOrders.map((order) => {
+    const points = routeOrders.map((order: any) => {
       const status = normalizeOrderStatus(order.status)
       return {
         id: order.id,
@@ -164,10 +164,10 @@ export async function GET(request: NextRequest) {
         }[])
       : []
 
-    const completedCount = points.filter((point) => point.isDone).length
-    const totalDistance = points.reduce((sum, point) => sum + (point.distanceKm || 0), 0)
-    const totalWeight = points.reduce((sum, point) => sum + (point.weight || 0), 0)
-    const totalPrice = points.reduce((sum, point) => sum + (point.price || 0), 0)
+    const completedCount = points.filter((point: any) => point.isDone).length
+    const totalDistance = points.reduce((sum: any, point: any) => sum + (point.distanceKm || 0), 0)
+    const totalWeight = points.reduce((sum: any, point: any) => sum + (point.weight || 0), 0)
+    const totalPrice = points.reduce((sum: any, point: any) => sum + (point.price || 0), 0)
 
     return NextResponse.json({
       success: true,
@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
                 startOdometer: route.startOdometer,
                 endOdometer: route.endOdometer,
               },
-              orders: routeOrders.map((order) => ({
+              orders: routeOrders.map((order: any) => ({
                 id: order.id,
                 status: order.status,
                 price: order.price,
@@ -229,7 +229,7 @@ export async function GET(request: NextRequest) {
       // Статусы, при которых заказ считается «в работе» — для единообразия
       // мобильного списка (канон lib/orders/stages.ts).
       activeStatuses: [...OCCUPYING_ORDER_STATUSES],
-      proposedLoads: proposedLoads.map((order) => ({
+      proposedLoads: proposedLoads.map((order: any) => ({
         id: order.id,
         routeFrom: order.routeFrom,
         routeTo: order.routeTo,

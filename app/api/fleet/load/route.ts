@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const items = vehicles.map((vehicle) => {
+    const items = vehicles.map((vehicle: any) => {
       const loadKg = vehicle.orders.reduce(
-        (sum, order) => sum + (Number(order.weight) || 0),
+        (sum: any, order: any) => sum + (Number(order.weight) || 0),
         0,
       )
       return {

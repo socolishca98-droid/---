@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const assignment = await prisma.$transaction((tx) =>
+    const assignment = await prisma.$transaction((tx: any) =>
       linkDriverToVehicle(tx, driverId, vehicleId, org.organizationId),
     )
 
@@ -106,7 +106,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       if (driverId) {
         // снимаем машину с водителя: обнуляется и кэш номера/типа
         return linkDriverToVehicle(tx, driverId, null, org.organizationId)

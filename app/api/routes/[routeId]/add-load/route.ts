@@ -144,7 +144,7 @@ export async function POST(
       }
     }
 
-    const newOrder = await prisma.$transaction(async (tx) => {
+    const newOrder = await prisma.$transaction(async (tx: any) => {
       const order = await tx.order.create({
         data: {
           organizationId: org.organizationId,

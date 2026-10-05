@@ -426,7 +426,7 @@ export async function POST(request: NextRequest) {
           })
         : []
 
-    const notFound = linkIds.filter((id) => !linked.some((order) => order.id === id))
+    const notFound = linkIds.filter((id) => !linked.some((order: any) => order.id === id))
     if (notFound.length > 0) {
       return NextResponse.json(
         { success: false, error: `Заказы не найдены: ${notFound.join(", ")}` },
@@ -435,31 +435,31 @@ export async function POST(request: NextRequest) {
     }
 
     // На холст и в рейс попадают только согласованные заказы
-    const notAgreed = linked.filter((order) => !isOrderRouteable(order.status))
+    const notAgreed = linked.filter((order: any) => !isOrderRouteable(order.status))
     if (notAgreed.length > 0) {
       return NextResponse.json(
         {
           success: false,
           error: `В рейс можно брать только согласованные заказы. Не подходят: ${notAgreed
-            .map((order) => `${order.routeFrom} → ${order.routeTo} (${orderStatusLabel(order.status)})`)
+            .map((order: any) => `${order.routeFrom} → ${order.routeTo} (${orderStatusLabel(order.status)})`)
             .join("; ")}`,
           code: "orders_not_agreed",
-          orderIds: notAgreed.map((order) => order.id),
+          orderIds: notAgreed.map((order: any) => order.id),
         },
         { status: 409 },
       )
     }
 
-    const alreadyInRoute = linked.filter((order) => order.routeId)
+    const alreadyInRoute = linked.filter((order: any) => order.routeId)
     if (alreadyInRoute.length > 0) {
       return NextResponse.json(
         {
           success: false,
           error: `Заказы уже включены в другой рейс: ${alreadyInRoute
-            .map((order) => `${order.routeFrom} → ${order.routeTo}`)
+            .map((order: any) => `${order.routeFrom} → ${order.routeTo}`)
             .join("; ")}`,
           code: "orders_already_in_route",
-          orderIds: alreadyInRoute.map((order) => order.id),
+          orderIds: alreadyInRoute.map((order: any) => order.id),
         },
         { status: 409 },
       )
@@ -499,16 +499,16 @@ export async function POST(request: NextRequest) {
           })
         : []
 
-    const conflicting = existingByCache.filter((order) => order.routeId)
+    const conflicting = existingByCache.filter((order: any) => order.routeId)
     if (conflicting.length > 0) {
       return NextResponse.json(
         {
           success: false,
           error: `Заказы уже включены в другой рейс: ${conflicting
-            .map((order) => `${order.routeFrom} → ${order.routeTo}`)
+            .map((order: any) => `${order.routeFrom} → ${order.routeTo}`)
             .join("; ")}`,
           code: "orders_already_in_route",
-          orderIds: conflicting.map((order) => order.id),
+          orderIds: conflicting.map((order: any) => order.id),
         },
         { status: 409 },
       )
@@ -533,7 +533,7 @@ export async function POST(request: NextRequest) {
 
     const totalWeight =
       payloads.reduce((sum, o) => sum + (o.weight || 0), 0) +
-      linked.reduce((sum, o) => sum + (o.weight || 0), 0)
+      linked.reduce((sum: any, o: any) => sum + (o.weight || 0), 0)
     if (vehicle && vehicle.capacity > 0 && totalWeight > vehicle.capacity) {
       return NextResponse.json(
         {
@@ -622,7 +622,7 @@ export async function POST(request: NextRequest) {
       //    [organizationId, atiCacheId]), а привязываем существующий.
       for (const payload of payloads) {
         const existing = payload.atiCacheId
-          ? existingByCache.find((order) => order.atiCacheId === payload.atiCacheId)
+          ? existingByCache.find((order: any) => order.atiCacheId === payload.atiCacheId)
           : undefined
 
         if (existing) {

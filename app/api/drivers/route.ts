@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
       // Возвращаем Map для быстрого доступа на клиенте
       const driversMap: Record<string, typeof drivers[0]> = {}
-      drivers.forEach((driver) => {
+      drivers.forEach((driver: any) => {
         driversMap[driver.id] = driver
       })
 
@@ -80,9 +80,9 @@ export async function GET(request: NextRequest) {
 
     // Рейтинг водителя — из проверяемых фактов: доставки в срок и документы.
     // Считается только по данным своей организации (scopedWhere выше).
-    const drivers = rows.map((row) => {
+    const drivers = rows.map((row: any) => {
       const withDocs = new Set(
-        row.photos.map((photo) => photo.orderId).filter(Boolean) as string[],
+        row.photos.map((photo: any) => photo.orderId).filter(Boolean) as string[],
       )
       const deliveredTotal = row.orders.length
       let deliveredOnTime = 0

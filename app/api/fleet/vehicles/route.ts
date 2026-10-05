@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const vehiclesWithDrivers = vehicles.map((vehicle) => {
+    const vehiclesWithDrivers = vehicles.map((vehicle: any) => {
       const { drivers, ...v } = vehicle
       // машина закреплена максимум за одним водителем (гарантирует
       // lib/fleet/assignment.linkDriverToVehicle)
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
     const filtered =
       statusFilter && statusFilter !== "all"
-        ? vehiclesWithDrivers.filter((v) => v.status === statusFilter)
+        ? vehiclesWithDrivers.filter((v: any) => v.status === statusFilter)
         : vehiclesWithDrivers
 
     return NextResponse.json({

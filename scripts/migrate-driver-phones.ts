@@ -186,10 +186,10 @@ async function main() {
     const digits = normalizePhone(value ?? "")
     return digits.length >= MIN_DIGITS ? digits : (value ?? "").trim()
   }
-  const driverById = new Map(drivers.map((driver) => [driver.id, driver]))
-  const mismatched = users.filter((user) => {
+  const driverById = new Map(drivers.map((driver: any) => [driver.id, driver]))
+  const mismatched = users.filter((user: any) => {
     if (!user.driverId) return false
-    const driver = driverById.get(user.driverId)
+    const driver = driverById.get(user.driverId) as any
     if (!driver) return false
     return canonicalOf(driver.phone) !== canonicalOf(user.phone)
   })
@@ -198,7 +198,7 @@ async function main() {
   } else {
     log(`  ${mismatched.length} — требуется решение человека (сброс пароля или правка номера):`)
     for (const user of mismatched.slice(0, 20)) {
-      const driver = driverById.get(user.driverId as string)
+      const driver = driverById.get(user.driverId as string) as any
       log(
         `    • ${user.name}: учётка «${user.phone}», карточка «${driver?.phone}» (${driver?.name})`,
       )

@@ -172,9 +172,9 @@ export async function GET(request: NextRequest) {
     // ========== КОДИНГОРДИНАТЫ АДРЕСОВ (один пакетный запрос) ==========
     const addresses = Array.from(
       new Set(
-        activeOrders.flatMap((order) => [order.routeFrom, order.routeTo]).filter(Boolean),
+        activeOrders.flatMap((order: any) => [order.routeFrom, order.routeTo]).filter(Boolean),
       ),
-    )
+    ) as string[]
     const coordsByAddress = addresses.length > 0 ? await geocodeAddresses(addresses) : new Map()
 
     const problems = new Set<string>()
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
 
     const built = await Promise.all(
       [...groups.entries()].map(async ([routeKey, group]) => {
-        const driver = drivers.find((item) => item.id === group.driverId)
+        const driver = drivers.find((item: any) => item.id === group.driverId)
         if (!driver?.latitude || !driver?.longitude) return null
 
         const driverPoint: Coordinates = { lat: driver.latitude, lng: driver.longitude }

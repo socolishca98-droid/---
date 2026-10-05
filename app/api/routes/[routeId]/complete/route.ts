@@ -115,7 +115,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const now = new Date()
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
           where: scopedWhere(org.organizationId, { id: { in: pendingOrders.map((o) => o.id) } }),
@@ -155,8 +155,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           const ridableOrders = orders.filter(
             (order: any) => !["cancelled", "rejected", "expired"].includes(order.status),
           )
-          const distanceKm = ridableOrders.reduce((sum, order) => sum + (order.distance || 0), 0)
-          const loadKg = ridableOrders.reduce((sum, order) => sum + (order.weight || 0), 0)
+          const distanceKm = ridableOrders.reduce((sum: any, order: any) => sum + (order.distance || 0), 0)
+          const loadKg = ridableOrders.reduce((sum: any, order: any) => sum + (order.weight || 0), 0)
           const used = estimateFuelL(vehicle, distanceKm, loadKg)
           const level = fuelAfterRoute(vehicle, used)
           if (level !== null && level !== vehicle.fuelLevelL) {

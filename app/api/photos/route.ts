@@ -75,7 +75,7 @@ async function orderIdsForFilters(params: {
     take: 1000,
   })
 
-  return orders.map((order) => order.id)
+  return orders.map((order: any) => order.id)
 }
 
 // GET /api/photos?driverId=&orderId=&type=&clientId=&routeId=&vehicleId=&limit=

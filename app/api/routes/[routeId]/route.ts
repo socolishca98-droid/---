@@ -306,7 +306,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
       const driverChanged = Boolean(nextDriverId) && nextDriverId !== route.driverId
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.route.updateMany({
           where: scopedWhere(org.organizationId, { id: routeId }),
           data: { driverId: nextDriverId, vehicleId: nextVehicleId },
@@ -538,7 +538,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       select: { id: true, status: true },
     })
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       // закрываем только незавершённые точки: доставленные остаются доставленными
       await tx.order.updateMany({
         where: scopedWhere(org.organizationId, {

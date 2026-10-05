@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      notifications: notifications.map((item) => ({
+      notifications: notifications.map((item: any) => ({
         id: item.id,
         type: item.type,
         title: item.title,

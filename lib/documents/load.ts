@@ -162,7 +162,7 @@ export async function loadRouteDocuments(params: {
     select: { name: true },
   });
 
-  const documentOrders: DocumentOrder[] = orders.map((order) => ({
+  const documentOrders: DocumentOrder[] = orders.map((order: any) => ({
     id: order.id,
     routeFrom: order.routeFrom,
     routeTo: order.routeTo,

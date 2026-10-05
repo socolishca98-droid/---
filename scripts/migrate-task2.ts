@@ -347,7 +347,7 @@ async function main() {
     return finish()
   }
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: any) => {
     // 5.1 перенос связи из Vehicle.driverId (или из снимка) в Driver.vehicleId
     for (const fix of toFixFromVehicle) {
       await tx.driver.update({
