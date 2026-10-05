@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+import { pluralDays } from "@/lib/billing/plans";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -80,6 +82,15 @@ const navigation: Array<{
 
 const EMPTY_COUNTS: Record<BadgeKey, number> = { orders: 0, chat: 0 };
 
+/** Тариф организации в том виде, в каком его отдаёт GET /api/org-settings. */
+interface Billing {
+  plan: string;
+  storedPlan: string;
+  isTrialing: boolean;
+  trialDaysLeft: number | null;
+  vehicleLimit: number | null;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -90,6 +101,47 @@ export function Sidebar() {
   const [atiEnabled, setAtiEnabled] = useState(true);
   // Пункт «Владелец» показываем только аккаунту из PLATFORM_OWNER_EMAIL
   const [isOwner, setIsOwner] = useState(false);
+  // Пробный период: предупреждаем заранее и не молчим, когда он кончился
+  const [billing, setBilling] = useState<Billing | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/org-settings", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.billing) setBilling(data.billing);
+      })
+      .catch(() => {
+        /* тариф не узнали — баннер просто не показываем */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  /**
+   * Платные планы баннер не показывают: надоедать нечему. Показываем, только
+   * когда пробный период на исходе (неделя) или уже кончился, а платный план
+   * так и не выбран — тогда действует бесплатный лимит.
+   */
+  const trialNotice = (() => {
+    if (!billing) return null;
+    if (billing.isTrialing) {
+      const days = billing.trialDaysLeft ?? 0;
+      if (days > 7) return null;
+      return {
+        title: `Пробный период: ${pluralDays(days)}`,
+        hint: "Выбрать тариф",
+      };
+    }
+    if (billing.plan === "free" && billing.storedPlan === "trial") {
+      return {
+        title: "Пробный период закончился",
+        hint: `Бесплатный план · до ${billing.vehicleLimit ?? 2} машин`,
+      };
+    }
+    return null;
+  })();
 
   useEffect(() => {
     let active = true;
@@ -259,6 +311,30 @@ export function Sidebar() {
 
         {/* Bottom Section */}
         <div className="border-t border-sidebar-border p-3 space-y-1">
+          {/* Пробный период — только когда он на исходе или кончился */}
+          {trialNotice && (
+            <Link
+              href="/pricing"
+              className={cn(
+                "mb-2 flex items-center gap-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-300 transition-colors hover:bg-amber-400/20",
+                isCollapsed && "justify-center",
+              )}
+              title={isCollapsed ? trialNotice.title : undefined}
+            >
+              <Wallet className="h-4 w-4 flex-shrink-0" />
+              {!isCollapsed && (
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">
+                    {trialNotice.title}
+                  </span>
+                  <span className="block truncate text-[11px] text-amber-300/70">
+                    {trialNotice.hint}
+                  </span>
+                </span>
+              )}
+            </Link>
+          )}
+
           {/* User info */}
           {!isCollapsed && user && (
             <div className="px-3 py-2 mb-2">

@@ -62,6 +62,19 @@ export const PLANS: Record<PlanKey, PlanInfo> = {
 /** Длительность пробного периода, дней. */
 export const TRIAL_DAYS = 14;
 
+/**
+ * «5 дней», «1 день», «3 дня» — мелочь, но в интерфейсе режет глаз.
+ * Чистая функция: склонение покрыто тестами.
+ */
+export function pluralDays(days: number): string {
+  const value = Math.max(0, Math.trunc(days));
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${value} день`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${value} дня`;
+  return `${value} дней`;
+}
+
 export function isPlanKey(value: unknown): value is PlanKey {
   return typeof value === "string" && (PLAN_KEYS as readonly string[]).includes(value);
 }
