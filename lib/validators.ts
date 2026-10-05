@@ -20,7 +20,7 @@ const NEGOTIATION_STATUS_VALUES = [...NEGOTIATION_STATUSES] as [
 // -------------------- Helpers --------------------
 export function formatZodError(error: z.ZodError) {
   return {
-    message: "Validation failed",
+    message: "Проверьте заполнение формы",
     issues: error.issues.map((i) => ({
       path: i.path.join("."),
       message: i.message,
@@ -32,7 +32,7 @@ export function formatZodError(error: z.ZodError) {
 export function zodErrorResponse(error: z.ZodError) {
   return {
     success: false,
-    error: "Validation failed",
+    error: "Проверьте заполнение формы",
     details: formatZodError(error),
   };
 }
@@ -41,12 +41,12 @@ export function zodErrorResponse(error: z.ZodError) {
 export const loginSchema = z.object({
   email: z
     .string()
-    .min(1, "Email required")
-    .email("Invalid email")
+    .min(1, "Укажите e-mail")
+    .email("Некорректный e-mail")
     .max(254)
     .trim()
     .toLowerCase(),
-  password: z.string().min(1, "Password required").max(128),
+  password: z.string().min(1, "Укажите пароль").max(128),
 });
 
 /**
@@ -131,8 +131,8 @@ export const driverLoginSchema = z.object({
 
 // -------------------- Drivers --------------------
 export const createDriverSchema = z.object({
-  name: z.string().trim().min(1, "Name required").max(100),
-  phone: z.string().trim().min(10, "Phone min 10").max(30),
+  name: z.string().trim().min(1, "Укажите название").max(100),
+  phone: z.string().trim().min(10, "Телефон слишком короткий").max(30),
   vehicleId: z.string().cuid().optional().or(z.literal("")).or(z.null()),
   vehicleType: z.string().trim().max(50).optional().or(z.literal("")),
   vehiclePlate: z.string().trim().max(20).optional().or(z.literal("")),
@@ -174,8 +174,8 @@ const floatOrNull = z
   .pipe(z.number().nullish());
 
 export const createVehicleSchema = z.object({
-  plate: z.string().trim().min(1, "Plate required").max(20),
-  type: z.string().trim().min(1, "Type required").max(50),
+  plate: z.string().trim().min(1, "Укажите госномер").max(20),
+  type: z.string().trim().min(1, "Укажите тип").max(50),
   brand: z.string().trim().max(50).optional().or(z.literal("")).or(z.null()),
   model: z.string().trim().max(50).optional().or(z.literal("")).or(z.null()),
   year: z
@@ -193,7 +193,7 @@ export const createVehicleSchema = z.object({
       if (typeof v === "string") return parseInt(v, 10);
       return v;
     })
-    .pipe(z.number().int().min(1, "Capacity min 1").max(100000)),
+    .pipe(z.number().int().min(1, "Грузоподъёмность должна быть больше нуля").max(100000)),
   volume: z
     .union([z.string(), z.number(), z.null(), z.undefined()])
     .optional()
@@ -440,7 +440,7 @@ export const completeRouteSchema = z.object({
 
 // -------------------- Chat --------------------
 export const chatMessageSchema = z.object({
-  content: z.string().trim().min(1, "Content required").max(2000),
+  content: z.string().trim().min(1, "Введите текст").max(2000),
   recipientId: z.string().optional().or(z.null()),
   type: z.enum(["text", "system", "important"]).optional().default("text"),
   isImportant: z.boolean().optional(),
@@ -515,11 +515,11 @@ export async function parseBody<T>(
     return {
       success: false,
       error: {
-        message: "Invalid JSON",
+        message: "Некорректный JSON",
         issues: [
           {
             path: "",
-            message: "Body must be valid JSON",
+            message: "Тело запроса должно быть корректным JSON",
             code: "custom" as any,
           },
         ],

@@ -244,7 +244,7 @@ export default function RoutesPage() {
         }>(url, { force: options?.force })
 
         if (!data.success) {
-          throw new Error(data.error || "Failed to fetch routes")
+          throw new Error(data.error || "Не удалось загрузить рейсы")
         }
 
         setRoutes(buildRouteCards(data.routes || []))

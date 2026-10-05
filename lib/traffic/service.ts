@@ -209,7 +209,7 @@ async function fetchYandexDurationSeconds(params: {
     const data = text ? JSON.parse(text) : null
     const durationSec = tryExtractDurationSeconds(data)
     if (durationSec == null) {
-      throw new Error("Yandex routing: duration not found in response")
+      throw new Error("Яндекс.Маршрутизация: в ответе нет времени в пути")
     }
 
     return Math.max(1, Math.round(durationSec))

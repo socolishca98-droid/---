@@ -408,9 +408,18 @@ export default function FleetPage() {
         open={showAddVehicle}
         onOpenChange={setShowAddVehicle}
         onSubmit={async (data) => {
-          await addVehicle(data)
-          setShowAddVehicle(false)
-          toast.success("Транспорт добавлен")
+          try {
+            await addVehicle(data)
+            setShowAddVehicle(false)
+            toast.success("Транспорт добавлен")
+          } catch (error) {
+            // Отказ сервера (например, лимит машин тарифа — 409 plan_limit)
+            // не должен оставаться молчаливым: иначе диалог висит открытым,
+            // а человек не понимает, добавилась машина или нет
+            toast.error(
+              error instanceof Error ? error.message : "Не удалось добавить машину",
+            )
+          }
         }}
       />
 
@@ -418,9 +427,15 @@ export default function FleetPage() {
         open={showAddDriver}
         onOpenChange={setShowAddDriver}
         onSubmit={async (data) => {
-          await addDriver(data)
-          setShowAddDriver(false)
-          toast.success("Водитель добавлен")
+          try {
+            await addDriver(data)
+            setShowAddDriver(false)
+            toast.success("Водитель добавлен")
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : "Не удалось добавить водителя",
+            )
+          }
         }}
         availableVehicles={availableVehicles}
       />

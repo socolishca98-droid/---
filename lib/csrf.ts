@@ -82,7 +82,7 @@ export function requireCsrf(req: NextRequest): NextResponse | null {
   const result = verifyCsrf(req)
   if (!result.valid) {
     return NextResponse.json(
-      { success: false, error: "CSRF verification failed", reason: result.reason },
+      { success: false, error: "Проверка безопасности не прошла. Обновите страницу", reason: result.reason },
       { status: 403 }
     )
   }

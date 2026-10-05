@@ -320,7 +320,7 @@ export async function scanAtiLoads(params?: any) {
     }
   } catch (e: any) {
     console.error("[scanAtiLoads] Fatal error:", e)
-    return { success: false, error: e.message || "ATI scan failed" }
+    return { success: false, error: e.message || "Не удалось получить грузы с ATI" }
   }
 }
 
