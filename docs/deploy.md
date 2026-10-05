@@ -123,7 +123,24 @@ npm run build
 npm start                      # next start -p 3000 -H 0.0.0.0
 ```
 
-## 8. Чек-лист перед сдачей в эксплуатацию
+## 8. Смоук по ролям
+
+Одной командой проверяется, что роли ведут себя как задумано: администратор
+видит админку и может менять настройки, логист — работает, но без админки,
+водитель — только в мобильном API, гость — никуда.
+
+```bash
+BASE_URL=https://loginex.example.ru \
+  ADMIN_EMAIL=admin@company.ru ADMIN_PASSWORD=<пароль> \
+  LOGIST_EMAIL=logist@company.ru LOGIST_PASSWORD=<пароль> \
+  DRIVER_PHONE=+79990000000 DRIVER_PASSWORD=<пароль> \
+  npm run smoke:roles
+```
+
+Роль без кредов пропускается (не считается ошибкой), проваленные проверки
+дают код выхода 1 — удобно повесить на CI или запускать после обновления.
+
+## 9. Чек-лист перед сдачей в эксплуатацию
 
 - [ ] `npm run verify:deploy` — без блокирующих проблем
 - [ ] HTTPS и редирект с HTTP
@@ -131,5 +148,5 @@ npm start                      # next start -p 3000 -H 0.0.0.0
 - [ ] PostgreSQL недоступен снаружи (только внутри docker-сети)
 - [ ] Бэкап по расписанию настроен и **проверен восстановлением**
 - [ ] Sentry подключён
-- [ ] Смоук по ролям: администратор, логист, водитель (см. docs/remote-access.md)
+- [ ] Смоук по ролям пройден: `BASE_URL=https://… ADMIN_EMAIL=… ADMIN_PASSWORD=… LOGIST_EMAIL=… LOGIST_PASSWORD=… DRIVER_PHONE=… DRIVER_PASSWORD=… npm run smoke:roles`
 - [ ] Пробный период проверен: `/pricing` показывает остаток дней
