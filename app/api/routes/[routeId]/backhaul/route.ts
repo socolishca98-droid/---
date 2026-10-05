@@ -93,7 +93,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error: any) {
     console.error("[Route Backhaul] GET Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Backhaul GET error" },
+      { success: false, error: error.message || "Не удалось загрузить попутные рейсы" },
       { status: 500 },
     )
   }

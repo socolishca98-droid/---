@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "owner organizations error";
+      error instanceof Error ? error.message : "Не удалось загрузить организации";
     console.error("[owner/organizations] GET error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось получить список организаций" },

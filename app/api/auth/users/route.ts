@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
       pendingCount,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[auth/users] error:", message)
     return NextResponse.json(
       { success: false, error: "Не удалось загрузить список сотрудников" },

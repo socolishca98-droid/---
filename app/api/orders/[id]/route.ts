@@ -97,7 +97,7 @@ export async function GET(_request: NextRequest,
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Order ID is required" },
+        { success: false, error: "Не указан заказ" },
         { status: 400 }
       )
     }
@@ -125,7 +125,7 @@ export async function GET(_request: NextRequest,
 
     return NextResponse.json({ success: true, order, hints })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Order GET error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить заказ"
     console.error("[Order API] GET Error:", message)
     return NextResponse.json(
       { success: false, error: message },
@@ -148,7 +148,7 @@ export async function PATCH(request: NextRequest,
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Order ID is required" },
+        { success: false, error: "Не указан заказ" },
         { status: 400 }
       )
     }
@@ -544,7 +544,7 @@ export async function PATCH(request: NextRequest,
 
     return NextResponse.json({ success: true, order: updatedOrder })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Order PATCH error"
+    const message = error instanceof Error ? error.message : "Не удалось обновить заказ"
     console.error("[Order API] PATCH Error:", message)
     return NextResponse.json(
       { success: false, error: message },
@@ -567,7 +567,7 @@ export async function DELETE(_request: NextRequest,
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Order ID is required" },
+        { success: false, error: "Не указан заказ" },
         { status: 400 }
       )
     }
@@ -637,7 +637,7 @@ export async function DELETE(_request: NextRequest,
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Order DELETE error"
+    const message = error instanceof Error ? error.message : "Не удалось удалить заказ"
     console.error("[Order API] DELETE Error:", message)
     return NextResponse.json(
       { success: false, error: message },

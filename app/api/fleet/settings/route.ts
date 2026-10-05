@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[Fleet Settings] GET Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Fleet settings GET error" },
+      { success: false, error: error.message || "Не удалось загрузить настройки автопарка" },
       { status: 500 },
     )
   }
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[Fleet Settings] POST Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Fleet settings POST error" },
+      { success: false, error: error.message || "Не удалось сохранить настройки автопарка" },
       { status: 500 },
     )
   }

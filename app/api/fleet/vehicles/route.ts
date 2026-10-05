@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       vehicles: filtered,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Fleet vehicles error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить автопарк"
     console.error("[Fleet Vehicles] Error:", message)
     return NextResponse.json(
       { success: false, error: message, vehicles: [] },

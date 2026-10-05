@@ -187,7 +187,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       problems: Array.from(new Set(problems)),
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "route map error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить карту рейса"
     console.error("[routes/map] GET error:", message)
     return NextResponse.json(
       { success: false, error: "Не удалось построить маршрут на карте" },

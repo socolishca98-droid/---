@@ -65,7 +65,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (error: any) {
     console.error("[Vehicle Refuel] POST Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Refuel error" },
+      { success: false, error: error.message || "Не удалось сохранить заправку" },
       { status: 500 },
     )
   }

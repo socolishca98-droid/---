@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Photos GET] Error:", message)
     return NextResponse.json(
       { success: false, error: message },
@@ -92,7 +92,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Photos DELETE] Error:", message)
     return NextResponse.json(
       { success: false, error: message },

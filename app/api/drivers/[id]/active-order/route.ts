@@ -28,7 +28,7 @@ export async function GET(_request: NextRequest,
 
     if (!driverId) {
       return NextResponse.json(
-        { success: false, error: "Driver ID is required" },
+        { success: false, error: "Не указан водитель" },
         { status: 400 }
       )
     }
@@ -88,7 +88,7 @@ export async function GET(_request: NextRequest,
       allRouteOrders,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Active Order API] Error:", message)
     return NextResponse.json(
       { success: false, error: message },

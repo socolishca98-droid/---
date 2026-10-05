@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "owner impersonate error";
+      error instanceof Error ? error.message : "Не удалось войти в организацию";
     console.error("[owner/impersonate] POST error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось войти в организацию" },

@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "sidebar counts error";
+      error instanceof Error ? error.message : "Не удалось загрузить счётчики";
     console.error("[sidebar-counts] GET error:", message);
     return NextResponse.json(
       {

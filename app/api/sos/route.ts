@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[sos] GET error:", message)
     return NextResponse.json(
       { success: false, error: "Не удалось загрузить SOS-сигналы" },
@@ -181,7 +181,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true, sos: updated })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[sos] PATCH error:", message)
     return NextResponse.json(
       { success: false, error: "Не удалось обновить SOS-сигнал" },

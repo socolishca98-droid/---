@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Photos API] GET error:", message, error)
     return NextResponse.json(
       { success: false, error: message, photos: [] },
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Photos API] POST error:", message, error)
     return NextResponse.json(
       { success: false, error: message },

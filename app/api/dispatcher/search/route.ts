@@ -217,7 +217,7 @@ export async function GET(request: NextRequest) {
       candidates: candidates.slice(0, MAX_CANDIDATES),
     });
   } catch (error: any) {
-    const message = error instanceof Error ? error.message : "dispatcher search error";
+    const message = error instanceof Error ? error.message : "Не удалось выполнить подбор груза";
     console.error("[dispatcher] search error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось выполнить подбор груза" },

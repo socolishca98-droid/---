@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!id) {
       return NextResponse.json(
-        { success: false, message: "Driver ID is required" },
+        { success: false, message: "Не указан водитель" },
         { status: 400 }
       )
     }
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (latitude === undefined || longitude === undefined) {
       return NextResponse.json(
-        { success: false, message: "Latitude and longitude are required" },
+        { success: false, message: "Нужны координаты: широта и долгота" },
         { status: 400 }
       )
     }
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal Server Error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Driver Location] Error:", message)
     return NextResponse.json(
       { success: false, message },

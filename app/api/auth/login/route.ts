@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set(sessionCookie(result.session.cookieName, result.session.token))
     return response
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[auth/login] error:", message)
     return NextResponse.json(
       { success: false, error: "Не удалось выполнить вход. Попробуйте ещё раз" },

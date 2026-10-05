@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[m/location] POST Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Location update error" },
+      { success: false, error: error.message || "Не удалось передать координаты" },
       { status: 500 },
     )
   }

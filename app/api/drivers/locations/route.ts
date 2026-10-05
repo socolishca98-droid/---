@@ -184,7 +184,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: error?.message || "Unknown error", 
+        error: error?.message || "Не удалось выполнить запрос. Попробуйте ещё раз", 
         drivers: [], 
         stats: {
           online: 0,

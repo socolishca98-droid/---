@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     if (routes.length === 0) {
       return NextResponse.json(
-        { success: false, error: "routes[] required" } as TrafficBatchResponse,
+        { success: false, error: "Не переданы рейсы" } as TrafficBatchResponse,
         { status: 400 },
       )
     }
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         }
       } catch (e: any) {
         if (debug) {
-          const msg = String(e?.message || e || "unknown error")
+          const msg = String(e?.message || e || "Не удалось выполнить запрос. Попробуйте ещё раз")
           errorsByRouteId[routeId] = msg.slice(0, 400)
         }
         continue
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("[Traffic Batch] Error:", e)
     return NextResponse.json(
-      { success: false, error: e?.message || "Traffic batch error" } as TrafficBatchResponse,
+      { success: false, error: e?.message || "Не удалось получить данные о пробках" } as TrafficBatchResponse,
       { status: 500 },
     )
   }

@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "push subscribe error";
+      error instanceof Error ? error.message : "Не удалось включить уведомления";
     console.error("[push/subscribe] POST error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось сохранить подписку" },
@@ -116,7 +116,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "push unsubscribe error";
+      error instanceof Error ? error.message : "Не удалось отключить уведомления";
     console.error("[push/subscribe] DELETE error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось отписать устройство" },

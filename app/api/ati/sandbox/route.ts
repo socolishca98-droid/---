@@ -129,7 +129,7 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "id required" },
+        { success: false, error: "Не указан идентификатор" },
         { status: 400 },
       );
     }

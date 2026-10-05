@@ -38,7 +38,7 @@ export async function GET(
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Driver ID is required" },
+        { success: false, error: "Не указан водитель" },
         { status: 400 }
       )
     }
@@ -54,14 +54,14 @@ export async function GET(
 
     if (!driver) {
       return NextResponse.json(
-        { success: false, error: "Driver not found" },
+        { success: false, error: "Водитель не найден" },
         { status: 404 }
       )
     }
 
     return NextResponse.json({ success: true, driver })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Driver GET error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить водителя"
     console.error("[Driver] GET Error:", message)
     return NextResponse.json(
       { success: false, error: message },
@@ -85,7 +85,7 @@ export async function PATCH(
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Driver ID is required" },
+        { success: false, error: "Не указан водитель" },
         { status: 400 }
       )
     }
@@ -205,7 +205,7 @@ export async function PATCH(
     })
     if (!existingDriver) {
       return NextResponse.json(
-        { success: false, error: "Driver not found" },
+        { success: false, error: "Водитель не найден" },
         { status: 404 }
       )
     }
@@ -237,7 +237,7 @@ export async function PATCH(
   } catch (error) {
     // повтор телефона (Driver.phone @unique) → 409 с понятным текстом
     const friendly = friendlyDbError(error)
-    const message = friendly || (error instanceof Error ? error.message : "Driver PATCH error")
+    const message = friendly || (error instanceof Error ? error.message : "Не удалось обновить водителя")
     console.error("[Driver] PATCH Error:", message)
     return NextResponse.json(
       { success: false, error: message },
@@ -261,7 +261,7 @@ export async function DELETE(
 
     if (!id) {
       return NextResponse.json(
-        { success: false, error: "Driver ID is required" },
+        { success: false, error: "Не указан водитель" },
         { status: 400 }
       )
     }
@@ -273,7 +273,7 @@ export async function DELETE(
     })
     if (!existingDriver) {
       return NextResponse.json(
-        { success: false, error: "Driver not found" },
+        { success: false, error: "Водитель не найден" },
         { status: 404 }
       )
     }
@@ -332,7 +332,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Driver DELETE error"
+    const message = error instanceof Error ? error.message : "Не удалось удалить водителя"
     console.error("[Driver] DELETE Error:", message)
     return NextResponse.json(
       { success: false, error: message },

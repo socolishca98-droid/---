@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Пароль изменён" })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[auth/change-password] error:", message)
     return NextResponse.json(
       { success: false, error: "Не удалось сменить пароль" },

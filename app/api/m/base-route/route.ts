@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("POST /api/m/base-route error:", error)
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: "Не удалось выполнить запрос. Попробуйте ещё раз" },
       { status: 500 },
     )
   }

@@ -26,7 +26,7 @@ export async function GET(
 
     if (!routeId) {
       return NextResponse.json(
-        { success: false, error: "routeId is required" },
+        { success: false, error: "Не указан рейс" },
         { status: 400 },
       )
     }
@@ -48,7 +48,7 @@ export async function GET(
     })
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[RouteEvents API] GET error:", message, error)
     return NextResponse.json(
       { success: false, error: message, events: [] },

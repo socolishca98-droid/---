@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const items = await buildBriefing(org.organizationId);
     return NextResponse.json({ success: true, items });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "briefing error";
+    const message = error instanceof Error ? error.message : "Не удалось собрать сводку";
     console.error("[assistant/briefing] GET error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось собрать брифинг", items: [] },

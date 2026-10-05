@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "owner exit error";
+    const message = error instanceof Error ? error.message : "Не удалось выйти из организации";
     console.error("[owner/exit] POST error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось вернуться в свой аккаунт" },

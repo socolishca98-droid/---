@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, vehicles })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Vehicles GET error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить автопарк"
     console.error("[Vehicles] GET Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, vehicle })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Vehicles POST error"
+    const message = error instanceof Error ? error.message : "Не удалось добавить машину"
     console.error("[Vehicles] POST Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }

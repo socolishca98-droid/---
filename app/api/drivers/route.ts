@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, drivers })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Drivers GET error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить водителей"
     console.error("[Drivers] GET Error:", message)
     return NextResponse.json(
       { success: false, error: message },
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     if (!name || !phone) {
       return NextResponse.json(
-        { success: false, error: "name and phone are required" },
+        { success: false, error: "Нужны имя и телефон" },
         { status: 400 }
       )
     }
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
     // Driver.phone теперь @unique: повтор телефона — это 409 с понятным текстом,
     // а не 500 с техническим сообщением Prisma
     const friendly = friendlyDbError(error)
-    const message = friendly || (error instanceof Error ? error.message : "Drivers POST error")
+    const message = friendly || (error instanceof Error ? error.message : "Не удалось добавить водителя")
     console.error("[Drivers] POST Error:", message)
     return NextResponse.json(
       { success: false, error: message },

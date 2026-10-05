@@ -66,7 +66,7 @@ export async function GET(_request: NextRequest) {
   } catch (error: any) {
     console.error("[Fleet Stats] GET Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Fleet stats error" },
+      { success: false, error: error.message || "Не удалось загрузить статистику автопарка" },
       { status: 500 },
     )
   }

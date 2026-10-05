@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { routeId } = await params
     if (!routeId) {
       return NextResponse.json(
-        { success: false, error: "Route ID is required" },
+        { success: false, error: "Не указан рейс" },
         { status: 400 },
       )
     }
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Route Complete] Error:", message)
 
     // доменная ошибка (недопустимый переход статуса) — это 409, а не 500

@@ -25,7 +25,7 @@ export async function POST(
 
     if (!routeId) {
       return NextResponse.json(
-        { success: false, error: "Route ID is required" },
+        { success: false, error: "Не указан рейс" },
         { status: 400 }
       )
     }
@@ -215,7 +215,7 @@ export async function POST(
       message: proposeToDriver ? "Догруз предложен водителю" : "Догруз добавлен к маршруту",
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Route Add Load] Error:", message)
     return NextResponse.json(
       { success: false, error: message },

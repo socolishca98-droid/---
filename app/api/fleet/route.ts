@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[Fleet API] Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Fleet API error" },
+      { success: false, error: error.message || "Не удалось выполнить запрос к автопарку" },
       { status: 500 },
     )
   }

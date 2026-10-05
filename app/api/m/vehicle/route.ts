@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("GET /api/m/vehicle error:", error)
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: "Не удалось выполнить запрос. Попробуйте ещё раз" },
       { status: 500 }
     )
   }
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("POST /api/m/vehicle error:", error)
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: "Не удалось выполнить запрос. Попробуйте ещё раз" },
       { status: 500 }
     )
   }

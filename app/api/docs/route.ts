@@ -20,7 +20,7 @@ export async function GET() {
       content = fs.readFileSync(yamlPath, "utf-8")
       contentType = "text/yaml"
     } else {
-      return NextResponse.json({ success: false, error: "OpenAPI spec not found" }, { status: 404 })
+      return NextResponse.json({ success: false, error: "Спецификация API не найдена" }, { status: 404 })
     }
 
     // If query ?format=json and yaml exists, try to convert (simple fallback returns yaml)

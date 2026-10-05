@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "org settings error";
+      error instanceof Error ? error.message : "Не удалось обработать настройки организации";
     console.error("[org-settings] GET error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось прочитать настройки" },
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, settings });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "org settings error";
+      error instanceof Error ? error.message : "Не удалось обработать настройки организации";
     console.error("[org-settings] POST error:", message);
     return NextResponse.json(
       { success: false, error: "Не удалось сохранить настройки" },

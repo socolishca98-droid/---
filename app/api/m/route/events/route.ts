@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown error"
+      error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[RouteEvents API] POST error:", message, error)
     return NextResponse.json(
       { success: false, error: message },

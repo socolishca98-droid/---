@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[ATI Scan] Error:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Scan failed" },
+      { success: false, error: error.message || "Не удалось распознать документ" },
       { status: 500 },
     );
   }

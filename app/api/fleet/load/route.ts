@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[Fleet Load] GET Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Fleet load GET error" },
+      { success: false, error: error.message || "Не удалось загрузить загрузку парка" },
       { status: 500 },
     )
   }

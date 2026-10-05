@@ -312,7 +312,7 @@ export async function GET(request: NextRequest) {
       hasMore: offset + routes.length < total,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Route list error"
+    const message = error instanceof Error ? error.message : "Не удалось загрузить рейсы"
     console.error("[Routes API] GET /api/routes error:", message, error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
@@ -754,7 +754,7 @@ export async function POST(request: NextRequest) {
       stats: summarizeRoute(created.orders),
     })
   } catch (error: any) {
-    const message = error instanceof Error ? error.message : "Route creation error"
+    const message = error instanceof Error ? error.message : "Не удалось создать рейс"
     console.error("[Routes API] POST /api/routes error:", message, error)
     if (error?.code === "order_taken") {
       return NextResponse.json(

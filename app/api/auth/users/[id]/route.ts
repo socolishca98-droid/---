@@ -397,7 +397,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       user: updated,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error(`[auth/users/${id}] ${action} error:`, message)
     return NextResponse.json(
       { success: false, error: "Не удалось изменить доступ" },

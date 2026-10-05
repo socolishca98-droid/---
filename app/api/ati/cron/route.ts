@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     console.log("[CRON] Complete:", results)
     return NextResponse.json({ success: true, ...results })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[CRON GET] Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
     const results = await runActions(action, mode)
     return NextResponse.json({ success: true, ...results })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[CRON POST] Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }

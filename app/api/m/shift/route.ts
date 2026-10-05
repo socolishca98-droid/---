@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[m/shift] GET Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Shift GET error" },
+      { success: false, error: error.message || "Не удалось загрузить смену" },
       { status: 500 },
     )
   }
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     if (!driver) {
       return NextResponse.json(
-        { success: false, error: "Driver not found" },
+        { success: false, error: "Водитель не найден" },
         { status: 404 },
       )
     }
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[m/shift] POST Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Shift start error" },
+      { success: false, error: error.message || "Не удалось начать смену" },
       { status: 500 },
     )
   }
@@ -287,7 +287,7 @@ export async function PATCH(request: NextRequest) {
 
     if (!status) {
       return NextResponse.json(
-        { success: false, error: "status required" },
+        { success: false, error: "Не указан статус" },
         { status: 400 },
       )
     }
@@ -338,7 +338,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error: any) {
     console.error("[m/shift] PATCH Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Shift update error" },
+      { success: false, error: error.message || "Не удалось обновить статус смены" },
       { status: 500 },
     )
   }
@@ -401,7 +401,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error: any) {
     console.error("[m/shift] DELETE Error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Shift end error" },
+      { success: false, error: error.message || "Не удалось завершить смену" },
       { status: 500 },
     )
   }

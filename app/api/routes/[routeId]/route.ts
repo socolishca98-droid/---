@@ -85,7 +85,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { routeId } = await params
     if (!routeId) {
       return NextResponse.json(
-        { success: false, error: "Route ID is required" },
+        { success: false, error: "Не указан рейс" },
         { status: 400 },
       )
     }
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Route API] GET Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
@@ -167,7 +167,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { routeId } = await params
     if (!routeId) {
       return NextResponse.json(
-        { success: false, error: "Route ID is required" },
+        { success: false, error: "Не указан рейс" },
         { status: 400 },
       )
     }
@@ -208,7 +208,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (hasOrderSequence) {
       if (!orderSequence || orderSequence.length === 0) {
         return NextResponse.json(
-          { success: false, error: "orderSequence[] required" },
+          { success: false, error: "Не передан порядок заказов" },
           { status: 400 },
         )
       }
@@ -476,7 +476,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       summary,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Route API] PATCH Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
@@ -500,7 +500,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { routeId } = await params
     if (!routeId) {
       return NextResponse.json(
-        { success: false, error: "Route ID is required" },
+        { success: false, error: "Не указан рейс" },
         { status: 400 },
       )
     }
@@ -597,7 +597,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       ).length,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
+    const message = error instanceof Error ? error.message : "Не удалось выполнить запрос. Попробуйте ещё раз"
     console.error("[Route API] DELETE Error:", message)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }

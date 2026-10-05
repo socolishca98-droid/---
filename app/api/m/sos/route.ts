@@ -27,14 +27,14 @@ export async function POST(request: NextRequest) {
     // Валидация
     if (!type) {
       return NextResponse.json(
-        { success: false, error: "type is required" },
+        { success: false, error: "Не указан тип" },
         { status: 400 },
       );
     }
 
     if (latitude === undefined || longitude === undefined) {
       return NextResponse.json(
-        { success: false, error: "GPS coordinates required for SOS" },
+        { success: false, error: "Для СОС нужны координаты GPS" },
         { status: 400 },
       );
     }

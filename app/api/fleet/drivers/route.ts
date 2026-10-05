@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("[Fleet Drivers] GET error:", error)
     return NextResponse.json(
-      { success: false, error: error.message || "Fleet drivers error" },
+      { success: false, error: error.message || "Не удалось загрузить водителей" },
       { status: 500 },
     )
   }
