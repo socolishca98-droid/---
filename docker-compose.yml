@@ -1,5 +1,11 @@
-# docker-compose.yml - P2-5 production ready with PostgreSQL
-version: '3.8'
+# docker-compose.yml — продакшен-запуск: приложение + PostgreSQL.
+#
+# Порядок старта (важен):
+#   postgres  → db-setup (накатывает структуру один раз) → app
+#
+# Структура базы накатывается отдельным одноразовым сервисом, а не на каждом
+# старте приложения: `prisma db push` — идемпотентен, но не должен замедлять
+# перезапуск и мешать двум репликам. Для настоящих миграций см. docs/deploy.md.
 
 services:
   postgres:
@@ -8,16 +14,28 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-loginex}
       POSTGRES_USER: ${POSTGRES_USER:-loginex}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loginex}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  db-setup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-loginex}:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@postgres:5432/${POSTGRES_DB:-loginex}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npm", "run", "db:postgres:push"]
 
   app:
     build:
@@ -26,26 +44,24 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-loginex}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-loginex}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-loginex}:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@postgres:5432/${POSTGRES_DB:-loginex}?schema=public
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET required}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-${AUTH_SECRET}}
-      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-}
+      AUTH_SESSION_TTL_HOURS: ${AUTH_SESSION_TTL_HOURS:-12}
       SENTRY_DSN: ${SENTRY_DSN:-}
       NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      TRAFFIC_PROVIDER: ${TRAFFIC_PROVIDER:-}
+      YANDEX_ROUTING_API_KEY: ${YANDEX_ROUTING_API_KEY:-}
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-setup:
+        condition: service_completed_successfully
     ports:
       - "${APP_PORT:-3000}:3000"
     volumes:
-      - uploads:/app/uploads
-    command: >
-      sh -c "
-        node scripts/make-postgres-schema.mjs && npx prisma migrate deploy --schema=./prisma/schema.postgres.prisma &&
-        node server.js
-      "
+      # фото и сканы документов — вне public, живут в data/uploads
+      - loginex-uploads:/app/data/uploads
+      - loginex-backups:/app/backups
 
-  # Optional: pgAdmin for dev
+  # pgAdmin — только для отладки: docker compose --profile tools up -d
   pgadmin:
     image: dpage/pgadmin4:latest
     restart: unless-stopped
@@ -61,4 +77,5 @@ services:
 
 volumes:
   pgdata:
-  uploads:
+  loginex-uploads:
+  loginex-backups:

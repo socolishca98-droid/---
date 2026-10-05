@@ -278,7 +278,7 @@ npm run db:migrate-order-stages
 
 Если база уже PostgreSQL — тот же порядок, только вместо `db:push` используйте
 свой способ применения схемы (`npm run schema:postgres` и `db push` по
-`prisma/schema.postgres.prisma`).
+`prisma/postgres/schema.prisma`).
 
 ---
 

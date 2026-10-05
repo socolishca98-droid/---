@@ -1,0 +1,39 @@
+# .dockerignore — что не должно попадать в образ.
+# Меньше контекста → быстрее сборка; секреты и локальные данные → не в образ.
+
+node_modules
+.next
+.git
+.gitignore
+
+# Локальная база и её журналы — в контейнере своя PostgreSQL
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+dev.db*
+
+# Сгенерированные схемы (создаются внутри контейнера)
+prisma/postgres
+prisma/schema.postgres.prisma
+prisma/schema.sqlite.prisma
+
+# Секреты и локальные конфиги
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Данные, бэкапы, логи
+data
+backups
+*.log
+npm-debug.log*
+
+# Тесты и служебные сборки
+__tests__
+tests
+.test-build
+coverage
+docs/api-endpoints.json

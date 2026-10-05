@@ -2,7 +2,7 @@
 
 ## Текущее состояние
 - Dev: SQLite `file:./dev.db` via `prisma/schema.prisma` (provider sqlite)
-- Prod ready: PostgreSQL via `prisma/schema.postgres.prisma` (provider postgresql)
+- Prod ready: PostgreSQL via `prisma/postgres/schema.prisma` (provider postgresql, генерируется)
 
 ## Почему PostgreSQL для продакшена
 - SQLite не подходит для многопользовательской нагрузки, блокировки записи
@@ -31,11 +31,13 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/loginex?schema=publi
 postgres-схема генерируется из неё и в git не коммитится:
 
 ```bash
-npm run schema:postgres          # → prisma/schema.postgres.prisma (provider = postgresql)
-npx prisma generate --schema=prisma/schema.postgres.prisma
+npm run schema:postgres          # → prisma/postgres/schema.prisma (provider = postgresql)
+npm run db:postgres:generate     # клиент под PostgreSQL
+npm run db:postgres:push         # структура базы
 ```
 
-Дальше все команды Prisma вызываются с явным `--schema=prisma/schema.postgres.prisma`.
+Дальше все команды Prisma вызываются с явным `--schema=prisma/postgres/schema.prisma`
+(или готовыми скриптами `npm run db:postgres:*`).
 
 ### 4. Миграция
 ```bash
@@ -46,7 +48,7 @@ npx prisma generate
 npx prisma migrate dev --name init_postgres
 
 # Для продакшена
-npx prisma migrate deploy
+npm run db:postgres:migrate      # prisma migrate deploy под прод-схемой
 
 # Опционально: сидирование данных
 npx prisma db seed
@@ -108,12 +110,13 @@ volumes:
 
 ```bash
 DATABASE_URL="file:./dev.db" npm run db:generate
-rm -f prisma/schema.postgres.prisma
+rm -rf prisma/postgres
 ```
 
 ## Примечания
 - SQLite файл `dev.db` не коммитится (в .gitignore)
 - Для продакшена обязательно `AUTH_SECRET` минимум 32 символа
 - Включите SSL для Postgres в проде `?sslmode=require`
-- Настройте бэкапы `pg_dump`
+- Настройте бэкапы `pg_dump` (npm run backup:db)
+- Полная инструкция по развёртыванию: docs/deploy.md
 - Мониторинг через `pg_stat_activity`

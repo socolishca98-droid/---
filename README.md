@@ -107,8 +107,8 @@ npm run db:migrate-order-stages
 npm run db:migrate-orgs
 ```
 
-**Продакшн — PostgreSQL.** Полный порядок действий: `docs/postgres-migration.md`.
-Кратко: `npm run schema:postgres` создаёт `prisma/schema.postgres.prisma`,
+**Продакшн — PostgreSQL.** Схема: `docs/postgres-migration.md`, развёртывание: `docs/deploy.md`.
+Кратко: `npm run schema:postgres` создаёт `prisma/postgres/schema.prisma`,
 схема применяется на сервере БД, `DATABASE_URL` меняется на
 `postgresql://user:password@host:5432/loginex?schema=public`. Для параллельной
 записи нескольких водителей Postgres нужен обязательно (SQLite блокирует файл).
@@ -161,6 +161,7 @@ docs/           документация: безопасность, схема, 
 Полезная документация:
 
 - `docs/postgres-migration.md` — переход на PostgreSQL;
+- `docs/deploy.md` — развёртывание в продакшен: Docker Compose, env, бэкапы, чек-лист;
 - `docs/remote-access.md` — удалённый доступ: тоннель Cloudflare или свой VPS (https, PWA, GPS);
 - `docs/task-1-security.md` — чек-лист безопасности (что осталось включить);
 - `docs/task-2-schema.md`, `docs/task-orders-process.md` — схема и процесс заказов;

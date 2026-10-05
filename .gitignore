@@ -56,6 +56,7 @@ Thumbs.db
 prisma/.task2-vehicle-links.json
 
 # генерируется из prisma/schema.prisma (npm run schema:postgres)
+prisma/postgres/
 prisma/schema.postgres.prisma
 prisma/schema.sqlite.prisma
 

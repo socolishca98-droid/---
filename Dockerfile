@@ -39,11 +39,16 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Prisma CLI нужен в рантайме: клиент под PostgreSQL генерируется на старте
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/package.json ./package.json
 
-# For SQLite dev, copy db if exists (optional)
-# COPY --from=builder /app/dev.db ./dev.db
+# Фото и сканы лежат вне public (data/uploads) — каталог должен быть
+# доступен на запись процессу nextjs и, на проде, смонтирован томом.
+RUN mkdir -p data/uploads backups && chown -R nextjs:nodejs data backups
 
 USER nextjs
 
@@ -55,4 +60,5 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-CMD ["node", "server.js"]
+# Точка входа сама готовит схему и клиент Prisma под провайдер из DATABASE_URL
+CMD ["sh", "./scripts/docker-entrypoint.sh"]
