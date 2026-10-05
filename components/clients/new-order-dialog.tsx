@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 const PAYMENT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "cash", label: "Наличные" },
@@ -96,7 +96,6 @@ export function NewOrderDialog({
   repeatOrderId,
   onCreated,
 }: NewOrderDialogProps) {
-  const { toast } = useToast();
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadingRepeat, setLoadingRepeat] = useState(false);
@@ -170,10 +169,8 @@ export function NewOrderDialog({
   const submit = async () => {
     if (!form || !client || saving) return;
     if (!form.routeFrom.trim() || !form.routeTo.trim()) {
-      toast({
-        title: "Укажите маршрут",
+      toast.error("Укажите маршрут", {
         description: "Город погрузки и город выгрузки обязательны.",
-        variant: "destructive",
       });
       return;
     }
@@ -205,21 +202,18 @@ export function NewOrderDialog({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
-        toast({
-          title: "Заказ не создался",
+        toast.error("Заказ не создался", {
           description: data?.error || "Попробуйте ещё раз",
-          variant: "destructive",
         });
         return;
       }
-      toast({
-        title: "Заказ создан",
+      toast.success("Заказ создан", {
         description: `${form.routeFrom} → ${form.routeTo} · этап «Согласование»`,
       });
       onOpenChange(false);
       onCreated?.();
     } catch {
-      toast({ title: "Ошибка соединения", variant: "destructive" });
+      toast.error("Ошибка соединения");
     } finally {
       setSaving(false);
     }

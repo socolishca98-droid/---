@@ -22,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AtiConnectionCard } from "@/components/organization/ati-connection-card";
 import { Switch } from "@/components/ui/switch";
@@ -52,7 +52,6 @@ function minutesHuman(value: string): string {
 }
 
 export default function SettingsPage() {
-  const { toast } = useToast();
   const [form, setForm] = useState<SettingsState>(EMPTY);
   const [theme, setTheme] = useState("dark");
   const [loading, setLoading] = useState(true);
@@ -87,22 +86,19 @@ export default function SettingsPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
-        toast({
-          title: "Не переключилось",
+        toast.error("Не переключилось", {
           description: data?.error || "Попробуйте ещё раз",
-          variant: "destructive",
         });
         return;
       }
       setAtiEnabled(next);
-      toast({
-        title: next ? "ATI.SU включён" : "ATI.SU выключен",
+      toast.success(next ? "ATI.SU включён" : "ATI.SU выключен", {
         description: next
           ? "Поиск грузов и кабинет ATI снова в меню."
           : "ATI-разделы скрыты; заказы создавайте из клиентской базы.",
       });
     } catch {
-      toast({ title: "Ошибка соединения", variant: "destructive" });
+      toast.error("Ошибка соединения");
     } finally {
       setAtiSaving(false);
     }
@@ -158,8 +154,7 @@ export default function SettingsPage() {
     } catch {
       /* не критично */
     }
-    toast({
-      title: "Тема карты сохранена",
+    toast.success("Тема карты сохранена", {
       description: "Карта откроется с этой подложкой.",
     });
   };
@@ -176,11 +171,9 @@ export default function SettingsPage() {
           !Number.isFinite(baseLat) ||
           !Number.isFinite(baseLng))
       ) {
-        toast({
-          title: "Нужны координаты базы",
+        toast.error("Нужны координаты базы", {
           description:
             "Выберите адрес из подсказок или введите широту и долготу.",
-          variant: "destructive",
         });
         setSaving(false);
         return;
@@ -206,13 +199,11 @@ export default function SettingsPage() {
       if (!response.ok || !data?.success) {
         throw new Error(data?.error || "Ошибка сохранения");
       }
-      toast({ title: "Настройки сохранены" });
+      toast.success("Настройки сохранены");
     } catch (error) {
-      toast({
-        title: "Не сохранилось",
+      toast.error("Не сохранилось", {
         description:
           error instanceof Error ? error.message : "Попробуйте ещё раз",
-        variant: "destructive",
       });
     } finally {
       setSaving(false);

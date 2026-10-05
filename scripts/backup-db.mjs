@@ -201,7 +201,7 @@ function main() {
     console.log(`  Удалены старые: ${removed.join(", ")}`);
   }
   console.log(
-    "  Восстановление SQLite: скопируйте файл обратно в prisma/<имя>.db",
+    "  Восстановление: npm run restore:db (из последней копии, --list, --file <имя>)",
   );
 }
 
