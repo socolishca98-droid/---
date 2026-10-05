@@ -168,7 +168,7 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
                         variant="secondary"
                         className="absolute top-2 right-2 bg-success/80 text-success-foreground"
                       >
-                        {photo.ocrData.amount.toLocaleString()} ₽
+                        {photo.ocrData.amount.toLocaleString("ru-RU")} ₽
                       </Badge>
                     )}
 
@@ -285,7 +285,7 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
                           Сумма
                         </div>
                         <div className="text-lg font-bold text-primary">
-                          {selectedAny.ocrData.amount.toLocaleString()} ₽
+                          {selectedAny.ocrData.amount.toLocaleString("ru-RU")} ₽
                         </div>
                       </div>
                     )}

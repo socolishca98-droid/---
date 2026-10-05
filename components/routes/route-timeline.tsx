@@ -366,7 +366,7 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
                                   <p>
                                     Вес: {(eventData.weight / 1000).toFixed(1)}т
                                     {eventData.price &&
-                                      ` • ${eventData.price.toLocaleString()}₽`}
+                                      ` • ${eventData.price.toLocaleString("ru-RU")}₽`}
                                   </p>
                                 )}
                               </div>

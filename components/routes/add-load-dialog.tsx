@@ -344,7 +344,7 @@ export function AddLoadDialog({ open, onOpenChange, route, onSuccess }: AddLoadD
                             </span>
                           </div>
                           <span className="font-bold text-green-600">
-                            {load.price.toLocaleString()} ₽
+                            {load.price.toLocaleString("ru-RU")} ₽
                           </span>
                         </div>
 

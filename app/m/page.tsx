@@ -773,7 +773,7 @@ export default function MobileHomePage() {
         setShift(null)
 
         toast.success("Рейс завершён!", {
-          description: `${data.stats.ordersCount} точек, ${data.stats.totalRevenue.toLocaleString()}₽`,
+          description: `${data.stats.ordersCount} точек, ${data.stats.totalRevenue.toLocaleString("ru-RU")}₽`,
         })
 
         if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100])

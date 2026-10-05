@@ -70,7 +70,7 @@ export function ReceiptSummary({ photos }: ReceiptSummaryProps) {
                 Общая сумма расходов
               </div>
               <div className="text-3xl font-bold text-primary">
-                {totalAmount.toLocaleString()} ₽
+                {totalAmount.toLocaleString("ru-RU")} ₽
               </div>
             </div>
             <TrendingUp className="h-8 w-8 text-primary opacity-50" />
@@ -104,7 +104,7 @@ export function ReceiptSummary({ photos }: ReceiptSummaryProps) {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{purpose}</span>
                     <span className="font-bold">
-                      {data.amount.toLocaleString()} ₽
+                      {data.amount.toLocaleString("ru-RU")} ₽
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">

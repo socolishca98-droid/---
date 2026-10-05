@@ -1231,7 +1231,7 @@ function LoadCard({
             <div className="text-right">
               <div className="text-xl font-bold text-green-600">
                 {load.price > 0
-                  ? `${load.price.toLocaleString()} ₽`
+                  ? `${load.price.toLocaleString("ru-RU")} ₽`
                   : "Договорная"}
               </div>
               {pricePerKm > 0 && (

@@ -826,7 +826,7 @@ function DraggableOrderCard({
           </div>
           <span className="text-base font-bold text-emerald-400">
             {order.price > 0
-              ? `${order.price.toLocaleString()}₽`
+              ? `${order.price.toLocaleString("ru-RU")}₽`
               : "Договорная"}
           </span>
         </div>
@@ -942,7 +942,7 @@ function GroupContainer({
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/85 border border-slate-700/80 text-[11px]">
           <DollarSign className="h-3 w-3 text-amber-300" />
           <span className="text-slate-200">
-            {totalPrice.toLocaleString()} ₽
+            {totalPrice.toLocaleString("ru-RU")} ₽
           </span>
           {pricePerKm > 0 && (
             <span
@@ -2176,7 +2176,7 @@ export function OrdersSandbox() {
         type: "bundle",
         status: "open",
         title: `Собрать группу: ${key}`,
-        subtitle: `${ungrouped.length} груз(а) • ${(totalWeight / 1000).toFixed(1)}т • ${totalPrice.toLocaleString()} ₽`,
+        subtitle: `${ungrouped.length} груз(а) • ${(totalWeight / 1000).toFixed(1)}т • ${totalPrice.toLocaleString("ru-RU")} ₽`,
         reasons: [
           "Группа поможет оценить экономику сборного рейса (дистанция берётся по максимуму).",
         ],
@@ -2250,7 +2250,7 @@ export function OrdersSandbox() {
           status: "open",
           title: `${c.a.from?.split(",")[0]} → ${c.a.to?.split(",")[0]}`,
           subtitle: `${c.a.cargo} • ${(c.a.weight / 1000).toFixed(1)}т • ${c.a.distance} км • ${
-            c.a.price > 0 ? `${c.a.price.toLocaleString()} ₽` : "Договорная"
+            c.a.price > 0 ? `${c.a.price.toLocaleString("ru-RU")} ₽` : "Договорная"
           }${c.pricePerKm ? ` • ${c.pricePerKm} ₽/км` : ""}`,
           reasons: c.reasons.slice(0, 4),
           atiOrderId: c.a.id,
@@ -2980,7 +2980,7 @@ export function OrdersSandbox() {
                         </span>
                         <span className="text-emerald-400 font-medium">
                           {order.price > 0
-                            ? `${order.price.toLocaleString()}₽`
+                            ? `${order.price.toLocaleString("ru-RU")}₽`
                             : "Договорная"}
                         </span>
                         <button
@@ -3002,7 +3002,7 @@ export function OrdersSandbox() {
                     <span className="text-slate-400">Дистанция</span>
                     <div className="text-right">
                       <span className="font-medium">
-                        {routeCalculation.effectiveDistance.toLocaleString()} км
+                        {routeCalculation.effectiveDistance.toLocaleString("ru-RU")} км
                       </span>
                       {routeCalculation.savedDistance > 0 && (
                         <div className="text-[10px] text-green-400">
@@ -3039,7 +3039,7 @@ export function OrdersSandbox() {
                   <div className="flex justify-between items-center">
                     <span className="text-slate-400">Итого:</span>
                     <span className="text-2xl font-bold text-orange-500">
-                      {routeCalculation.totalPrice.toLocaleString()} ₽
+                      {routeCalculation.totalPrice.toLocaleString("ru-RU")} ₽
                     </span>
                   </div>
 
@@ -3072,13 +3072,13 @@ export function OrdersSandbox() {
                           </span>
                           <div className="text-right text-[11px] text-slate-300">
                             <div>
-                              Топливо: {etaPreview.fuelCost.toLocaleString()} ₽
+                              Топливо: {etaPreview.fuelCost.toLocaleString("ru-RU")} ₽
                             </div>
                             <div>
-                              Платные: {etaPreview.tollsCost.toLocaleString()} ₽
+                              Платные: {etaPreview.tollsCost.toLocaleString("ru-RU")} ₽
                             </div>
                             <div className="font-medium">
-                              Итого: {etaPreview.totalCost.toLocaleString()} ₽
+                              Итого: {etaPreview.totalCost.toLocaleString("ru-RU")} ₽
                             </div>
                           </div>
                         </div>
@@ -4363,13 +4363,13 @@ function OrderEditForm({
           <span>
             Дистанция:{" "}
             <span className="text-slate-100">
-              {parsedDistance.toLocaleString()} км
+              {parsedDistance.toLocaleString("ru-RU")} км
             </span>
           </span>
           <span>
             Ставка:{" "}
             <span className="text-slate-100">
-              {parsedPrice.toLocaleString()} ₽
+              {parsedPrice.toLocaleString("ru-RU")} ₽
             </span>
           </span>
         </div>

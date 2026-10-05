@@ -453,7 +453,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                 )}
 
                 <span className="text-xl font-bold text-green-600">
-                  {route.totalPrice.toLocaleString()} ₽
+                  {route.totalPrice.toLocaleString("ru-RU")} ₽
                 </span>
 
                 {route.economics?.basis && (
@@ -484,7 +484,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
 
                 {eta && (
                   <div className="text-xs text-muted-foreground">
-                    Расходы: {eta.totalCost.toLocaleString()} ₽
+                    Расходы: {eta.totalCost.toLocaleString("ru-RU")} ₽
                   </div>
                 )}
 
@@ -668,7 +668,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
 
                       <div className="text-right">
                         <span className="font-medium text-green-600">
-                          {(order.price || 0).toLocaleString()} ₽
+                          {(order.price || 0).toLocaleString("ru-RU")} ₽
                           {(route.unprofitableOrderIds || []).includes(order.id) && (
                             <span
                               className="block text-[10px] font-semibold text-rose-500"

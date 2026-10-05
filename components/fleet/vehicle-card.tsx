@@ -431,7 +431,7 @@ export function VehicleCard({
                 <span className="text-xs">Пробег</span>
               </div>
               <p className="text-sm font-semibold">
-                {vehicle.mileage.toLocaleString()} км
+                {vehicle.mileage.toLocaleString("ru-RU")} км
               </p>
             </div>
           )}

@@ -76,7 +76,7 @@ export function PendingLoadCard({ load, onAccept, onReject }: PendingLoadCardPro
           
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-green-400">
-              +{load.price.toLocaleString()}₽
+              +{load.price.toLocaleString("ru-RU")}₽
             </span>
             {expanded ? (
               <ChevronUp className="h-5 w-5 text-gray-500" />
