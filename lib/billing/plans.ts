@@ -59,6 +59,18 @@ export const PLANS: Record<PlanKey, PlanInfo> = {
   },
 };
 
+/**
+ * Почта, куда писать о подключении платного тарифа. Оплата пока внешняя,
+ * поэтому человек должен понимать, куда обращаться: BILLING_CONTACT_EMAIL
+ * или, если он не задан, почта владельца платформы.
+ */
+export function billingContactEmail(): string | null {
+  const raw = (process.env.BILLING_CONTACT_EMAIL || process.env.PLATFORM_OWNER_EMAIL || "")
+    .trim()
+    .toLowerCase();
+  return raw || null;
+}
+
 /** Длительность пробного периода, дней. */
 export const TRIAL_DAYS = 14;
 

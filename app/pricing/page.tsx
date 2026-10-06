@@ -36,10 +36,14 @@ interface PricingPayload {
   billing?: BillingInfo;
   canManage?: boolean;
   error?: string;
+  canSelectPaidPlan?: boolean;
+  billingContact?: string | null;
 }
 
 const PLAN_CARDS: Array<{
   key: string;
+  /** Платный тариф: подключается владельцем платформы после оплаты */
+  needsPayment?: boolean;
   label: string;
   priceRubPerMonth: number;
   vehicleLimit: number | null;
@@ -54,6 +58,7 @@ const PLAN_CARDS: Array<{
   },
   {
     key: "start",
+    needsPayment: true,
     label: "Старт",
     priceRubPerMonth: 3500,
     vehicleLimit: 3,
@@ -61,6 +66,7 @@ const PLAN_CARDS: Array<{
   },
   {
     key: "park",
+    needsPayment: true,
     label: "Парк",
     priceRubPerMonth: 12000,
     vehicleLimit: 15,
@@ -68,6 +74,7 @@ const PLAN_CARDS: Array<{
   },
   {
     key: "company",
+    needsPayment: true,
     label: "Компания",
     priceRubPerMonth: 35000,
     vehicleLimit: 50,
@@ -78,6 +85,9 @@ const PLAN_CARDS: Array<{
 export default function PricingPage() {
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [canManage, setCanManage] = useState(false);
+  // Платный тариф подключает владелец платформы: оплата пока внешняя
+  const [canSelectPaid, setCanSelectPaid] = useState(false);
+  const [contact, setContact] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +103,8 @@ export default function PricingPage() {
       }
       setBilling(payload.billing);
       setCanManage(Boolean(payload.canManage));
+      setCanSelectPaid(Boolean(payload.canSelectPaidPlan));
+      setContact(payload.billingContact ?? null);
       setError(null);
     } catch {
       setError("Сервер недоступен");
@@ -212,13 +224,22 @@ export default function PricingPage() {
                   size="sm"
                   variant={active ? "outline" : "default"}
                   className="w-full"
-                  disabled={!canManage || active || saving !== null}
+                  disabled={
+                    !canManage ||
+                    active ||
+                    saving !== null ||
+                    (plan.needsPayment && !canSelectPaid)
+                  }
                   onClick={() => void choose(plan.key)}
                 >
                   {saving === plan.key ? (
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   ) : null}
-                  {active ? "Текущий план" : "Выбрать"}
+                  {active
+                    ? "Текущий план"
+                    : plan.needsPayment && !canSelectPaid
+                      ? "После оплаты"
+                      : "Выбрать"}
                 </Button>
               </CardContent>
             </Card>
@@ -227,9 +248,24 @@ export default function PricingPage() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Оплата пока проводится вручную: выберите план, после подтверждения
-        оплаты он вступает в силу. Эквайринг и автоматическое продление —
-        следующий этап. Лимит машин проверяется при добавлении машины в парк.
+        {canSelectPaid
+          ? "Вы владелец платформы: платный тариф подключается вами после оплаты. "
+          : "Платный тариф подключается после оплаты"}
+        {!canSelectPaid && contact ? (
+          <>
+            {" — напишите на "}
+            <a href={`mailto:${contact}`} className="underline underline-offset-2">
+              {contact}
+            </a>
+            .{" "}
+          </>
+        ) : (
+          ". "
+        )}
+        Бесплатный план можно выбрать самостоятельно: понижать тариф
+        организация вправе в любой момент. Эквайринг и автоматическое
+        продление — следующий этап. Лимит машин проверяется при добавлении
+        машины в парк.
       </p>
     </div>
   );

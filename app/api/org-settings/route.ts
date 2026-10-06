@@ -9,7 +9,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { forbidden, requireStaff } from "@/lib/auth/session";
-import { isPlanKey, resolvePlan } from "@/lib/billing/plans";
+import { isPlanKey, resolvePlan, billingContactEmail } from "@/lib/billing/plans";
+import { isPlatformOwner } from "@/lib/auth/owner";
 import { requireOrganization, scopedWhere } from "@/lib/org";
 import { getOrgSettings, setOrgSettings } from "@/lib/org-settings";
 import { prisma } from "@/lib/prisma";
@@ -36,11 +37,16 @@ export async function GET(request: NextRequest) {
       storedPlan: settings.plan,
       organizationCreatedAt: organization?.createdAt ?? null,
     });
+    const owner = isPlatformOwner(auth.value);
     return NextResponse.json({
       success: true,
       settings,
       billing: { ...resolved, vehicleCount },
       canManage: auth.value.user.role === "admin",
+      // Платный тариф подключает владелец платформы: оплата внешняя, и без
+      // этой проверки «Компанию» за 35 000 ₽ включал бы любой администратор
+      canSelectPaidPlan: owner,
+      billingContact: billingContactEmail(),
     });
   } catch (error) {
     const message =
@@ -80,6 +86,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { success: false, error: "Неизвестный тариф" },
       { status: 400 },
+    );
+  }
+  if (hasPlan && body.plan !== "free" && !isPlatformOwner(auth.value)) {
+    // Платные планы подключаются после оплаты, владельцем платформы.
+    // Бесплатный доступен всегда: понижать тариф организация может сама.
+    const contact = billingContactEmail();
+    return NextResponse.json(
+      {
+        success: false,
+        error: contact
+          ? `Тариф подключается после оплаты — напишите на ${contact}`
+          : "Тариф подключается после оплаты — обратитесь к владельцу сервиса",
+        code: "plan_requires_payment",
+      },
+      { status: 403 },
     );
   }
 

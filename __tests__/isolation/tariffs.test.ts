@@ -9,7 +9,11 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { afterEach } from "vitest";
+
+import { memoryDb } from "../__mocks__/prisma-memory";
 import {
+  cid,
   expectNoForeignIds,
   jsonOf,
   makeRequest,
@@ -26,6 +30,32 @@ import { POST as vehiclesPost } from "@/app/api/vehicles/route";
 
 let world: World;
 let cookieAdminA: string;
+
+/** Почта владельца платформы: совпадает с PLATFORM_OWNER_EMAIL в тестах. */
+const OWNER_EMAIL = "owner@loginex.test";
+
+// Режим владельца включается переменной окружения — после каждого теста её
+// надо снимать, иначе соседние проверки поедут на включённом режиме
+afterEach(() => {
+  delete process.env.PLATFORM_OWNER_EMAIL;
+  delete process.env.BILLING_CONTACT_EMAIL;
+});
+
+/** Сессия владельца платформы: администратор с почтой из PLATFORM_OWNER_EMAIL. */
+async function platformOwnerCookie() {
+  const ownerId = cid("owneruser");
+  memoryDb.insert("user", {
+    id: ownerId,
+    organizationId: world.orgA,
+    name: "Владелец",
+    email: OWNER_EMAIL,
+    passwordHash: "x",
+    passwordSalt: "x",
+    role: "admin",
+    status: "active",
+  });
+  return sessionCookie({ userId: ownerId, role: "admin", kind: "staff" });
+}
 let cookieLogistA: string;
 let cookieAdminB: string;
 
@@ -174,7 +204,10 @@ describe("тарифы: лимит машин", () => {
     const blocked = await createVehicle(cookieAdminA, "В003ВВ77");
     expect(blocked.status).toBe(409);
 
-    const upgraded = await postSettings(cookieAdminA, { plan: "park" });
+    // Платный тариф подключает владелец платформы, а не администратор кнопкой
+    process.env.PLATFORM_OWNER_EMAIL = OWNER_EMAIL;
+    const cookieOwner = await platformOwnerCookie();
+    const upgraded = await postSettings(cookieOwner, { plan: "park" });
     expect(upgraded.status).toBe(200);
 
     const third = await createVehicle(cookieAdminA, "В003ВВ77");
@@ -191,5 +224,48 @@ describe("тарифы: лимит машин", () => {
 
     const okB = await createVehicle(cookieAdminB, "В004ВВ77");
     expect(okB.status).toBe(200);
+  });
+});
+
+describe("тарифы: платный тариф подключает владелец платформы", () => {
+  it("администратор организации не включает платный тариф кнопкой (403)", async () => {
+    process.env.BILLING_CONTACT_EMAIL = "sales@loginex.test";
+    const { status, payload } = await postSettings(cookieAdminA, { plan: "park" });
+    expect(status).toBe(403);
+    expect(payload.success).toBe(false);
+    expect(payload.code).toBe("plan_requires_payment");
+    // в сообщении есть куда написать — иначе непонятно, что делать дальше
+    expect(payload.error).toContain("sales@loginex.test");
+
+    // тариф не изменился: бесплатно «Парк» не включается
+    const after = await getSettings(cookieAdminA);
+    expect(after.payload.billing.plan).toBe("trial");
+  });
+
+  it("бесплатный план администратор выбирает сам: понижать можно всегда", async () => {
+    const { status, payload } = await postSettings(cookieAdminA, { plan: "free" });
+    expect(status).toBe(200);
+    expect(payload.settings.plan).toBe("free");
+  });
+
+  it("владелец платформы подключает платный тариф", async () => {
+    process.env.PLATFORM_OWNER_EMAIL = OWNER_EMAIL;
+    const cookieOwner = await platformOwnerCookie();
+
+    const read = await getSettings(cookieOwner);
+    expect(read.payload.canSelectPaidPlan).toBe(true);
+
+    const { status, payload } = await postSettings(cookieOwner, { plan: "park" });
+    expect(status).toBe(200);
+    expect(payload.settings.plan).toBe("park");
+
+    const after = await getSettings(cookieOwner);
+    expect(after.payload.billing.plan).toBe("park");
+    expect(after.payload.billing.vehicleLimit).toBe(15);
+  });
+
+  it("обычному администратору в ответе видно, что платные тарифы не ему", async () => {
+    const { payload } = await getSettings(cookieAdminA);
+    expect(payload.canSelectPaidPlan).toBe(false);
   });
 });
