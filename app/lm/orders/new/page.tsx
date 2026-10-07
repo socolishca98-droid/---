@@ -85,7 +85,7 @@ export default function NewOrderPage() {
 
   return (
     <>
-      <LogistHeader title="Новый заказ" subtitle="минимум данных — остальное потом" back userName={user?.name} />
+      <LogistHeader title="Новый заказ" subtitle="минимум данных" back userName={user?.name} />
 
       <div className="space-y-3 px-4 pt-4">
         <Field label="Откуда *">

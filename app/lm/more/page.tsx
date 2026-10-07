@@ -106,6 +106,20 @@ export default function LogistMorePage() {
           </p>
         ) : null}
 
+        {user?.role === "admin" ? (
+          <>
+            <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">
+              Администрирование
+            </p>
+            <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+              <LinkRow icon={<ShieldCheck className="h-4.5 w-4.5" />} label="Сотрудники и доступ" href="/lm/users" />
+              <LinkRow icon={<Building2 className="h-4.5 w-4.5" />} label="Организация и коды" href="/lm/organization" />
+              <LinkRow icon={<History className="h-4.5 w-4.5" />} label="Журнал действий" href="/lm/audit" />
+              <LinkRow icon={<Settings2 className="h-4.5 w-4.5" />} label="Настройки автопарка" href="/lm/settings" />
+            </div>
+          </>
+        ) : null}
+
         <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Разделы</p>
         <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
           <LinkRow icon={<SearchIcon className="h-4.5 w-4.5" />} label="Поиск грузов (ATI)" href="/lm/search" />
@@ -120,20 +134,6 @@ export default function LogistMorePage() {
           <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
           <LinkRow icon={<Package className="h-4.5 w-4.5" />} label="Отчёты и подсказки" href="/lm/reports" />
         </div>
-
-        {user?.role === "admin" ? (
-          <>
-            <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">
-              Администрирование
-            </p>
-            <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-              <LinkRow icon={<ShieldCheck className="h-4.5 w-4.5" />} label="Сотрудники и доступ" href="/lm/users" />
-              <LinkRow icon={<Building2 className="h-4.5 w-4.5" />} label="Организация и коды" href="/lm/organization" />
-              <LinkRow icon={<History className="h-4.5 w-4.5" />} label="Журнал действий" href="/lm/audit" />
-              <LinkRow icon={<Settings2 className="h-4.5 w-4.5" />} label="Настройки автопарка" href="/lm/settings" />
-            </div>
-          </>
-        ) : null}
 
         <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Аккаунт</p>
         <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
