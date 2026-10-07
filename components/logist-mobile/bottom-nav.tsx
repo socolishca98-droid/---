@@ -7,13 +7,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Package, Route as RouteIcon, Users, Menu } from "lucide-react"
+import { Home, Package, Route as RouteIcon, Map as MapIcon, Menu } from "lucide-react"
 
 const TABS = [
   { href: "/lm", label: "Главная", icon: Home, exact: true },
   { href: "/lm/orders", label: "Заказы", icon: Package },
   { href: "/lm/routes", label: "Рейсы", icon: RouteIcon },
-  { href: "/lm/drivers", label: "Водители", icon: Users },
+  { href: "/lm/map", label: "Карта", icon: MapIcon },
   { href: "/lm/more", label: "Ещё", icon: Menu },
 ]
 

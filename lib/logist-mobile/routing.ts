@@ -25,17 +25,10 @@ const SECTION_MAP: Array<[string, string]> = [
 ]
 
 /**
- * Разделы, которые существуют только в полной версии (настройки, сотрудники,
- * журнал и т. п.). С телефона показываем не сломанную вёрстку, а понятный
- * экран-заглушку в «Ещё»: там объяснение и кнопка «открыть всё равно».
+ * Разделы без мобильного аналога (сотрудники, организация, настройки, журнал,
+ * расходы) остаются в полной версии: её вёрстка адаптирована под телефон —
+ * сайдбар прячется, меню открывается кнопкой. Отдельный экран не нужен.
  */
-const DESKTOP_ONLY = ["/users", "/organization", "/settings", "/audit", "/expenses", "/driver"]
-
-/** Куда увести с раздела, у которого нет мобильной версии. */
-export function desktopOnlyTarget(pathname: string): string | null {
-  const hit = DESKTOP_ONLY.find((path) => pathname === path || pathname.startsWith(`${path}/`))
-  return hit ? `/lm/more?unsupported=${encodeURIComponent(hit)}` : null
-}
 
 /**
  * Внутренний путь из ?next= — или null, если он небезопасен.
@@ -100,5 +93,5 @@ export function shouldRedirectStaffToMobile(
 
   if (pathname === "/maintenance") return "/lm/fleet"
 
-  return mobileLogistTarget(pathname) ?? desktopOnlyTarget(pathname)
+  return mobileLogistTarget(pathname)
 }

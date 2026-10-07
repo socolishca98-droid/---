@@ -8,7 +8,7 @@
 "use client"
 
 import Link from "next/link"
-import { AlertTriangle, ArrowRight, Package, Plus, Route as RouteIcon, Truck, Users } from "lucide-react"
+import { AlertTriangle, ArrowRight, Map as MapIcon, Package, Plus, Route as RouteIcon, Truck, Users } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { OrderCard } from "@/components/logist-mobile/order-card"
@@ -84,27 +84,34 @@ export default function LogistHomePage() {
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-3 gap-2.5">
+        <div className="mt-4 grid grid-cols-2 gap-2.5">
           <Link
             href="/lm/orders/new"
-            className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-orange-500 text-white active:bg-orange-600"
+            className="flex min-h-[76px] items-center gap-3 rounded-2xl bg-orange-500 px-4 text-white active:bg-orange-600"
           >
-            <Plus className="h-5 w-5" />
-            <span className="text-[12.5px] font-medium">Новый заказ</span>
+            <Plus className="h-5.5 w-5.5 shrink-0" />
+            <span className="text-[14px] font-semibold">Новый заказ</span>
+          </Link>
+          <Link
+            href="/lm/map"
+            className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 text-zinc-100 active:bg-white/[0.06]"
+          >
+            <MapIcon className="h-5.5 w-5.5 shrink-0 text-orange-300" />
+            <span className="text-[14px] font-medium">Карта</span>
           </Link>
           <Link
             href="/lm/routes"
-            className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/8 bg-white/[0.03] text-zinc-200 active:bg-white/[0.06]"
+            className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 text-zinc-100 active:bg-white/[0.06]"
           >
-            <RouteIcon className="h-5 w-5" />
-            <span className="text-[12.5px] font-medium">Рейсы</span>
+            <RouteIcon className="h-5.5 w-5.5 shrink-0 text-orange-300" />
+            <span className="text-[14px] font-medium">Рейсы</span>
           </Link>
           <Link
             href="/lm/drivers"
-            className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/8 bg-white/[0.03] text-zinc-200 active:bg-white/[0.06]"
+            className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 text-zinc-100 active:bg-white/[0.06]"
           >
-            <Truck className="h-5 w-5" />
-            <span className="text-[12.5px] font-medium">Водители</span>
+            <Truck className="h-5.5 w-5.5 shrink-0 text-orange-300" />
+            <span className="text-[14px] font-medium">Водители</span>
           </Link>
         </div>
 

@@ -686,21 +686,12 @@ export const mapStyles = `
   }
 
   /* === Подложка, пока тайлы карты не загрузились === */
+  /* Подложка статичная: раньше она «дышала» (opacity 0.96 ↔ 0.82), и пока
+     тайлы ехали, карта выглядела мигающей. Теперь просто ровный фон. */
   .map-tiles-veil {
     background:
       radial-gradient(120% 90% at 50% 0%, rgba(255, 107, 53, 0.06), transparent 60%),
       linear-gradient(180deg, #0b0d13 0%, #0a0a0f 60%, #090a10 100%);
-    animation: mapVeilBreath 3.2s ease-in-out infinite;
-  }
-
-  @keyframes mapVeilBreath {
-    0%,
-    100% {
-      opacity: 0.96;
-    }
-    50% {
-      opacity: 0.82;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
