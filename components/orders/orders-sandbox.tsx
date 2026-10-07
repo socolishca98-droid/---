@@ -2557,7 +2557,7 @@ export function OrdersSandbox() {
 
         {/* Главная область */}
         <div className="flex-1 flex flex-col relative min-w-0">
-          <div className="absolute left-1/2 top-4 z-40 max-w-[calc(100vw-1.5rem)] -translate-x-1/2">
+          <div className="absolute left-1/2 top-4 z-40 w-[calc(100vw-1.5rem)] max-w-md -translate-x-1/2">
             <div className="flex flex-wrap items-center justify-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-xl shadow-2xl p-1.5">
               {/* На телефоне список грузов ATI живёт в выдвижной панели */}
               <button
@@ -2571,7 +2571,7 @@ export function OrdersSandbox() {
                   <span className="text-xs text-slate-500">({atiOrders.length})</span>
                 )}
               </button>
-              <div className="flex flex-wrap bg-slate-950 rounded-lg p-0.5 shrink-0">
+              <div className="flex min-w-0 flex-wrap bg-slate-950 rounded-lg p-0.5">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
