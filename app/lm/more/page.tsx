@@ -1,23 +1,30 @@
-// app/lm/more/page.tsx — профиль и всё остальное.
+// app/lm/more/page.tsx — всё, что не поместилось в нижнее меню.
 //
-// Сюда попадает то, что не заслуживает вкладки: смена пароля, переходы в
-// полную версию и в приложение водителя, выход. Пароль меняется здесь же —
-// логист часто заходит с чужого/служебного телефона.
+// Здесь же показывается предупреждение, если логист с телефона попал на
+// раздел, у которого мобильной версии пока нет: вместо сломанной вёрстки
+// он видит понятный экран и кнопку «открыть на компьютере».
 
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
+  Bell,
   Building2,
   Car,
   ExternalLink,
+  Info,
   KeyRound,
   Loader2,
   LogOut,
-  Bell,
+  MessageSquare,
+  Package,
   ShieldCheck,
+  Truck,
+  Users,
+  Wallet,
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
@@ -30,6 +37,47 @@ const ROLE_LABELS: Record<string, string> = {
   logist: "Логист",
   staff: "Сотрудник",
   driver: "Водитель",
+}
+
+/** Русские названия разделов полной версии — для подсказки на заглушке. */
+const DESKTOP_SECTION_NAMES: Record<string, string> = {
+  "/users": "Сотрудники",
+  "/organization": "Организация",
+  "/settings": "Настройки",
+  "/audit": "Журнал действий",
+  "/photos": "Фото",
+  "/search": "Поиск грузов",
+  "/fuel": "Топливо",
+  "/expenses": "Расходы",
+  "/driver": "Карточки водителей",
+  "/reports/export": "Выгрузка отчётов",
+}
+
+function DesktopOnlyNotice() {
+  const searchParams = useSearchParams()
+  const path = searchParams.get("unsupported")
+  if (!path) return null
+
+  const name = DESKTOP_SECTION_NAMES[path] ?? path
+
+  return (
+    <Card className="mb-3 border-sky-500/25 bg-sky-500/[0.07]">
+      <p className="flex items-center gap-2 text-[14.5px] font-medium text-white">
+        <Info className="h-4 w-4 text-sky-300" />
+        Раздел «{name}» — пока только в полной версии
+      </p>
+      <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">
+        С телефона он открывается плохо, поэтому мы его не показываем. Всё остальное уже есть в
+        мобильной панели.
+      </p>
+      <Link
+        href={`${path}?full=1`}
+        className="mt-3 flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12"
+      >
+        <ExternalLink className="h-4 w-4" /> Открыть всё равно
+      </Link>
+    </Card>
+  )
 }
 
 export default function LogistMorePage() {
@@ -69,9 +117,13 @@ export default function LogistMorePage() {
 
   return (
     <>
-      <LogistHeader title="Профиль" userName={user?.name} />
+      <LogistHeader title="Ещё" subtitle="Разделы и профиль" userName={user?.name} />
 
       <div className="px-4 pt-4">
+        <Suspense fallback={null}>
+          <DesktopOnlyNotice />
+        </Suspense>
+
         <Card>
           <p className="text-[16px] font-semibold text-white">{user?.name || "—"}</p>
           <p className="mt-0.5 text-[13px] text-zinc-400">{user?.email || "email не указан"}</p>
@@ -95,13 +147,23 @@ export default function LogistMorePage() {
           </p>
         ) : null}
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Разделы</p>
+        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+          <LinkRow icon={<Users className="h-4.5 w-4.5" />} label="Клиенты" href="/lm/clients" />
+          <LinkRow icon={<Wallet className="h-4.5 w-4.5" />} label="Оплаты" href="/lm/payments" />
+          <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Автопарк и ТО" href="/lm/fleet" />
+          <LinkRow icon={<MessageSquare className="h-4.5 w-4.5" />} label="Чат с водителями" href="/lm/chat" />
+          <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
+          <LinkRow icon={<Package className="h-4.5 w-4.5" />} label="Отчёты и подсказки" href="/lm/reports" />
+        </div>
+
+        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Аккаунт</p>
+        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
           <LinkRow
             icon={<KeyRound className="h-4.5 w-4.5" />}
             label="Сменить пароль"
             onClick={() => setPasswordOpen((value) => !value)}
           />
-          <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
           <LinkRow
             icon={<ExternalLink className="h-4.5 w-4.5" />}
             label="Полная версия (для компьютера)"

@@ -43,9 +43,13 @@ export function KpiCard({
     accent: "text-orange-300",
   }
 
+  // «1 052 000 ₽» не влезает в плитку двойным кеглем — уменьшаем длинные значения
+  const valueText = String(value)
+  const valueSize = valueText.length > 9 ? "text-[20px]" : "text-2xl"
+
   const content = (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]">
-      <div className={`text-2xl font-semibold leading-none ${tones[tone]}`}>{value}</div>
+      <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>{value}</div>
       <div className="mt-1.5 text-[13px] leading-snug text-zinc-400">{label}</div>
       {hint ? <div className="mt-1 text-[11px] text-zinc-500">{hint}</div> : null}
     </div>
@@ -66,15 +70,29 @@ export function SectionTitle({
   action,
 }: {
   title: string
-  action?: { label: string; href: string }
+  /** Ссылка «все заказы» или своя кнопка — что уместнее на экране */
+  action?: ReactNode | { label: string; href: string }
 }) {
+  const isLink =
+    action !== null &&
+    typeof action === "object" &&
+    !Array.isArray(action) &&
+    "href" in (action as Record<string, unknown>) &&
+    "label" in (action as Record<string, unknown>)
+
   return (
-    <div className="mb-2.5 mt-6 flex items-baseline justify-between">
+    <div className="mb-2.5 mt-6 flex items-baseline justify-between gap-3">
       <h2 className="text-[15px] font-semibold text-white">{title}</h2>
       {action ? (
-        <Link href={action.href} className="text-[13px] font-medium text-orange-400">
-          {action.label}
-        </Link>
+        <div className="shrink-0 text-[13px] font-medium text-orange-400">
+          {isLink ? (
+            <Link href={(action as { label: string; href: string }).href}>
+              {(action as { label: string; href: string }).label}
+            </Link>
+          ) : (
+            (action as ReactNode)
+          )}
+        </div>
       ) : null}
     </div>
   )

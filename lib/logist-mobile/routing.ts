@@ -14,7 +14,35 @@ const SECTION_MAP: Array<[string, string]> = [
   ["/orders", "/lm/orders"],
   ["/routes", "/lm/routes"],
   ["/drivers", "/lm/drivers"],
+  ["/clients", "/lm/clients"],
+  ["/payments", "/lm/payments"],
+  ["/fleet", "/lm/fleet"],
+  ["/chat", "/lm/chat"],
+  ["/reports", "/lm/reports"],
 ]
+
+/**
+ * Разделы, которые существуют только в полной версии (настройки, сотрудники,
+ * журнал и т. п.). С телефона показываем не сломанную вёрстку, а понятный
+ * экран-заглушку в «Ещё»: там объяснение и кнопка «открыть всё равно».
+ */
+const DESKTOP_ONLY = [
+  "/users",
+  "/organization",
+  "/settings",
+  "/audit",
+  "/photos",
+  "/search",
+  "/fuel",
+  "/expenses",
+  "/driver",
+]
+
+/** Куда увести с раздела, у которого нет мобильной версии. */
+export function desktopOnlyTarget(pathname: string): string | null {
+  const hit = DESKTOP_ONLY.find((path) => pathname === path || pathname.startsWith(`${path}/`))
+  return hit ? `/lm/more?unsupported=${encodeURIComponent(hit)}` : null
+}
 
 /**
  * Внутренний путь из ?next= — или null, если он небезопасен.
@@ -76,5 +104,7 @@ export function shouldRedirectLogistToMobile(
   if (pathname.startsWith("/print")) return null
   if (!isMobileDevice(options.userAgent)) return null
 
-  return mobileLogistTarget(pathname)
+  if (pathname === "/maintenance") return "/lm/fleet"
+
+  return mobileLogistTarget(pathname) ?? desktopOnlyTarget(pathname)
 }

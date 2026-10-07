@@ -38,16 +38,7 @@ import {
   type MobileOrder,
   type MobileVehicle,
 } from "@/lib/logist-mobile/types"
-import {
-  formatDateShort,
-  formatDeadline,
-  formatDateTime,
-  formatMoney,
-  formatWeightKg,
-  shortCity,
-  telHref,
-  whatsappHref,
-} from "@/lib/logist-mobile/format"
+import { formatDateShort, formatDateTime, formatDeadline, formatMoney, formatWeightKg, shortCity, shortRef, telHref, whatsappHref } from "@/lib/logist-mobile/format"
 
 /** Что означает переход — чтобы кнопка была понятной, а не «статус 7». */
 function transitionLabel(status: string): string {
@@ -162,7 +153,7 @@ export default function LogistOrderPage() {
                   <p className="text-[15px] font-semibold text-white">
                     {order.clientName?.trim() || "Клиент не указан"}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] text-zinc-500">№ {order.id.slice(-8)}</p>
+                  <p className="mt-0.5 text-[12.5px] text-zinc-500">№ {shortRef(order.id)}</p>
                 </div>
                 <OrderStatusChip status={order.status} />
               </div>
@@ -273,7 +264,7 @@ export default function LogistOrderPage() {
                   value={vehicle?.plate || (order.assignedVehicleId ? "назначена" : "не назначена")}
                 />
                 {order.routeId ? (
-                  <Row icon={<Package className="h-4 w-4" />} label="Рейс" value={`№${order.routeId.slice(-6)}`} />
+                  <Row icon={<Package className="h-4 w-4" />} label="Рейс" value={`№ ${shortRef(order.routeId)}`} />
                 ) : null}
               </div>
 

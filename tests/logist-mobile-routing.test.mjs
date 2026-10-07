@@ -15,8 +15,14 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { safeInternalPath, staffHome, isMobileDevice, mobileLogistTarget, shouldRedirectLogistToMobile } =
-  require("../.test-build/lib/logist-mobile/routing.js")
+const {
+  safeInternalPath,
+  staffHome,
+  isMobileDevice,
+  mobileLogistTarget,
+  shouldRedirectLogistToMobile,
+  desktopOnlyTarget,
+} = require("../.test-build/lib/logist-mobile/routing.js")
 
 const IPHONE =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
@@ -62,11 +68,29 @@ test("мобильный аналог раздела находится, под�
   assert.equal(mobileLogistTarget("/routes"), "/lm/routes")
   assert.equal(mobileLogistTarget("/routes/demo-route-4"), "/lm/routes/demo-route-4")
   assert.equal(mobileLogistTarget("/drivers"), "/lm/drivers")
-  // аналога нет — не трогаем
-  assert.equal(mobileLogistTarget("/payments"), null)
-  assert.equal(mobileLogistTarget("/clients"), null)
+  assert.equal(mobileLogistTarget("/clients"), "/lm/clients")
+  assert.equal(mobileLogistTarget("/clients/demo-client-1"), "/lm/clients/demo-client-1")
+  assert.equal(mobileLogistTarget("/payments"), "/lm/payments")
+  assert.equal(mobileLogistTarget("/fleet"), "/lm/fleet")
+  assert.equal(mobileLogistTarget("/chat"), "/lm/chat")
+  assert.equal(mobileLogistTarget("/reports"), "/lm/reports")
   // «/orders-history» не должен считаться разделом /orders
   assert.equal(mobileLogistTarget("/orders-history"), null)
+})
+
+test("разделы без мобильной версии ведут на заглушку, а не в битую вёрстку", () => {
+  assert.equal(desktopOnlyTarget("/users"), "/lm/more?unsupported=%2Fusers")
+  assert.equal(desktopOnlyTarget("/organization"), "/lm/more?unsupported=%2Forganization")
+  assert.equal(desktopOnlyTarget("/audit"), "/lm/more?unsupported=%2Faudit")
+  assert.equal(desktopOnlyTarget("/settings"), "/lm/more?unsupported=%2Fsettings")
+  assert.equal(desktopOnlyTarget("/photos"), "/lm/more?unsupported=%2Fphotos")
+  assert.equal(desktopOnlyTarget("/search"), "/lm/more?unsupported=%2Fsearch")
+  assert.equal(desktopOnlyTarget("/fuel"), "/lm/more?unsupported=%2Ffuel")
+  // подпути тоже
+  assert.equal(desktopOnlyTarget("/organization/requisites"), "/lm/more?unsupported=%2Forganization")
+  // разделы с мобильной версией заглушкой не подменяются
+  assert.equal(desktopOnlyTarget("/orders"), null)
+  assert.equal(desktopOnlyTarget("/payments"), null)
 })
 
 test("логист с телефона уходит из десктопных разделов в /lm", () => {
@@ -82,6 +106,23 @@ test("логист с телефона уходит из десктопных р
   assert.equal(
     shouldRedirectLogistToMobile("/routes/demo-route-4", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/routes/demo-route-4",
+  )
+  assert.equal(
+    shouldRedirectLogistToMobile("/clients", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/clients",
+  )
+  assert.equal(
+    shouldRedirectLogistToMobile("/payments", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/payments",
+  )
+  assert.equal(
+    shouldRedirectLogistToMobile("/maintenance", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/fleet",
+  )
+  // у раздела нет мобильной версии — показываем заглушку, а не десктоп
+  assert.equal(
+    shouldRedirectLogistToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/more?unsupported=%2Fusers",
   )
 })
 
@@ -108,4 +149,10 @@ test("администратора и десктоп правила не кас�
     shouldRedirectLogistToMobile("/dashboard", { role: "logist", userAgent: IPHONE, wantsFull: true }),
     null,
   )
+})
+
+test("заглушка не мешает осознанному переходу в полную версию и API", () => {
+  const options = { role: "logist", userAgent: IPHONE, wantsFull: false }
+  assert.equal(shouldRedirectLogistToMobile("/users", { ...options, wantsFull: true }), null)
+  assert.equal(shouldRedirectLogistToMobile("/api/users", options), null)
 })

@@ -176,3 +176,139 @@ export const LOADING_TYPE_LABELS: Record<string, string> = {
   barrels: "Бочки",
   containers: "Контейнеры",
 }
+
+// --- Разделы, которых раньше не было в мобильной панели ---------------------
+
+export interface MobileClient {
+  id: string
+  name: string
+  inn: string | null
+  address: string | null
+  contactName: string | null
+  phone: string | null
+  email: string | null
+  paymentType: string | null
+  vatType: string | null
+  deferredDays: number | null
+  notes: string | null
+  stats?: MobileClientStats | null
+}
+
+export interface MobileClientStats {
+  total: number
+  delivered: number
+  active: number
+  revenueRub: number
+  paidRub: number
+  unpaidRub: number
+  overdueRub: number
+  overdueCount: number
+  avgPaymentDays: number | null
+  reliabilityPercent: number | null
+  lastOrderAt: string | null
+}
+
+export interface MobilePaymentOrder {
+  id: string
+  clientId: string | null
+  clientName: string | null
+  clientContact: string | null
+  routeFrom: string
+  routeTo: string
+  distance: number | null
+  status: string
+  createdAt: string
+  amount: number | null
+  paymentType: string | null
+  deferredDays: number | null
+  dueDate: string | null
+  isPaid: boolean
+  paidAt: string | null
+  isOverdue: boolean
+  overdueDays: number | null
+}
+
+export interface MobilePaymentsStats {
+  totalPending: number
+  totalDeferred: number
+  totalOverdue: number
+  totalPaid: number
+  totalRevenue: number
+  pendingCount: number
+  deferredCount: number
+  overdueCount: number
+  paidCount: number
+  avgPaymentDays: number | null
+}
+
+export interface MobileDebtor {
+  clientId: string | null
+  clientName: string | null
+  debt: number
+  overdue: number
+  ordersCount: number
+  oldestDueDate: string | null
+}
+
+export interface MobileFleetVehicle {
+  id: string
+  plate: string
+  type: string | null
+  brand: string | null
+  model: string | null
+  year: number | null
+  capacity: number | null
+  volume: number | null
+  mileage: number | null
+  status: string
+  lastMaintenanceDate: string | null
+  nextMaintenanceDate: string | null
+  driverName?: string | null
+  deadlines?: {
+    maintenance?: { status: string; daysLeft: number; date: string } | null
+    insurance?: { status: string; daysLeft: number; date: string } | null
+  } | null
+}
+
+export interface MobileInsight {
+  id: string
+  level: string
+  title: string
+  detail: string | null
+  source: string | null
+}
+
+export interface MobileChatMessage {
+  id: string
+  senderId: string | null
+  recipientId: string | null
+  /** Текст сообщения приходит как content (поля message/text — старые имена) */
+  content?: string | null
+  message?: string | null
+  text?: string | null
+  createdAt: string
+  isRead?: boolean | null
+  senderName?: string | null
+}
+
+export const VEHICLE_STATUS_META: Record<string, { label: string; style: string }> = {
+  available: { label: "Свободна", style: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  in_use: { label: "В рейсе", style: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
+  maintenance: { label: "На ТО", style: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  offline: { label: "Не в работе", style: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30" },
+}
+
+/** Состояние срока (ТО, страховка): сколько дней осталось до даты. */
+export const DEADLINE_STATUS_META: Record<string, { label: string; style: string }> = {
+  ok: { label: "в порядке", style: "text-zinc-400" },
+  soon: { label: "скоро", style: "text-amber-300" },
+  overdue: { label: "просрочено", style: "text-red-300" },
+}
+
+export const INSIGHT_LEVEL_META: Record<string, { emoji: string; style: string }> = {
+  ok: { emoji: "✅", style: "border-emerald-500/25 bg-emerald-500/[0.06]" },
+  warn: { emoji: "⚠️", style: "border-amber-500/25 bg-amber-500/[0.06]" },
+  warning: { emoji: "⚠️", style: "border-amber-500/25 bg-amber-500/[0.06]" },
+  critical: { emoji: "🔴", style: "border-red-500/25 bg-red-500/[0.06]" },
+  info: { emoji: "ℹ️", style: "border-white/10 bg-white/[0.03]" },
+}

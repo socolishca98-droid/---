@@ -103,7 +103,13 @@ export function formatDeadline(iso?: string | null): { text: string; overdue: bo
   return { text: `через ${days} дн.`, overdue: false, soon: false }
 }
 
-/** «Московская область, Домодедово, улица Логистическая, 12» → «Домодедово». */
+/**
+ * «Московская область, Домодедово, улица Логистическая, 12» → «Домодедово».
+ *
+ * Маркеры района и улицы проверяются в начале части адреса («улица …», «д. 12»),
+ * а не в любом месте строки: иначе «Домодедово» отбраковывалось из-за «дом»,
+ * а номер дома «12» оставался единственным кандидатом в город.
+ */
 export function shortCity(address?: string | null): string {
   if (!address) return "—"
   const parts = address
@@ -113,10 +119,16 @@ export function shortCity(address?: string | null): string {
   if (parts.length === 0) return "—"
 
   const region = /(обл\.?|область|край|республик|р-н|район|автономн)/i
-  const street = /(ул\.|улиц|проспект|пр-т|шоссе|переул|проезд|д\.|дом|строен|стр\.|корпус|кв\.)/i
+  const street =
+    /^(ул\.?|улица|проспект|пр-т|шоссе|переул(ок)?|проезд|д\.\s*\d|дом\b|строен(ие)?\b|стр\.|корпус\b|кв\.|владение)/i
+  // «12», «12 к2», «корп. 3» — это не город, а дом
+  const houseNumber = /^\d+([\s/\-].*)?$/i
+  const cityPrefix = /^(г\.?|город)\s*/i
 
-  const city = parts.find((part) => !region.test(part) && !street.test(part))
-  return city || parts[0].replace(/^г\.?\s*/i, "")
+  const city = parts.find(
+    (part) => !region.test(part) && !street.test(part) && !houseNumber.test(part),
+  )
+  return (city || parts[0]).replace(cityPrefix, "").trim() || "—"
 }
 
 /** Номер → tel: ссылка. «+7 916 123-45-01» → «tel:+79161234501». */
@@ -143,4 +155,63 @@ export function routeTitle(from?: string | null, to?: string | null): string {
 /** Название заказа для списков: клиент или направление. */
 export function orderTitle(order: { clientName?: string | null; routeFrom: string; routeTo: string }): string {
   return order.clientName?.trim() || routeTitle(order.routeFrom, order.routeTo)
+}
+
+/** Русское склонение: 1 рейс, 2 рейса, 5 рейсов. */
+export function plural(count: number, forms: [string, string, string]): string {
+  const n = Math.abs(count) % 100
+  const tail = n % 10
+  if (n > 10 && n < 20) return forms[2]
+  if (tail > 1 && tail < 5) return forms[1]
+  if (tail === 1) return forms[0]
+  return forms[2]
+}
+
+/** Число со словом: «42 рейса». */
+export function formatCount(count: number, forms: [string, string, string]): string {
+  return `${count} ${plural(count, forms)}`
+}
+
+/**
+ * Короткая ссылка на запись: «demo-order-7» → «order-7», cuid → последние 8 знаков.
+ * Служебный префикс демо-данных в интерфейсе не показываем.
+ */
+export function shortRef(id?: string | null): string {
+  if (!id) return "—"
+  const clean = id.replace(/^demo-/i, "")
+  return clean.length <= 10 ? clean : clean.slice(-8)
+}
+
+/** Расстояние: «210 км». */
+export function formatKm(value?: number | null): string {
+  if (value === null || value === undefined) return "—"
+  return `${Math.round(value)} км`
+}
+
+/** Пробег: «312 480 км». */
+export function formatMileage(value?: number | null): string {
+  if (value === null || value === undefined) return "—"
+  return `${Math.round(value).toLocaleString("ru-RU")} км`
+}
+
+/**
+ * Состояние оплаты заказа словами — то, что логист спрашивает у клиента.
+ * Порядок проверок важен: просрочка важнее «ждём», оплата важнее срока.
+ */
+export function paymentState(order: {
+  isPaid?: boolean
+  isOverdue?: boolean
+  overdueDays?: number | null
+  dueDate?: string | null
+  paymentType?: string | null
+}): { label: string; tone: "ok" | "wait" | "late" | "neutral" } {
+  if (order.isPaid) return { label: "Оплачен", tone: "ok" }
+  if (order.isOverdue) {
+    const days = order.overdueDays ?? 0
+    return { label: `Просрочен${days > 0 ? ` на ${days} ${plural(days, ["день", "дня", "дней"])}` : ""}`, tone: "late" }
+  }
+  if (order.dueDate) {
+    return { label: `Оплата до ${formatDateShort(order.dueDate)}`, tone: "wait" }
+  }
+  return { label: "Ожидает оплаты", tone: "wait" }
 }
