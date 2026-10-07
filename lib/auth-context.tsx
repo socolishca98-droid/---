@@ -38,6 +38,8 @@ export interface LoginResult {
   ok: boolean
   error?: string
   mustChangePassword?: boolean
+  /** Роль вошедшего — нужна, чтобы выбрать, куда его вести: логист → мобильная панель */
+  role?: "admin" | "logist" | "driver"
 }
 
 interface AuthContextType {
@@ -135,7 +137,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           organization: null,
         })
         void refresh()
-        return { ok: true, mustChangePassword: Boolean(data.user.mustChangePassword) }
+        return {
+          ok: true,
+          mustChangePassword: Boolean(data.user.mustChangePassword),
+          role: data.user.role,
+        }
       } catch (error) {
         console.error("[auth] ошибка входа:", error)
         return { ok: false, error: "Ошибка соединения. Попробуйте ещё раз" }

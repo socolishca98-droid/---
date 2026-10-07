@@ -32,7 +32,11 @@ export default async function LoginPage({
   try {
     const session = await verifySessionToken(cookieStore.get(STAFF_COOKIE)?.value)
     if (session && session.kind === "staff") {
-      redirect(next && next.startsWith("/") ? next : "/dashboard")
+      // Логист работает с телефона — его место в мобильной панели /lm,
+      // у администратора такой панели нет, ему нужна полная версия
+      const home = session.role === "logist" ? "/lm" : "/dashboard"
+      const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null
+      redirect(safeNext ?? home)
     }
   } catch {
     // AUTH_SECRET не задан или токен битый — показываем форму входа

@@ -56,7 +56,7 @@ const HIGHLIGHTS: Array<{ icon: typeof Boxes; text: string }> = [
 
 export function LoginForm({ nextPath }: LoginFormProps) {
   const router = useRouter()
-  const { login } = useAuth()
+  const { login, user } = useAuth()
 
   // Приветствие по времени суток считаем на клиенте: серверный рендер и
   // гидратация не должны расходиться из-за часов.
@@ -75,7 +75,12 @@ export function LoginForm({ nextPath }: LoginFormProps) {
   const [repeatPassword, setRepeatPassword] = useState("")
   const [isChanging, setIsChanging] = useState(false)
 
-  const redirectTarget = nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard"
+  // Куда вести после входа. Явный ?next= уважаем всегда; иначе логиста
+  // отправляем в его мобильную панель /lm, а администратора — в полную версию.
+  const explicitTarget =
+    nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : null
+  const homeFor = (role?: string) => (role === "logist" ? "/lm" : "/dashboard")
+  const redirectTarget = explicitTarget ?? homeFor(user?.role)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -96,7 +101,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       return
     }
 
-    router.replace(redirectTarget)
+    router.replace(explicitTarget ?? homeFor(result.role))
     router.refresh()
   }
 

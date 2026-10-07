@@ -76,6 +76,27 @@ function withIdentity(
   return NextResponse.next({ request: { headers } })
 }
 
+/**
+ * Внутренний путь из ?next= или null.
+ * Отсекаем «//host» и схемы — иначе получился бы открытый редирект.
+ */
+function safeInternalPath(value: string | null | undefined): string | null {
+  if (!value) return null
+  if (!value.startsWith("/")) return null
+  if (value.startsWith("//")) return null
+  if (value.includes("\\")) return null
+  return value
+}
+
+/**
+ * Куда вести уже вошедшего сотрудника с публичной страницы.
+ * Явный ?next= уважаем всегда; иначе логист попадает в свою мобильную панель
+ * /lm, а администратор — в полную версию /dashboard.
+ */
+function staffHome(request: NextRequest, role: string | undefined): string {
+  return safeInternalPath(request.nextUrl.searchParams.get("next")) ?? (role === "logist" ? "/lm" : "/dashboard")
+}
+
 /** Нужна ли CSRF-проверка для этого запроса. */
 function shouldCheckCsrf(request: NextRequest): boolean {
   const method = request.method.toUpperCase()
@@ -164,7 +185,7 @@ export async function proxy(request: NextRequest) {
   if (access.area === "public") {
     // Уже вошедшего сотрудника не держим на экране входа
     if ((pathname === "/" || pathname === "/login") && staffPayload) {
-      return NextResponse.redirect(new URL("/dashboard", request.url))
+      return NextResponse.redirect(new URL(staffHome(request, staffPayload.role), request.url))
     }
     if (pathname === "/m/login" && driverPayload) {
       return NextResponse.redirect(new URL("/m", request.url))
