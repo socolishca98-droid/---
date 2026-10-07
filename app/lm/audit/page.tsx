@@ -18,22 +18,28 @@ import { formatDateTime, formatRelative } from "@/lib/logist-mobile/format"
 
 const PAGE_SIZE = 30
 
-// Подписи — те же, что в полной версии (components/audit/audit-view.tsx)
+// Подписи — по тем действиям, что реально пишет lib/audit.ts и его вызовы.
+// Незнакомое действие показываем как есть: пусть лучше будет «unlock», чем
+// пустая плашка.
 const ACTION_LABELS: Record<string, string> = {
   login: "Вход",
+  register: "Регистрация",
   create: "Создание",
   update: "Изменение",
   delete: "Удаление",
   approve: "Одобрение сотрудника",
-  activate: "Активация",
-  deactivate: "Деактивация",
-  change_role: "Смена роли",
-  invite_create: "Создание приглашения",
-  invite_revoke: "Отзыв приглашения",
+  reject: "Отклонение заявки",
+  activate: "Активация доступа",
+  deactivate: "Деактивация доступа",
   suspend: "Блокировка доступа",
   restore: "Возврат доступа",
-  reject: "Отклонение заявки",
+  unlock: "Разблокировка",
+  change_role: "Смена роли",
   reset_password: "Сброс пароля",
+  invite_create: "Создание приглашения",
+  invite_revoke: "Отзыв приглашения",
+  order_take_from_base: "Заказ взят в работу",
+  order_return_to_base: "Заказ возвращён в базу",
 }
 
 const TARGET_TYPE_LABELS: Record<string, string> = {
@@ -45,6 +51,8 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
   driver: "водитель",
   organization: "организация",
   invite: "приглашение",
+  invite_code: "код приглашения",
+  ati_connection: "подключение ATI",
 }
 
 const TONE_BY_ACTION: Record<string, string> = {
@@ -149,29 +157,29 @@ export default function MobileAuditPage() {
     )
   }
 
-  const filters = [{ id: "all", label: "Все действия" }, ...Object.entries(ACTION_LABELS).map(([id, label]) => ({ id, label }))]
-
   return (
     <>
       <LogistHeader title="Журнал действий" subtitle="Кто что менял в организации" userName={user?.name} />
 
-      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {filters.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setAction(item.id)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium ${
-                action === item.id
-                  ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                  : "border-white/8 bg-white/[0.03] text-zinc-400"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-3 pt-3 backdrop-blur">
+        {/* Действий много: на телефоне удобнее системный список, чем лента чипов */}
+        <label className="block">
+          <span className="sr-only">Действие</span>
+          <select
+            value={action}
+            onChange={(event) => setAction(event.target.value)}
+            className="h-11 w-full appearance-none rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white focus:border-orange-500/50 focus:outline-none"
+          >
+            <option value="all" className="bg-[#15151a]">
+              Все действия
+            </option>
+            {Object.entries(ACTION_LABELS).map(([id, label]) => (
+              <option key={id} value={id} className="bg-[#15151a]">
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="space-y-2.5 px-4 pt-3.5">
