@@ -1,4 +1,4 @@
-﻿// lib/ati-client.ts
+// lib/ati-client.ts
 // ATI.su интеграция — без лишних логов и без создания Order
 
 import { prisma } from "@/lib/prisma"
@@ -106,13 +106,11 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
   return true
 }
 
-let globalSeenIds: Set<string> = new Set()
-
-function addIfNew(load: any, filters: ScanFilters): boolean {
+function addIfNew(load: any, filters: ScanFilters, seenIds: Set<string>): boolean {
   const id = String(load.id)
-  if (globalSeenIds.has(id)) return false
+  if (seenIds.has(id)) return false
   if (!filterLoad(load, filters)) return false
-  globalSeenIds.add(id)
+  seenIds.add(id)
   return true
 }
 
@@ -218,7 +216,7 @@ export async function scanAtiLoads(params?: any) {
   }
 
   const customFilters: ScanFilters = params?.filters || DEFAULT_FILTERS
-  globalSeenIds = new Set()
+  const seenIds: Set<string> = new Set()
 
   // Города профиля расписания (ATI id) → ключи имён: официальный поиск по
   // площадкам не фильтрует гео на сервере, поэтому отбираем по ответу.
@@ -246,7 +244,7 @@ export async function scanAtiLoads(params?: any) {
         const key = normalizeLoadFromToCityKey(load)
         if (!key || !cityKeys.includes(key)) continue
       }
-      if (addIfNew(load, customFilters)) picked.push(load)
+      if (addIfNew(load, customFilters, seenIds)) picked.push(load)
     }
 
     const saved = await saveToCache(picked, organizationId)
@@ -288,6 +286,7 @@ async function manualSearch(
 
   const loads = await fetchLoadsByBoards(token, organizationId)
   const allLoads: any[] = []
+  const manualSeenIds: Set<string> = new Set()
   for (const load of loads) {
     if (fromCityKey) {
       const loadFromKey = normalizeLoadFromToCityKey(load)
@@ -297,7 +296,7 @@ async function manualSearch(
       const loadToKey = normalizeLoadToCityKey(load)
       if (!loadToKey || loadToKey !== toCityKey) continue
     }
-    if (addIfNew(load, filters)) allLoads.push(load)
+    if (addIfNew(load, filters, manualSeenIds)) allLoads.push(load)
   }
 
   const saved = await saveToCache(allLoads, organizationId)

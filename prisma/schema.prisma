@@ -1,12 +1,14 @@
-// prisma/schema.prisma - Default SQLite for dev, see schema.postgres.prisma for production
-// P2-1: To use PostgreSQL, copy schema.postgres.prisma over schema.prisma or set DATABASE_PROVIDER=postgresql and use that file
+// prisma/schema.prisma — Canonical production schema (PostgreSQL)
+// Production database: PostgreSQL. For local SQLite dev, use DATABASE_URL="file:./dev.db"
+// with a separate SQLite schema file or override in .env.local.
+// Migrations: prisma/migrations (managed via `prisma migrate deploy`)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -22,8 +24,8 @@ datasource db {
 model AtiScanConfig {
   id               String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name             String    @default("default")
   cities           String    @default("[]")
   radius           Int       @default(200)
@@ -91,8 +93,8 @@ model AtiCache {
 model AtiConnection {
   id            String   @id @default(cuid())
   /// Одно подключение на организацию
-  organizationId String?  @unique
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String  @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Зашифрованный access_token ATI.SU
   tokenEncrypted String
   /// token — постоянный токен из «Мои токены», oauth — подключение через OAuth 2.0
@@ -152,8 +154,8 @@ model GeoCache {
 model RouteExpense {
   id             String   @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId        String
   route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
@@ -184,8 +186,8 @@ model RouteExpense {
 model Route {
   id            String       @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Человекочитаемое название, например «Рейс: Ярославль — Иваново — СПб»
   name          String?
   status        String       @default("planned")
@@ -229,8 +231,8 @@ model Route {
 model Order {
   id                String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   source            String
   sourceId          String?
   routeFrom         String
@@ -351,8 +353,8 @@ model Order {
 // цены или статуса заказа — история не теряется и не ведётся вручную.
 model OrderNegotiation {
   id             String        @id @default(cuid())
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orderId        String
   order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   // note | price_offer | price_change | call | email | document | status_change
@@ -372,8 +374,8 @@ model OrderNegotiation {
 model Driver {
   id              String            @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name            String
   /// Телефон — логин водителя в мобильном приложении, поэтому уникальный
   phone           String    @unique
@@ -423,8 +425,8 @@ model Driver {
 model Vehicle {
   id                  String           @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plate               String
   type                String
   brand               String?
@@ -476,8 +478,8 @@ model Vehicle {
 model DriverShift {
   id                      String       @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   driverId                String
   driver                  Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
   startedAt               DateTime     @default(now())
@@ -502,8 +504,8 @@ model DriverShift {
 model ShiftEvent {
   id        String      @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   shiftId   String
   shift     DriverShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   type      String
@@ -525,8 +527,8 @@ model ShiftEvent {
 model SosAlert {
   id          String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   driverId    String
   driver      Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
   orderId     String?
@@ -556,8 +558,8 @@ model SosAlert {
 model Notification {
   id        String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId    String
   userRole  String
   type      String
@@ -587,8 +589,8 @@ model Notification {
 model ChatMessage {
   id              String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   senderId        String
   senderRole      String
   senderName      String
@@ -616,8 +618,8 @@ model ChatMessage {
 model Photo {
   id          String   @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   url         String
   type        String
   driverId    String
@@ -647,8 +649,8 @@ model Photo {
 model MaintenanceLog {
   id          String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicleId   String
   vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   driverId    String?
@@ -676,8 +678,8 @@ model FleetSettings {
   /// Теперь настройки свои у каждой организации.
   id          String   @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parkName    String   @default("Наш Автопарк")
   baseAddress String?
   baseLat     Float?
@@ -717,8 +719,8 @@ model FleetSettings {
 model RouteStage {
   id             String    @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId        String
   route          Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId        String?
@@ -748,8 +750,8 @@ model RouteStage {
 model RouteEvent {
   id        String   @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   routeId   String
   route     Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   orderId   String?
@@ -840,8 +842,8 @@ model Organization {
 model Client {
   id             String        @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Название так, как его ввёл человек («ООО Ромашка»)
   name           String
   /// Название, приведённое к сравнимому виду (см. lib/clients/normalize.ts).
@@ -905,8 +907,8 @@ model InviteCode {
 model User {
   id           String   @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// Email — уникальный идентификатор входа для admin/logist
   email        String?  @unique
   /// Телефон — уникальный идентификатор входа для driver
@@ -985,8 +987,8 @@ model Session {
 model AuditLog {
   id          String   @id @default(cuid())
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   actorId     String
   actorEmail  String?
   /// approve | deactivate | activate | change_role | invite_create | invite_revoke | login | create | update | delete

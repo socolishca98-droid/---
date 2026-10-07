@@ -45,6 +45,10 @@ export interface RouteEconomics {
   /** На чём посчитано: на чеках или на оценке */
   basis: "fact" | "estimate" | null
   unprofitable: boolean
+  /** Profitability / margin %: (profit / revenue) * 100 */
+  marginPercent: number | null
+  /** Loss flag: true when cost exceeds revenue */
+  isLoss: boolean
 }
 
 export function routeEconomics(params: {
@@ -54,27 +58,53 @@ export function routeEconomics(params: {
   estimatedLiters: number | null
   fuelPriceRubPerL: number | null
 }): RouteEconomics {
+  // Protection: negative or invalid revenue / distance
+  const revenue = Number(params.revenueRub)
+  const distance = Number(params.distanceKm)
+  if (!Number.isFinite(revenue) || revenue < 0) {
+    throw new Error("Revenue must be a non-negative number")
+  }
+  if (!Number.isFinite(distance) || distance < 0) {
+    throw new Error("Distance must be a non-negative number")
+  }
+  if (distance === 0) {
+    throw new Error("Distance cannot be zero for per-km calculations")
+  }
+
   const { revenueRub, distanceKm, factCostRub } = params
   const estimatedCostRub =
-    params.estimatedLiters !== null && params.fuelPriceRubPerL !== null
+    params.estimatedLiters !== null && params.fuelPriceRubPerL !== null &&
+    Number.isFinite(params.estimatedLiters) && params.estimatedLiters >= 0 &&
+    Number.isFinite(params.fuelPriceRubPerL) && params.fuelPriceRubPerL >= 0
       ? Math.round(params.estimatedLiters * params.fuelPriceRubPerL)
       : null
 
-  const cost = factCostRub !== null ? factCostRub : estimatedCostRub
+  const cost = factCostRub !== null && Number.isFinite(factCostRub) && factCostRub >= 0
+    ? factCostRub
+    : estimatedCostRub
   const basis: RouteEconomics["basis"] =
-    factCostRub !== null ? "fact" : estimatedCostRub !== null ? "estimate" : null
+    factCostRub !== null && Number.isFinite(factCostRub) && factCostRub >= 0 ? "fact"
+    : estimatedCostRub !== null ? "estimate"
+    : null
 
   const km = Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : null
+  const profit = cost !== null ? revenueRub - cost : null
+  const marginPercent = profit !== null && revenueRub > 0 ? Math.round((profit / revenueRub) * 10000) / 100 : null
+  const unprofitable = cost !== null && cost > revenueRub
+  const isLoss = unprofitable && profit !== null && profit < 0
+
   return {
     revenueRub,
     distanceKm,
     factCostRub,
     estimatedCostRub,
-    rubPerKmRevenue: km !== null ? Math.round(revenueRub / km) : null,
-    costPerKm: km !== null && cost !== null ? Math.round(cost / km) : null,
-    profitRub: cost !== null ? revenueRub - cost : null,
+    rubPerKmRevenue: km !== null && revenueRub > 0 ? Math.round(revenueRub / km) : null,
+    costPerKm: km !== null && cost !== null && cost > 0 ? Math.round(cost / km) : null,
+    profitRub: profit,
     basis,
-    unprofitable: cost !== null && cost > revenueRub,
+    unprofitable,
+    marginPercent,
+    isLoss,
   }
 }
 
@@ -102,7 +132,7 @@ export function legEconomics(params: {
   const consumption = Number(params.consumptionPer100)
   const pricePerL = Number(params.fuelPriceRubPerL)
   if (
-    !Number.isFinite(price) ||
+    !Number.isFinite(price) || price < 0 ||
     !Number.isFinite(distance) || distance <= 0 ||
     !Number.isFinite(consumption) || consumption <= 0 ||
     !Number.isFinite(pricePerL) || pricePerL <= 0

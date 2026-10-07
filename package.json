@@ -35,7 +35,7 @@
     "test:vitest": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "test:watch": "vitest",
-    "schema:postgres": "node scripts/make-postgres-schema.mjs"
+    "schema:postgres": "echo 'DEPRECATED: schema.prisma is now PostgreSQL canonical. Use prisma migrate deploy.' && node scripts/make-postgres-schema.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
