@@ -14,6 +14,7 @@ import {
   Contact,
   FileBarChart,
   Truck,
+  Smartphone,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -42,8 +43,12 @@ const navigation: Array<{
   badgeKey?: BadgeKey
   /** Пункт виден только администратору организации */
   adminOnly?: boolean
+  /** Пункт виден только логисту (у администратора своя полная версия) */
+  logistOnly?: boolean
 }> = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
+  // логист работает с телефона: без этой ссылки мобильная панель теряется
+  { name: "Мобильная панель", href: "/lm", icon: Smartphone, logistOnly: true },
   // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
   { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
@@ -166,6 +171,7 @@ export function Sidebar() {
         <nav className="flex-1 min-h-0 space-y-1 overflow-y-auto overscroll-contain p-3">
           {navigation
             .filter((item) => !item.adminOnly || user?.role === "admin")
+            .filter((item) => !item.logistOnly || user?.role === "logist")
             .map((item) => {
             const isActive = pathname === item.href
             const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0

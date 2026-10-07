@@ -43,6 +43,7 @@
     "../lib/offline/photo-queue.ts",
     "../lib/api-docs/endpoints.ts",
     "../lib/auth/refresh-policy.ts",
-    "../lib/client-cache-core.ts"
+    "../lib/client-cache-core.ts",
+    "../lib/logist-mobile/routing.ts"
   ]
 }

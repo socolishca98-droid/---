@@ -36,6 +36,7 @@ import {
 import { acceptsDriver, acceptsStaff, classifyRoute } from "@/lib/auth/access"
 import { AuthSecretError, verifySessionToken, type SessionTokenPayload } from "@/lib/auth/token"
 import { verifyCsrf } from "@/lib/csrf"
+import { shouldRedirectLogistToMobile, staffHome } from "@/lib/logist-mobile/routing"
 
 export const config = {
   // Всё, кроме статики Next.js и файлов с расширениями. Загрузки добавлены
@@ -74,27 +75,6 @@ function withIdentity(
     headers.set(IDENTITY_HEADERS.sessionId, payload.jti)
   }
   return NextResponse.next({ request: { headers } })
-}
-
-/**
- * Внутренний путь из ?next= или null.
- * Отсекаем «//host» и схемы — иначе получился бы открытый редирект.
- */
-function safeInternalPath(value: string | null | undefined): string | null {
-  if (!value) return null
-  if (!value.startsWith("/")) return null
-  if (value.startsWith("//")) return null
-  if (value.includes("\\")) return null
-  return value
-}
-
-/**
- * Куда вести уже вошедшего сотрудника с публичной страницы.
- * Явный ?next= уважаем всегда; иначе логист попадает в свою мобильную панель
- * /lm, а администратор — в полную версию /dashboard.
- */
-function staffHome(request: NextRequest, role: string | undefined): string {
-  return safeInternalPath(request.nextUrl.searchParams.get("next")) ?? (role === "logist" ? "/lm" : "/dashboard")
 }
 
 /** Нужна ли CSRF-проверка для этого запроса. */
@@ -181,11 +161,27 @@ export async function proxy(request: NextRequest) {
     driverPayload = null
   }
 
+  // --- Логист с телефона остаётся в мобильной панели -------------------------
+  // Полная версия на маленьком экране непригодна: уводим разделы, у которых
+  // есть мобильный аналог. ?full=1 — осознанный переход в полную версию.
+  if (staffPayload) {
+    const mobileTarget = shouldRedirectLogistToMobile(pathname, {
+      role: staffPayload.role,
+      userAgent: request.headers.get("user-agent"),
+      wantsFull: request.nextUrl.searchParams.has("full"),
+    })
+    if (mobileTarget) {
+      return NextResponse.redirect(new URL(mobileTarget, request.url))
+    }
+  }
+
   // --- Публичные пути -------------------------------------------------------
   if (access.area === "public") {
     // Уже вошедшего сотрудника не держим на экране входа
     if ((pathname === "/" || pathname === "/login") && staffPayload) {
-      return NextResponse.redirect(new URL(staffHome(request, staffPayload.role), request.url))
+      return NextResponse.redirect(
+        new URL(staffHome(staffPayload.role, request.nextUrl.searchParams.get("next")), request.url),
+      )
     }
     if (pathname === "/m/login" && driverPayload) {
       return NextResponse.redirect(new URL("/m", request.url))

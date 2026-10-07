@@ -102,7 +102,11 @@ export default function LogistMorePage() {
             onClick={() => setPasswordOpen((value) => !value)}
           />
           <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
-          <LinkRow icon={<ExternalLink className="h-4.5 w-4.5" />} label="Полная версия (для компьютера)" href="/dashboard" />
+          <LinkRow
+            icon={<ExternalLink className="h-4.5 w-4.5" />}
+            label="Полная версия (для компьютера)"
+            href="/dashboard?full=1"
+          />
           <LinkRow icon={<Car className="h-4.5 w-4.5" />} label="Приложение водителя" href="/m/login" />
         </div>
 
