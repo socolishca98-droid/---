@@ -540,9 +540,14 @@ export async function getAtiCache(params: any) {
     sortOrder = "desc",
   } = params
 
+  // В PostgreSQL-схеме организация обязательна: без неё строк быть не может
+  if (!params.organizationId) {
+    return { items: [], total: 0, limit, offset, hasMore: false }
+  }
+
   // org-audit: ok — накопленная база у каждой организации своя (organizationId
   // приходит из проверенной сессии, а не из тела запроса)
-  const where: any = { status, organizationId: params.organizationId ?? null }
+  const where: any = { status, organizationId: params.organizationId }
 
   if (search) {
     where.OR = [
@@ -610,6 +615,10 @@ export async function getAtiCache(params: any) {
 }
 
 export async function getAtiStats(organizationId: string | null = null) {
+  // В PostgreSQL-схеме организация обязательна: без неё строк быть не может
+  if (!organizationId) {
+    return { total: 0, new: 0, imported: 0, expired: 0, expiringSoon: 0 }
+  }
   // org-audit: ok — все счётчики только по строкам своей организации
   const total = await prisma.atiCache.count({ where: { organizationId } })
   // «Взято в работу» — строки базы, на которые организация завела заказ

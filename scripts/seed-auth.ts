@@ -64,19 +64,13 @@ async function ensureOrganization(): Promise<string> {
 }
 
 /**
- * Подтягивает organizationId у записей, созданных до появления организаций
- * (водители, машины, заказы и остальные бизнес-данные).
- * Полный перенос делает `npm run db:migrate-orgs`; здесь — страховка,
- * чтобы сид не оставлял «ничьих» карточек водителей.
+ * Раньше подтягивала organizationId у карточек водителей, созданных до появления
+ * организаций (страховка для старых SQLite-баз). В PostgreSQL-схеме
+ * Driver.organizationId обязателен: «ничьих» карточек быть не может, подтягивать
+ * нечего. Для старых SQLite-баз остаётся `npm run db:migrate-orgs`.
  */
-async function attachDriversToOrganization(organizationId: string): Promise<void> {
-  const result = await prisma.driver.updateMany({
-    where: { organizationId: null },
-    data: { organizationId },
-  })
-  if (result.count > 0) {
-    console.log(`✔ Карточек водителей привязано к организации: ${result.count}`)
-  }
+async function attachDriversToOrganization(_organizationId: string): Promise<void> {
+  // намеренно пусто (см. комментарий выше)
 }
 
 async function ensureAdmin(organizationId: string): Promise<void> {

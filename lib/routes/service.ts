@@ -191,6 +191,9 @@ export async function changeRouteStatus(
   change: RouteStatusChange,
   organizationId: string | null,
 ): Promise<{ ok: true; status: RouteStatus } | { ok: false; error: string }> {
+  // В PostgreSQL-схеме организация обязательна (событие рейса без неё не записать)
+  if (!organizationId) return { ok: false, error: "Организация не определена" }
+
   const next = normalizeRouteStatus(change.status)
   if (!next) return { ok: false, error: "Неизвестный статус рейса" }
 
@@ -317,6 +320,9 @@ export async function ensureRouteRow(
   },
 ): Promise<{ id: string; created: boolean }> {
   const organizationId = input.organizationId
+  // В PostgreSQL-схеме организация обязательна: рейс без неё не создать
+  if (!organizationId) throw new Error("Организация не определена")
+
   // быстрый путь: рейс уже есть — ничего не делаем (важно для точек GPS,
   // которые пишутся часто)
   if (input.routeId) {
@@ -383,8 +389,12 @@ export type RouteEventInput = {
  * (когда FK включатся) запись упадёт с ошибкой внешнего ключа.
  */
 export async function logRouteEvent(client: RoutesDb, input: RouteEventInput): Promise<void> {
+  const organizationId = input.organizationId
+  // В PostgreSQL-схеме организация обязательна: событие без неё не записать
+  if (!organizationId) throw new Error("Организация не определена")
+
   await ensureRouteRow(client, {
-    organizationId: input.organizationId,
+    organizationId,
     routeId: input.routeId,
     driverId: input.driverId,
     vehicleId: input.vehicleId ?? null,
@@ -392,7 +402,7 @@ export async function logRouteEvent(client: RoutesDb, input: RouteEventInput): P
 
   await client.routeEvent.create({
     data: {
-      organizationId: input.organizationId,
+      organizationId,
       routeId: input.routeId,
       driverId: input.driverId,
       vehicleId: input.vehicleId ?? null,
