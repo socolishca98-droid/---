@@ -81,20 +81,18 @@ test("мобильный аналог раздела находится, под�
   assert.equal(mobileLogistTarget("/orders-history"), null)
 })
 
-test("разделы администратора переходят в свои мобильные экраны только у админа", () => {
-  // у админа есть мобильные аналоги админских разделов
-  assert.equal(mobileLogistTarget("/users", "admin"), "/lm/users")
-  assert.equal(mobileLogistTarget("/organization", "admin"), "/lm/organization")
+test("сотрудники, организация и настройки есть в мобильной панели у обеих ролей", () => {
+  for (const role of ["admin", "logist", undefined]) {
+    assert.equal(mobileLogistTarget("/users", role), "/lm/users")
+    assert.equal(mobileLogistTarget("/organization", role), "/lm/organization")
+    assert.equal(mobileLogistTarget("/settings", role), "/lm/settings")
+  }
+})
+
+test("журнал действий — только у администратора", () => {
   assert.equal(mobileLogistTarget("/audit", "admin"), "/lm/audit")
-  assert.equal(mobileLogistTarget("/settings", "admin"), "/lm/settings")
-  // логиста туда не уводим: API этих разделов ему всё равно откажет,
-  // а экран «только для администратора» вместо панели — плохой опыт
-  assert.equal(mobileLogistTarget("/users", "logist"), null)
-  assert.equal(mobileLogistTarget("/organization", "logist"), null)
   assert.equal(mobileLogistTarget("/audit", "logist"), null)
-  assert.equal(mobileLogistTarget("/settings", "logist"), null)
-  // без роли (не должно случаться в бою) ведём себя как логист
-  assert.equal(mobileLogistTarget("/users"), null)
+  assert.equal(mobileLogistTarget("/audit"), null)
 })
 
 test("логист с телефона уходит из десктопных разделов в /lm", () => {
@@ -135,14 +133,23 @@ test("логист с телефона уходит из десктопных р
     shouldRedirectStaffToMobile("/photos", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/photos",
   )
-  // у раздела нет мобильного аналога — оставляем полную версию (она адаптивна)
+  // «Сотрудники» теперь тоже с мобильным экраном
   assert.equal(
     shouldRedirectStaffToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
-    null,
+    "/lm/users",
   )
-  // админские разделы логисту с телефона тоже не отдаём в мобильный контур
+  // а разделы, доступные логисту, он получает и в мобильном виде
+  assert.equal(
+    shouldRedirectStaffToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/users",
+  )
   assert.equal(
     shouldRedirectStaffToMobile("/organization", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/organization",
+  )
+  // журнал действий API логисту не отдаёт — в полной версии он и останется
+  assert.equal(
+    shouldRedirectStaffToMobile("/audit", { role: "logist", userAgent: ua, wantsFull: false }),
     null,
   )
 })

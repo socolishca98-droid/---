@@ -9,7 +9,6 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
 import { toast } from "sonner"
 import {
   Building2,
@@ -19,13 +18,12 @@ import {
   MapPin,
   Palette,
   Save,
-  ShieldCheck,
   Sparkles,
   Timer,
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
+import { Card, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { searchPlaces, type GeoItem } from "@/lib/geo/nominatim"
 
@@ -105,7 +103,7 @@ export default function MobileSettingsPage() {
   }, [])
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!user) return
     void load()
     try {
       const stored = localStorage.getItem(THEME_STORAGE_KEY)
@@ -113,7 +111,7 @@ export default function MobileSettingsPage() {
     } catch {
       /* закрытый режим — остаётся тёмная */
     }
-  }, [isAdmin, load])
+  }, [user, load])
 
   const findBase = async () => {
     const address = (form.baseAddress ?? "").trim()
@@ -189,29 +187,6 @@ export default function MobileSettingsPage() {
       /* не критично */
     }
     toast.success("Тема карты сохранена", { description: "Карта откроется с этой подложкой" })
-  }
-
-  if (user && !isAdmin) {
-    return (
-      <>
-        <LogistHeader title="Настройки" subtitle="Раздел администратора" userName={user.name} />
-        <div className="px-4 pt-4">
-          <EmptyState
-            icon={<ShieldCheck className="h-6 w-6" />}
-            title="Только для администратора"
-            description="Автопарк, реквизиты и нормы отдыха меняет администратор организации."
-            action={
-              <Link
-                href="/lm"
-                className="inline-flex min-h-[44px] items-center rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white"
-              >
-                На главную
-              </Link>
-            }
-          />
-        </div>
-      </>
-    )
   }
 
   const filledRequisites = REQUISITE_FIELDS.filter((field) => (form[field.key] ?? "").trim()).length

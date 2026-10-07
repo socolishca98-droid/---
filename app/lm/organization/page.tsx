@@ -20,7 +20,6 @@ import {
   Link2,
   Loader2,
   Plus,
-  ShieldCheck,
   Trash2,
   Truck,
   UserPlus,
@@ -102,13 +101,16 @@ export default function MobileOrganizationPage() {
   const [freshCode, setFreshCode] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (canSeeInvites: boolean) => {
     setLoading(true)
     setError(null)
     try {
       const [orgRes, invitesRes] = await Promise.all([
         fetch("/api/organization", { cache: "no-store" }),
-        fetch("/api/organization/invites", { cache: "no-store" }),
+        // Коды приглашений API отдаёт только админу — логисту не стучимся
+        canSeeInvites
+          ? fetch("/api/organization/invites", { cache: "no-store" })
+          : Promise.resolve(null),
       ])
       const orgData = (await orgRes.json().catch(() => null)) as OrgResponse | null
       if (!orgRes.ok || !orgData?.success) {
@@ -117,6 +119,10 @@ export default function MobileOrganizationPage() {
       }
       setOrg(orgData)
 
+      if (!invitesRes) {
+        setInvites([])
+        return
+      }
       const invitesData = (await invitesRes.json().catch(() => null)) as InvitesResponse | null
       setInvites(invitesData?.invites ?? [])
     } catch {
@@ -127,8 +133,8 @@ export default function MobileOrganizationPage() {
   }, [])
 
   useEffect(() => {
-    if (isAdmin) void load()
-  }, [isAdmin, load])
+    if (user) void load(user.role === "admin")
+  }, [user, load])
 
   const createInvite = async () => {
     setCreating(true)
@@ -181,29 +187,6 @@ export default function MobileOrganizationPage() {
     }
   }
 
-  if (user && !isAdmin) {
-    return (
-      <>
-        <LogistHeader title="Организация" subtitle="Раздел администратора" userName={user.name} />
-        <div className="px-4 pt-4">
-          <EmptyState
-            icon={<ShieldCheck className="h-6 w-6" />}
-            title="Только для администратора"
-            description="Коды приглашений и состав компании видит администратор организации."
-            action={
-              <Link
-                href="/lm"
-                className="inline-flex min-h-[44px] items-center rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white"
-              >
-                На главную
-              </Link>
-            }
-          />
-        </div>
-      </>
-    )
-  }
-
   const activeInvites = invites.filter((invite) => invite.status === "active")
 
   return (
@@ -216,7 +199,7 @@ export default function MobileOrganizationPage() {
 
       <div className="space-y-3 px-4 pt-4">
         {error ? (
-          <ErrorState message={error} onRetry={() => void load()} />
+          <ErrorState message={error} onRetry={() => void load(isAdmin)} />
         ) : loading ? (
           <ListSkeleton rows={3} />
         ) : (
@@ -281,6 +264,7 @@ export default function MobileOrganizationPage() {
               </Card>
             ) : null}
 
+            {isAdmin ? (
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-[12px] uppercase tracking-wide text-zinc-500">Коды приглашений</p>
@@ -426,6 +410,12 @@ export default function MobileOrganizationPage() {
                 </p>
               ) : null}
             </div>
+            ) : (
+              <p className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-[12.5px] leading-relaxed text-zinc-500">
+                Коды приглашений создаёт и отзывает администратор организации. Заявки на
+                присоединение можно одобрять в разделе «Сотрудники».
+              </p>
+            )}
           </>
         )}
       </div>

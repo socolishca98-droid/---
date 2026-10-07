@@ -22,7 +22,6 @@ import {
   Phone,
   RotateCcw,
   Search,
-  ShieldCheck,
   Undo2,
   UserRound,
   Users,
@@ -150,8 +149,8 @@ export default function MobileUsersPage() {
   )
 
   useEffect(() => {
-    if (isAdmin) void load(1, false)
-  }, [isAdmin, load])
+    if (user) void load(1, false)
+  }, [user, load])
 
   const runAction = useCallback(
     async (target: StaffRow, action: string, extra: Record<string, unknown> = {}) => {
@@ -183,34 +182,9 @@ export default function MobileUsersPage() {
   const loadedAll = !pagination || pagination.page >= pagination.totalPages
 
   const subtitle = useMemo(() => {
-    if (!isAdmin) return "Раздел администратора"
-    return pendingCount > 0
-      ? `${pendingCount} ждёт одобрения · всего ${total}`
-      : `Всего ${total}`
-  }, [isAdmin, pendingCount, total])
-
-  if (user && !isAdmin) {
-    return (
-      <>
-        <LogistHeader title="Сотрудники" subtitle="Раздел администратора" userName={user.name} />
-        <div className="px-4 pt-4">
-          <EmptyState
-            icon={<ShieldCheck className="h-6 w-6" />}
-            title="Только для администратора"
-            description="Заявки на доступ, блокировки и пароли сотрудников ведёт администратор организации."
-            action={
-              <Link
-                href="/lm"
-                className="inline-flex min-h-[44px] items-center rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white"
-              >
-                На главную
-              </Link>
-            }
-          />
-        </div>
-      </>
-    )
-  }
+    if (pendingCount > 0) return `${pendingCount} ждёт одобрения · всего ${total}`
+    return `Всего ${total}`
+  }, [pendingCount, total])
 
   return (
     <>
@@ -446,7 +420,9 @@ export default function MobileUsersPage() {
                     </>
                   ) : null}
 
-                  {row.status === "suspended" ? (
+                  {/* Блокировки, пароли и роли — только администратор:
+                      API отвечает логисту 403, кнопки ему не показываем */}
+                  {isAdmin && row.status === "suspended" ? (
                     <>
                       <ActionButton
                         tone="primary"
@@ -473,7 +449,7 @@ export default function MobileUsersPage() {
                     </>
                   ) : null}
 
-                  {row.status === "active" ? (
+                  {isAdmin && row.status === "active" ? (
                     <>
                       <ActionButton
                         disabled={busy}
@@ -503,7 +479,7 @@ export default function MobileUsersPage() {
                   ) : null}
                 </div>
 
-                {row.status === "active" && row.role !== "driver" ? (
+                {isAdmin && row.status === "active" && row.role !== "driver" ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -536,6 +512,7 @@ export default function MobileUsersPage() {
           <p className="text-[12.5px] leading-relaxed text-zinc-500">
             Заявки появляются после регистрации по коду приглашения. Код создаётся в разделе
             «Организация».
+            {!isAdmin ? " Блокировки, пароли и роли меняет администратор." : ""}
           </p>
         </Card>
       </div>

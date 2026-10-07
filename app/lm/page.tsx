@@ -38,10 +38,10 @@ export default function LogistHomePage() {
   const orders = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
   const routes = useJsonApi<{ routes: MobileRoute[] }>(user ? "/api/routes?limit=50" : null)
   const drivers = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
-  // Заявки на доступ — только у админа: логисту этот эндпоинт отвечает 403
+  // Заявки на доступ видят оба: одобрять их может и логист (проверяет API)
   const isAdmin = user?.role === "admin"
   const staff = useJsonApi<{ pendingCount: number }>(
-    isAdmin ? "/api/auth/users?status=pending&pageSize=1" : null,
+    user ? "/api/auth/users?status=pending&pageSize=1" : null,
   )
   const pendingCount = staff.data?.pendingCount ?? 0
 
@@ -78,7 +78,7 @@ export default function LogistHomePage() {
           Здравствуйте, <span className="font-medium text-white">{user?.name?.split(" ")[0] || "коллега"}</span>
         </p>
 
-        {isAdmin && pendingCount > 0 ? (
+        {pendingCount > 0 ? (
           <Link
             href="/lm/users"
             className="mt-3.5 flex min-h-[56px] items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.1] px-4 active:bg-amber-500/[0.16]"
