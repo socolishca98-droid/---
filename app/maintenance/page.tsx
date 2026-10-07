@@ -7,6 +7,7 @@
 // сводная картина для организатора.
 
 import { useEffect } from "react"
+import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -40,12 +41,9 @@ export default function MaintenancePage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="space-y-6 p-6">
+        <main className="space-y-4 lg:space-y-6 p-4 lg:p-6">
           <div>
             <h1 className="text-2xl font-bold">Обслуживание и документы</h1>
             <p className="text-muted-foreground">

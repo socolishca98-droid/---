@@ -37,7 +37,8 @@ import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { Badge } from "@/components/ui/badge"
-import { Building2, KeyRound, Loader2, LogOut, ShieldCheck, Users } from "lucide-react"
+import { Building2, KeyRound, Loader2, LogOut, Menu, ShieldCheck, Users } from "lucide-react"
+import { MobileNav } from "@/components/mobile-nav"
 import { toast } from "sonner"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
@@ -63,6 +64,8 @@ export function Header() {
   useEffect(() => setNow(new Date()), [])
 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  // На телефоне боковой панели нет — разделы открываются выдвижным меню
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -120,17 +123,37 @@ export function Header() {
 
   if (!user) {
     return (
-      <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-6">
-        <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Проверяем доступ...
-        </div>
-      </header>
+      <>
+        <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-4 lg:px-6">
+          <button
+            type="button"
+            onClick={() => setIsMobileNavOpen(true)}
+            aria-label="Открыть меню"
+            className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-accent lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Проверяем доступ...
+          </div>
+        </header>
+        <MobileNav open={isMobileNavOpen} onClose={() => setIsMobileNavOpen(false)} />
+      </>
     )
   }
 
   return (
-    <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-6">
+    <>
+      <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-4 lg:px-6">
+        <button
+          type="button"
+          onClick={() => setIsMobileNavOpen(true)}
+          aria-label="Открыть меню"
+          className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-accent lg:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
       {/* Приветствие по времени суток: человек видит, что система «знает» его */}
       <div className="hidden lg:flex flex-col leading-tight min-w-0">
         <span className="text-sm font-semibold truncate">
@@ -290,5 +313,7 @@ export function Header() {
         </DialogContent>
       </Dialog>
     </header>
+    <MobileNav open={isMobileNavOpen} onClose={() => setIsMobileNavOpen(false)} />
+    </>
   )
 }

@@ -14,6 +14,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -49,22 +50,24 @@ export default function SearchPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-6">
+        <main className="p-4 lg:p-6 space-y-4 lg:space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <Button variant="outline" size="icon" asChild>
                 <Link href="/orders" aria-label="К заказам">
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
               </Button>
-              <div>
-                <h1 className="text-2xl font-bold">Поиск грузов</h1>
-                <p className="text-muted-foreground">
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold lg:text-2xl">Поиск грузов</h1>
+                {/* Описание длинное — на телефоне оно занимало пол-экрана; там
+                    оставляем короткую подсказку, полный текст читается на ПК. */}
+                <p className="text-xs text-muted-foreground lg:hidden">
+                  «Взять в работу» создаёт заказ на этапе «Поиск».
+                </p>
+                <p className="hidden text-muted-foreground lg:block">
                   Своя накопленная база — основной источник; живой ATI — по
                   необходимости. «Взять в работу» создаёт заказ на этапе «Поиск».
                 </p>

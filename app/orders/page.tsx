@@ -3,6 +3,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -53,16 +54,13 @@ export default function OrdersPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-6">
+        <main className="p-4 lg:p-6 space-y-4 lg:space-y-6">
           <div className="flex flex-wrap justify-between items-center gap-3">
             <div>
-              <h1 className="text-2xl font-bold">Заказы</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-xl font-bold lg:text-2xl">Заказы</h1>
+              <p className="text-xs text-muted-foreground lg:text-sm">
                 Поиск → Согласование → Маршрут → Документы → Назначение → Контроль
               </p>
             </div>
@@ -77,15 +75,17 @@ export default function OrdersPage() {
           </div>
 
           <Tabs value={tab} onValueChange={(value) => setTab(value as "orders" | "parser")} className="space-y-6">
-            <TabsList className="bg-secondary w-full justify-start p-1">
-              <TabsTrigger value="orders" className="gap-2 px-6">
-                <Package className="h-4 w-4" />
-                Мои заказы (Песочница)
+            {/* grid + h-auto: на телефоне длинные подписи переносятся, а не
+                обрезаются по правому краю списка вкладок */}
+            <TabsList className="bg-secondary grid h-auto w-full grid-cols-2 p-1">
+              <TabsTrigger value="orders" className="min-w-0 gap-2 px-2 py-2 text-xs sm:px-6 sm:text-sm">
+                <Package className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 whitespace-normal text-left">Мои заказы (Песочница)</span>
               </TabsTrigger>
 
-              <TabsTrigger value="parser" className="gap-2 px-6">
-                <Bot className="h-4 w-4" />
-                Заказ из текста
+              <TabsTrigger value="parser" className="min-w-0 gap-2 px-2 py-2 text-xs sm:px-6 sm:text-sm">
+                <Bot className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 whitespace-normal text-left">Заказ из текста</span>
               </TabsTrigger>
             </TabsList>
 

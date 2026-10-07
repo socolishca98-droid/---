@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -222,12 +223,9 @@ export default function FleetPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-6">
+        <main className="p-4 lg:p-6 space-y-4 lg:space-y-6">
           {/* Инфо-панель */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* База */}
@@ -280,7 +278,7 @@ export default function FleetPage() {
 
           {/* Контент */}
           <Tabs defaultValue="vehicles" className="space-y-6">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <TabsList className="h-10">
                 <TabsTrigger value="vehicles" className="gap-2 px-4">
                   <Truck className="h-4 w-4" />
@@ -292,8 +290,8 @@ export default function FleetPage() {
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex items-center gap-3">
-                <div className="relative w-64">
+              <div className="flex min-w-0 flex-1 items-center gap-3 lg:flex-none">
+                <div className="relative w-full lg:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Поиск..."

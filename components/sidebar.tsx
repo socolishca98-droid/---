@@ -7,66 +7,16 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import {
-  LayoutDashboard,
-  Package,
-  RouteIcon,
-  Camera,
-  Contact,
-  FileBarChart,
   Truck,
-  Smartphone,
   Settings,
   ChevronLeft,
   ChevronRight,
-  MessageSquare,
-  Warehouse,
   LogOut,
-  CreditCard,
-  Users,
-  Building2,
-  Search,
-  Fuel,
-  Wrench,
-  ScrollText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
-
-/** Какие счётчики может показывать пункт меню. */
-type BadgeKey = "orders" | "chat"
-
-const navigation: Array<{
-  name: string
-  href: string
-  icon: any
-  badgeKey?: BadgeKey
-  /** Пункт виден только администратору организации */
-  adminOnly?: boolean
-  /** Пункт виден только логисту (у администратора своя полная версия) */
-  logistOnly?: boolean
-}> = [
-  { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
-  // логист работает с телефона: без этой ссылки мобильная панель теряется
-  { name: "Мобильная панель", href: "/lm", icon: Smartphone, logistOnly: true },
-  // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
-  { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
-  // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
-  { name: "Поиск грузов", href: "/search", icon: Search },
-  { name: "Маршруты", href: "/routes", icon: RouteIcon },
-  { name: "Автопарк", href: "/fleet", icon: Warehouse },
-  { name: "Топливо", href: "/fuel", icon: Fuel },
-  { name: "Обслуживание", href: "/maintenance", icon: Wrench },
-  { name: "Клиенты", href: "/clients", icon: Contact },
-  { name: "Фото", href: "/photos", icon: Camera },
-  { name: "Чат", href: "/chat", icon: MessageSquare, badgeKey: "chat" },
-  { name: "Оплаты", href: "/payments", icon: CreditCard },
-  { name: "Отчёты", href: "/reports", icon: FileBarChart },
-  // журнал действий — для админа: кто и что менял в организации
-  { name: "Журнал", href: "/audit", icon: ScrollText, adminOnly: true },
-  { name: "Сотрудники", href: "/users", icon: Users },
-  { name: "Организация", href: "/organization", icon: Building2 },
-]
+import { navItemsForRole, type BadgeKey } from "@/lib/navigation"
 
 const EMPTY_COUNTS: Record<BadgeKey, number> = { orders: 0, chat: 0 }
 
@@ -123,7 +73,7 @@ export function Sidebar() {
     <aside
       className={cn(
         // Панель полупрозрачная: живой фон рабочего места читается сквозь неё
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar/70 backdrop-blur-xl border-r border-sidebar-border transition-[width] duration-300 ease-out",
+        "fixed left-0 top-0 z-40 hidden h-screen bg-sidebar/70 backdrop-blur-xl border-r border-sidebar-border transition-[width] duration-300 ease-out lg:block",
         isCollapsed ? "w-20" : "w-64",
       )}
     >
@@ -169,10 +119,7 @@ export function Sidebar() {
             разделов прокручивается, а логотип сверху и блок пользователя снизу
             остаются на месте. Иначе нижние разделы уезжают за экран. */}
         <nav className="flex-1 min-h-0 space-y-1 overflow-y-auto overscroll-contain p-3">
-          {navigation
-            .filter((item) => !item.adminOnly || user?.role === "admin")
-            .filter((item) => !item.logistOnly || user?.role === "logist")
-            .map((item) => {
+          {navItemsForRole(user?.role).map((item) => {
             const isActive = pathname === item.href
             const badgeValue = item.badgeKey ? counts[item.badgeKey] : 0
             const badgeLabel = badgeValue > 99 ? "99+" : String(badgeValue)

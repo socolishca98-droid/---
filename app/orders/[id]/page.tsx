@@ -8,6 +8,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -45,12 +46,9 @@ export default function OrderPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-4">
+        <main className="p-4 lg:p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Button variant="outline" size="icon" asChild>

@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
+import { cn } from "@/lib/utils"
 import { ActiveRouteCard } from "@/components/routes/active-route-card"
 import { AddLoadDialog } from "@/components/routes/add-load-dialog"
 import { BackhaulDialog } from "@/components/routes/backhaul-dialog"
@@ -311,12 +312,9 @@ export default function RoutesPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-6">
+        <main className="space-y-6 p-4 lg:p-6">
           {/* Заголовок */}
           <div className="flex justify-between items-center">
             <div>

@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
+import { cn } from "@/lib/utils"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import dynamic from "next/dynamic"
 
@@ -60,8 +61,10 @@ export default function DashboardPage() {
     <div className="h-screen w-screen flex overflow-hidden bg-[#09090b]">
       <Sidebar />
       <div
-        className="flex-1 h-full flex flex-col transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
+        className={cn(
+          "flex h-full flex-1 flex-col transition-all duration-300 ease-in-out",
+          isCollapsed ? "lg:pl-20" : "lg:pl-64",
+        )}
       >
         <Header />
         <div className="flex-1 relative">

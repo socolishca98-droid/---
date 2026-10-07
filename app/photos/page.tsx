@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -217,12 +218,9 @@ export default function PhotosPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-6">
+        <main className="p-4 lg:p-6 space-y-4 lg:space-y-6">
           {/* Заголовок */}
           <div>
             <h1 className="text-2xl font-bold">Фотографии</h1>
@@ -261,7 +259,7 @@ export default function PhotosPage() {
                     setFilters((prev) => ({ ...prev, clientId: value === "__all__" ? "" : value }))
                   }
                 >
-                  <SelectTrigger className="h-9 w-[190px]">
+                  <SelectTrigger className="h-9 w-full min-w-0 sm:w-[190px]">
                     <SelectValue placeholder="Все клиенты" />
                   </SelectTrigger>
                   <SelectContent>
@@ -280,7 +278,7 @@ export default function PhotosPage() {
                     setFilters((prev) => ({ ...prev, vehicleId: value === "__all__" ? "" : value }))
                   }
                 >
-                  <SelectTrigger className="h-9 w-[170px]">
+                  <SelectTrigger className="h-9 w-full min-w-0 sm:w-[190px]">
                     <SelectValue placeholder="Все машины" />
                   </SelectTrigger>
                   <SelectContent>
@@ -300,7 +298,7 @@ export default function PhotosPage() {
                     setFilters((prev) => ({ ...prev, routeId: value === "__all__" ? "" : value }))
                   }
                 >
-                  <SelectTrigger className="h-9 w-[210px]">
+                  <SelectTrigger className="h-9 w-full min-w-0 sm:w-[190px]">
                     <SelectValue placeholder="Все рейсы" />
                   </SelectTrigger>
                   <SelectContent>

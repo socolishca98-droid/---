@@ -2,6 +2,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
 import { useRouter } from "next/navigation"
@@ -216,12 +217,9 @@ export default function DriversPage() {
     return (
       <div className="min-h-screen">
         <Sidebar />
-        <div
-          className="transition-all duration-300 ease-in-out"
-          style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-        >
+        <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
           <Header />
-          <main className="p-6 space-y-6">
+          <main className="p-4 lg:p-6 space-y-4 lg:space-y-6">
             <div className="space-y-2">
               <div className="skeleton-shimmer h-8 w-56 rounded-md" />
               <div className="skeleton-shimmer h-4 w-80 rounded-md" />
@@ -266,12 +264,9 @@ export default function DriversPage() {
   return (
     <div className="min-h-screen text-foreground">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6 space-y-6 max-w-7xl mx-auto">
+        <main className="p-4 lg:p-6 space-y-4 lg:space-y-6 max-w-7xl mx-auto">
           {/* Top Bar */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>

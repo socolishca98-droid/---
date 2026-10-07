@@ -695,7 +695,7 @@ export function ReportsView() {
 
       {report && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-secondary/60">
+          <TabsList className="bg-secondary/60 h-auto w-full flex-wrap justify-start p-1">
             <TabsTrigger value="money" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Деньги

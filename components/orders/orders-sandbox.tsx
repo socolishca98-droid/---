@@ -1081,6 +1081,15 @@ export function OrdersSandbox() {
   const [loadingAti, setLoadingAti] = useState(true)
 
   const [autoPanelCollapsed, setAutoPanelCollapsed] = useState(false)
+  // Телефон: панель ATI — выдвижная (иначе холсту не остаётся ширины),
+  // а правая панель автопредложений по умолчанию свёрнута в полоску
+  const [atiPanelOpen, setAtiPanelOpen] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setAutoPanelCollapsed(true)
+    }
+  }, [])
   const [collapsedProposalTypes, setCollapsedProposalTypes] = useState<
     Partial<Record<AutoProposalType, boolean>>
   >({})
@@ -2357,14 +2366,39 @@ export function OrdersSandbox() {
   return (
     <TooltipProvider>
       <div className="flex h-[calc(100vh-200px)] min-h-[500px] bg-slate-950 text-white overflow-hidden rounded-xl border border-slate-800 relative select-none w-full">
-        {/* Боковая панель ATI */}
-        <div className="w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col">
+        {/* Затемнение под выдвижной панелью — только на телефоне */}
+        {atiPanelOpen && (
+          <button
+            type="button"
+            aria-label="Закрыть список грузов ATI"
+            onClick={() => setAtiPanelOpen(false)}
+            className="absolute inset-0 z-30 bg-black/60 lg:hidden"
+          />
+        )}
+
+        {/* Боковая панель ATI: на компьютере — колонка, на телефоне — выдвижная */}
+        <div
+          className={cn(
+            "w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col",
+            "max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-2xl max-lg:transition-transform max-lg:duration-200",
+            !atiPanelOpen && "max-lg:-translate-x-full",
+          )}
+        >
           <div className="p-4 border-b border-slate-800">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <Package className="h-4 w-4 text-orange-500" />
                 <h3 className="font-semibold">Грузы ATI</h3>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 lg:hidden"
+                aria-label="Закрыть"
+                onClick={() => setAtiPanelOpen(false)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -2523,9 +2557,21 @@ export function OrdersSandbox() {
 
         {/* Главная область */}
         <div className="flex-1 flex flex-col relative min-w-0">
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40">
-            <div className="bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-xl shadow-2xl p-1.5 flex items-center gap-1">
-              <div className="flex bg-slate-950 rounded-lg p-0.5">
+          <div className="absolute left-1/2 top-4 z-40 max-w-[calc(100vw-1.5rem)] -translate-x-1/2">
+            <div className="flex items-center gap-1 overflow-x-auto bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-xl shadow-2xl p-1.5">
+              {/* На телефоне список грузов ATI живёт в выдвижной панели */}
+              <button
+                type="button"
+                onClick={() => setAtiPanelOpen(true)}
+                className="lg:hidden px-3 py-1.5 rounded-md flex shrink-0 items-center gap-1.5 text-sm text-slate-300 hover:text-white bg-slate-950"
+              >
+                <Package className="h-4 w-4" />
+                Грузы ATI
+                {atiOrders.length > 0 && (
+                  <span className="text-xs text-slate-500">({atiOrders.length})</span>
+                )}
+              </button>
+              <div className="flex bg-slate-950 rounded-lg p-0.5 shrink-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button

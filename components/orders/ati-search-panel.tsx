@@ -551,7 +551,7 @@ export function AtiSearchPanel() {
   return (
     <div className="space-y-6">
       {atiConnected === false && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm">
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm sm:flex-row">
           <AlertTriangle className="h-5 w-5 mt-0.5 text-red-500 flex-shrink-0" />
           <div className="flex-1 space-y-1">
             <p className="font-semibold text-red-700 dark:text-red-300">
@@ -563,7 +563,7 @@ export function AtiSearchPanel() {
               «Организация» (это может сделать администратор).
             </p>
           </div>
-          <Button asChild variant="outline" size="sm" className="flex-shrink-0">
+          <Button asChild variant="outline" size="sm" className="w-full flex-shrink-0 sm:w-auto">
             <Link href="/organization">Подключить</Link>
           </Button>
         </div>
@@ -575,14 +575,16 @@ export function AtiSearchPanel() {
       >
         {/* Источник заказов по умолчанию — своя накопленная база (её наполняют
             сканы по расписанию). Живой запрос на ATI.su — отдельная явная опция. */}
-        <TabsList className="grid w-full grid-cols-2 h-12">
-          <TabsTrigger value="database" className="gap-2 text-base">
-            <Database className="h-4 w-4" />
-            Своя база ({stats?.new || 0})
+        {/* h-auto + перенос подписи: на телефоне названия вкладок не должны
+            обрезаться по правому краю (жалоба «табы обрезаны»). */}
+        <TabsList className="grid h-auto min-h-12 w-full grid-cols-2">
+          <TabsTrigger value="database" className="gap-2 px-2 py-2.5 text-xs sm:text-base">
+            <Database className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 whitespace-normal text-left">Своя база ({stats?.new || 0})</span>
           </TabsTrigger>
-          <TabsTrigger value="search" className="gap-2 text-base">
-            <Search className="h-4 w-4" />
-            Живой поиск ATI
+          <TabsTrigger value="search" className="gap-2 px-2 py-2.5 text-xs sm:text-base">
+            <Search className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 whitespace-normal text-left">Живой поиск ATI</span>
           </TabsTrigger>
         </TabsList>
 
@@ -719,7 +721,7 @@ export function AtiSearchPanel() {
             <CardContent className="p-4">
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
-                  <div className="flex gap-6 text-sm">
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
                     <div>
                       <span className="text-muted-foreground">Всего:</span>
                       <span className="font-bold ml-1">

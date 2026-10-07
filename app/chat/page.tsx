@@ -3,6 +3,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useSidebar } from "@/lib/sidebar-context"
@@ -18,7 +19,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MessageSquare, Phone, MapPin, AlertTriangle, RefreshCw } from "lucide-react"
+import { MessageSquare, Phone, MapPin, AlertTriangle, RefreshCw, ArrowLeft } from "lucide-react"
 import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface Driver {
@@ -164,15 +165,12 @@ export default function ChatPage() {
   return (
     <div className="min-h-screen">
       <Sidebar />
-      <div
-        className="transition-all duration-300 ease-in-out"
-        style={{ paddingLeft: isCollapsed ? "80px" : "256px" }}
-      >
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:pl-20" : "lg:pl-64")}>
         <Header />
-        <main className="p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
+        <main className="p-4 lg:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-6">
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold lg:text-2xl">
                 Чат с водителями
                 {importantUnread > 0 && (
                   <Badge variant="destructive" className="animate-pulse">
@@ -181,7 +179,7 @@ export default function ChatPage() {
                   </Badge>
                 )}
               </h1>
-              <p className="text-muted-foreground">Общение и координация в реальном времени</p>
+              <p className="text-xs text-muted-foreground lg:text-sm">Общение и координация в реальном времени</p>
             </div>
             <Button variant="outline" size="sm" onClick={fetchMessages}>
               <RefreshCw className="h-4 w-4 mr-2" />
@@ -189,9 +187,9 @@ export default function ChatPage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-12 gap-6 h-[calc(100vh-200px)]">
+          <div className="grid h-[calc(100dvh-190px)] grid-cols-1 gap-4 lg:h-[calc(100vh-200px)] lg:grid-cols-12 lg:gap-6">
             {/* Driver list */}
-            <Card className="col-span-4 flex flex-col">
+            <Card className={cn("flex-col lg:col-span-4", selectedDriverId && "hidden lg:flex")}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
@@ -213,13 +211,23 @@ export default function ChatPage() {
             </Card>
 
             {/* Chat area */}
-            <Card className="col-span-8 flex flex-col">
+            <Card className={cn("flex-col lg:col-span-8", !selectedDriverId && "hidden lg:flex")}>
               {selectedDriver ? (
                 <>
                   {/* Chat header */}
                   <div className="border-b border-border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-3">
+                        {/* Возврат к списку водителей — только на телефоне */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="lg:hidden"
+                          aria-label="К списку водителей"
+                          onClick={() => setSelectedDriverId(null)}
+                        >
+                          <ArrowLeft className="h-5 w-5" />
+                        </Button>
                         <Avatar className="h-10 w-10">
                           <AvatarFallback>
                             {selectedDriver.name
@@ -245,8 +253,8 @@ export default function ChatPage() {
                       </div>
                       <Button variant="outline" size="sm" asChild>
                         <a href={`tel:${selectedDriver.phone}`}>
-                          <Phone className="h-4 w-4 mr-2" />
-                          Позвонить
+                          <Phone className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Позвонить</span>
                         </a>
                       </Button>
                     </div>
