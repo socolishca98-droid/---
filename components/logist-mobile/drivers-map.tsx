@@ -70,9 +70,28 @@ const ROUTE_COLORS = ["#fb923c", "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#f
  * в этом случае берём тёмную подложку Esri — она бесплатна и без ключа.
  */
 const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || ""
-const TILE_URL = CARTO_API_KEY
+const CARTO_DARK = CARTO_API_KEY
   ? `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`
-  : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+  : null
+const ESRI_DARK = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+const ESRI_SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+
+/** Тема подложки выбирается в настройках (полная версия хранит её там же). */
+const THEME_STORAGE_KEY = "tms_map_theme"
+
+function tileUrlForTheme(theme: string): string {
+  if (theme === "satellite") return ESRI_SATELLITE
+  if (theme === "graphite") return ESRI_DARK
+  return CARTO_DARK ?? ESRI_DARK
+}
+
+function readMapTheme(): string {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) || "dark"
+  } catch {
+    return "dark"
+  }
+}
 
 export function DriversMap() {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -146,7 +165,7 @@ export function DriversMap() {
     })
     mapRef.current = map
 
-    const tiles = L.tileLayer(TILE_URL, {
+    const tiles = L.tileLayer(tileUrlForTheme(readMapTheme()), {
       subdomains: "abcd",
       maxZoom: 18,
       minZoom: 3,

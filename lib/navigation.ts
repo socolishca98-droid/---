@@ -40,8 +40,9 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { name: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
-  // логист работает с телефона: без этой ссылки мобильная панель теряется
-  { name: "Мобильная панель", href: "/lm", icon: Smartphone, logistOnly: true },
+  // Мобильная панель — один контур для админа и логиста: у обоих в ней есть
+  // их разделы (у админа — сотрудники, организация, журнал, настройки).
+  { name: "Мобильная панель", href: "/lm", icon: Smartphone },
   // бейджи — настоящие числа организации (/api/sidebar-counts), а не зашитые значения
   { name: "Заказы", href: "/orders", icon: Package, badgeKey: "orders" },
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)

@@ -81,6 +81,22 @@ test("мобильный аналог раздела находится, под�
   assert.equal(mobileLogistTarget("/orders-history"), null)
 })
 
+test("разделы администратора переходят в свои мобильные экраны только у админа", () => {
+  // у админа есть мобильные аналоги админских разделов
+  assert.equal(mobileLogistTarget("/users", "admin"), "/lm/users")
+  assert.equal(mobileLogistTarget("/organization", "admin"), "/lm/organization")
+  assert.equal(mobileLogistTarget("/audit", "admin"), "/lm/audit")
+  assert.equal(mobileLogistTarget("/settings", "admin"), "/lm/settings")
+  // логиста туда не уводим: API этих разделов ему всё равно откажет,
+  // а экран «только для администратора» вместо панели — плохой опыт
+  assert.equal(mobileLogistTarget("/users", "logist"), null)
+  assert.equal(mobileLogistTarget("/organization", "logist"), null)
+  assert.equal(mobileLogistTarget("/audit", "logist"), null)
+  assert.equal(mobileLogistTarget("/settings", "logist"), null)
+  // без роли (не должно случаться в бою) ведём себя как логист
+  assert.equal(mobileLogistTarget("/users"), null)
+})
+
 test("логист с телефона уходит из десктопных разделов в /lm", () => {
   const ua = IPHONE
   assert.equal(
@@ -124,8 +140,39 @@ test("логист с телефона уходит из десктопных р
     shouldRedirectStaffToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
     null,
   )
+  // админские разделы логисту с телефона тоже не отдаём в мобильный контур
+  assert.equal(
+    shouldRedirectStaffToMobile("/organization", { role: "logist", userAgent: ua, wantsFull: false }),
+    null,
+  )
+})
+
+test("админ с телефона попадает в мобильные экраны админских разделов", () => {
+  const ua = ANDROID
+  assert.equal(
+    shouldRedirectStaffToMobile("/users", { role: "admin", userAgent: ua, wantsFull: false }),
+    "/lm/users",
+  )
   assert.equal(
     shouldRedirectStaffToMobile("/organization", { role: "admin", userAgent: ua, wantsFull: false }),
+    "/lm/organization",
+  )
+  assert.equal(
+    shouldRedirectStaffToMobile("/audit", { role: "admin", userAgent: ua, wantsFull: false }),
+    "/lm/audit",
+  )
+  assert.equal(
+    shouldRedirectStaffToMobile("/settings", { role: "admin", userAgent: ua, wantsFull: false }),
+    "/lm/settings",
+  )
+  // на компьютере админ остаётся в полной версии
+  assert.equal(
+    shouldRedirectStaffToMobile("/users", { role: "admin", userAgent: DESKTOP, wantsFull: false }),
+    null,
+  )
+  // и ?full=1 уважается
+  assert.equal(
+    shouldRedirectStaffToMobile("/users", { role: "admin", userAgent: ua, wantsFull: true }),
     null,
   )
 })

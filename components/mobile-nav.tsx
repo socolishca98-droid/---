@@ -69,7 +69,7 @@ export function MobileNav({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
-          {user?.role === "logist" ? (
+          {user ? (
             <Link
               href="/lm"
               onClick={onClose}

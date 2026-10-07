@@ -8,7 +8,21 @@
 "use client"
 
 import Link from "next/link"
-import { AlertTriangle, ArrowRight, Map as MapIcon, Package, Plus, Route as RouteIcon, Truck, Users } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowRight,
+  Building2,
+  History,
+  Map as MapIcon,
+  Package,
+  Plus,
+  Route as RouteIcon,
+  Settings2,
+  ShieldCheck,
+  Truck,
+  UserPlus,
+  Users,
+} from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { OrderCard } from "@/components/logist-mobile/order-card"
@@ -24,6 +38,12 @@ export default function LogistHomePage() {
   const orders = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
   const routes = useJsonApi<{ routes: MobileRoute[] }>(user ? "/api/routes?limit=50" : null)
   const drivers = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
+  // Заявки на доступ — только у админа: логисту этот эндпоинт отвечает 403
+  const isAdmin = user?.role === "admin"
+  const staff = useJsonApi<{ pendingCount: number }>(
+    isAdmin ? "/api/auth/users?status=pending&pageSize=1" : null,
+  )
+  const pendingCount = staff.data?.pendingCount ?? 0
 
   const orderList = orders.data?.orders ?? []
   const routeList = routes.data?.routes ?? []
@@ -57,6 +77,22 @@ export default function LogistHomePage() {
         <p className="text-[15px] text-zinc-400">
           Здравствуйте, <span className="font-medium text-white">{user?.name?.split(" ")[0] || "коллега"}</span>
         </p>
+
+        {isAdmin && pendingCount > 0 ? (
+          <Link
+            href="/lm/users"
+            className="mt-3.5 flex min-h-[56px] items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.1] px-4 active:bg-amber-500/[0.16]"
+          >
+            <UserPlus className="h-5 w-5 shrink-0 text-amber-300" />
+            <span className="flex-1 text-[13.5px] leading-snug text-amber-100">
+              <span className="font-semibold">
+                {pendingCount} {pendingCount === 1 ? "заявка" : pendingCount < 5 ? "заявки" : "заявок"}
+              </span>{" "}
+              на доступ ждёт одобрения
+            </span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-amber-300" />
+          </Link>
+        ) : null}
 
         {loading ? (
           <div className="mt-4 space-y-2.5">
@@ -114,6 +150,49 @@ export default function LogistHomePage() {
             <span className="text-[14px] font-medium">Водители</span>
           </Link>
         </div>
+
+        {isAdmin ? (
+          <>
+            <SectionTitle title="Администрирование" />
+            <div className="grid grid-cols-2 gap-2.5">
+              <Link
+                href="/lm/users"
+                className="flex min-h-[76px] flex-col justify-between rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]"
+              >
+                <ShieldCheck className="h-5 w-5 text-orange-300" />
+                <span className="mt-2 text-[13.5px] font-medium text-zinc-100">
+                  Сотрудники
+                  {pendingCount > 0 ? (
+                    <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] text-amber-200">
+                      {pendingCount}
+                    </span>
+                  ) : null}
+                </span>
+              </Link>
+              <Link
+                href="/lm/organization"
+                className="flex min-h-[76px] flex-col justify-between rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]"
+              >
+                <Building2 className="h-5 w-5 text-orange-300" />
+                <span className="mt-2 text-[13.5px] font-medium text-zinc-100">Организация</span>
+              </Link>
+              <Link
+                href="/lm/audit"
+                className="flex min-h-[76px] flex-col justify-between rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]"
+              >
+                <History className="h-5 w-5 text-orange-300" />
+                <span className="mt-2 text-[13.5px] font-medium text-zinc-100">Журнал действий</span>
+              </Link>
+              <Link
+                href="/lm/settings"
+                className="flex min-h-[76px] flex-col justify-between rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]"
+              >
+                <Settings2 className="h-5 w-5 text-orange-300" />
+                <span className="mt-2 text-[13.5px] font-medium text-zinc-100">Настройки</span>
+              </Link>
+            </div>
+          </>
+        ) : null}
 
         {anyError ? (
           <div className="mt-6">

@@ -25,9 +25,20 @@ const SECTION_MAP: Array<[string, string]> = [
 ]
 
 /**
- * Разделы без мобильного аналога (сотрудники, организация, настройки, журнал,
- * расходы) остаются в полной версии: её вёрстка адаптирована под телефон —
- * сайдбар прячется, меню открывается кнопкой. Отдельный экран не нужен.
+ * Разделы администратора. Логисту они всё равно недоступны (API отвечает 403),
+ * поэтому уводим в мобильные аналоги только админа — иначе логист с телефона
+ * попал бы на экран «только для администратора» вместо своей панели.
+ */
+const ADMIN_SECTION_MAP: Array<[string, string]> = [
+  ["/users", "/lm/users"],
+  ["/organization", "/lm/organization"],
+  ["/audit", "/lm/audit"],
+  ["/settings", "/lm/settings"],
+]
+
+/**
+ * Разделы без мобильного аналога (расходы) остаются в полной версии: её вёрстка
+ * адаптирована под телефон — сайдбар прячется, меню открывается кнопкой.
  */
 
 /**
@@ -63,12 +74,16 @@ export function isMobileDevice(userAgent: string | null | undefined): boolean {
  * Мобильный аналог десктопного раздела — или null, если аналога нет.
  * Подпуть сохраняется: /orders/abc → /lm/orders/abc.
  */
-export function mobileLogistTarget(pathname: string): string | null {
+export function mobileLogistTarget(pathname: string, role?: string): string | null {
   if (pathname === "/dashboard") return "/lm"
 
-  for (const [from, to] of SECTION_MAP) {
-    if (pathname === from) return to
-    if (pathname.startsWith(`${from}/`)) return `${to}${pathname.slice(from.length)}`
+  const tables = role === "admin" ? [SECTION_MAP, ADMIN_SECTION_MAP] : [SECTION_MAP]
+
+  for (const table of tables) {
+    for (const [from, to] of table) {
+      if (pathname === from) return to
+      if (pathname.startsWith(`${from}/`)) return `${to}${pathname.slice(from.length)}`
+    }
   }
 
   return null
@@ -93,5 +108,5 @@ export function shouldRedirectStaffToMobile(
 
   if (pathname === "/maintenance") return "/lm/fleet"
 
-  return mobileLogistTarget(pathname)
+  return mobileLogistTarget(pathname, options.role)
 }
