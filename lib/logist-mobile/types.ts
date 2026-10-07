@@ -312,3 +312,80 @@ export const INSIGHT_LEVEL_META: Record<string, { emoji: string; style: string }
   critical: { emoji: "🔴", style: "border-red-500/25 bg-red-500/[0.06]" },
   info: { emoji: "ℹ️", style: "border-white/10 bg-white/[0.03]" },
 }
+
+// --- Поиск грузов (ATI), топливо, фото -------------------------------------
+
+export interface MobileAtiLoad {
+  id: string
+  atiLoadId?: string | null
+  routeFrom: string
+  routeTo: string
+  distance: number | null
+  weight: number | null
+  volume: number | null
+  cargoType: string | null
+  truckType: string | null
+  price: number | null
+  firmId: string | null
+  firmName: string | null
+  contactPhone: string | null
+  contactName: string | null
+  loadingDate: string | null
+  status: string
+  note: string | null
+}
+
+export interface MobileAtiStats {
+  total: number
+  new: number
+  imported: number
+  expired?: number
+  expiringSoon?: number
+}
+
+export interface MobileFuelEntry {
+  id: string
+  spentAt: string
+  liters: number | null
+  amountRub: number | null
+  pricePerL: number | null
+  vendor: string | null
+  odometer: number | null
+  routeId: string | null
+  routeName: string | null
+  driverName: string | null
+  vehiclePlate: string | null
+}
+
+export interface MobileFuelVehicle {
+  vehicleId: string
+  plate: string
+  routes: number
+  liters: number | null
+  amountRub: number
+  pricePerL: number | null
+  estimatedL: number | null
+  diffPct: number | null
+  flag: boolean
+}
+
+export interface MobilePhoto {
+  id: string
+  url: string
+  type: string
+  driverId: string
+  orderId: string | null
+  routeId: string | null
+  description: string | null
+  createdAt: string
+}
+
+/** Подписи типов фото — те же, что в полной версии. */
+export const PHOTO_TYPE_LABELS: Record<string, string> = {
+  cargo_before: "До погрузки",
+  cargo_after: "После погрузки",
+  damage: "Повреждение",
+  receipt: "Чек",
+  waybill: "Накладная",
+  other: "Другое",
+}

@@ -2,9 +2,9 @@
  * Тесты правил перехода между контурами сотрудника (lib/logist-mobile/routing.ts).
  *
  * Главное, что здесь защищается:
- *  - логист с телефона не теряет мобильную панель (/orders → /lm/orders);
- *  - на компьютере логист видит полную версию — его никуда не уводит;
- *  - администратора не трогают вообще;
+ *  - сотрудник с телефона не теряет мобильную панель (/orders → /lm/orders);
+ *  - правило действует для всех штабных ролей, включая администратора;
+ *  - на компьютере сотрудник видит полную версию — его никуда не уводит;
  *  - ?full=1 — осознанный выход в полную версию, уважается;
  *  - ?next= не превращается в открытый редирект.
  *
@@ -20,7 +20,7 @@ const {
   staffHome,
   isMobileDevice,
   mobileLogistTarget,
-  shouldRedirectLogistToMobile,
+  shouldRedirectStaffToMobile,
   desktopOnlyTarget,
 } = require("../.test-build/lib/logist-mobile/routing.js")
 
@@ -74,6 +74,9 @@ test("мобильный аналог раздела находится, под�
   assert.equal(mobileLogistTarget("/fleet"), "/lm/fleet")
   assert.equal(mobileLogistTarget("/chat"), "/lm/chat")
   assert.equal(mobileLogistTarget("/reports"), "/lm/reports")
+  assert.equal(mobileLogistTarget("/search"), "/lm/search")
+  assert.equal(mobileLogistTarget("/fuel"), "/lm/fuel")
+  assert.equal(mobileLogistTarget("/photos"), "/lm/photos")
   // «/orders-history» не должен считаться разделом /orders
   assert.equal(mobileLogistTarget("/orders-history"), null)
 })
@@ -83,9 +86,7 @@ test("разделы без мобильной версии ведут на за
   assert.equal(desktopOnlyTarget("/organization"), "/lm/more?unsupported=%2Forganization")
   assert.equal(desktopOnlyTarget("/audit"), "/lm/more?unsupported=%2Faudit")
   assert.equal(desktopOnlyTarget("/settings"), "/lm/more?unsupported=%2Fsettings")
-  assert.equal(desktopOnlyTarget("/photos"), "/lm/more?unsupported=%2Fphotos")
-  assert.equal(desktopOnlyTarget("/search"), "/lm/more?unsupported=%2Fsearch")
-  assert.equal(desktopOnlyTarget("/fuel"), "/lm/more?unsupported=%2Ffuel")
+  assert.equal(desktopOnlyTarget("/expenses"), "/lm/more?unsupported=%2Fexpenses")
   // подпути тоже
   assert.equal(desktopOnlyTarget("/organization/requisites"), "/lm/more?unsupported=%2Forganization")
   // разделы с мобильной версией заглушкой не подменяются
@@ -96,63 +97,84 @@ test("разделы без мобильной версии ведут на за
 test("логист с телефона уходит из десктопных разделов в /lm", () => {
   const ua = IPHONE
   assert.equal(
-    shouldRedirectLogistToMobile("/orders", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/orders", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/orders",
   )
   assert.equal(
-    shouldRedirectLogistToMobile("/dashboard", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/dashboard", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm",
   )
   assert.equal(
-    shouldRedirectLogistToMobile("/routes/demo-route-4", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/routes/demo-route-4", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/routes/demo-route-4",
   )
   assert.equal(
-    shouldRedirectLogistToMobile("/clients", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/clients", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/clients",
   )
   assert.equal(
-    shouldRedirectLogistToMobile("/payments", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/payments", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/payments",
   )
   assert.equal(
-    shouldRedirectLogistToMobile("/maintenance", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/maintenance", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/fleet",
+  )
+  assert.equal(
+    shouldRedirectStaffToMobile("/search", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/search",
+  )
+  assert.equal(
+    shouldRedirectStaffToMobile("/fuel", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/fuel",
+  )
+  assert.equal(
+    shouldRedirectStaffToMobile("/photos", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/photos",
   )
   // у раздела нет мобильной версии — показываем заглушку, а не десктоп
   assert.equal(
-    shouldRedirectLogistToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
+    shouldRedirectStaffToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/more?unsupported=%2Fusers",
   )
 })
 
 test("логист с телефона не уходит из /lm и из печати", () => {
   const options = { role: "logist", userAgent: ANDROID, wantsFull: false }
-  assert.equal(shouldRedirectLogistToMobile("/lm", options), null)
-  assert.equal(shouldRedirectLogistToMobile("/lm/orders", options), null)
-  assert.equal(shouldRedirectLogistToMobile("/print/route/demo-route-4", options), null)
+  assert.equal(shouldRedirectStaffToMobile("/lm", options), null)
+  assert.equal(shouldRedirectStaffToMobile("/lm/orders", options), null)
+  assert.equal(shouldRedirectStaffToMobile("/print/route/demo-route-4", options), null)
   // API не трогаем: fetch из мобильной панели должен работать
-  assert.equal(shouldRedirectLogistToMobile("/api/orders", options), null)
+  assert.equal(shouldRedirectStaffToMobile("/api/orders", options), null)
 })
 
-test("администратора и десктоп правила не касаются", () => {
+test("администратора тоже уводим в мобильную панель — с телефона полная версия непригодна", () => {
   assert.equal(
-    shouldRedirectLogistToMobile("/orders", { role: "admin", userAgent: IPHONE, wantsFull: false }),
+    shouldRedirectStaffToMobile("/orders", { role: "admin", userAgent: IPHONE, wantsFull: false }),
+    "/lm/orders",
+  )
+  assert.equal(
+    shouldRedirectStaffToMobile("/dashboard", { role: "admin", userAgent: ANDROID, wantsFull: false }),
+    "/lm",
+  )
+  // а на компьютере администратор работает в полной версии
+  assert.equal(
+    shouldRedirectStaffToMobile("/orders", { role: "admin", userAgent: DESKTOP, wantsFull: false }),
     null,
   )
   assert.equal(
-    shouldRedirectLogistToMobile("/orders", { role: "logist", userAgent: DESKTOP, wantsFull: false }),
+    shouldRedirectStaffToMobile("/orders", { role: "logist", userAgent: DESKTOP, wantsFull: false }),
     null,
   )
   // ?full=1 — осознанный переход в полную версию даже с телефона
   assert.equal(
-    shouldRedirectLogistToMobile("/dashboard", { role: "logist", userAgent: IPHONE, wantsFull: true }),
+    shouldRedirectStaffToMobile("/dashboard", { role: "logist", userAgent: IPHONE, wantsFull: true }),
     null,
   )
 })
 
 test("заглушка не мешает осознанному переходу в полную версию и API", () => {
   const options = { role: "logist", userAgent: IPHONE, wantsFull: false }
-  assert.equal(shouldRedirectLogistToMobile("/users", { ...options, wantsFull: true }), null)
-  assert.equal(shouldRedirectLogistToMobile("/api/users", options), null)
+  assert.equal(shouldRedirectStaffToMobile("/users", { ...options, wantsFull: true }), null)
+  assert.equal(shouldRedirectStaffToMobile("/api/users", options), null)
 })

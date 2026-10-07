@@ -13,14 +13,17 @@ import { toast } from "sonner"
 import {
   Bell,
   Building2,
+  Camera as CameraIcon,
   Car,
   ExternalLink,
+  Fuel as FuelIcon,
   Info,
   KeyRound,
   Loader2,
   LogOut,
   MessageSquare,
   Package,
+  Search as SearchIcon,
   ShieldCheck,
   Truck,
   Users,
@@ -45,12 +48,8 @@ const DESKTOP_SECTION_NAMES: Record<string, string> = {
   "/organization": "Организация",
   "/settings": "Настройки",
   "/audit": "Журнал действий",
-  "/photos": "Фото",
-  "/search": "Поиск грузов",
-  "/fuel": "Топливо",
   "/expenses": "Расходы",
   "/driver": "Карточки водителей",
-  "/reports/export": "Выгрузка отчётов",
 }
 
 function DesktopOnlyNotice() {
@@ -149,9 +148,12 @@ export default function LogistMorePage() {
 
         <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Разделы</p>
         <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+          <LinkRow icon={<SearchIcon className="h-4.5 w-4.5" />} label="Поиск грузов (ATI)" href="/lm/search" />
           <LinkRow icon={<Users className="h-4.5 w-4.5" />} label="Клиенты" href="/lm/clients" />
           <LinkRow icon={<Wallet className="h-4.5 w-4.5" />} label="Оплаты" href="/lm/payments" />
           <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Автопарк и ТО" href="/lm/fleet" />
+          <LinkRow icon={<FuelIcon className="h-4.5 w-4.5" />} label="Топливо" href="/lm/fuel" />
+          <LinkRow icon={<CameraIcon className="h-4.5 w-4.5" />} label="Фото" href="/lm/photos" />
           <LinkRow icon={<MessageSquare className="h-4.5 w-4.5" />} label="Чат с водителями" href="/lm/chat" />
           <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
           <LinkRow icon={<Package className="h-4.5 w-4.5" />} label="Отчёты и подсказки" href="/lm/reports" />

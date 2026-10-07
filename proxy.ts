@@ -36,7 +36,7 @@ import {
 import { acceptsDriver, acceptsStaff, classifyRoute } from "@/lib/auth/access"
 import { AuthSecretError, verifySessionToken, type SessionTokenPayload } from "@/lib/auth/token"
 import { verifyCsrf } from "@/lib/csrf"
-import { shouldRedirectLogistToMobile, staffHome } from "@/lib/logist-mobile/routing"
+import { shouldRedirectStaffToMobile, staffHome } from "@/lib/logist-mobile/routing"
 
 export const config = {
   // Всё, кроме статики Next.js и файлов с расширениями. Загрузки добавлены
@@ -161,11 +161,11 @@ export async function proxy(request: NextRequest) {
     driverPayload = null
   }
 
-  // --- Логист с телефона остаётся в мобильной панели -------------------------
+  // --- Сотрудник с телефона остаётся в мобильной панели ----------------------
   // Полная версия на маленьком экране непригодна: уводим разделы, у которых
   // есть мобильный аналог. ?full=1 — осознанный переход в полную версию.
   if (staffPayload) {
-    const mobileTarget = shouldRedirectLogistToMobile(pathname, {
+    const mobileTarget = shouldRedirectStaffToMobile(pathname, {
       role: staffPayload.role,
       userAgent: request.headers.get("user-agent"),
       wantsFull: request.nextUrl.searchParams.has("full"),

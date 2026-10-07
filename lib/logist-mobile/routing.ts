@@ -19,6 +19,9 @@ const SECTION_MAP: Array<[string, string]> = [
   ["/fleet", "/lm/fleet"],
   ["/chat", "/lm/chat"],
   ["/reports", "/lm/reports"],
+  ["/search", "/lm/search"],
+  ["/fuel", "/lm/fuel"],
+  ["/photos", "/lm/photos"],
 ]
 
 /**
@@ -26,17 +29,7 @@ const SECTION_MAP: Array<[string, string]> = [
  * журнал и т. п.). С телефона показываем не сломанную вёрстку, а понятный
  * экран-заглушку в «Ещё»: там объяснение и кнопка «открыть всё равно».
  */
-const DESKTOP_ONLY = [
-  "/users",
-  "/organization",
-  "/settings",
-  "/audit",
-  "/photos",
-  "/search",
-  "/fuel",
-  "/expenses",
-  "/driver",
-]
+const DESKTOP_ONLY = ["/users", "/organization", "/settings", "/audit", "/expenses", "/driver"]
 
 /** Куда увести с раздела, у которого нет мобильной версии. */
 export function desktopOnlyTarget(pathname: string): string | null {
@@ -89,16 +82,17 @@ export function mobileLogistTarget(pathname: string): string | null {
 }
 
 /**
- * Нужно ли увести логиста с этой страницы в мобильную панель.
- * Не уводим: из /lm, из печати, из API и когда человек сам попросил полную
- * версию (?full=1 — на неё ведёт ссылка из /lm/more).
+ * Нужно ли увести сотрудника с этой страницы в мобильную панель.
+ * Правило общее для всех штабных ролей: на телефоне полная версия непригодна
+ * и логисту, и администратору. Не уводим: из /lm, из печати, из API и когда
+ * человек сам попросил полную версию (?full=1 — на неё ведёт ссылка из /lm/more).
  */
-export function shouldRedirectLogistToMobile(
+export function shouldRedirectStaffToMobile(
   pathname: string,
   options: { role: string | undefined; userAgent: string | null | undefined; wantsFull: boolean },
 ): string | null {
   if (options.wantsFull) return null
-  if (options.role !== "logist") return null
+  if (!options.role) return null
   if (pathname.startsWith("/api/")) return null
   if (pathname.startsWith("/lm")) return null
   if (pathname.startsWith("/print")) return null
