@@ -79,7 +79,7 @@ export async function pushToOrgStaff(
     where: {
       organizationId,
       role: { in: ["admin", "logist"] },
-      isActive: true,
+      status: "active",
       ...(exceptUserId ? { id: { not: exceptUserId } } : {}),
     },
     select: { id: true },
@@ -107,7 +107,7 @@ export async function pushToOrgDrivers(
 ): Promise<void> {
   if (!pushConfigured() || !organizationId) return;
   const driverIds = await prisma.user.findMany({
-    where: { organizationId, role: "driver", isActive: true },
+    where: { organizationId, role: "driver", status: "active" },
     select: { id: true },
   });
   if (driverIds.length === 0) return;

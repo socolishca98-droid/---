@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const target = await prisma.user.findFirst({
       where: {
         organizationId: organization.id,
-        isActive: true,
+       status: "active",
         role: { in: ["admin", "logist"] },
       },
       orderBy: [{ role: "asc" }, { createdAt: "asc" }],
