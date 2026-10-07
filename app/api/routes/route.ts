@@ -163,7 +163,8 @@ export async function GET(request: NextRequest) {
           cargoType: true,
         },
         take: 100,
-        orderBy: { createdAt: "desc" },
+        // У AtiCache нет createdAt: время появления записи — scannedAt.
+        orderBy: { scannedAt: "desc" },
       }),
     ])
     const baseCity = normalizeCity(settings?.baseAddress ?? "")

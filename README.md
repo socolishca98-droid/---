@@ -107,11 +107,15 @@ npm run db:migrate-order-stages
 npm run db:migrate-orgs
 ```
 
-**Продакшн — PostgreSQL.** Полный порядок действий: `docs/postgres-migration.md`.
-Кратко: `npm run schema:postgres` создаёт `prisma/schema.postgres.prisma`,
-схема применяется на сервере БД, `DATABASE_URL` меняется на
-`postgresql://user:password@host:5432/loginex?schema=public`. Для параллельной
-записи нескольких водителей Postgres нужен обязательно (SQLite блокирует файл).
+**Продакшн — PostgreSQL (в т.ч. Supabase).** Схема выбирается автоматически по
+протоколу `DATABASE_URL`: `file:…` → SQLite, `postgresql://…` → PostgreSQL
+(`scripts/prisma-schema.mjs`). Достаточно поменять `DATABASE_URL` и выполнить
+`npm run db:check && npm run db:push && npm run seed:auth`.
+
+- Деплой на Vercel с Supabase — пошагово: **`docs/vercel-supabase.md`**.
+- Общая механика переезда: `docs/postgres-migration.md`.
+- Для параллельной записи нескольких водителей Postgres нужен обязательно
+  (SQLite блокирует файл).
 
 ## 4. Основные команды
 
@@ -120,6 +124,7 @@ npm run db:migrate-orgs
 | `npm run dev` | дев-сервер на `:3000` (Turbopack), доступен по сети |
 | `npm run build` / `npm start` | прод-сборка и запуск |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run db:check` | диагностика базы: URL, соответствие схемы и клиента, живой запрос |
 | `npm test` | все тесты: unit + vitest + изоляция организаций (работают сразу после клонирования, Prisma Client для них не нужен) |
 | `npm run test:unit` | `tests/*.test.mjs` (node:test), 258 проверок |
 | `npm run test:vitest` | `__tests__/**` (vitest) |

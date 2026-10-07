@@ -1,5 +1,13 @@
 # P2-1 PostgreSQL Migration Guide
 
+> **Актуальный порядок действий — в [vercel-supabase.md](./vercel-supabase.md)**
+> (Vercel + Supabase, пошагово). Ниже — общая механика переезда на PostgreSQL.
+>
+> Главное изменение: схема теперь выбирается **автоматически по `DATABASE_URL`**
+> (`scripts/prisma-schema.mjs`), а `npm run build` больше не перегенерирует
+> клиент под SQLite. Все команды Prisma (`db:push`, `db:generate`, `build`,
+> `postinstall`) уже переведены на этот механизм.
+
 ## Текущее состояние
 - Dev: SQLite `file:./dev.db` via `prisma/schema.prisma` (provider sqlite)
 - Prod ready: PostgreSQL via `prisma/schema.postgres.prisma` (provider postgresql)
@@ -28,31 +36,32 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/loginex?schema=publi
 
 ### 3. Сгенерировать PostgreSQL-схему
 Единственный источник истины — `prisma/schema.prisma` (SQLite). Отдельная
-postgres-схема генерируется из неё и в git не коммитится:
+postgres-схема (provider = postgresql) генерируется из неё и в git не коммитится.
+Всё это делает одна команда — она сама посмотрит на протокол `DATABASE_URL`:
 
 ```bash
-npm run schema:postgres          # → prisma/schema.postgres.prisma (provider = postgresql)
-npx prisma generate --schema=prisma/schema.postgres.prisma
+npm run db:generate     # → prisma/schema.postgres.prisma + клиент под PostgreSQL
+node scripts/prisma-schema.mjs --print   # проверить, какая схема выбрана
 ```
 
-Дальше все команды Prisma вызываются с явным `--schema=prisma/schema.postgres.prisma`.
+Если `DIRECT_URL` задан (например, для Supabase), он подставляется в
+сгенерированную схему как `directUrl` — Prisma возьмёт его для команд,
+меняющих схему, а `DATABASE_URL` оставит для рантайма.
 
 ### 4. Миграция
+История в `prisma/migrations` рассинхронизирована с реальной схемой
+(в `20251215135350_init` 10 моделей из 27), поэтому источник истины — сама
+схема, а применяется она через `db push`:
+
 ```bash
-# Генерация клиента
-npx prisma generate
-
-# Создание миграции (если БД пустая)
-npx prisma migrate dev --name init_postgres
-
-# Для продакшена
-npx prisma migrate deploy
-
-# Опционально: сидирование данных
-npx prisma db seed
-# или
-npm run db:init
+npm run db:check        # диагностика подключения с подсказками
+npm run db:push         # привести базу к текущей схеме Prisma
+npm run seed:auth       # первый администратор + организация
+npm run seed:demo       # (необязательно) демо-данные
 ```
+
+`prisma migrate dev/deploy` для этого проекта не применяется: он потребует
+сброса базы из-за расхождения истории.
 
 ### 5. Перенос данных из SQLite (если нужно)
 ```bash
@@ -67,11 +76,9 @@ node scripts/migrate-sqlite-to-postgres.mjs
 
 ### 7. Проверить
 ```bash
-DATABASE_URL="postgresql://..." npm run build:safe
-# Должен пройти 70 страниц
-
-# Проверка подключения
-npx prisma db execute --schema=prisma/schema.prisma --stdin <<< "SELECT 1"
+npm run db:check        # URL + соответствие клиента схеме + живой запрос
+npm run build           # сборка: клиент генерируется под ту же базу
+npm run start           # прод-режим локально; /api/health должен ответить ok
 ```
 
 ## Docker Compose пример
