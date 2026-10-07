@@ -77,7 +77,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         cargoType: true,
       },
       take: 100,
-      orderBy: { createdAt: "desc" },
+      // У AtiCache нет createdAt: время появления записи — scannedAt.
+      orderBy: { scannedAt: "desc" },
     })
 
     const candidates = backhaulCandidates(endpointCity, baseCity, loads)

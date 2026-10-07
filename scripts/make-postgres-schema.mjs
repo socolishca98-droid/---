@@ -27,7 +27,24 @@ if (!/provider\s*=\s*"sqlite"/.test(original)) {
   process.exit(1)
 }
 
-const postgres = original.replace(/provider\s*=\s*"sqlite"/, 'provider = "postgresql"')
+const postgres = withDirectUrl(
+  original.replace(/provider\s*=\s*"sqlite"/, 'provider = "postgresql"'),
+)
+
+/**
+ * Supabase (и вообще pgbouncer) требует два адреса: пулер для приложения и
+ * прямое подключение для миграций (db push / migrate). Если DIRECT_URL задан,
+ * прописываем его как directUrl — Prisma сама возьмёт его для команд,
+ * изменяющих схему, и DATABASE_URL — для рантайма.
+ */
+function withDirectUrl(schema) {
+  if (!process.env.DIRECT_URL) return schema
+  return schema.replace(
+    /(url\s*=\s*env\("DATABASE_URL"\))/,
+    '$1\n  directUrl = env("DIRECT_URL")',
+  )
+}
+
 
 const banner = [
   "// prisma/schema.postgres.prisma — СГЕНЕРИРОВАННЫЙ ФАЙЛ, не править вручную.",

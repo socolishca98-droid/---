@@ -9,6 +9,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
+COPY scripts ./scripts/
 RUN npm ci --frozen-lockfile || npm install
 
 # Builder stage
@@ -17,8 +18,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma client (offline-safe)
-RUN npx prisma generate --schema=./prisma/schema.prisma || echo "prisma generate skipped"
+# Generate Prisma client (offline-safe). Схема выбирается по DATABASE_URL:
+# для PostgreSQL передайте DATABASE_URL как build-arg (см. docs/vercel-supabase.md).
+ARG DATABASE_URL=""
+RUN node scripts/prisma-schema.mjs generate || echo "prisma generate skipped"
 
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
