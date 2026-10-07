@@ -33,7 +33,7 @@
     "audit:orgs": "node scripts/audit-org-isolation.mjs",
     "build:safe": "node scripts/prisma-schema.mjs generate || echo \"prisma generate skipped (offline)\"; next build",
     "postinstall": "node scripts/prisma-schema.mjs generate || echo \"prisma generate failed - will retry on build\"",
-    "test:unit": "npm run test:build && node --test \"tests/*.test.mjs\"",
+    "test:unit": "npm run test:build && node --test tests/",
     "test:vitest": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "test:watch": "vitest",
