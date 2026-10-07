@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-29T20:12:58.906Z",
+  "generatedAt": "2026-10-07T19:54:31.486Z",
   "endpoints": [
     {
       "method": "GET",
@@ -300,6 +300,11 @@
       "method": "GET",
       "route": "/api/health",
       "group": "health"
+    },
+    {
+      "method": "GET",
+      "route": "/api/lm/map",
+      "group": "lm"
     },
     {
       "method": "POST",
