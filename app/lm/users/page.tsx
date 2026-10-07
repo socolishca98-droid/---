@@ -32,7 +32,7 @@ import {
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useStaffSession } from "@/hooks/use-staff-session"
-import { formatDateShort, formatRelative } from "@/lib/logist-mobile/format"
+import { formatDateShort, formatRelative, telHref } from "@/lib/logist-mobile/format"
 
 const PAGE_SIZE = 25
 
@@ -487,13 +487,13 @@ export default function MobileUsersPage() {
                       >
                         <KeyRound className="h-4 w-4" /> Сбросить пароль
                       </ActionButton>
-                      {row.role === "driver" ? (
-                        <ActionButton
-                          disabled={busy}
-                          onClick={() => window.open("tel:" + (row.phone ?? ""), "_self")}
+                      {row.role === "driver" && telHref(row.phone) ? (
+                        <a
+                          href={telHref(row.phone) ?? undefined}
+                          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white active:bg-white/12"
                         >
                           <Phone className="h-4 w-4" /> Позвонить
-                        </ActionButton>
+                        </a>
                       ) : (
                         <ActionButton disabled={busy} onClick={() => setRoleFor(row.id)}>
                           <UserRound className="h-4 w-4" /> Сменить роль
