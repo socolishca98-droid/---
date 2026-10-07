@@ -18,8 +18,9 @@
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 
-/** Где фон не нужен: контур водителя и печатные листы документов. */
-const EXCLUDED_PREFIXES = ["/m", "/print"]
+/** Где фон не нужен: контуры водителя и логиста на телефоне (экономия батареи
+ *  и трафика мобильного интернета) и печатные листы документов. */
+const EXCLUDED_PREFIXES = ["/m", "/lm", "/print"]
 
 const TRACKS = [
   {
