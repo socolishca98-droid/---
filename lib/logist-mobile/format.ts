@@ -147,6 +147,28 @@ export function whatsappHref(phone?: string | null): string | null {
   return `https://wa.me/${digits}`
 }
 
+/**
+ * Адрес → ссылка на Яндекс Карты: одна точка, открывается в приложении карт.
+ * Именно текст адреса, а не координаты: у логиста адрес есть, а геокодировать
+ * его на телефоне незачем — карты сделают это сами.
+ */
+export function mapsHref(address?: string | null): string | null {
+  const clean = address?.trim()
+  if (!clean) return null
+  return `https://yandex.ru/maps/?text=${encodeURIComponent(clean)}`
+}
+
+/**
+ * Маршрут «откуда → куда» в навигаторе — одна ссылка на две точки.
+ * Координаты не нужны: Яндекс Карты принимают адреса в rtext и геокодят их.
+ */
+export function routeMapsHref(from?: string | null, to?: string | null): string | null {
+  const start = from?.trim()
+  const finish = to?.trim()
+  if (!start || !finish) return null
+  return `https://yandex.ru/maps/?rtext=${encodeURIComponent(start)}~${encodeURIComponent(finish)}&rtt=auto`
+}
+
 /** «Домодедово → Калуга» одной строкой. */
 export function routeTitle(from?: string | null, to?: string | null): string {
   return `${shortCity(from)} → ${shortCity(to)}`

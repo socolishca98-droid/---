@@ -11,6 +11,7 @@ import {
   canChangeOrderStatus,
   isNegotiationStatus,
   isOrderClosed,
+  normalizeAssignmentId,
   normalizeOrderStatus,
   orderStatusLabel,
   statusFromNegotiation,
@@ -233,6 +234,12 @@ export async function PATCH(request: NextRequest,
       }
     }
 
+    // "" и null — это «снять назначение», отсутствие поля — «не трогать»:
+    // без нормализации пустая строка уходила в Prisma и роняла запрос
+    // нарушением внешнего ключа (Order_assignedVehicleId_fkey).
+    const nextDriverId = normalizeAssignmentId(assignedDriverId)
+    const nextVehicleId = normalizeAssignmentId(assignedVehicleId)
+
     const existing = await prisma.order.findFirst({
       where: scopedWhere(__org.organizationId, { id }),
       select: {
@@ -254,9 +261,9 @@ export async function PATCH(request: NextRequest,
     }
 
     // Назначить заказу можно только своего водителя и свою машину
-    if (assignedDriverId) {
+    if (nextDriverId) {
       const driver = await prisma.driver.findFirst({
-        where: scopedWhere(__org.organizationId, { id: assignedDriverId }),
+        where: scopedWhere(__org.organizationId, { id: nextDriverId }),
         select: { id: true },
       })
       if (!driver) {
@@ -266,9 +273,9 @@ export async function PATCH(request: NextRequest,
         )
       }
     }
-    if (assignedVehicleId) {
+    if (nextVehicleId) {
       const vehicle = await prisma.vehicle.findFirst({
-        where: scopedWhere(__org.organizationId, { id: assignedVehicleId }),
+        where: scopedWhere(__org.organizationId, { id: nextVehicleId }),
         select: { id: true },
       })
       if (!vehicle) {
@@ -339,8 +346,8 @@ export async function PATCH(request: NextRequest,
           ...(nextStatus && { status: nextStatus }),
           // Доставка запоминается временем: от него считается отсрочка платежа
           ...(nextStatus === "delivered" && { deliveredAt: new Date() }),
-          ...(assignedDriverId !== undefined && { assignedDriverId }),
-          ...(assignedVehicleId !== undefined && { assignedVehicleId }),
+          ...(nextDriverId !== undefined && { assignedDriverId: nextDriverId }),
+          ...(nextVehicleId !== undefined && { assignedVehicleId: nextVehicleId }),
           ...otherFields,
         },
       })

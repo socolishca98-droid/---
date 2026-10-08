@@ -22,6 +22,7 @@ const {
   orderStatusLabel,
   allowedOrderStatuses,
   canChangeOrderStatus,
+  normalizeAssignmentId,
   CLOSED_ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
   OCCUPYING_ORDER_STATUSES,
@@ -330,4 +331,18 @@ test("состояние переговоров и итог, который пе
   assert.equal(canChangeOrderStatus("negotiation", statusFromNegotiation("agreed")), true)
   assert.equal(canChangeOrderStatus("negotiation", statusFromNegotiation("lost")), true)
   assert.equal(canChangeOrderStatus("search", statusFromNegotiation("agreed")), true)
+})
+
+test("назначение водителя и машины: пустая строка — это «снять», а не пустой id", () => {
+  // Регрессия: "" уходила в Prisma как есть, и PATCH падал с
+  // «Foreign key constraint violated: Order_assignedVehicleId_fkey»
+  assert.equal(normalizeAssignmentId(""), null)
+  assert.equal(normalizeAssignmentId("   "), null)
+  assert.equal(normalizeAssignmentId(null), null)
+  assert.equal(normalizeAssignmentId("demo-driver-1"), "demo-driver-1")
+  assert.equal(normalizeAssignmentId(" demo-driver-1 "), "demo-driver-1")
+  // Поле не прислали — не трогаем назначение
+  assert.equal(normalizeAssignmentId(undefined), undefined)
+  // Мусор вместо id тоже не трогаем: молча снимать назначение нельзя
+  assert.equal(normalizeAssignmentId(42), undefined)
 })

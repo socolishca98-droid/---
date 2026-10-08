@@ -136,6 +136,24 @@ export function isOrderStatus(value: unknown): value is OrderStatus {
 }
 
 /**
+ * Значение назначения (водитель, машина) из тела запроса.
+ *
+ *   undefined → поле не прислали, ничего не меняем
+ *   null, ""  → «снять»: в базе будет null
+ *   строка    → id, который нужно проверить на принадлежность организации
+ *
+ * Пустая строка раньше уходила в Prisma как есть: назначение водителя без
+ * машины падало с «Foreign key constraint violated: Order_assignedVehicleId_fkey».
+ */
+export function normalizeAssignmentId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed === "" ? null : trimmed
+}
+
+/**
  * Приводит любое встреченное значение (канон или легас) к канону.
  * Возвращает null, если значение совсем неизвестное — угадывать нельзя.
  */

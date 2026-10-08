@@ -6,8 +6,9 @@
 "use client"
 
 import Link from "next/link"
-import { AlertTriangle, ArrowRight, CircleDollarSign, Clock } from "lucide-react"
+import { AlertTriangle, ArrowRight, CircleDollarSign, Clock, CornerDownRight } from "lucide-react"
 import { orderStatusLabel } from "@/lib/orders/stages"
+import { listHint } from "@/lib/logist-mobile/order-flow"
 import {
   ORDER_STATUS_STYLES,
   PAYMENT_TYPE_LABELS,
@@ -38,6 +39,9 @@ export function OrderCard({ order }: { order: MobileOrder }) {
   const deadline = formatDeadline(order.deadline)
   const price = order.agreedPrice ?? order.price
   const isClosed = ["delivered", "cancelled", "rejected", "expired"].includes(order.status)
+  // Подсказка «что дальше» или «что мешает» — одна строка на карточку,
+  // чтобы в списке было видно, за что браться, не открывая заказ.
+  const hint = listHint(order)
 
   return (
     <Link
@@ -79,6 +83,19 @@ export function OrderCard({ order }: { order: MobileOrder }) {
           {order.paymentType && PAYMENT_TYPE_LABELS[order.paymentType] ? (
             <span className="text-zinc-600">· {PAYMENT_TYPE_LABELS[order.paymentType]}</span>
           ) : null}
+          {hint && hint.tone === "info" ? (
+            <span className="inline-flex items-center gap-1 text-zinc-500">
+              <CornerDownRight className="h-3.5 w-3.5" />
+              {hint.text}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!isClosed && hint && hint.tone === "warn" ? (
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-1 text-[12px] text-amber-200">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {hint.text}
         </div>
       ) : null}
     </Link>

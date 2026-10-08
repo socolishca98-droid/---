@@ -11,8 +11,18 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { shortCity, shortRef, formatMoney, formatWeightKg, formatKm, plural, formatCount, paymentState } =
-  require("../.test-build/lib/logist-mobile/format.js")
+const {
+  shortCity,
+  shortRef,
+  formatMoney,
+  formatWeightKg,
+  formatKm,
+  plural,
+  formatCount,
+  paymentState,
+  mapsHref,
+  routeMapsHref,
+} = require("../.test-build/lib/logist-mobile/format.js")
 
 test("город выбирается из адреса, а не номер дома", () => {
   assert.equal(shortCity("Московская область, Домодедово, улица Логистическая, 12"), "Домодедово")
@@ -56,4 +66,22 @@ test("состояние оплаты: просрочка важнее отср�
   assert.equal(paymentState({ isPaid: false, isOverdue: true, overdueDays: 3 }).label, "Просрочен на 3 дня")
   assert.equal(paymentState({ isPaid: false, isOverdue: false, dueDate: "2026-10-17T00:00:00.000Z" }).tone, "wait")
   assert.equal(paymentState({}).tone, "wait")
+})
+
+test("адрес превращается в ссылку на навигатор, а не в поиск по пустой строке", () => {
+  assert.equal(
+    mapsHref("Москва, улица Складочная, 8"),
+    "https://yandex.ru/maps/?text=%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0%2C%20%D1%83%D0%BB%D0%B8%D1%86%D0%B0%20%D0%A1%D0%BA%D0%BB%D0%B0%D0%B4%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%2C%208",
+  )
+  assert.equal(mapsHref("  "), null)
+  assert.equal(mapsHref(null), null)
+  assert.equal(mapsHref(undefined), null)
+
+  // Маршрут из двух адресов — одна ссылка; без одной из точек её просто нет
+  const route = routeMapsHref("Москва", "Калуга")
+  assert.ok(route && route.startsWith("https://yandex.ru/maps/?rtext="))
+  assert.ok(route.includes("~"))
+  assert.ok(route.includes("rtt=auto"))
+  assert.equal(routeMapsHref("Москва", null), null)
+  assert.equal(routeMapsHref(null, "Калуга"), null)
 })

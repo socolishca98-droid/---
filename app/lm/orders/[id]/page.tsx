@@ -1,24 +1,38 @@
-// app/lm/orders/[id]/page.tsx — карточка заказа с действиями.
+// app/lm/orders/[id]/page.tsx — карточка заказа, которая ведёт за руку.
 //
-// Ключевая идея: всё, что логист делает по заказу с телефона, доступно на этом
-// экране — позвонить клиенту, сменить этап, назначить водителя и машину.
+// Порядок экрана повторяет порядок работы логиста:
+//   1. «Что дальше» — один понятный шаг с объяснением; остальные переходы
+//      спрятаны в «другие действия», чтобы не выбирать из семи равных кнопок;
+//   2. «Что мешает» — подсказки с кнопкой «исправить» (нет водителя, цены,
+//      телефона или срока): каждая подсказка — это тап, а не упрёк;
+//   3. этапы — где заказ в процессе, словами;
+//   4. клиент — звонок, WhatsApp, адрес в навигатор и копирование адреса;
+//   5. груз, деньги, исполнение и назначение машины.
+//
 // Разрешённые переходы берутся из lib/orders/stages.ts (тот же источник правды,
-// что и на сервере), поэтому кнопки не предлагают заведомо невозможных действий.
+// что и на сервере), а тексты шагов — из lib/logist-mobile/order-flow.ts.
 
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import {
+  AlertTriangle,
   ArrowRight,
   Banknote,
-  Building2,
   CalendarClock,
   Check,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardList,
+  Info,
+  MapPin,
   MessageCircle,
+  Navigation,
   Package,
+  Pencil,
   Phone,
   Truck,
   User,
@@ -27,39 +41,49 @@ import {
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { OrderStatusChip } from "@/components/logist-mobile/order-card"
+import { ConfirmSheet, Sheet } from "@/components/logist-mobile/sheet"
 import { ActionButton, Card, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
-import { allowedOrderStatuses, orderStageLabel, orderStatusLabel } from "@/lib/orders/stages"
 import {
-  LOADING_TYPE_LABELS,
+  allowedOrderStatuses,
+  orderStageLabel,
+  orderStatusLabel,
+  type OrderStatus,
+} from "@/lib/orders/stages"
+import {
+  MOBILE_STAGE_TITLES,
+  STATUS_CHANGE_HINTS,
+  nextStep,
+  orderChecks,
+  orderSteps,
+  progressLabel,
+  type CheckFix,
+} from "@/lib/logist-mobile/order-flow"
+import {
   PAYMENT_TYPE_LABELS,
   type MobileDriver,
   type MobileOrder,
   type MobileVehicle,
 } from "@/lib/logist-mobile/types"
-import { formatDateShort, formatDateTime, formatDeadline, formatMoney, formatWeightKg, shortCity, shortRef, telHref, whatsappHref } from "@/lib/logist-mobile/format"
+import {
+  formatDateShort,
+  formatDateTime,
+  formatDeadline,
+  formatMoney,
+  formatWeightKg,
+  mapsHref,
+  routeMapsHref,
+  shortCity,
+  shortRef,
+  telHref,
+  whatsappHref,
+} from "@/lib/logist-mobile/format"
 
-/** Что означает переход — чтобы кнопка была понятной, а не «статус 7». */
-function transitionLabel(status: string): string {
-  const labels: Record<string, string> = {
-    negotiation: "На согласование",
-    agreed: "Согласован",
-    in_route: "В рейс",
-    documents: "На документы",
-    assigned: "Назначить",
-    control: "На контроль",
-    delivered: "Доставлен",
-    cancelled: "Отменить",
-    rejected: "Отклонить",
-    expired: "Неактуален",
-    search: "Вернуть в поиск",
-  }
-  return labels[status] ?? orderStatusLabel(status)
-}
+const FINAL = ["delivered", "cancelled", "rejected", "expired"]
 
 function isFinal(status: string): boolean {
-  return ["delivered", "cancelled", "rejected", "expired"].includes(status)
+  return FINAL.includes(status)
 }
 
 export default function LogistOrderPage() {
@@ -72,7 +96,11 @@ export default function LogistOrderPage() {
   const vehiclesState = useJsonApi<{ vehicles: MobileVehicle[] }>(user ? "/api/vehicles" : null)
 
   const [busy, setBusy] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<OrderStatus | null>(null)
   const [assignOpen, setAssignOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
 
   const order = orderState.data?.order ?? null
   const drivers = driversState.data?.drivers ?? []
@@ -87,26 +115,44 @@ export default function LogistOrderPage() {
     [vehicles, order?.assignedVehicleId],
   )
 
+  const step = order ? nextStep(order.status) : null
+  const checks = order ? orderChecks(order) : []
   const transitions = order ? allowedOrderStatuses(order.status) : []
-  const forward = transitions.filter((status) => !["cancelled", "rejected", "expired"].includes(status))
-  const closing = transitions.filter((status) => ["cancelled", "rejected"].includes(status))
+  const others = transitions.filter((item) => item !== step?.status && !["cancelled", "rejected"].includes(item))
+  const closing = transitions.filter((item) => ["cancelled", "rejected"].includes(item))
 
+  const steps = order ? orderSteps(order.status) : []
+  const currentStep = steps.find((item) => item.state === "current")
   const deadline = formatDeadline(order?.deadline)
+  const clientPhone = order?.clientContact?.match(/\+?[\d\s()-]{10,}/)?.[0]?.trim() || null
+  const tel = telHref(clientPhone)
+  const wa = whatsappHref(clientPhone)
+  const fromMaps = mapsHref(order?.routeFrom)
+  const toMaps = mapsHref(order?.routeTo)
+  const routeMaps = routeMapsHref(order?.routeFrom, order?.routeTo)
 
-  async function changeStatus(status: string) {
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(null), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  async function changeStatus(target: OrderStatus) {
     if (!orderId) return
-    if (["cancelled", "rejected"].includes(status)) {
-      const label = status === "cancelled" ? "Отменить заказ?" : "Отклонить заказ?"
-      if (!window.confirm(`${label}\nДействие можно будет отменить только сменой статуса вручную.`)) return
-    }
-    setBusy(status)
-    const result = await apiSend(`/api/orders/${orderId}`, "PATCH", { status })
+    setBusy(target)
+    const result = await apiSend(`/api/orders/${orderId}`, "PATCH", { status: target })
     setBusy(null)
+    setConfirm(null)
+
     if (!result.ok) {
       toast.error(result.error || "Не удалось изменить статус")
       return
     }
-    toast.success(`Статус: ${orderStatusLabel(status)}`)
+    // После смены сразу говорим, что делать дальше — чтобы не искать глазами
+    const after = nextStep(target)
+    toast.success(
+      after ? `${orderStatusLabel(target)} · дальше: ${after.title.toLowerCase()}` : `${orderStatusLabel(target)} — работа закрыта`,
+    )
     orderState.reload()
   }
 
@@ -114,8 +160,8 @@ export default function LogistOrderPage() {
     if (!orderId) return
     setBusy("assign")
     const result = await apiSend(`/api/orders/${orderId}`, "PATCH", {
-      assignedDriverId: driverId ?? "",
-      assignedVehicleId: vehicleId ?? "",
+      assignedDriverId: driverId ?? null,
+      assignedVehicleId: vehicleId ?? null,
     })
     setBusy(null)
     if (!result.ok) {
@@ -127,19 +173,32 @@ export default function LogistOrderPage() {
     orderState.reload()
   }
 
-  const clientPhone = order?.clientContact?.match(/\+?[\d\s()-]{10,}/)?.[0]?.trim() || null
-  const tel = telHref(clientPhone)
-  const wa = whatsappHref(clientPhone)
+  async function copy(text: string, key: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+    } catch {
+      toast.error("Не удалось скопировать")
+    }
+  }
+
+  /** Куда ведёт подсказка «чего не хватает». */
+  function applyFix(fix: CheckFix) {
+    if (fix === "assign") {
+      setAssignOpen(true)
+      document.getElementById("assign-block")?.scrollIntoView({ behavior: "smooth", block: "start" })
+      return
+    }
+    setEditOpen(true)
+  }
 
   return (
     <>
       <LogistHeader
-        title={
-          order ? `${shortCity(order.routeFrom)} → ${shortCity(order.routeTo)}` : "Заказ"
-        }
+        title={order ? `${shortCity(order.routeFrom)} → ${shortCity(order.routeTo)}` : "Заказ"}
         subtitle={
           order
-            ? `${order.clientName?.trim() || "клиент не указан"} · ${orderStageLabel(order.status)}`
+            ? `${order.clientName?.trim() || "клиент не указан"} · № ${shortRef(order.id)}`
             : undefined
         }
         back
@@ -153,30 +212,169 @@ export default function LogistOrderPage() {
           <ListSkeleton rows={4} />
         ) : (
           <>
-            <Card>
+            {/* 1. Что дальше — главное действие экрана */}
+            {isFinal(order.status) ? (
+              <Card className="border-emerald-500/25 bg-emerald-500/[0.06]">
+                <p className="flex items-center gap-2 text-[15px] font-semibold text-emerald-200">
+                  <CheckCircle2 className="h-4.5 w-4.5" />
+                  Заказ закрыт: {orderStatusLabel(order.status).toLowerCase()}
+                </p>
+                <p className="mt-1 text-[13px] text-emerald-100/70">
+                  Вернуть в работу можно из полной версии — на телефоне закрытые заказы не правят.
+                </p>
+              </Card>
+            ) : step ? (
+              <Card className="border-orange-500/25 bg-orange-500/[0.06]">
+                <p className="text-[12px] uppercase tracking-wide text-orange-200/70">Что дальше</p>
+                <p className="mt-1 text-[15px] font-semibold leading-snug text-white">{step.title}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">{step.why}</p>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => setConfirm(step.status)}
+                  className={`mt-3 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold disabled:opacity-50 ${
+                    step.tone === "success"
+                      ? "bg-emerald-500/90 text-white active:bg-emerald-600"
+                      : "bg-orange-500 text-white active:bg-orange-600"
+                  }`}
+                >
+                  {step.tone === "success" ? <Check className="h-5 w-5" /> : null}
+                  {step.title}
+                </button>
+
+                {others.length > 0 || closing.length > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setMoreOpen((value) => !value)}
+                      aria-expanded={moreOpen}
+                      className="mt-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 text-[13px] font-medium text-zinc-400 active:text-zinc-200"
+                    >
+                      Другие действия
+                      <ChevronDown className={`h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {moreOpen ? (
+                      <div className="mt-1 space-y-2 border-t border-white/8 pt-3">
+                        {others.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => setConfirm(item)}
+                            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-white/6 px-3.5 text-left text-[14px] text-zinc-100 active:bg-white/10 disabled:opacity-40"
+                          >
+                            {orderStatusLabel(item)}
+                            <ArrowRight className="h-4 w-4 text-zinc-500" />
+                          </button>
+                        ))}
+                        {closing.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => setConfirm(item)}
+                            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-red-500/10 px-3.5 text-left text-[14px] text-red-200 active:bg-red-500/20 disabled:opacity-40"
+                          >
+                            {orderStatusLabel(item)}
+                            <ArrowRight className="h-4 w-4 text-red-300/60" />
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </Card>
+            ) : null}
+
+            {/* 2. Что мешает — каждая подсказка с кнопкой «исправить» */}
+            {checks.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {checks.map((check) => (
+                  <div
+                    key={check.id}
+                    className={`flex items-start gap-2.5 rounded-2xl border px-3.5 py-3 ${
+                      check.tone === "warn"
+                        ? "border-amber-500/25 bg-amber-500/[0.07]"
+                        : "border-white/8 bg-white/[0.03]"
+                    }`}
+                  >
+                    {check.tone === "warn" ? (
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                    ) : (
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+                    )}
+                    <p className={`flex-1 text-[13px] leading-snug ${check.tone === "warn" ? "text-amber-100" : "text-zinc-300"}`}>
+                      {check.text}
+                    </p>
+                    {check.fix ? (
+                      <button
+                        type="button"
+                        onClick={() => applyFix(check.fix as CheckFix)}
+                        className="shrink-0 rounded-lg bg-white/10 px-2.5 py-1.5 text-[12.5px] font-medium text-white active:bg-white/15"
+                      >
+                        Исправить
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/* 3. Этапы: где заказ сейчас */}
+            <Card className="mt-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-[14px] font-semibold text-white">Ход заказа</p>
+                <p className="text-[12.5px] text-zinc-500">{progressLabel(order.status)}</p>
+              </div>
+              <ol className="mt-3 flex items-center">
+                {steps.map((item, index) => (
+                  <li key={item.stage} className="flex flex-1 items-center last:flex-none">
+                    <span
+                      title={item.title}
+                      aria-label={item.title}
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                        item.state === "done"
+                          ? "border-orange-500/40 bg-orange-500/20 text-orange-200"
+                          : item.state === "current"
+                            ? "border-orange-500 bg-orange-500 text-white"
+                            : item.state === "closed"
+                              ? "border-white/10 bg-white/5 text-zinc-500"
+                              : "border-white/10 bg-white/[0.03] text-zinc-600"
+                      }`}
+                    >
+                      {item.state === "done" ? <Check className="h-3.5 w-3.5" /> : index + 1}
+                    </span>
+                    {index < 5 ? (
+                      <span
+                        className={`h-px flex-1 ${item.state === "done" ? "bg-orange-500/40" : "bg-white/10"}`}
+                      />
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-2.5 text-[12.5px] text-zinc-500">
+                {currentStep
+                  ? `Этап «${currentStep.title}» — дальше: ${step ? step.title.toLowerCase() : "работа завершена"}`
+                  : "Заказ закрыт — этапы пройдены"}
+              </p>
+            </Card>
+
+            {/* 4. Клиент: звонок, WhatsApp, навигатор */}
+            <Card className="mt-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[15px] font-semibold text-white">
                     {order.clientName?.trim() || "Клиент не указан"}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] text-zinc-500">№ {shortRef(order.id)}</p>
+                  <p className="mt-0.5 text-[12.5px] text-zinc-400">
+                    {order.clientContact?.trim() || "контакт не указан"}
+                  </p>
                 </div>
                 <OrderStatusChip status={order.status} />
               </div>
 
-              <div className="mt-3 flex items-center gap-2 text-[15px] font-medium text-white">
-                <span className="truncate">{shortCity(order.routeFrom)}</span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-zinc-500" />
-                <span className="truncate">{shortCity(order.routeTo)}</span>
-              </div>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-500">
-                {order.routeFrom} → {order.routeTo}
-              </p>
-              {order.distance ? <p className="mt-1 text-[12.5px] text-zinc-500">{order.distance} км</p> : null}
-            </Card>
-
-            {tel || wa ? (
-              <div className="mt-3 grid grid-cols-2 gap-2.5">
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 {tel ? (
                   <a
                     href={tel}
@@ -196,12 +394,41 @@ export default function LogistOrderPage() {
                   </a>
                 ) : null}
               </div>
-            ) : null}
 
-            {order.clientContact ? (
-              <p className="mt-2 px-1 text-[12.5px] text-zinc-500">Контакт: {order.clientContact}</p>
-            ) : null}
+              <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
+                <AddressRow
+                  label="Откуда"
+                  address={order.routeFrom}
+                  maps={fromMaps}
+                  copied={copied === "from"}
+                  onCopy={() => void copy(order.routeFrom, "from")}
+                />
+                <AddressRow
+                  label="Куда"
+                  address={order.routeTo}
+                  maps={toMaps}
+                  copied={copied === "to"}
+                  onCopy={() => void copy(order.routeTo, "to")}
+                />
+                <div className="border-t border-white/8 pt-3">
+                  {routeMaps ? (
+                    <a
+                      href={routeMaps}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-sky-500/15 text-[14px] font-medium text-sky-200 active:bg-sky-500/25"
+                    >
+                      <Navigation className="h-4 w-4" /> Маршрут в навигаторе
+                    </a>
+                  ) : null}
+                  {order.distance ? (
+                    <p className="mt-1.5 text-[12.5px] text-zinc-500">Расстояние: {order.distance} км</p>
+                  ) : null}
+                </div>
+              </div>
+            </Card>
 
+            {/* 5. Груз и деньги */}
             <div className="mt-3 grid grid-cols-2 gap-2.5">
               <Card>
                 <p className="text-[12px] text-zinc-500">Цена</p>
@@ -211,9 +438,16 @@ export default function LogistOrderPage() {
                 {order.paymentType && PAYMENT_TYPE_LABELS[order.paymentType] ? (
                   <p className="mt-0.5 text-[12px] text-zinc-500">{PAYMENT_TYPE_LABELS[order.paymentType]}</p>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(true)}
+                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-orange-400"
+                >
+                  <Pencil className="h-3 w-3" /> Изменить
+                </button>
               </Card>
               <Card>
-                <p className="text-[12px] text-zinc-500">Срок</p>
+                <p className="text-[12px] text-zinc-500">Срок выгрузки</p>
                 <p
                   className={`mt-0.5 text-[16px] font-semibold ${
                     deadline.overdue ? "text-red-300" : deadline.soon ? "text-amber-300" : "text-white"
@@ -222,6 +456,13 @@ export default function LogistOrderPage() {
                   {deadline.text}
                 </p>
                 <p className="mt-0.5 text-[12px] text-zinc-500">{formatDateShort(order.deadline)}</p>
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(true)}
+                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-orange-400"
+                >
+                  <Pencil className="h-3 w-3" /> Изменить
+                </button>
               </Card>
             </div>
 
@@ -231,22 +472,17 @@ export default function LogistOrderPage() {
                 <Row icon={<Weight className="h-4 w-4" />} label="Вес" value={formatWeightKg(order.weight)} />
                 {order.volume ? <Row icon={<Package className="h-4 w-4" />} label="Объём" value={`${order.volume} м³`} /> : null}
                 {order.requirements ? (
-                  <Row icon={<Building2 className="h-4 w-4" />} label="Требования" value={order.requirements} />
+                  <Row icon={<ClipboardList className="h-4 w-4" />} label="Требования" value={order.requirements} />
                 ) : null}
-                <Row
-                  icon={<CalendarClock className="h-4 w-4" />}
-                  label="Создан"
-                  value={formatDateTime(order.createdAt)}
-                />
-                <Row
-                  icon={<Banknote className="h-4 w-4" />}
-                  label="Оплата"
-                  value={order.isPaid ? "оплачен" : "не оплачен"}
-                />
+                <Row icon={<CalendarClock className="h-4 w-4" />} label="Создан" value={formatDateTime(order.createdAt)} />
+                <Row icon={<Banknote className="h-4 w-4" />} label="Оплата" value={order.isPaid ? "оплачен" : "не оплачен"} />
+                <Row icon={<Package className="h-4 w-4" />} label="Этап" value={orderStageLabel(order.status)} />
               </div>
             </Card>
 
-            <Card className="mt-3">
+            {/* 6. Исполнение: водитель, машина, рейс */}
+            <div id="assign-block" className="mt-3">
+            <Card>
               <div className="flex items-center justify-between">
                 <p className="text-[14px] font-semibold text-white">Исполнение</p>
                 <button
@@ -275,16 +511,28 @@ export default function LogistOrderPage() {
               </div>
 
               {driver?.phone ? (
-                <a
-                  href={telHref(driver.phone) || "#"}
-                  className="mt-3 flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
-                >
-                  <Phone className="h-4 w-4" /> Позвонить водителю
-                </a>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <a
+                    href={telHref(driver.phone) || "#"}
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                  >
+                    <Phone className="h-4 w-4" /> Водителю
+                  </a>
+                  <Link
+                    href={`/lm/chat/${driver.id}`}
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                  >
+                    <MessageCircle className="h-4 w-4" /> В чат
+                  </Link>
+                </div>
               ) : null}
 
               {assignOpen ? (
                 <div className="mt-3 space-y-3 border-t border-white/8 pt-3">
+                  <p className="text-[12.5px] leading-relaxed text-zinc-500">
+                    Свободные водители сверху. Машина подставляется вместе с водителем, но её можно
+                    выбрать отдельно.
+                  </p>
                   <div>
                     <p className="mb-1.5 text-[12.5px] text-zinc-500">Водитель</p>
                     <div className="flex flex-wrap gap-2">
@@ -295,8 +543,8 @@ export default function LogistOrderPage() {
                       >
                         снять
                       </button>
-                      {drivers
-                        .filter((item) => item.status !== "offline")
+                      {[...drivers]
+                        .sort((a, b) => Number(a.status === "offline") - Number(b.status === "offline"))
                         .map((item) => (
                           <button
                             key={item.id}
@@ -310,6 +558,7 @@ export default function LogistOrderPage() {
                           >
                             {item.name.split(" ")[0]}
                             {item.vehiclePlate ? ` · ${item.vehiclePlate}` : ""}
+                            {item.status === "offline" ? " · не на связи" : ""}
                           </button>
                         ))}
                     </div>
@@ -347,49 +596,7 @@ export default function LogistOrderPage() {
                 </div>
               ) : null}
             </Card>
-
-            {!isFinal(order.status) ? (
-              <div className="mt-5">
-                <p className="mb-2 text-[14px] font-semibold text-white">Что дальше</p>
-                <div className="flex flex-wrap gap-2">
-                  {forward.map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => void changeStatus(status)}
-                      className={`inline-flex min-h-[46px] items-center gap-2 rounded-xl px-4 text-[14px] font-medium disabled:opacity-40 ${
-                        status === "delivered"
-                          ? "bg-emerald-500/20 text-emerald-200"
-                          : "bg-orange-500 text-white active:bg-orange-600"
-                      }`}
-                    >
-                      {status === "delivered" ? <Check className="h-4 w-4" /> : null}
-                      {busy === status ? "…" : transitionLabel(status)}
-                    </button>
-                  ))}
-                </div>
-
-                {closing.length > 0 ? (
-                  <div className="mt-2.5 flex flex-wrap gap-2">
-                    {closing.map((status) => (
-                      <ActionButton
-                        key={status}
-                        tone="danger"
-                        disabled={busy !== null}
-                        onClick={() => void changeStatus(status)}
-                      >
-                        {busy === status ? "…" : transitionLabel(status)}
-                      </ActionButton>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <p className="mt-5 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-[13px] text-zinc-500">
-                Заказ закрыт: {orderStatusLabel(order.status)}. Вернуть в работу можно сменой статуса в полной версии.
-              </p>
-            )}
+            </div>
 
             <Link
               href={`/orders/${order.id}`}
@@ -400,9 +607,173 @@ export default function LogistOrderPage() {
           </>
         )}
       </div>
+
+      {/* Подтверждение перехода — словами о последствиях, а не «изменить статус?» */}
+      <ConfirmSheet
+        open={confirm !== null}
+        title={confirm ? `Перевести в «${orderStatusLabel(confirm)}»?` : ""}
+        description={confirm ? STATUS_CHANGE_HINTS[confirm] : undefined}
+        confirmLabel="Да, перевести"
+        tone={confirm && ["cancelled", "rejected"].includes(confirm) ? "danger" : confirm === "delivered" ? "success" : "primary"}
+        busy={busy !== null}
+        onConfirm={() => confirm && void changeStatus(confirm)}
+        onClose={() => setConfirm(null)}
+      />
+
+      {/* Быстрая правка: цена, телефон клиента и срок — то, из-за чего заказ стоит */}
+      {order ? (
+        <EditSheet
+          key={editOpen ? "open" : "closed"}
+          open={editOpen}
+          order={order}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false)
+            orderState.reload()
+          }}
+        />
+      ) : null}
     </>
   )
 }
+
+function AddressRow({
+  label,
+  address,
+  maps,
+  copied,
+  onCopy,
+}: {
+  label: string
+  address: string
+  maps: string | null
+  copied: boolean
+  onCopy: () => void
+}) {
+  return (
+    <div>
+      <p className="flex items-center gap-1.5 text-[12px] text-zinc-500">
+        <MapPin className="h-3.5 w-3.5" /> {label}
+      </p>
+      {/* Адрес на всю ширину: он должен читаться целиком, а кнопки — под ним */}
+      <p className="mt-0.5 text-[14px] leading-snug text-zinc-100">{address}</p>
+      <div className="mt-1.5 flex gap-1.5">
+        <button
+          type="button"
+          onClick={onCopy}
+          aria-label={`Скопировать адрес: ${label}`}
+          className="flex h-9 items-center rounded-lg bg-white/8 px-3 text-[12.5px] font-medium text-zinc-200 active:bg-white/12"
+        >
+          {copied ? "Скопировано" : "Копировать"}
+        </button>
+        {maps ? (
+          <a
+            href={maps}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Открыть в навигаторе: ${label}`}
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-sky-500/15 px-3 text-[12.5px] font-medium text-sky-200 active:bg-sky-500/25"
+          >
+            <Navigation className="h-3.5 w-3.5" /> Навигатор
+          </a>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** Шторка правки: цена, телефон клиента, срок. Сохраняем только изменённое. */
+function EditSheet({
+  open,
+  order,
+  onClose,
+  onSaved,
+}: {
+  open: boolean
+  order: MobileOrder
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [price, setPrice] = useState(String(order.agreedPrice ?? order.price ?? ""))
+  const [contact, setContact] = useState(order.clientContact ?? "")
+  const [deadline, setDeadline] = useState(
+    order.deadline ? new Date(order.deadline).toISOString().slice(0, 10) : "",
+  )
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    const payload: Record<string, unknown> = {
+      clientContact: contact.trim(),
+    }
+    const priceValue = price.replace(/[^\d]/g, "")
+    if (priceValue) payload.price = Number(priceValue)
+    if (deadline) payload.deadline = new Date(`${deadline}T18:00:00`).toISOString()
+
+    const result = await apiSend(`/api/orders/${order.id}`, "PATCH", payload)
+    setSaving(false)
+
+    if (!result.ok) {
+      toast.error(result.error || "Не удалось сохранить")
+      return
+    }
+    toast.success("Заказ обновлён")
+    onSaved()
+  }
+
+  return (
+    <Sheet
+      open={open}
+      title="Уточнить заказ"
+      description="Заполните то, чего не хватает: цена, телефон клиента, срок выгрузки."
+      onClose={onClose}
+    >
+      <div className="space-y-2.5">
+        <label className="block">
+          <span className="mb-1.5 block text-[12.5px] text-zinc-500">Цена, ₽</span>
+          <input
+            value={price}
+            onChange={(event) => setPrice(event.target.value.replace(/[^\d]/g, ""))}
+            inputMode="numeric"
+            placeholder="38000"
+            className={inputClass}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[12.5px] text-zinc-500">Телефон клиента</span>
+          <input
+            value={contact}
+            onChange={(event) => setContact(event.target.value)}
+            inputMode="tel"
+            placeholder="Петрова Ольга, +7 495 123-45-67"
+            className={inputClass}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[12.5px] text-zinc-500">Выгрузить до</span>
+          <input
+            type="date"
+            value={deadline}
+            onChange={(event) => setDeadline(event.target.value)}
+            className={`${inputClass} [color-scheme:dark]`}
+          />
+        </label>
+      </div>
+
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => void save()}
+        className="mt-3 flex min-h-[50px] w-full items-center justify-center rounded-2xl bg-orange-500 text-[15px] font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+      >
+        {saving ? "Сохраняю…" : "Сохранить"}
+      </button>
+    </Sheet>
+  )
+}
+
+const inputClass =
+  "min-h-[48px] w-full rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none"
 
 function Row({
   icon,
