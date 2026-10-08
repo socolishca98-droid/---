@@ -1,171 +1,158 @@
-// app/owner/page.tsx — администрирование платформы: вход в любой аккаунт.
+// app/owner/page.tsx — стартовый экран владельца платформы.
 //
-// Доступ только владельцу (OWNER_EMAIL, по умолчанию socolishca98@gmail.com):
-// он входит своим паролем, а здесь одной кнопкой открывает любой аккаунт —
-// сотрудника или водителя, в любой организации. Данные для входа других людей
-// знать не нужно: сервер выпускает сессию сам (POST /api/admin/impersonate).
-//
-// Внизу — журнал последних входов: видно, кто и когда входил.
+// Открывается сразу после входа под OWNER_EMAIL. Здесь: все компании, которые
+// пользуются программой, цифры по каждой, поиск человека по всем компаниям
+// и последние действия. По компании — экран с сотрудниками и её журналом.
 
 "use client"
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
-import {
-  Building2,
-  Loader2,
-  LogIn,
-  Search,
-  ShieldAlert,
-  Truck,
-  UserCog,
-  Users,
-  X,
-} from "lucide-react"
+import { Activity, Building2, ChevronRight, Loader2, Package, Route as RouteIcon, Search, Truck, UserCog, Users, X } from "lucide-react"
 
-import { AccountSwitchBanner } from "@/components/account-switch-banner"
-import { Card, EmptyState, ErrorState, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
-import { apiSend, useJsonApi } from "@/hooks/use-json-api"
+import { OwnerShell } from "@/components/owner/owner-shell"
+import {
+  ROLE_LABELS,
+  Forbidden,
+  Panel,
+  Tile,
+  actionLabel,
+  formatCount,
+  formatDateTime,
+  formatDate,
+  plural,
+} from "@/components/owner/owner-ui"
+import { enterAccount } from "@/components/owner/enter-account"
+import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 
-interface StaffAccount {
+interface OverviewOrg {
   id: string
   name: string
-  email: string | null
-  role: string
-  status: string
-  lastLoginAt: string | null
-  kind: "staff"
+  createdAt: string | null
+  staff: number
+  admins: number
+  logists: number
+  drivers: number
+  vehicles: number
+  activeRoutes: number
+  completedRoutes: number
+  ordersInWork: number
+  ordersDelivered: number
+  lastActivityAt: string | null
 }
 
-interface DriverAccount {
-  id: string
-  userId: string | null
-  name: string
-  phone: string
-  status: string
-  statusLabel: string
-  vehiclePlate: string | null
-  kind: "driver"
-}
-
-interface OwnerAccount {
-  viewer?: never
-}
-
-interface OrgGroup {
-  id: string
-  name: string
-  users: (StaffAccount | OwnerAccount)[]
-  drivers: DriverAccount[]
+interface OverviewResponse {
+  owner?: { email: string | null }
+  totals: {
+    organizations: number
+    staff: number
+    drivers: number
+    vehicles: number
+    activeRoutes: number
+    ordersInWork: number
+    ordersDelivered: number
+  }
+  organizations: OverviewOrg[]
+  recent: {
+    id: string
+    createdAt: string
+    organizationName: string | null
+    actorEmail: string | null
+    action: string
+    targetEmail: string | null
+  }[]
 }
 
 interface AccountsResponse {
-  owner?: { email: string | null; organizations: number }
-  organizations: OrgGroup[]
-  totals: { organizations: number; staff: number; drivers: number }
+  organizations: {
+    id: string
+    name: string
+    users: { id: string; name: string; email: string | null; role: string; status: string }[]
+    drivers: { id: string; userId: string | null; name: string; phone: string; vehiclePlate: string | null }[]
+  }[]
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Администратор",
-  logist: "Логист",
-  driver: "Водитель",
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  active: "Активен",
-  pending: "Ждёт подтверждения",
-  suspended: "Заблокирован",
-}
-
-export default function OwnerPage() {
-  const router = useRouter()
+export default function OwnerHomePage() {
   const { user } = useStaffSession()
   const [query, setQuery] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [tab, setTab] = useState<"staff" | "drivers">("staff")
 
-  const { data, error, loading, reload } = useJsonApi<AccountsResponse>(
-    user ? `/api/admin/accounts${query.trim() ? `?query=${encodeURIComponent(query.trim())}` : ""}` : null,
+  const overview = useJsonApi<OverviewResponse>(user ? "/api/admin/overview" : null)
+  const search = query.trim().length >= 2
+  const people = useJsonApi<AccountsResponse>(
+    user && search ? `/api/admin/accounts?query=${encodeURIComponent(query.trim())}` : null,
   )
 
-  const groups = data?.organizations ?? []
-  const totals = data?.totals ?? { organizations: 0, staff: 0, drivers: 0 }
+  const forbidden = Boolean(overview.error && /владельц/i.test(overview.error))
+  const data = overview.data
+  const totals = data?.totals
 
-  const visibleGroups = useMemo(
-    () =>
-      groups
-        .map((group) => ({
-          ...group,
-          users: tab === "staff" ? group.users : [],
-          drivers: tab === "drivers" ? group.drivers : [],
-        }))
-        .filter((group) => group.users.length > 0 || group.drivers.length > 0),
-    [groups, tab],
-  )
+  const matches = useMemo(() => {
+    if (!search || !people.data) return []
+    return people.data.organizations.flatMap((org) => [
+      ...org.users.map((u) => ({
+        key: `u-${u.id}`,
+        kind: "staff" as const,
+        id: u.id,
+        name: u.name,
+        sub: `${ROLE_LABELS[u.role] ?? u.role} · ${u.email ?? "без почты"}`,
+        org: org.name,
+      })),
+      ...org.drivers.map((d) => ({
+        key: `d-${d.id}`,
+        kind: "driver" as const,
+        id: d.id,
+        name: d.name,
+        sub: `Водитель · ${d.phone}${d.vehiclePlate ? ` · ${d.vehiclePlate}` : ""}`,
+        org: org.name,
+      })),
+    ])
+  }, [people.data, search])
 
-  const forbidden = Boolean(error && /владельц/i.test(error))
-
-  async function enter(account: { kind: "staff" | "driver"; id: string; name: string }) {
-    setBusyId(account.id)
-    const body = account.kind === "driver" ? { driverId: account.id } : { userId: account.id }
-    const result = await apiSend<{ redirectTo?: string }>("/api/admin/impersonate", "POST", body)
-    if (!result.ok) {
-      setBusyId(null)
-      toast.error(result.error || "Не удалось войти в аккаунт")
-      return
-    }
-    toast.success(`Открываю аккаунт: ${account.name}`)
-    const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? "/lm"
-    // Полная перезагрузка: cookie сессии меняется, и клиентские контексты
-    // должны прочитать её заново, а не догадываться о новом пользователе.
-    window.location.assign(target)
+  async function enter(item: { kind: "staff" | "driver"; id: string; name: string }) {
+    setBusyId(item.id)
+    await enterAccount(item)
+    setBusyId(null)
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pb-16 pt-6">
-      <AccountSwitchBanner className="mx-auto mb-4 rounded-lg border" />
-
-      <header className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-          <UserCog className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold text-foreground">Вход в любой аккаунт</h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
-            Владелец платформы: {data?.owner?.email ?? user?.email ?? "—"}. Пароли других людей не нужны —
-            вход выполняется вашей сессией.
-          </p>
-        </div>
-        <Link
-          href="/dashboard"
-          className="hidden shrink-0 rounded-lg border border-border px-3 py-2 text-[13px] text-foreground/90 hover:bg-secondary md:inline-flex"
-        >
-          В панель
-        </Link>
+    <OwnerShell>
+      <header
+        className="flex flex-col gap-1"
+        style={{ animation: "rise-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both" }}
+      >
+        <h1 className="text-[22px] font-semibold tracking-tight">Компании на платформе</h1>
+        <p className="text-[13.5px] text-muted-foreground">
+          Все организации, которые пользуются программой. Откройте компанию — увидите сотрудников,
+          водителей и её журнал действий.
+        </p>
       </header>
 
       {forbidden ? (
-        <Card className="mt-4 border-destructive/40 bg-destructive/10">
-          <p className="flex items-center gap-2 text-[14px] font-medium text-destructive">
-            <ShieldAlert className="h-4 w-4" /> Раздел доступен только владельцу платформы
-          </p>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Войдите под аккаунтом владельца (OWNER_EMAIL) — остальным этот экран закрыт.
-          </p>
-        </Card>
+        <div className="mt-6">
+          <Forbidden message="Этот экран доступен только владельцу платформы. Войдите под аккаунтом владельца." />
+        </div>
       ) : null}
 
-      {/* Поиск */}
-      <div className="relative mt-4">
+      {/* Цифры по платформе */}
+      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <Tile icon={Building2} label="Компаний" value={totals ? formatCount(totals.organizations) : "—"} delay={0} />
+        <Tile icon={Users} label="Сотрудников" value={totals ? formatCount(totals.staff) : "—"} delay={60} />
+        <Tile icon={Truck} label="Водителей" value={totals ? formatCount(totals.drivers) : "—"} delay={120} tone="chart-2" />
+        <Tile icon={Package} label="Машин" value={totals ? formatCount(totals.vehicles) : "—"} delay={180} tone="chart-2" />
+        <Tile icon={RouteIcon} label="Рейсов в работе" value={totals ? formatCount(totals.activeRoutes) : "—"} delay={240} tone="warning" />
+        <Tile icon={Activity} label="Заказов в работе" value={totals ? formatCount(totals.ordersInWork) : "—"} delay={300} tone="success" />
+      </div>
+
+      {/* Поиск человека по всем компаниям */}
+      <div className="relative mt-6">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Имя, email, телефон или номер машины"
-          className="min-h-[46px] w-full rounded-xl border border-border bg-card pl-9 pr-9 text-[15px] text-foreground shadow-sm placeholder:text-muted-foreground/80 focus:border-primary focus:outline-none"
+          placeholder="Найти человека или водителя в любой компании: имя, почта, телефон, машина"
+          className="h-11 w-full rounded-xl border border-border bg-card pl-9 pr-9 text-[14px] text-foreground transition-colors duration-200 placeholder:text-muted-foreground/80 focus:border-primary focus:outline-none"
         />
         {query ? (
           <button
@@ -179,127 +166,135 @@ export default function OwnerPage() {
         ) : null}
       </div>
 
-      {/* Итоги: пока данные не пришли, нули не показываем — они путают */}
-      <div
-        className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground ${
-          loading ? "invisible" : ""
-        }`}
-      >
-        <span className="inline-flex items-center gap-1.5">
-          <Building2 className="h-3.5 w-3.5" /> Организаций: <span className="text-foreground">{totals.organizations}</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Users className="h-3.5 w-3.5" /> Сотрудников: <span className="text-foreground">{totals.staff}</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Truck className="h-3.5 w-3.5" /> Водителей: <span className="text-foreground">{totals.drivers}</span>
-        </span>
-      </div>
-
-      {/* Вкладки */}
-      <div className="mt-3 inline-flex rounded-lg border border-border p-0.5">
-        {(
-          [
-            ["staff", `Сотрудники · ${totals.staff}`],
-            ["drivers", `Водители · ${totals.drivers}`],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`rounded-md px-3 py-1.5 text-[13px] font-medium ${
-              tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {loading ? <ListSkeleton rows={5} /> : null}
-      {error && !forbidden ? <ErrorState message={error} onRetry={reload} /> : null}
-
-      {!loading && !forbidden && visibleGroups.length === 0 ? (
-        <EmptyState
-          icon={<Users className="h-5 w-5" />}
-          title="Никого не нашли"
-          description={query ? "Попробуйте другое имя, email или телефон." : "Аккаунтов пока нет."}
-        />
+      {search ? (
+        <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card transition-all duration-300">
+          {people.loading ? (
+            <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Ищу…
+            </p>
+          ) : matches.length === 0 ? (
+            <p className="px-4 py-4 text-[13px] text-muted-foreground">Никого не нашли по запросу «{query.trim()}»</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {matches.map((m) => (
+                <li key={m.key} className="flex items-center gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/40">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium">{m.name}</p>
+                    <p className="truncate text-[12.5px] text-muted-foreground">
+                      {m.sub} · <span className="text-foreground/80">{m.org}</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busyId === m.id}
+                    onClick={() => enter({ kind: m.kind, id: m.id, name: m.name })}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
+                  >
+                    {busyId === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
+                    Войти
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : null}
 
-      <div className="mt-4 space-y-5">
-        {visibleGroups.map((group) => (
-          <section key={group.id}>
-            <SectionTitle title={group.name} />
+      {/* Компании */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_340px]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {overview.loading && !data ? (
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Загружаю компании…
+            </div>
+          ) : null}
+          {(data?.organizations ?? []).map((org, index) => (
+            <Link
+              key={org.id}
+              href={`/owner/org/${org.id}`}
+              className="group rounded-xl border border-border bg-card p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
+              style={{ animation: `rise-in 520ms cubic-bezier(0.22, 1, 0.36, 1) ${120 + index * 70}ms both` }}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <Building2 className="h-[18px] w-[18px]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-semibold">{org.name}</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    с {formatDate(org.createdAt)} · активность {formatDateTime(org.lastActivityAt)}
+                  </p>
+                </div>
+                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
+              </div>
 
-            {tab === "staff" ? (
-              <div className="mt-2 space-y-2">
-                {group.users.map((account) => {
-                  const person = account as StaffAccount
-                  const isSelf = person.id === user?.id
-                  return (
-                    <Card key={person.id} className="flex items-center gap-3 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14.5px] font-medium text-foreground">{person.name}</p>
-                        <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-                          {ROLE_LABELS[person.role] ?? person.role}
-                          {person.email ? ` · ${person.email}` : ""}
-                        </p>
-                        {person.status !== "active" ? (
-                          <p className="mt-0.5 text-[12px] text-warning">
-                            {STATUS_LABELS[person.status] ?? person.status}
-                          </p>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        disabled={busyId !== null}
-                        onClick={() => void enter({ kind: "staff", id: person.id, name: person.name })}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
-                      >
-                        {busyId === person.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <LogIn className="h-4 w-4" />
-                        )}
-                        {isSelf ? "Открыть" : "Войти"}
-                      </button>
-                    </Card>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="mt-2 space-y-2">
-                {group.drivers.map((driver) => (
-                  <Card key={driver.id} className="flex items-center gap-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14.5px] font-medium text-foreground">{driver.name}</p>
-                      <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-                        {driver.phone}
-                        {driver.vehiclePlate ? ` · ${driver.vehiclePlate}` : ""} · {driver.statusLabel}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={busyId !== null}
-                      onClick={() => void enter({ kind: "driver", id: driver.id, name: driver.name })}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-2 text-[13px] font-medium text-foreground/90 disabled:opacity-50"
-                    >
-                      {busyId === driver.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <LogIn className="h-4 w-4" />
-                      )}
-                      Открыть приложение
-                    </button>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </section>
-        ))}
+              <dl className="mt-4 grid grid-cols-3 gap-x-3 gap-y-3 text-[12.5px]">
+                <div>
+                  <dt className="text-muted-foreground">Сотрудников</dt>
+                  <dd className="text-[15px] font-semibold tabular-nums">{org.staff}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Водителей</dt>
+                  <dd className="text-[15px] font-semibold tabular-nums">{org.drivers}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Машин</dt>
+                  <dd className="text-[15px] font-semibold tabular-nums">{org.vehicles}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Рейсов в работе</dt>
+                  <dd className="text-[15px] font-semibold tabular-nums text-warning">{org.activeRoutes}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Заказов в работе</dt>
+                  <dd className="text-[15px] font-semibold tabular-nums text-success">{org.ordersInWork}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Доставлено</dt>
+                  <dd className="text-[15px] font-semibold tabular-nums">{org.ordersDelivered}</dd>
+                </div>
+              </dl>
+
+              <p className="mt-3 text-[12px] text-muted-foreground">
+                {org.staff > 0
+                  ? `${org.admins} адм. · ${org.logists} лог. — ${plural(org.staff, ["сотрудник", "сотрудника", "сотрудников"])}`
+                  : "Сотрудников пока нет"}
+              </p>
+            </Link>
+          ))}
+          {data && data.organizations.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">Компаний пока нет.</p>
+          ) : null}
+        </div>
+
+        {/* Последние действия по всем компаниям */}
+        <Panel
+          title="Последние действия"
+          action={
+            <Link href="/owner/journal" className="text-[12.5px] text-primary transition-opacity duration-200 hover:opacity-80">
+              Весь журнал →
+            </Link>
+          }
+          className="self-start"
+        >
+          <ul className="divide-y divide-border">
+            {(data?.recent ?? []).slice(0, 12).map((row) => (
+              <li key={row.id} className="px-4 py-2.5">
+                <p className="text-[13px]">
+                  <span className="font-medium">{actionLabel(row.action)}</span>
+                  {row.targetEmail ? <span className="text-muted-foreground"> · {row.targetEmail}</span> : null}
+                </p>
+                <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
+                  {formatDateTime(row.createdAt)} · {row.actorEmail ?? "—"} · {row.organizationName ?? "вне компании"}
+                </p>
+              </li>
+            ))}
+            {data && data.recent.length === 0 ? (
+              <li className="px-4 py-4 text-[13px] text-muted-foreground">Действий пока нет</li>
+            ) : null}
+          </ul>
+        </Panel>
       </div>
-    </div>
+    </OwnerShell>
   )
 }

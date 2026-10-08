@@ -65,6 +65,8 @@ export async function POST(request: NextRequest) {
   let targetName = ""
   let targetEmail: string | null = null
   let targetDriverId: string | null = null
+  // Компания входа — чтобы журнал владельца показывал, в какой компании вошли
+  let targetOrganizationId: string | null = null
   let redirectTo = "/lm"
 
   if (driverId) {
@@ -107,6 +109,7 @@ export async function POST(request: NextRequest) {
 
     targetRole = "driver"
     targetDriverId = driver.id
+    targetOrganizationId = driver.organizationId ?? null
     targetName = driver.name
     redirectTo = "/m"
   } else if (userId) {
@@ -137,6 +140,7 @@ export async function POST(request: NextRequest) {
     targetName = user.name
     targetEmail = user.email
     targetDriverId = user.driverId
+    targetOrganizationId = user.organizationId ?? null
     redirectTo = user.role === "driver" ? "/m" : "/lm"
   }
 
@@ -183,7 +187,7 @@ export async function POST(request: NextRequest) {
   }
 
   await logAudit({
-    organizationId: null,
+    organizationId: targetOrganizationId,
     actorId: owner.id,
     actorEmail: owner.email,
     action: "impersonate",

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T18:03:18.344Z",
+  "generatedAt": "2026-10-08T22:40:22.164Z",
   "endpoints": [
     {
       "method": "GET",
@@ -14,6 +14,16 @@
     {
       "method": "POST",
       "route": "/api/admin/impersonate",
+      "group": "admin"
+    },
+    {
+      "method": "GET",
+      "route": "/api/admin/journal",
+      "group": "admin"
+    },
+    {
+      "method": "GET",
+      "route": "/api/admin/overview",
       "group": "admin"
     },
     {

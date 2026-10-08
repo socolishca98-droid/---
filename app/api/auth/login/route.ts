@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { isOwnerEmail } from "@/lib/auth/owner"
 import { authenticateWithPassword } from "@/lib/auth/login"
 import { sessionCookie } from "@/lib/auth/session"
 
@@ -70,6 +71,8 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({
       success: true,
+      // Владелец платформы попадает на свой стартовый экран /owner
+      isOwner: isOwnerEmail(result.email),
       user: {
         id: result.userId,
         name: result.name,
