@@ -179,7 +179,7 @@ export default function LogistSearchPage() {
         userName={user?.name}
       />
 
-      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-3 backdrop-blur">
         <div className="flex gap-2">
           <TabButton active={tab === "base"} onClick={() => setTab("base")} icon={<Database className="h-4 w-4" />}>
             Своя база{stats ? ` (${stats.new})` : ""}

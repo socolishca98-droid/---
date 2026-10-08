@@ -23,9 +23,9 @@ export async function GET(request: NextRequest) {
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  if (auth.value.user.role !== "admin") {
+  if (!["admin", "logist"].includes(auth.value.user.role)) {
     return NextResponse.json(
-      { success: false, error: "Подключать ATI.SU может только администратор организации" },
+      { success: false, error: "Подключать ATI.SU могут сотрудники штаба" },
       { status: 403 },
     )
   }

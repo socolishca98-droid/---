@@ -42,8 +42,10 @@ export default function LogistRoutePage() {
   return (
     <>
       <LogistHeader
-        title={route ? shortCity(route.orders?.[0]?.routeTo) || "Рейс" : "Рейс"}
-        subtitle={route ? meta.label : undefined}
+        title={route?.name || "Рейс"}
+        subtitle={
+          route ? `${meta.label}${route.driver?.name ? ` · ${route.driver.name}` : ""}` : undefined
+        }
         back
         userName={user?.name}
       />

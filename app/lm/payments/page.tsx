@@ -118,7 +118,7 @@ export default function LogistPaymentsPage() {
               </>
             ) : null}
 
-            <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mt-4 flex flex-wrap gap-2">
               {TABS.map((item) => {
                 const count = item.id === "paid" ? (stats?.paidCount ?? 0) : item.id === "late" ? lateCount : waitCount
                 return (

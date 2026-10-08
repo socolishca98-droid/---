@@ -4,8 +4,8 @@
 // свой токен, свои площадки, свои подписки и лимиты.
 //
 //   GET    — состояние подключения (для всех сотрудников; токена в ответе нет)
-//   POST   — сохранить постоянный токен из «Мои токены» (только админ)
-//   DELETE — отключить организацию (только админ)
+//   POST   — сохранить постоянный токен из «Мои токены» (сотрудники штаба)
+//   DELETE — отключить организацию (сотрудники штаба)
 //
 // Живая проверка токена — POST /api/ati/connection/check (отдельно, чтобы
 // сохранение не зависело от доступности ATI.SU).
@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  // Подключение затрагивает всю организацию — только админ
-  if (auth.value.user.role !== "admin") {
+  // Подключение затрагивает всю организацию — доступно сотрудникам штаба
+  if (!["admin", "logist"].includes(auth.value.user.role)) {
     return NextResponse.json(
-      { success: false, error: "Подключать ATI.SU может только администратор организации" },
+      { success: false, error: "Подключать ATI.SU могут сотрудники штаба" },
       { status: 403 },
     )
   }
@@ -96,9 +96,9 @@ export async function DELETE(request: NextRequest) {
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  if (auth.value.user.role !== "admin") {
+  if (!["admin", "logist"].includes(auth.value.user.role)) {
     return NextResponse.json(
-      { success: false, error: "Отключать ATI.SU может только администратор организации" },
+      { success: false, error: "Отключать ATI.SU могут сотрудники штаба" },
       { status: 403 },
     )
   }

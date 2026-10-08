@@ -32,10 +32,6 @@ export interface NavItem {
   href: string
   icon: LucideIcon
   badgeKey?: BadgeKey
-  /** Пункт виден только администратору организации */
-  adminOnly?: boolean
-  /** Пункт виден только логисту (у администратора своя полная версия) */
-  logistOnly?: boolean
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -57,14 +53,19 @@ export const NAV_ITEMS: NavItem[] = [
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
   // журнал действий — для админа: кто и что менял в организации
-  { name: "Журнал", href: "/audit", icon: ScrollText, adminOnly: true },
+  { name: "Журнал", href: "/audit", icon: ScrollText },
   { name: "Сотрудники", href: "/users", icon: Users },
   { name: "Организация", href: "/organization", icon: Building2 },
 ]
 
 /** Пункты, доступные роли: админу — всё, логисту — без админских. */
-export function navItemsForRole(role: string | undefined): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.adminOnly || role === "admin").filter(
-    (item) => !item.logistOnly || role === "logist",
-  )
+/**
+ * Пункты меню для роли.
+ *
+ * Администратор и логист — один профиль (решение владельца): разделять их
+ * пункты не нужно, список одинаковый. Роль оставлена параметром, потому что
+ * у водителя своё приложение (/m), а третья штабная роль не должна ломать вызов.
+ */
+export function navItemsForRole(_role: string | undefined): NavItem[] {
+  return NAV_ITEMS
 }

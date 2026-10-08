@@ -39,7 +39,6 @@ export default function LogistHomePage() {
   const routes = useJsonApi<{ routes: MobileRoute[] }>(user ? "/api/routes?limit=50" : null)
   const drivers = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
   // Заявки на доступ видят оба: одобрять их может и логист (проверяет API)
-  const isAdmin = user?.role === "admin"
   const staff = useJsonApi<{ pendingCount: number }>(
     user ? "/api/auth/users?status=pending&pageSize=1" : null,
   )
@@ -64,7 +63,12 @@ export default function LogistHomePage() {
   const activeRoutes = routeList.filter((route) => !["completed", "cancelled"].includes(route.status))
   const freeDrivers = driverList.filter((driver) => driver.status === "available")
 
-  const loading = sessionLoading || (orders.loading && routes.loading && drivers.loading)
+  // Данные приходят тремя запросами и с разной скоростью: пока рейсы ещё
+  // грузятся, показываем заглушку, а не ноль — иначе цифра врёт.
+  const loading = sessionLoading || orders.loading || routes.loading || drivers.loading
+  const routesLoading = sessionLoading || routes.loading
+  const driversLoading = sessionLoading || drivers.loading
+  const ordersLoading = sessionLoading || orders.loading
   const anyError = orders.error || routes.error || drivers.error
 
   const today = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" })
@@ -94,27 +98,38 @@ export default function LogistHomePage() {
           </Link>
         ) : null}
 
-        {loading ? (
-          <div className="mt-4 space-y-2.5">
-            <div className="grid grid-cols-2 gap-2.5">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="h-[92px] animate-pulse rounded-2xl bg-white/[0.04]" />
-              ))}
-            </div>
+        {sessionLoading ? (
+          <div className="mt-4 grid grid-cols-2 gap-2.5">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-[92px] animate-pulse rounded-2xl bg-white/[0.04]" />
+            ))}
           </div>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-2.5">
-            <KpiCard label="Заказов в работе" value={activeOrders.length} href="/lm/orders?filter=active" />
+            <KpiCard
+              label="Заказов в работе"
+              value={activeOrders.length}
+              loading={ordersLoading}
+              href="/lm/orders?filter=active"
+            />
             <KpiCard
               label="Требуют внимания"
               value={attention.length}
+              loading={ordersLoading}
               tone={attention.length > 0 ? "warn" : "good"}
               href="/lm/orders"
             />
-            <KpiCard label="Рейсов в пути" value={activeRoutes.length} tone="accent" href="/lm/routes" />
+            <KpiCard
+              label="Активных рейсов"
+              value={activeRoutes.length}
+              loading={routesLoading}
+              tone="accent"
+              href="/lm/routes"
+            />
             <KpiCard
               label="Водителей свободно"
-              value={`${freeDrivers.length} / ${driverList.length}`}
+              value={`${freeDrivers.length} из ${driverList.length}`}
+              loading={driversLoading}
               href="/lm/drivers"
             />
           </div>
@@ -151,9 +166,12 @@ export default function LogistHomePage() {
           </Link>
         </div>
 
-        {isAdmin ? (
+        {user ? (
           <>
-            <SectionTitle title="Администрирование" />
+            <SectionTitle
+              title="Администрирование"
+              action={{ label: "Настройки", href: "/lm/settings" }}
+            />
             <div className="grid grid-cols-2 gap-2.5">
               <Link
                 href="/lm/users"
@@ -208,7 +226,7 @@ export default function LogistHomePage() {
         ) : null}
 
         <SectionTitle title="Требуют внимания" action={{ label: "Все заказы", href: "/lm/orders" }} />
-        {loading ? (
+        {ordersLoading ? (
           <ListSkeleton rows={3} />
         ) : attention.length === 0 ? (
           <EmptyState
@@ -236,7 +254,7 @@ export default function LogistHomePage() {
         )}
 
         <SectionTitle title="Активные рейсы" action={{ label: "Все рейсы", href: "/lm/routes" }} />
-        {loading ? (
+        {routesLoading ? (
           <ListSkeleton rows={2} />
         ) : activeRoutes.length === 0 ? (
           <EmptyState icon={<RouteIcon className="h-6 w-6" />} title="Активных рейсов нет" />
@@ -279,7 +297,7 @@ export default function LogistHomePage() {
         )}
 
         <SectionTitle title="Свежие заказы" action={{ label: "Все", href: "/lm/orders" }} />
-        {loading ? (
+        {ordersLoading ? (
           <ListSkeleton rows={2} />
         ) : orderList.length === 0 ? (
           <EmptyState
@@ -309,9 +327,9 @@ export default function LogistHomePage() {
         <div className="mt-6 flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3">
           <div>
             <p className="text-[13px] text-zinc-400">Нужна полная версия?</p>
-            <p className="text-[12px] text-zinc-600">Отчёты, карта, документы</p>
+            <p className="text-[12px] text-zinc-600">Отчёты, документы, печать</p>
           </div>
-          <Link href="/dashboard" className="text-[13px] font-medium text-orange-400">
+          <Link href="/dashboard?full=1" className="text-[13px] font-medium text-orange-400">
             Открыть
           </Link>
         </div>

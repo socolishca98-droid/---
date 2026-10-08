@@ -2,7 +2,7 @@
 //
 // Живая проверка подключения организации к ATI.SU: GET /v1.0/firms/my
 // с токеном организации. Заполняет firmId/firmName и статус (active/invalid).
-// Только админ: результат меняет запись подключения организации.
+// Доступно сотрудникам штаба: результат меняет запись подключения организации.
 
 import { NextRequest, NextResponse } from "next/server"
 
@@ -18,9 +18,9 @@ export async function POST(request: NextRequest) {
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  if (auth.value.user.role !== "admin") {
+  if (!["admin", "logist"].includes(auth.value.user.role)) {
     return NextResponse.json(
-      { success: false, error: "Проверять подключение может только администратор организации" },
+      { success: false, error: "Проверять подключение могут сотрудники штаба" },
       { status: 403 },
     )
   }

@@ -28,7 +28,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
-  if (!org.isAdmin) return forbidden("Отзывать инвайт-коды может только администратор организации")
+  if (!org.isManager) return forbidden("Отзывать инвайт-коды могут сотрудники штаба")
 
   const { id } = await params
   if (!id) {

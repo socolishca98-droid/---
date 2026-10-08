@@ -180,7 +180,14 @@ export async function proxy(request: NextRequest) {
     // Уже вошедшего сотрудника не держим на экране входа
     if ((pathname === "/" || pathname === "/login") && staffPayload) {
       return NextResponse.redirect(
-        new URL(staffHome(staffPayload.role, request.nextUrl.searchParams.get("next")), request.url),
+        new URL(
+          staffHome(
+            staffPayload.role,
+            request.nextUrl.searchParams.get("next"),
+            request.headers.get("user-agent"),
+          ),
+          request.url,
+        ),
       )
     }
     if (pathname === "/m/login" && driverPayload) {

@@ -106,8 +106,8 @@ export default function LogistMorePage() {
           </p>
         ) : null}
 
-        {/* Администрирование: заявки, компания и настройки — обоим штабным
-            ролям, журнал действий API отдаёт только админу */}
+        {/* Администрирование: заявки, компания, настройки и журнал — обоим
+            штабным ролям: админ и логист это один профиль */}
         <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">
           Администрирование
         </p>
@@ -115,21 +115,27 @@ export default function LogistMorePage() {
           <LinkRow icon={<ShieldCheck className="h-4.5 w-4.5" />} label="Сотрудники и доступ" href="/lm/users" />
           <LinkRow icon={<Building2 className="h-4.5 w-4.5" />} label="Организация и коды" href="/lm/organization" />
           <LinkRow icon={<Settings2 className="h-4.5 w-4.5" />} label="Настройки автопарка" href="/lm/settings" />
-          {user?.role === "admin" ? (
-            <LinkRow icon={<History className="h-4.5 w-4.5" />} label="Журнал действий" href="/lm/audit" />
-          ) : null}
+          <LinkRow icon={<History className="h-4.5 w-4.5" />} label="Журнал действий" href="/lm/audit" />
         </div>
 
-        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Разделы</p>
+        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Работа</p>
         <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-          <LinkRow icon={<SearchIcon className="h-4.5 w-4.5" />} label="Поиск грузов (ATI)" href="/lm/search" />
-          <LinkRow icon={<Users className="h-4.5 w-4.5" />} label="Водители" href="/lm/drivers" />
-          <LinkRow icon={<MapIcon className="h-4.5 w-4.5" />} label="Карта" href="/lm/map" />
+          <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Водители" href="/lm/drivers" />
           <LinkRow icon={<Users className="h-4.5 w-4.5" />} label="Клиенты" href="/lm/clients" />
           <LinkRow icon={<Wallet className="h-4.5 w-4.5" />} label="Оплаты" href="/lm/payments" />
-          <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Автопарк и ТО" href="/lm/fleet" />
+          <LinkRow icon={<SearchIcon className="h-4.5 w-4.5" />} label="Поиск грузов (ATI)" href="/lm/search" />
+        </div>
+
+        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Автопарк</p>
+        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+          <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Машины и ТО" href="/lm/fleet" />
           <LinkRow icon={<FuelIcon className="h-4.5 w-4.5" />} label="Топливо" href="/lm/fuel" />
-          <LinkRow icon={<CameraIcon className="h-4.5 w-4.5" />} label="Фото" href="/lm/photos" />
+          <LinkRow icon={<CameraIcon className="h-4.5 w-4.5" />} label="Фото от водителей" href="/lm/photos" />
+          <LinkRow icon={<MapIcon className="h-4.5 w-4.5" />} label="Карта машин" href="/lm/map" />
+        </div>
+
+        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Связь</p>
+        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
           <LinkRow icon={<MessageSquare className="h-4.5 w-4.5" />} label="Чат с водителями" href="/lm/chat" />
           <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
           <LinkRow icon={<Package className="h-4.5 w-4.5" />} label="Отчёты и подсказки" href="/lm/reports" />

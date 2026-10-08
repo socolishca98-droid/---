@@ -40,10 +40,17 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
       return
     }
 
+    // URL появляется позже первого рендера (ждём сессию): включаем скелетон
+    // сразу, иначе экран на секунды показывает нули вместо «загружается».
+    setLoading(true)
+
     let cancelled = false
     let attempt = 0
 
     const load = async (): Promise<void> => {
+      // Пока идёт повтор после временной ошибки, экран не должен показывать
+      // пустые данные как окончательные: держим скелетон до ответа.
+      let retryScheduled = false
       try {
         const res = await fetch(url, { cache: "no-store", credentials: "include" })
 
@@ -66,6 +73,7 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
         const raw = caught instanceof Error ? caught.message : "Не удалось загрузить данные"
         if (raw.endsWith("||retry")) {
           if (timerRef.current) clearTimeout(timerRef.current)
+          retryScheduled = true
           timerRef.current = setTimeout(() => {
             void load()
           }, 1200 * (attempt + 1))
@@ -73,7 +81,7 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
         }
         setError(raw.replace("||retry", ""))
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !retryScheduled) {
           loadedOnce.current = true
           setLoading(false)
         }

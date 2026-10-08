@@ -41,6 +41,12 @@ export interface OrgContext {
   role: string
   /** Удобный флаг для проверок «только админ организации» */
   isAdmin: boolean
+  /**
+   * Может управлять настройками организации (инвайт-коды, подключение ATI,
+   * журнал действий). Админ и логист — один профиль (решение владельца),
+   * поэтому право одинаковое; isAdmin оставлен для «старшего» сотрудника.
+   */
+  isManager: boolean
   /** Идентификатор карточки водителя (для водительских сессий) */
   driverId: string | null
 }
@@ -95,6 +101,7 @@ export function requireStaffOrganization(user: StaffIdentity): OrgGuard {
     userId: user.id,
     role: user.role,
     isAdmin: user.role === "admin",
+    isManager: user.role === "admin" || user.role === "logist",
     driverId: null,
   }
 }
@@ -111,6 +118,7 @@ export function requireDriverOrganization(driver: DriverIdentity, userId: string
     userId,
     role: "driver",
     isAdmin: false,
+    isManager: false,
     driverId: driver.id,
   }
 }

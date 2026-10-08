@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
-  if (!org.isAdmin) return forbidden("Инвайт-коды видит только администратор организации")
+  if (!org.isManager) return forbidden("Инвайт-коды доступны сотрудникам штаба")
 
   try {
     const invites = await listInvites(org.organizationId)
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
-  if (!org.isAdmin) return forbidden("Создавать инвайт-коды может только администратор организации")
+  if (!org.isManager) return forbidden("Создавать инвайт-коды могут сотрудники штаба")
 
   let body: unknown
   try {

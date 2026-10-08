@@ -29,12 +29,15 @@ export function KpiCard({
   hint,
   href,
   tone = "default",
+  loading = false,
 }: {
   label: string
   value: string | number
   hint?: string
   href?: string
   tone?: "default" | "warn" | "good" | "accent"
+  /** Пока данные не пришли, вместо нуля — пульсирующая заглушка */
+  loading?: boolean
 }) {
   const tones: Record<string, string> = {
     default: "text-white",
@@ -49,7 +52,11 @@ export function KpiCard({
 
   const content = (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]">
-      <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>{value}</div>
+      {loading ? (
+        <div className="h-6 w-12 animate-pulse rounded-md bg-white/10" />
+      ) : (
+        <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>{value}</div>
+      )}
       <div className="mt-1.5 text-[13px] leading-snug text-zinc-400">{label}</div>
       {hint ? <div className="mt-1 text-[11px] text-zinc-500">{hint}</div> : null}
     </div>

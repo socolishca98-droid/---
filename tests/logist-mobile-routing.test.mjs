@@ -42,14 +42,19 @@ test("внутренний путь из ?next= пропускается, вне
   assert.equal(safeInternalPath(null), null)
 })
 
-test("вошедшего сотрудника без ?next= ведём по роли", () => {
-  assert.equal(staffHome("logist", null), "/lm")
-  assert.equal(staffHome("admin", null), "/dashboard")
-  assert.equal(staffHome(undefined, null), "/dashboard")
-  // явный ?next= важнее роли
-  assert.equal(staffHome("logist", "/lm/orders/demo-order-7"), "/lm/orders/demo-order-7")
+test("вошедшего сотрудника без ?next= ведём по устройству, а не по роли", () => {
+  // с телефона — мобильная панель, независимо от роли
+  assert.equal(staffHome("logist", null, IPHONE), "/lm")
+  assert.equal(staffHome("admin", null, IPHONE), "/lm")
+  assert.equal(staffHome("admin", null, ANDROID), "/lm")
+  // с компьютера — полная версия, тоже независимо от роли
+  assert.equal(staffHome("logist", null, DESKTOP), "/dashboard")
+  assert.equal(staffHome("admin", null, DESKTOP), "/dashboard")
+  assert.equal(staffHome(undefined, null, DESKTOP), "/dashboard")
+  // явный ?next= важнее устройства
+  assert.equal(staffHome("logist", "/lm/orders/demo-order-7", IPHONE), "/lm/orders/demo-order-7")
   // а небезопасный ?next= игнорируем
-  assert.equal(staffHome("logist", "//evil.example"), "/lm")
+  assert.equal(staffHome("logist", "//evil.example", IPHONE), "/lm")
 })
 
 test("телефон и планшет отличаются от компьютера", () => {
@@ -81,18 +86,14 @@ test("мобильный аналог раздела находится, под�
   assert.equal(mobileLogistTarget("/orders-history"), null)
 })
 
-test("сотрудники, организация и настройки есть в мобильной панели у обеих ролей", () => {
+test("сотрудники, организация, настройки и журнал есть в мобильной панели у обеих ролей", () => {
   for (const role of ["admin", "logist", undefined]) {
     assert.equal(mobileLogistTarget("/users", role), "/lm/users")
     assert.equal(mobileLogistTarget("/organization", role), "/lm/organization")
     assert.equal(mobileLogistTarget("/settings", role), "/lm/settings")
+    // админ и логист — один профиль: журнал доступен обоим
+    assert.equal(mobileLogistTarget("/audit", role), "/lm/audit")
   }
-})
-
-test("журнал действий — только у администратора", () => {
-  assert.equal(mobileLogistTarget("/audit", "admin"), "/lm/audit")
-  assert.equal(mobileLogistTarget("/audit", "logist"), null)
-  assert.equal(mobileLogistTarget("/audit"), null)
 })
 
 test("логист с телефона уходит из десктопных разделов в /lm", () => {
@@ -138,6 +139,10 @@ test("логист с телефона уходит из десктопных р
     shouldRedirectStaffToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/users",
   )
+  assert.equal(
+    shouldRedirectStaffToMobile("/audit", { role: "logist", userAgent: ua, wantsFull: false }),
+    "/lm/audit",
+  )
   // а разделы, доступные логисту, он получает и в мобильном виде
   assert.equal(
     shouldRedirectStaffToMobile("/users", { role: "logist", userAgent: ua, wantsFull: false }),
@@ -147,10 +152,10 @@ test("логист с телефона уходит из десктопных р
     shouldRedirectStaffToMobile("/organization", { role: "logist", userAgent: ua, wantsFull: false }),
     "/lm/organization",
   )
-  // журнал действий API логисту не отдаёт — в полной версии он и останется
+  // журнал действий — тоже мобильный: админ и логист один профиль
   assert.equal(
     shouldRedirectStaffToMobile("/audit", { role: "logist", userAgent: ua, wantsFull: false }),
-    null,
+    "/lm/audit",
   )
 })
 

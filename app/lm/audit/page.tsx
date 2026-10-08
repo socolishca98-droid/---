@@ -8,8 +8,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import Link from "next/link"
-import { History, Loader2, ShieldCheck } from "lucide-react"
+import { History, Loader2 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
@@ -77,22 +76,65 @@ interface AuditRow {
   createdAt: string
 }
 
-/** Пара значимых деталей из metadata — без служебного шума. */
+/** Ключи metadata, понятные человеку. Служебные (id, ip) не показываем. */
+const META_LABELS: Record<string, string> = {
+  role: "роль",
+  status: "статус",
+  reason: "причина",
+  orderNumber: "заказ",
+  plate: "номер",
+  stage: "этап",
+  scenario: "способ",
+  expiresAt: "действует до",
+}
+
+/** Значения-коды переводим на русский: «logist» → «логист». */
+const META_VALUES: Record<string, string> = {
+  admin: "администратор",
+  logist: "логист",
+  driver: "водитель",
+  invite: "по приглашению",
+  active: "активен",
+  pending: "ждёт одобрения",
+  suspended: "приостановлен",
+}
+
+function dateShort(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+}
+
+/** Две-три значимые детали из metadata — без служебного шума. */
 function details(metadata: Record<string, unknown> | null): string {
   if (!metadata) return ""
   const parts: string[] = []
-  const role = metadata.role
-  if (typeof role === "string") parts.push(`роль: ${role}`)
-  const reason = metadata.reason
-  if (typeof reason === "string" && reason) parts.push(`причина: ${reason}`)
-  const organizationName = metadata.organizationName
-  if (typeof organizationName === "string" && parts.length === 0) parts.push(organizationName)
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === null || value === undefined || typeof value === "object") continue
+    // технические ключи ничего не говорят человеку
+    if (["organizationId", "id", "ip", "organizationName", "userId"].includes(key)) continue
+
+    const text = String(value)
+    const human = META_VALUES[text] ?? (/^\d{4}-\d{2}-\d{2}T/.test(text) ? dateShort(text) : text)
+    const label = META_LABELS[key]
+
+    if (key === "reason") {
+      parts.push(`причина: ${human}`)
+    } else if (label) {
+      parts.push(`${label}: ${human}`)
+    } else if (!/[A-Z]/.test(key)) {
+      // неизвестный, но читаемый ключ — показываем как есть
+      parts.push(`${key}: ${human}`)
+    }
+    if (parts.length === 3) break
+  }
+
   return parts.join(" · ")
 }
 
 export default function MobileAuditPage() {
   const { user } = useStaffSession()
-  const isAdmin = user?.role === "admin"
 
   const [action, setAction] = useState("all")
   const [rows, setRows] = useState<AuditRow[]>([])
@@ -131,37 +173,14 @@ export default function MobileAuditPage() {
   )
 
   useEffect(() => {
-    if (isAdmin) void load(0, false)
-  }, [isAdmin, load])
-
-  if (user && !isAdmin) {
-    return (
-      <>
-        <LogistHeader title="Журнал действий" subtitle="Раздел администратора" userName={user.name} />
-        <div className="px-4 pt-4">
-          <EmptyState
-            icon={<ShieldCheck className="h-6 w-6" />}
-            title="Только для администратора"
-            description="Журнал входов и изменений видит администратор организации."
-            action={
-              <Link
-                href="/lm"
-                className="inline-flex min-h-[44px] items-center rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white"
-              >
-                На главную
-              </Link>
-            }
-          />
-        </div>
-      </>
-    )
-  }
+    if (user) void load(0, false)
+  }, [user, load])
 
   return (
     <>
       <LogistHeader title="Журнал действий" subtitle="Кто что менял в организации" userName={user?.name} />
 
-      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-3 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-3 pt-3 backdrop-blur">
         {/* Действий много: на телефоне удобнее системный список, чем лента чипов */}
         <label className="block">
           <span className="sr-only">Действие</span>

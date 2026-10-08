@@ -65,7 +65,6 @@ const inputClass =
 
 export default function MobileSettingsPage() {
   const { user } = useStaffSession()
-  const isAdmin = user?.role === "admin"
 
   const [form, setForm] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)

@@ -298,9 +298,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // --- Смена роли (только администратор) --------------------------------
     if (action === "setRole") {
-      if (actor.role !== "admin") {
+      if (!["admin", "logist"].includes(actor.role)) {
         return NextResponse.json(
-          { success: false, error: "Менять роль может только администратор" },
+          { success: false, error: "Менять роль могут сотрудники штаба" },
           { status: 403 },
         )
       }

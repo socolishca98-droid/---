@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
         id: org.userId,
         role: org.role,
         isAdmin: org.isAdmin,
+        isManager: org.isManager,
       },
     })
   } catch (error) {

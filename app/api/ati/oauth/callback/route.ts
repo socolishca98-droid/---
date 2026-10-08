@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const base = appBaseUrl(request)
 
-  if (auth.value.user.role !== "admin") {
+  if (!["admin", "logist"].includes(auth.value.user.role)) {
     return NextResponse.redirect(`${base}/organization?ati=error_admin`, 302)
   }
 

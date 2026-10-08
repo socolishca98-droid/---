@@ -6,7 +6,7 @@
 
 "use client"
 
-import { BarChart3, RefreshCw } from "lucide-react"
+import { AlertTriangle, BarChart3, CheckCircle2, CircleAlert, Info, RefreshCw } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { Card, EmptyState, ErrorState, KpiCard, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
@@ -94,11 +94,49 @@ export default function LogistReportsPage() {
               ) : (
                 insights.map((insight) => {
                   const meta = INSIGHT_LEVEL_META[insight.level] ?? INSIGHT_LEVEL_META.info
+
+                  const LevelIcon =
+
+                    meta.tone === "ok"
+
+                      ? CheckCircle2
+
+                      : meta.tone === "warn"
+
+                        ? AlertTriangle
+
+                        : meta.tone === "critical"
+
+                          ? CircleAlert
+
+                          : Info
+
+                  const iconTone =
+
+                    meta.tone === "ok"
+
+                      ? "text-emerald-300"
+
+                      : meta.tone === "warn"
+
+                        ? "text-amber-300"
+
+                        : meta.tone === "critical"
+
+                          ? "text-red-300"
+
+                          : "text-zinc-400"
+
                   return (
+
                     <div key={insight.id} className={`rounded-2xl border p-4 ${meta.style}`}>
-                      <p className="text-[14.5px] font-medium text-white">
-                        <span className="mr-1.5">{meta.emoji}</span>
-                        {insight.title}
+
+                      <p className="flex items-start gap-2 text-[14.5px] font-medium text-white">
+
+                        <LevelIcon className={`mt-0.5 h-4 w-4 shrink-0 ${iconTone}`} />
+
+                        <span>{insight.title}</span>
+
                       </p>
                       {insight.detail ? (
                         <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">{insight.detail}</p>

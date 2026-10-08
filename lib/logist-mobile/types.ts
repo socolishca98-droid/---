@@ -305,12 +305,17 @@ export const DEADLINE_STATUS_META: Record<string, { label: string; style: string
   overdue: { label: "просрочено", style: "text-red-300" },
 }
 
-export const INSIGHT_LEVEL_META: Record<string, { emoji: string; style: string }> = {
-  ok: { emoji: "✅", style: "border-emerald-500/25 bg-emerald-500/[0.06]" },
-  warn: { emoji: "⚠️", style: "border-amber-500/25 bg-amber-500/[0.06]" },
-  warning: { emoji: "⚠️", style: "border-amber-500/25 bg-amber-500/[0.06]" },
-  critical: { emoji: "🔴", style: "border-red-500/25 bg-red-500/[0.06]" },
-  info: { emoji: "ℹ️", style: "border-white/10 bg-white/[0.03]" },
+/**
+ * Вид подсказки отчёта: тон задаёт цвет, иконку рисует экран (lucide).
+ * Эмодзи не используем: на части телефонов и шрифтов они превращаются
+ * в пустые квадраты.
+ */
+export const INSIGHT_LEVEL_META: Record<string, { tone: "ok" | "warn" | "critical" | "info"; style: string }> = {
+  ok: { tone: "ok", style: "border-emerald-500/25 bg-emerald-500/[0.06]" },
+  warn: { tone: "warn", style: "border-amber-500/25 bg-amber-500/[0.06]" },
+  warning: { tone: "warn", style: "border-amber-500/25 bg-amber-500/[0.06]" },
+  critical: { tone: "critical", style: "border-red-500/25 bg-red-500/[0.06]" },
+  info: { tone: "info", style: "border-white/10 bg-white/[0.03]" },
 }
 
 // --- Поиск грузов (ATI), топливо, фото -------------------------------------

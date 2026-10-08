@@ -5,8 +5,9 @@
 // уезжали за край экрана. Здесь те же действия лежат в карточке сотрудника
 // и доступны в один тап.
 //
-// API: GET /api/auth/users (админ организации), PATCH /api/auth/users/{id}
-// с действиями approve / reject / suspend / restore / setRole / resetPassword.
+// API: GET /api/auth/users, PATCH /api/auth/users/{id} с действиями
+// approve / reject / suspend / restore / setRole / resetPassword. Доступен
+// обеим штабным ролям: админ и логист — один профиль.
 
 "use client"
 
@@ -92,7 +93,8 @@ function initials(name: string): string {
 
 export default function MobileUsersPage() {
   const { user } = useStaffSession()
-  const isAdmin = user?.role === "admin"
+  // Админ и логист — один профиль: действия над сотрудниками доступны обоим
+  const canManage = !!user && user.role !== "driver"
 
   const [status, setStatus] = useState("pending")
   const [query, setQuery] = useState("")
@@ -190,7 +192,7 @@ export default function MobileUsersPage() {
     <>
       <LogistHeader title="Сотрудники" subtitle={subtitle} userName={user?.name} />
 
-      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <input
@@ -212,13 +214,13 @@ export default function MobileUsersPage() {
           ) : null}
         </div>
 
-        <div className="-mx-4 mt-2.5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {STATUS_FILTERS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setStatus(item.id)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium ${
+              className={`rounded-full border px-3 py-1.5 text-[13px] font-medium ${
                 status === item.id
                   ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
                   : "border-white/8 bg-white/[0.03] text-zinc-400"
@@ -420,9 +422,8 @@ export default function MobileUsersPage() {
                     </>
                   ) : null}
 
-                  {/* Блокировки, пароли и роли — только администратор:
-                      API отвечает логисту 403, кнопки ему не показываем */}
-                  {isAdmin && row.status === "suspended" ? (
+                  {/* Блокировки, пароли и роли: админ и логист — один профиль */}
+                  {canManage && row.status === "suspended" ? (
                     <>
                       <ActionButton
                         tone="primary"
@@ -449,7 +450,7 @@ export default function MobileUsersPage() {
                     </>
                   ) : null}
 
-                  {isAdmin && row.status === "active" ? (
+                  {canManage && row.status === "active" ? (
                     <>
                       <ActionButton
                         disabled={busy}
@@ -479,7 +480,7 @@ export default function MobileUsersPage() {
                   ) : null}
                 </div>
 
-                {isAdmin && row.status === "active" && row.role !== "driver" ? (
+                {canManage && row.status === "active" && row.role !== "driver" ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -512,7 +513,7 @@ export default function MobileUsersPage() {
           <p className="text-[12.5px] leading-relaxed text-zinc-500">
             Заявки появляются после регистрации по коду приглашения. Код создаётся в разделе
             «Организация».
-            {!isAdmin ? " Блокировки, пароли и роли меняет администратор." : ""}
+
           </p>
         </Card>
       </div>

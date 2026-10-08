@@ -111,7 +111,7 @@ export default function LogistFleetPage() {
               />
             </div>
 
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mt-3 flex flex-wrap gap-2">
               {TABS.map((item) => (
                 <button
                   key={item.id}

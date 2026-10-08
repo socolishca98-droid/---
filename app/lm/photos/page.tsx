@@ -43,14 +43,14 @@ export default function LogistPhotosPage() {
         userName={user?.name}
       />
 
-      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-2.5 backdrop-blur">
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-2.5 backdrop-blur">
+        <div className="flex flex-wrap gap-2">
           {FILTERS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setFilter(item.id)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium ${
+              className={`rounded-full border px-3 py-1.5 text-[13px] font-medium ${
                 filter === item.id
                   ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
                   : "border-white/8 bg-white/[0.03] text-zinc-400"

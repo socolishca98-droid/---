@@ -55,7 +55,7 @@ export default function LogistRoutesPage() {
     <>
       <LogistHeader title="Рейсы" subtitle={`${data?.routes?.length ?? 0} всего`} userName={user?.name} />
 
-      <div className="sticky top-[57px] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="flex gap-2">
           {TABS.map((item) => (
             <button

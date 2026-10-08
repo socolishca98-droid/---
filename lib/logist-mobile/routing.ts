@@ -1,9 +1,9 @@
 /**
  * Правила перехода между контурами сотрудника.
  *
- * Логист работает с телефона, поэтому мобильную панель /lm нужно не только
- * иметь, но и не дать потерять: с телефона десктопные разделы (заказы, рейсы,
- * водители, дашборд) уводят в /lm-аналог, а с компьютера остаётся полная версия.
+ * Администратор и логист — один профиль: правила ниже смотрят только на
+ * устройство, не на роль. С телефона сотрудник работает в мобильной панели /lm
+ * (десктопные разделы уводят в /lm-аналог), с компьютера — в полной версии.
  *
  * Модуль намеренно чистый (без Next и без БД) — его проверяют юнит-тесты
  * tests/logist-mobile-routing.test.mjs.
@@ -22,18 +22,14 @@ const SECTION_MAP: Array<[string, string]> = [
   ["/search", "/lm/search"],
   ["/fuel", "/lm/fuel"],
   ["/photos", "/lm/photos"],
-  // «Сотрудники» и «Организация» открыты и логисту: заявки на доступ он
-  // одобряет сам, а коды приглашений создаёт админ — это решает API.
+  // «Сотрудники», «Организация», «Настройки» и «Журнал» — тоже мобильные:
+  // у админа и логиста один профиль (решение владельца), значит и набор
+  // разделов одинаковый, и права на действия проверяет API, а не меню.
+  ["/audit", "/lm/audit"],
   ["/users", "/lm/users"],
   ["/organization", "/lm/organization"],
   ["/settings", "/lm/settings"],
 ]
-
-/**
- * Разделы администратора: журнал действий API отдаёт только админу, поэтому
- * логиста с телефона туда не уводим — он останется в своей панели.
- */
-const ADMIN_SECTION_MAP: Array<[string, string]> = [["/audit", "/lm/audit"]]
 
 /**
  * Разделы без мобильного аналога (расходы) остаются в полной версии: её вёрстка
@@ -57,8 +53,16 @@ export function safeInternalPath(value: string | null | undefined): string | nul
  * Явный ?next= уважаем всегда; иначе логист идёт в мобильную панель,
  * администратор — в полную версию.
  */
-export function staffHome(role: string | undefined, nextParam: string | null): string {
-  return safeInternalPath(nextParam) ?? (role === "logist" ? "/lm" : "/dashboard")
+export function staffHome(
+  role: string | undefined,
+  nextParam: string | null,
+  userAgent?: string | null,
+): string {
+  void role
+  const explicit = safeInternalPath(nextParam)
+  if (explicit) return explicit
+  // Роль не влияет: с телефона — мобильная панель, с компьютера — полная версия
+  return isMobileDevice(userAgent) ? "/lm" : "/dashboard"
 }
 
 /** Открыт ли сайт с телефона/планшета (по User-Agent). */
@@ -73,16 +77,12 @@ export function isMobileDevice(userAgent: string | null | undefined): boolean {
  * Мобильный аналог десктопного раздела — или null, если аналога нет.
  * Подпуть сохраняется: /orders/abc → /lm/orders/abc.
  */
-export function mobileLogistTarget(pathname: string, role?: string): string | null {
+export function mobileLogistTarget(pathname: string): string | null {
   if (pathname === "/dashboard") return "/lm"
 
-  const tables = role === "admin" ? [SECTION_MAP, ADMIN_SECTION_MAP] : [SECTION_MAP]
-
-  for (const table of tables) {
-    for (const [from, to] of table) {
-      if (pathname === from) return to
-      if (pathname.startsWith(`${from}/`)) return `${to}${pathname.slice(from.length)}`
-    }
+  for (const [from, to] of SECTION_MAP) {
+    if (pathname === from) return to
+    if (pathname.startsWith(`${from}/`)) return `${to}${pathname.slice(from.length)}`
   }
 
   return null
@@ -107,5 +107,5 @@ export function shouldRedirectStaffToMobile(
 
   if (pathname === "/maintenance") return "/lm/fleet"
 
-  return mobileLogistTarget(pathname, options.role)
+  return mobileLogistTarget(pathname)
 }

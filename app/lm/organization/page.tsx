@@ -4,8 +4,12 @@
 // компьютер: создать код, скопировать его или ссылку и отозвать, если код
 // ушёл не туда. Всё это умещается в две карточки.
 //
+// Здесь же — подключение ATI.SU: свой токен организации можно вставить
+// с телефона, не открывая компьютер.
+//
 // API: GET /api/organization, GET|POST /api/organization/invites,
-// DELETE /api/organization/invites/{id}.
+// DELETE /api/organization/invites/{id}, GET|POST|DELETE /api/ati/connection,
+// POST /api/ati/connection/check.
 
 "use client"
 
@@ -19,8 +23,11 @@ import {
   Copy,
   Link2,
   Loader2,
+  Plug,
   Plus,
+  RefreshCw,
   Trash2,
+  Unplug,
   Truck,
   UserPlus,
   Users,
@@ -30,7 +37,7 @@ import {
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useStaffSession } from "@/hooks/use-staff-session"
-import { plural } from "@/lib/logist-mobile/format"
+import { formatDateShort, plural } from "@/lib/logist-mobile/format"
 
 const EXPIRY_OPTIONS = [
   { id: "30", label: "30 дней" },
@@ -44,6 +51,21 @@ interface OrgResponse {
   summary: { members: number; pending: number; drivers: number; vehicles: number; activeInvites: number }
   me: { id: string; role: string; isAdmin: boolean }
   error?: string
+}
+
+interface AtiStatus {
+  success: boolean
+  connected: boolean
+  oauthAvailable: boolean
+  connection: {
+    kind: string
+    status: string
+    firmId: number | null
+    firmName: string | null
+    expiresAt: string | null
+    lastCheckAt: string | null
+    lastError: string | null
+  } | null
 }
 
 interface InviteRow {
@@ -87,7 +109,6 @@ async function copyText(text: string, what: string) {
 
 export default function MobileOrganizationPage() {
   const { user } = useStaffSession()
-  const isAdmin = user?.role === "admin"
 
   const [org, setOrg] = useState<OrgResponse | null>(null)
   const [invites, setInvites] = useState<InviteRow[]>([])
@@ -101,16 +122,19 @@ export default function MobileOrganizationPage() {
   const [freshCode, setFreshCode] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const load = useCallback(async (canSeeInvites: boolean) => {
+  // Подключение ATI.SU: токен организации, проверка и отключение
+  const [ati, setAti] = useState<AtiStatus | null>(null)
+  const [token, setToken] = useState("")
+  const [atiBusy, setAtiBusy] = useState(false)
+
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const [orgRes, invitesRes] = await Promise.all([
         fetch("/api/organization", { cache: "no-store" }),
-        // Коды приглашений API отдаёт только админу — логисту не стучимся
-        canSeeInvites
-          ? fetch("/api/organization/invites", { cache: "no-store" })
-          : Promise.resolve(null),
+        // Коды приглашений доступны обеим штабным ролям
+        fetch("/api/organization/invites", { cache: "no-store" }),
       ])
       const orgData = (await orgRes.json().catch(() => null)) as OrgResponse | null
       if (!orgRes.ok || !orgData?.success) {
@@ -119,12 +143,12 @@ export default function MobileOrganizationPage() {
       }
       setOrg(orgData)
 
-      if (!invitesRes) {
-        setInvites([])
-        return
-      }
       const invitesData = (await invitesRes.json().catch(() => null)) as InvitesResponse | null
       setInvites(invitesData?.invites ?? [])
+
+      const atiRes = await fetch("/api/ati/connection", { cache: "no-store" })
+      const atiData = (await atiRes.json().catch(() => null)) as AtiStatus | null
+      setAti(atiData)
     } catch {
       setError("Сервер недоступен")
     } finally {
@@ -133,7 +157,7 @@ export default function MobileOrganizationPage() {
   }, [])
 
   useEffect(() => {
-    if (user) void load(user.role === "admin")
+    if (user) void load()
   }, [user, load])
 
   const createInvite = async () => {
@@ -188,6 +212,76 @@ export default function MobileOrganizationPage() {
   }
 
   const activeInvites = invites.filter((invite) => invite.status === "active")
+  const connection = ati?.connection ?? null
+
+  const reloadAti = async () => {
+    const response = await fetch("/api/ati/connection", { cache: "no-store" })
+    setAti((await response.json().catch(() => null)) as AtiStatus | null)
+  }
+
+  const saveToken = async () => {
+    if (!token.trim()) {
+      toast.error("Вставьте access_token ATI.SU")
+      return
+    }
+    setAtiBusy(true)
+    try {
+      const response = await fetch("/api/ati/connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token.trim() }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error || "Не удалось сохранить токен")
+        return
+      }
+      toast.success("Токен сохранён")
+      setToken("")
+      await reloadAti()
+    } catch {
+      toast.error("Ошибка соединения")
+    } finally {
+      setAtiBusy(false)
+    }
+  }
+
+  const checkConnection = async () => {
+    setAtiBusy(true)
+    try {
+      const response = await fetch("/api/ati/connection/check", { method: "POST" })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error || "ATI.SU не ответил")
+        await reloadAti()
+        return
+      }
+      toast.success(`Подключено: ${data.firmName || "аккаунт ATI.SU"}`)
+      await reloadAti()
+    } catch {
+      toast.error("Ошибка соединения")
+    } finally {
+      setAtiBusy(false)
+    }
+  }
+
+  const disconnectAti = async () => {
+    setAtiBusy(true)
+    try {
+      const response = await fetch("/api/ati/connection", { method: "DELETE" })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error || "Не удалось отключить")
+        return
+      }
+      toast.success("ATI.SU отключён")
+      await reloadAti()
+    } catch {
+      toast.error("Ошибка соединения")
+    } finally {
+      setAtiBusy(false)
+    }
+  }
 
   return (
     <>
@@ -199,7 +293,7 @@ export default function MobileOrganizationPage() {
 
       <div className="space-y-3 px-4 pt-4">
         {error ? (
-          <ErrorState message={error} onRetry={() => void load(isAdmin)} />
+          <ErrorState message={error} onRetry={() => void load()} />
         ) : loading ? (
           <ListSkeleton rows={3} />
         ) : (
@@ -264,7 +358,6 @@ export default function MobileOrganizationPage() {
               </Card>
             ) : null}
 
-            {isAdmin ? (
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-[12px] uppercase tracking-wide text-zinc-500">Коды приглашений</p>
@@ -410,18 +503,85 @@ export default function MobileOrganizationPage() {
                 </p>
               ) : null}
             </div>
-            ) : (
-              <p className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-[12.5px] leading-relaxed text-zinc-500">
-                Коды приглашений создаёт и отзывает администратор организации. Заявки на
-                присоединение можно одобрять в разделе «Сотрудники».
-              </p>
-            )}
+
+            {/* Подключение ATI.SU — свой аккаунт организации */}
+            <div>
+              <p className="mb-2 px-1 text-[12px] uppercase tracking-wide text-zinc-500">ATI.SU</p>
+              <Card className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[14.5px] font-medium text-white">
+                      {connection ? connection.firmName || "Аккаунт подключён" : "Не подключено"}
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] text-zinc-500">
+                      {connection
+                        ? `статус: ${connection.status === "active" ? "активен" : connection.status}${
+                            connection.lastCheckAt
+                              ? ` · проверен ${formatDateShort(connection.lastCheckAt)}`
+                              : ""
+                          }`
+                        : "Без токена работают только демо-данные: поиск грузов и контакты перевозчиков требуют аккаунта ATI.SU"}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-medium ${
+                      connection?.status === "active"
+                        ? "bg-emerald-500/15 text-emerald-200"
+                        : connection
+                          ? "bg-amber-500/15 text-amber-200"
+                          : "bg-white/8 text-zinc-400"
+                    }`}
+                  >
+                    {connection?.status === "active" ? "работает" : connection ? "проверить" : "выключено"}
+                  </span>
+                </div>
+
+                {connection?.lastError ? (
+                  <p className="rounded-xl bg-red-500/[0.08] px-3 py-2 text-[12.5px] text-red-200">
+                    {connection.lastError}
+                  </p>
+                ) : null}
+
+                <label className="block">
+                  <span className="text-[12.5px] text-zinc-500">
+                    {connection ? "Заменить токен" : "Постоянный токен из «Мои токены» ATI.SU"}
+                  </span>
+                  <input
+                    value={token}
+                    onChange={(event) => setToken(event.target.value)}
+                    placeholder="access_token"
+                    autoComplete="off"
+                    className={inputInline}
+                  />
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <ActionButton tone="primary" disabled={atiBusy} onClick={() => void saveToken()}>
+                    {atiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+                    Сохранить
+                  </ActionButton>
+                  {connection ? (
+                    <>
+                      <ActionButton disabled={atiBusy} onClick={() => void checkConnection()}>
+                        <RefreshCw className="h-4 w-4" /> Проверить
+                      </ActionButton>
+                      <ActionButton tone="danger" disabled={atiBusy} onClick={() => void disconnectAti()}>
+                        <Unplug className="h-4 w-4" /> Отключить
+                      </ActionButton>
+                    </>
+                  ) : null}
+                </div>
+              </Card>
+            </div>
           </>
         )}
       </div>
     </>
   )
 }
+
+const inputInline =
+  "mt-1 min-h-[46px] w-full rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none"
 
 function SummaryTile({
   icon,

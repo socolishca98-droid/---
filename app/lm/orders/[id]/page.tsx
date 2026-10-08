@@ -134,8 +134,14 @@ export default function LogistOrderPage() {
   return (
     <>
       <LogistHeader
-        title={order ? shortCity(order.routeTo) : "Заказ"}
-        subtitle={order ? orderStageLabel(order.status) : undefined}
+        title={
+          order ? `${shortCity(order.routeFrom)} → ${shortCity(order.routeTo)}` : "Заказ"
+        }
+        subtitle={
+          order
+            ? `${order.clientName?.trim() || "клиент не указан"} · ${orderStageLabel(order.status)}`
+            : undefined
+        }
         back
         userName={user?.name}
       />
