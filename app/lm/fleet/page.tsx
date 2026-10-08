@@ -6,10 +6,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Phone, Truck, Wrench } from "lucide-react"
+import { Fuel as FuelIcon, Phone, Settings2, Truck, Wrench } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { EmptyState, ErrorState, KpiCard, ListSkeleton } from "@/components/logist-mobile/ui"
+import { EmptyState, ErrorState, KpiCard, LinkRow, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
@@ -109,6 +109,11 @@ export default function LogistFleetPage() {
                 hint={maintenance.data?.totals.expiredCount ? `просрочено: ${maintenance.data.totals.expiredCount}` : undefined}
                 tone={maintenance.data?.totals.soonCount ? "warn" : "default"}
               />
+            </div>
+
+            <div className="mt-3 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+              <LinkRow icon={<FuelIcon className="h-4.5 w-4.5" />} label="Топливо" href="/lm/fuel" />
+              <LinkRow icon={<Settings2 className="h-4.5 w-4.5" />} label="Настройки" href="/lm/settings" />
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">

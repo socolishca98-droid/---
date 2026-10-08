@@ -178,7 +178,7 @@ export default function MobileAuditPage() {
 
   return (
     <>
-      <LogistHeader title="Журнал действий" subtitle="Кто что менял в организации" userName={user?.name} />
+      <LogistHeader title="Журнал действий" subtitle="Кто что менял в организации" back userName={user?.name} />
 
       <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-3 pt-3 backdrop-blur">
         {/* Действий много: на телефоне удобнее системный список, чем лента чипов */}

@@ -54,7 +54,7 @@ export default function LogistFuelPage() {
 
   return (
     <>
-      <LogistHeader title="Топливо" subtitle={data ? `за ${data.period.days} дней` : undefined} userName={user?.name} />
+      <LogistHeader title="Топливо" subtitle={data ? `за ${data.period.days} дней` : undefined} back userName={user?.name} />
 
       <div className="px-4 pt-4">
         <div className="flex gap-2">

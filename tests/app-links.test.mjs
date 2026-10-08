@@ -9,6 +9,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
@@ -119,5 +120,64 @@ test("ключевые страницы не остаются без едино�
 test("в приложении есть ожидаемые разделы", () => {
   for (const route of ["/login", "/m/login", "/dashboard", "/orders", "/routes", "/reports"]) {
     assert.ok(pages.has(route), `нет страницы ${route}`)
+  }
+})
+
+/**
+ * Навигация мобильной панели: у каждого экрана /lm один родитель, и он есть.
+ *
+ * Проверяем дерево целиком, а не отдельные переходы: раздел, у которого
+ * родитель не существует или не указан на «Ещё», — это экран, куда можно
+ * попасть, но откуда стрелка «назад» уводит в никуда.
+ */
+test("дерево разделов /lm: у каждого экрана есть родитель", () => {
+  const require = createRequire(import.meta.url)
+  const { mobileParentPath } = require("../.test-build/lib/logist-mobile/routing.js")
+
+  const moreSource = fs.readFileSync(path.join(root, "app/lm/more/page.tsx"), "utf-8")
+  const broken = []
+
+  for (const route of pages) {
+    if (!route.startsWith("/lm/") || route.includes(":id")) continue
+
+    const parent = mobileParentPath(route)
+    if (!pages.has(parent)) {
+      broken.push(`${route} → ${parent} (такой страницы нет)`)
+      continue
+    }
+
+    // Родитель «Ещё» — значит раздел обязан быть в списке на «Ещё», иначе
+    // на экран можно попасть только по прямой ссылке.
+    if (parent === "/lm/more" && !moreSource.includes(`"${route}"`)) {
+      broken.push(`${route} → /lm/more, но в «Ещё» его нет`)
+    }
+  }
+
+  assert.deepEqual(broken, [], `сломано дерево разделов: ${broken.join(", ")}`)
+})
+
+test("«Ещё»: 8–10 строк в двух группах и ничего из нижнего меню", () => {
+  const source = fs.readFileSync(path.join(root, "app/lm/more/page.tsx"), "utf-8")
+  const rows = [...source.matchAll(/href: "(\/lm\/[a-z-]+)"/g)].map((match) => match[1])
+  const groups = [...source.matchAll(/<SectionGroup title="([^"]+)"/g)].map((match) => match[1])
+
+  assert.ok(
+    rows.length >= 8 && rows.length <= 10,
+    `в «Ещё» должно быть 8–10 разделов, а их ${rows.length}: ${rows.join(", ")}`,
+  )
+  assert.equal(groups.length, 2, `групп на «Ещё» должно быть две, а их ${groups.length}`)
+
+  const navSource = fs.readFileSync(
+    path.join(root, "components/logist-mobile/bottom-nav.tsx"),
+    "utf-8",
+  )
+  const tabs = [...navSource.matchAll(/href: "(\/lm[^"]*)"/g)].map((match) => match[1])
+
+  for (const row of rows) {
+    assert.ok(!tabs.includes(row), `${row} уже есть в нижнем меню — на «Ещё» это дубль`)
+  }
+
+  for (const row of rows) {
+    assert.ok(pages.has(row), `в «Ещё» есть строка на несуществующую страницу: ${row}`)
   }
 })

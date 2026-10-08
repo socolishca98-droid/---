@@ -155,7 +155,7 @@ export default function LogistHomePage() {
 
   return (
     <>
-      <LogistHeader title="Логистика" subtitle={today} userName={user?.name} />
+      <LogistHeader title="Главная" subtitle={today} userName={user?.name} />
 
       <PullToRefresh onRefresh={refresh} className="px-4 pt-4">
         <SectionTitle title="Сделать сейчас" />

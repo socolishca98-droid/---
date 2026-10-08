@@ -38,7 +38,7 @@ export default function LogistPhotosPage() {
   return (
     <>
       <LogistHeader
-        title="Фото"
+        title="Фото от водителей"
         subtitle={data?.photos ? formatCount(data.photos.length, ["снимок", "снимка", "снимков"]) : undefined}
         userName={user?.name}
       />

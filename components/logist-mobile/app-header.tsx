@@ -2,13 +2,18 @@
 //
 // Шапка мобильных экранов логиста: назад/заголовок, колокольчик уведомлений,
 // аватар-переход в профиль. Липкая — на длинных списках всегда видно, где ты.
+//
+// Стрелка «назад» ведёт не по истории браузера, а по дереву разделов
+// (mobileParentPath): у каждого экрана один и тот же родитель, куда ни зайди
+// с телефона — после перезапуска приложения или по ссылке из уведомления.
 
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { ArrowLeft, Bell } from "lucide-react"
 import { useJsonApi } from "@/hooks/use-json-api"
+import { mobileParentPath } from "@/lib/logist-mobile/routing"
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).slice(0, 2)
@@ -26,9 +31,9 @@ export function LogistHeader({
   back?: boolean
   userName?: string | null
 }) {
-  const router = useRouter()
   const { data } = useJsonApi<{ unread: number }>("/api/notifications")
   const unread = data?.unread ?? 0
+  const pathname = usePathname() ?? "/lm"
 
   return (
     <header
@@ -37,14 +42,13 @@ export function LogistHeader({
     >
       <div className="mx-auto flex max-w-md items-center gap-3 px-4 py-3">
         {back ? (
-          <button
-            type="button"
-            onClick={() => router.back()}
+          <Link
+            href={mobileParentPath(pathname)}
             aria-label="Назад"
             className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:bg-white/8"
           >
             <ArrowLeft className="h-5 w-5 text-zinc-200" />
-          </button>
+          </Link>
         ) : null}
 
         <div className="min-w-0 flex-1">

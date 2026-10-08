@@ -1,8 +1,14 @@
-// app/lm/more/page.tsx — всё, что не поместилось в нижнее меню.
+// app/lm/more/page.tsx — «Ещё»: разделы, которые не поместились в нижнее меню,
+// и профиль сотрудника.
 //
-// Здесь же показывается предупреждение, если логист с телефона попал на
-// раздел, у которого мобильной версии пока нет: вместо сломанной вёрстки
-// он видит понятный экран и кнопку «открыть на компьютере».
+// Здесь ровно две группы и десять строк: разделы, которые открываются из этого
+// экрана, и ничего больше. То, что уже стоит в нижнем меню (Главная, Заказы,
+// Рейсы, Карта), здесь не повторяется, а «Топливо», «Настройки» и «Журнал
+// действий» живут внутри своих разделов — «Автопарка» и «Организации», чтобы
+// на этом экране не было длинного хвоста мелких ссылок.
+//
+// Стрелка «назад» на каждом разделе ведёт сюда же (см. mobileParentPath):
+// у экрана один родитель, и это «Ещё».
 
 "use client"
 
@@ -10,21 +16,14 @@ import { useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
-  Bell,
+  BarChart3,
   Building2,
-  History,
   Camera as CameraIcon,
   Car,
-  ExternalLink,
-  Fuel as FuelIcon,
-  KeyRound,
   Loader2,
   LogOut,
-  Map as MapIcon,
   MessageSquare,
-  Package,
   Search as SearchIcon,
-  Settings2,
   ShieldCheck,
   Truck,
   Users,
@@ -42,6 +41,24 @@ const ROLE_LABELS: Record<string, string> = {
   staff: "Сотрудник",
   driver: "Водитель",
 }
+
+/** Разделы под рукой: с ними работают каждый день. */
+const WORK_LINKS: SectionLink[] = [
+  { href: "/lm/drivers", label: "Водители", icon: Truck },
+  { href: "/lm/clients", label: "Клиенты", icon: Users },
+  { href: "/lm/chat", label: "Чат", icon: MessageSquare },
+  { href: "/lm/payments", label: "Оплаты", icon: Wallet },
+  { href: "/lm/photos", label: "Фото от водителей", icon: CameraIcon },
+  { href: "/lm/search", label: "Поиск грузов", icon: SearchIcon },
+]
+
+/** Компания: сюда заходят реже — настроить, проверить, отчитаться. */
+const COMPANY_LINKS: SectionLink[] = [
+  { href: "/lm/fleet", label: "Автопарк", icon: Car },
+  { href: "/lm/reports", label: "Отчёты", icon: BarChart3 },
+  { href: "/lm/users", label: "Сотрудники", icon: ShieldCheck },
+  { href: "/lm/organization", label: "Организация", icon: Building2 },
+]
 
 export default function LogistMorePage() {
   const { user, organization, logout, mustChangePassword } = useStaffSession()
@@ -84,9 +101,21 @@ export default function LogistMorePage() {
 
       <div className="px-4 pt-4">
         <Card>
-          <p className="text-[16px] font-semibold text-white">{user?.name || "—"}</p>
-          <p className="mt-0.5 text-[13px] text-zinc-400">{user?.email || "email не указан"}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px] text-zinc-500">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[16px] font-semibold text-white">{user?.name || "—"}</p>
+              <p className="mt-0.5 truncate text-[13px] text-zinc-400">{user?.email || "email не указан"}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPasswordOpen((value) => !value)}
+              className="shrink-0 rounded-xl bg-white/8 px-3 py-2 text-[12.5px] font-medium text-zinc-100 active:bg-white/12"
+            >
+              {passwordOpen ? "Отмена" : "Сменить пароль"}
+            </button>
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[12.5px] text-zinc-500">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/8 px-2.5 py-1 text-zinc-300">
               <ShieldCheck className="h-3.5 w-3.5" />
               {ROLE_LABELS[user?.role ?? ""] ?? user?.role}
@@ -105,56 +134,6 @@ export default function LogistMorePage() {
             Смените временный пароль — пока он действует, система будет напоминать об этом.
           </p>
         ) : null}
-
-        {/* Администрирование: заявки, компания, настройки и журнал — обоим
-            штабным ролям: админ и логист это один профиль */}
-        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">
-          Администрирование
-        </p>
-        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-          <LinkRow icon={<ShieldCheck className="h-4.5 w-4.5" />} label="Сотрудники и доступ" href="/lm/users" />
-          <LinkRow icon={<Building2 className="h-4.5 w-4.5" />} label="Организация и коды" href="/lm/organization" />
-          <LinkRow icon={<Settings2 className="h-4.5 w-4.5" />} label="Настройки автопарка" href="/lm/settings" />
-          <LinkRow icon={<History className="h-4.5 w-4.5" />} label="Журнал действий" href="/lm/audit" />
-        </div>
-
-        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Работа</p>
-        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-          <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Водители" href="/lm/drivers" />
-          <LinkRow icon={<Users className="h-4.5 w-4.5" />} label="Клиенты" href="/lm/clients" />
-          <LinkRow icon={<Wallet className="h-4.5 w-4.5" />} label="Оплаты" href="/lm/payments" />
-          <LinkRow icon={<SearchIcon className="h-4.5 w-4.5" />} label="Поиск грузов (ATI)" href="/lm/search" />
-        </div>
-
-        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Автопарк</p>
-        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-          <LinkRow icon={<Truck className="h-4.5 w-4.5" />} label="Машины и ТО" href="/lm/fleet" />
-          <LinkRow icon={<FuelIcon className="h-4.5 w-4.5" />} label="Топливо" href="/lm/fuel" />
-          <LinkRow icon={<CameraIcon className="h-4.5 w-4.5" />} label="Фото от водителей" href="/lm/photos" />
-          <LinkRow icon={<MapIcon className="h-4.5 w-4.5" />} label="Карта машин" href="/lm/map" />
-        </div>
-
-        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Связь</p>
-        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-          <LinkRow icon={<MessageSquare className="h-4.5 w-4.5" />} label="Чат с водителями" href="/lm/chat" />
-          <LinkRow icon={<Bell className="h-4.5 w-4.5" />} label="Уведомления" href="/lm/notifications" />
-          <LinkRow icon={<Package className="h-4.5 w-4.5" />} label="Отчёты и подсказки" href="/lm/reports" />
-        </div>
-
-        <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">Аккаунт</p>
-        <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
-          <LinkRow
-            icon={<KeyRound className="h-4.5 w-4.5" />}
-            label="Сменить пароль"
-            onClick={() => setPasswordOpen((value) => !value)}
-          />
-          <LinkRow
-            icon={<ExternalLink className="h-4.5 w-4.5" />}
-            label="Полная версия (для компьютера)"
-            href="/dashboard?full=1"
-          />
-          <LinkRow icon={<Car className="h-4.5 w-4.5" />} label="Приложение водителя" href="/m/login" />
-        </div>
 
         {passwordOpen ? (
           <Card className="mt-3 space-y-2.5">
@@ -194,18 +173,52 @@ export default function LogistMorePage() {
           </Card>
         ) : null}
 
-        <div className="mt-4">
+        <SectionGroup title="Работа" items={WORK_LINKS} />
+        <SectionGroup title="Компания" items={COMPANY_LINKS} />
+
+        <div className="mt-5">
           <ActionButton tone="danger" full onClick={() => void logout()}>
             <LogOut className="h-4 w-4" /> Выйти из аккаунта
           </ActionButton>
         </div>
 
-        <div className="mt-6 pb-2 text-center">
+        <div className="mt-5 space-y-2 pb-2 text-center">
+          <p className="text-[12px] text-zinc-600">
+            <Link href="/dashboard?full=1" className="text-zinc-500 underline decoration-zinc-700">
+              Полная версия для компьютера
+            </Link>
+            <span className="px-1.5">·</span>
+            <Link href="/m/login" className="text-zinc-500 underline decoration-zinc-700">
+              Приложение водителя
+            </Link>
+            <span className="px-1.5">·</span>
+            <Link href="/docs" className="text-zinc-500 underline decoration-zinc-700">
+              Документация
+            </Link>
+          </p>
           <p className="text-[12px] text-zinc-600">Мобильная панель · админ и логист</p>
-          <Link href="/docs" className="mt-1 inline-block text-[12px] text-zinc-500">
-            Документация
-          </Link>
         </div>
+      </div>
+    </>
+  )
+}
+
+type SectionLink = {
+  href: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+}
+
+/** Группа разделов: подпись и карточка со строками. Всего таких групп две. */
+function SectionGroup({ title, items }: { title: string; items: SectionLink[] }) {
+  return (
+    <>
+      <p className="mt-4 px-1 text-[12px] uppercase tracking-wide text-zinc-500">{title}</p>
+      <div className="mt-1.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+        {items.map((item) => {
+          const Icon = item.icon
+          return <LinkRow key={item.href} icon={<Icon className="h-4.5 w-4.5" />} label={item.label} href={item.href} />
+        })}
       </div>
     </>
   )

@@ -21,6 +21,7 @@ const {
   staffHome,
   isMobileDevice,
   mobileLogistTarget,
+  mobileParentPath,
   shouldRedirectStaffToMobile,
 } = require("../.test-build/lib/logist-mobile/routing.js")
 
@@ -223,3 +224,40 @@ test("администратора тоже уводим в мобильную �
   )
 })
 
+test("стрелка «назад» ведёт по дереву разделов, а не по истории браузера", () => {
+  // Подстраница → список своего раздела
+  assert.equal(mobileParentPath("/lm/orders/demo-order-7"), "/lm/orders")
+  assert.equal(mobileParentPath("/lm/orders/new"), "/lm/orders")
+  assert.equal(mobileParentPath("/lm/routes/demo-route-4"), "/lm/routes")
+  assert.equal(mobileParentPath("/lm/chat/demo-driver-1"), "/lm/chat")
+  assert.equal(mobileParentPath("/lm/clients/demo-client-2"), "/lm/clients")
+
+  // Разделы нижнего меню → «Главная»
+  assert.equal(mobileParentPath("/lm/orders"), "/lm")
+  assert.equal(mobileParentPath("/lm/routes"), "/lm")
+  assert.equal(mobileParentPath("/lm/map"), "/lm")
+  assert.equal(mobileParentPath("/lm/more"), "/lm")
+
+  // Разделы из «Ещё» → «Ещё»
+  assert.equal(mobileParentPath("/lm/drivers"), "/lm/more")
+  assert.equal(mobileParentPath("/lm/users"), "/lm/more")
+  assert.equal(mobileParentPath("/lm/photos"), "/lm/more")
+
+  // Уведомления открываются колокольчиком с любого экрана → «Главная»
+  assert.equal(mobileParentPath("/lm/notifications"), "/lm")
+
+  // Разделы внутри другого раздела
+  assert.equal(mobileParentPath("/lm/fuel"), "/lm/fleet")
+  assert.equal(mobileParentPath("/lm/settings"), "/lm/fleet")
+  assert.equal(mobileParentPath("/lm/audit"), "/lm/organization")
+
+  // Откуда бы ни пришли (строка запроса, лишний слэш) — одно и то же место
+  assert.equal(mobileParentPath("/lm/orders/42"), "/lm/orders")
+  assert.equal(mobileParentPath("/lm/orders/demo-order-7?src=chat"), "/lm/orders")
+  assert.equal(mobileParentPath("/lm/drivers/"), "/lm/more")
+
+  // Неизвестный путь не ломает навигацию: уводим на «Главную»
+  assert.equal(mobileParentPath(""), "/lm")
+  assert.equal(mobileParentPath("/"), "/lm")
+  assert.equal(mobileParentPath("/dashboard"), "/lm")
+})

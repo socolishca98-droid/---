@@ -20,6 +20,7 @@ import {
   Building2,
   Car,
   Check,
+  History,
   Copy,
   Link2,
   Loader2,
@@ -35,7 +36,7 @@ import {
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
+import { ActionButton, Card, EmptyState, ErrorState, LinkRow, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { formatDateShort, plural } from "@/lib/logist-mobile/format"
 
@@ -572,6 +573,17 @@ export default function MobileOrganizationPage() {
                   ) : null}
                 </div>
               </Card>
+            </div>
+
+            {/* Журнал действий: «кто что менял» — про организацию, поэтому
+                ссылка живёт здесь, а не отдельной строкой в «Ещё» */}
+            <div className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+              <LinkRow
+                icon={<History className="h-4.5 w-4.5" />}
+                label="Журнал действий"
+                value="кто что менял"
+                href="/lm/audit"
+              />
             </div>
           </>
         )}

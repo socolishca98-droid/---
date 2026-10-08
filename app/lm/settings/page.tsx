@@ -192,7 +192,7 @@ export default function MobileSettingsPage() {
 
   return (
     <>
-      <LogistHeader title="Настройки" subtitle="Автопарк, документы и нормы" userName={user?.name} />
+      <LogistHeader title="Настройки" subtitle="Автопарк, документы и нормы" back userName={user?.name} />
 
       <div className="space-y-3 px-4 pb-[76px] pt-4">
         {error ? (
