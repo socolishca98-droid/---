@@ -217,12 +217,14 @@ export function DriversMap() {
     }
 
     // Машины
+    const driverPoints: Array<[number, number]> = []
     const alive = new Set<string>()
     for (const driver of drivers) {
       if (driver.latitude === null || driver.longitude === null) continue
       alive.add(driver.id)
       const position: [number, number] = [driver.latitude, driver.longitude]
       points.push(position)
+      driverPoints.push(position)
 
       const isSelected = driver.id === selected
       const existing = driverMarkers.current.get(driver.id)
@@ -285,10 +287,15 @@ export function DriversMap() {
       }
     }
 
-    // Один раз подгоняем вид под все точки
-    if (!fitDone.current && points.length > 0) {
-      fitDone.current = true
-      map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 10 })
+    // Один раз подгоняем вид: главный вопрос — «где машины», поэтому рамку
+    // считаем по машинам и базе. Нитки рейсов тянутся через всю страну и
+    // растянули бы карту до масштаба континента.
+    if (!fitDone.current) {
+      const frame = driverPoints.length > 0 ? [...driverPoints, base?.coordinates].filter(Boolean) : points
+      if (frame.length > 0) {
+        fitDone.current = true
+        map.fitBounds(L.latLngBounds(frame as Array<[number, number]>), { padding: [40, 40], maxZoom: 11 })
+      }
     }
   }, [drivers, routes, base, showRoutes, selected])
 
@@ -314,7 +321,8 @@ export function DriversMap() {
     }
     if (base) points.push(base.coordinates)
     if (points.length === 0) return
-    map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 10 })
+    // Рамка по машинам, а не по ниткам: рейсы тянутся через полстраны
+    map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 11 })
   }, [onMapDrivers, base])
 
   const zoom = useCallback((delta: number) => {
