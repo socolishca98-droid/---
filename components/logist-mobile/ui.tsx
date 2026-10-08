@@ -211,8 +211,8 @@ export function ActionButton({
 }) {
   const tones: Record<string, string> = {
     default: "bg-secondary text-foreground active:opacity-70",
-    primary: "bg-primary text-primary-foreground active:opacity-70-600",
-    danger: "bg-destructive/15 text-destructive border border-destructive/30 active:opacity-70-500/25",
+    primary: "bg-primary text-primary-foreground active:opacity-70",
+    danger: "bg-destructive/15 text-destructive border border-destructive/30 active:opacity-70",
   }
   return (
     <button

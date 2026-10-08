@@ -115,6 +115,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const now = new Date()
 
+    // Интерактивная транзакция делает десяток записей (точки, статус, топливо,
+    // водитель, машина, уведомление): на медленной базе пяти секунд по умолчанию
+    // не хватает, и завершение рейса падало с «Transaction not found».
     await prisma.$transaction(async (tx) => {
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
@@ -221,7 +224,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           })
         }
       }
-    })
+    }, { maxWait: 10_000, timeout: 30_000 })
 
     const updated = await prisma.route.findFirst({
       where: scopedWhere(org.organizationId, { id: routeId }),

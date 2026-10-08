@@ -72,9 +72,36 @@ export interface MobileRouteOrder {
   cargoType: string | null
   clientName: string | null
   weight: number | null
+  volume: number | null
+  distance: number | null
   price: number | null
   agreedPrice: number | null
   routeSequence: number | null
+  isAdditionalLoad?: boolean
+}
+
+/**
+ * Экономика рейса — тот же расчёт, что в компьютерной версии
+ * (`lib/routes/economics.ts`): выручка на километр против стоимости километра.
+ */
+export interface MobileRouteEconomics {
+  revenueRub: number
+  distanceKm: number
+  /** Факт по чекам водителя, null — расходов ещё нет */
+  factCostRub: number | null
+  /** Оценка топливом, null — не хватает данных машины или цены литра */
+  estimatedCostRub: number | null
+  rubPerKmRevenue: number | null
+  costPerKm: number | null
+  profitRub: number | null
+  basis: "fact" | "estimate" | null
+  unprofitable: boolean
+}
+
+export interface MobileRouteExpense {
+  type: string
+  amount: number
+  liters: number | null
 }
 
 export interface MobileRoute {
@@ -95,8 +122,25 @@ export interface MobileRoute {
     totalDistance?: number
     cargoWeight?: number
     cargoVolume?: number
+    revenue?: number
+    deliveredOrders?: number
+    activeOrders?: number
   } | null
-  economics?: { revenueRub?: number; distanceKm?: number; estimatedCostRub?: number } | null
+  /** Пробег рейса по одометру (км), если водитель его вводил */
+  totalDistance?: number | null
+  /** Расходы рейса по чекам: сумма и топливо (заполняются при проведении) */
+  totalCost?: number | null
+  fuelExpense?: number | null
+  /** Экономика рейса: выручка, себестоимость, прибыль */
+  economics?: MobileRouteEconomics | null
+  /** Расходы рейса по чекам (детальная карточка) */
+  expenses?: MobileRouteExpense[] | null
+  capacity?: {
+    capacity?: number
+    used?: number
+    percent?: number
+    fits?: boolean
+  } | null
 }
 
 export interface MobileNotification {
@@ -161,8 +205,10 @@ export const DRIVER_STATUS_META: Record<string, { label: string; dot: string; te
 export const ROUTE_STATUS_META: Record<string, { label: string; style: string }> = {
   planned: { label: "Запланирован", style: "bg-chart-2/15 text-chart-2 border-chart-2/30" },
   draft: { label: "Черновик", style: "bg-secondary text-muted-foreground border-border" },
+  // Назначен — водитель получил рейс, но машина ещё не выехала
+  active: { label: "Назначен", style: "bg-warning/15 text-warning border-warning/30" },
+  in_transit: { label: "В пути", style: "bg-primary/15 text-primary border-primary/30" },
   in_progress: { label: "В пути", style: "bg-primary/15 text-primary border-primary/30" },
-  active: { label: "В пути", style: "bg-primary/15 text-primary border-primary/30" },
   completed: { label: "Завершён", style: "bg-success/15 text-success border-success/30" },
   cancelled: { label: "Отменён", style: "bg-destructive/15 text-destructive border-destructive/30" },
 }

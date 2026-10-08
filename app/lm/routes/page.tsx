@@ -1,14 +1,28 @@
-// app/lm/routes/page.tsx — рейсы: кто везёт, что везёт, где он.
+// app/lm/routes/page.tsx — рейсы: кто везёт, что везёт и что с этим делать сейчас.
 //
-// Активные рейсы — сверху: логисту на телефоне почти всегда нужен именно
-// текущий рейс, а не архив. Телефон водителя вынесен в кнопку звонка прямо
-// из списка — это самое частое действие по рейсу.
+// Экран решён как «туннель»: сверху помощник сборки (рейсы, которые можно
+// собрать), ниже — три вкладки (Активные / Все / Завершённые). В списке первыми
+// идут рейсы, которые требуют логиста: без водителя, ждут выезда, или уже
+// доехали и просят закрытия. Каждая карточка отвечает на три вопроса:
+// куда едет (маршрут по точкам), с кем (водитель и машина), на каком этапе
+// (подсказка следующего шага) — и даёт позвонить водителю одним тапом.
 
 "use client"
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, Package, Phone, Route as RouteIcon, Sparkles, Truck, User } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowRight,
+  Ban,
+  CheckCircle2,
+  Package,
+  Phone,
+  Route as RouteIcon,
+  Sparkles,
+  Truck,
+  User,
+} from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
@@ -20,53 +34,103 @@ import {
   proposalSummary,
   type AssistantVehicle,
 } from "@/lib/logist-mobile/route-assistant"
-import { shortCity, telHref, formatCount } from "@/lib/logist-mobile/format"
+import {
+  routeListHint,
+  routeStageLabel,
+  routeSummaryLine,
+  routeWaypoints,
+  type RouteStep,
+} from "@/lib/logist-mobile/route-flow"
+import { formatCount, formatMoney, formatWeightKg, plural, shortCity, telHref } from "@/lib/logist-mobile/format"
 
 const TABS = [
   { id: "active", label: "Активные" },
   { id: "all", label: "Все" },
   { id: "done", label: "Завершённые" },
-]
+] as const
 
-function routeSummary(route: MobileRoute): string {
-  const first = route.orders?.[0]
-  const last = route.orders?.[route.orders.length - 1]
-  if (!first || !last) return route.name || "Рейс"
-  if (first.routeFrom === last.routeFrom && first.routeTo === last.routeTo) {
-    return `${shortCity(first.routeFrom)} → ${shortCity(first.routeTo)}`
-  }
-  return `${shortCity(first.routeFrom)} → ${shortCity(last.routeTo)}`
+type TabId = (typeof TABS)[number]["id"]
+
+/** Цвет и значок подсказки: туннель показывает, куда смотреть, без чтения текста. */
+const HINT_TONE: Record<RouteStep["tone"], string> = {
+  warn: "bg-warning/12 text-warning",
+  accent: "bg-primary/10 text-primary",
+  ok: "bg-success/12 text-success",
+  muted: "bg-secondary text-muted-foreground",
 }
+
+function HintIcon({ tone }: { tone: RouteStep["tone"] }) {
+  const className = "h-3.5 w-3.5 shrink-0"
+  if (tone === "warn") return <AlertTriangle className={className} />
+  if (tone === "ok") return <CheckCircle2 className={className} />
+  if (tone === "muted") return <Ban className={className} />
+  return <ArrowRight className={className} />
+}
+
+/**
+ * Маршрут одной строкой: «Москва → Тула → Воронеж». Длинные рейсы сворачиваем,
+ * чтобы конечная точка не уезжала за экран телефона.
+ */
+function waypointLine(points: string[]): string {
+  if (points.length === 0) return "Точки не заданы"
+  if (points.length <= 3) return points.join(" → ")
+  const middle = points.length - 2
+  return `${points[0]} → ещё ${formatCount(middle, ["точка", "точки", "точек"])} → ${points[points.length - 1]}`
+}
+
+/** Приоритет «требует логиста» → «просто идёт»: так сверху всегда то, что горит. */
+const TONE_PRIORITY: Record<RouteStep["tone"], number> = { warn: 0, accent: 1, muted: 2, ok: 3 }
 
 export default function LogistRoutesPage() {
   const { user } = useStaffSession()
+  // includeClosed=1 — иначе сервер отрезает завершённые рейсы, и вкладки
+  // «Все» и «Завершённые» всегда показывают пустоту.
   const { data, error, loading, reload } = useJsonApi<{ routes: MobileRoute[] }>(
-    user ? "/api/routes?limit=50" : null,
+    user ? "/api/routes?limit=50&includeClosed=1" : null,
   )
   // Помощник: сколько рейсов можно собрать прямо сейчас
   const ordersState = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
   const vehiclesState = useJsonApi<{ vehicles: AssistantVehicle[] }>(user ? "/api/vehicles" : null)
-  const [tab, setTab] = useState("active")
+  const [tab, setTab] = useState<TabId>("active")
 
   const proposals = useMemo(
     () => buildRouteProposals(ordersState.data?.orders ?? [], vehiclesState.data?.vehicles ?? []),
     [ordersState.data, vehiclesState.data],
   )
 
+  const allRoutes = useMemo(
+    () =>
+      [...(data?.routes ?? [])].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [data],
+  )
+
+  /** Счётчики на вкладках: видно, сколько рейсов в каждой, до перехода. */
+  const counts = useMemo(() => {
+    const done = allRoutes.filter((route) => ["completed", "cancelled"].includes(route.status)).length
+    return { all: allRoutes.length, done, active: allRoutes.length - done } as Record<TabId, number>
+  }, [allRoutes])
+
   const routes = useMemo(() => {
-    const list = data?.routes ?? []
-    const filtered = list.filter((route) => {
+    const filtered = allRoutes.filter((route) => {
       const done = ["completed", "cancelled"].includes(route.status)
       if (tab === "active") return !done
       if (tab === "done") return done
       return true
     })
-    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  }, [data, tab])
+    return filtered
+      .map((route) => ({ route, hint: routeListHint(route) }))
+      .sort((a, b) => {
+        const gap = TONE_PRIORITY[a.hint.tone] - TONE_PRIORITY[b.hint.tone]
+        if (gap !== 0) return gap
+        return new Date(b.route.createdAt).getTime() - new Date(a.route.createdAt).getTime()
+      })
+  }, [allRoutes, tab])
 
   return (
     <>
-      <LogistHeader title="Рейсы" subtitle={`${data?.routes?.length ?? 0} всего`} userName={user?.name} />
+      <LogistHeader title="Рейсы" subtitle={`${allRoutes.length} всего`} userName={user?.name} />
 
       <div className="px-4 pt-3.5">
         <Link
@@ -100,20 +164,26 @@ export default function LogistRoutesPage() {
 
       <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 mt-3 border-b border-border surface-glass px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="flex gap-2">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              className={`flex-1 rounded-xl border px-3 py-2 text-[13px] font-medium ${
-                tab === item.id
-                  ? "border-primary/40 bg-primary/15 text-primary"
-                  : "border-border bg-card shadow-sm text-muted-foreground"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          {TABS.map((item) => {
+            const active = tab === item.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-medium ${
+                  active
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-border bg-card shadow-sm text-muted-foreground"
+                }`}
+              >
+                {item.label}
+                <span className={active ? "text-primary/70" : "text-muted-foreground/70"}>
+                  {counts[item.id]}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -125,25 +195,37 @@ export default function LogistRoutesPage() {
         ) : routes.length === 0 ? (
           <EmptyState
             icon={<RouteIcon className="h-6 w-6" />}
-            title={tab === "active" ? "Активных рейсов нет" : "Рейсов нет"}
+            title={
+              tab === "active"
+                ? "Активных рейсов нет"
+                : tab === "done"
+                  ? "Завершённых рейсов нет"
+                  : "Рейсов нет"
+            }
             description="Помощник соберёт рейс из согласованных заказов — откройте его сверху"
           />
         ) : (
-          routes.map((route) => {
+          routes.map(({ route, hint }) => {
             const meta = ROUTE_STATUS_META[route.status] ?? ROUTE_STATUS_META.planned
             const tel = telHref(route.driver?.phone)
-            const ordersCount = route.orders?.length ?? 0
-            const distance = route.stats?.totalDistance
+            const points = routeWaypoints(route.orders ?? [], shortCity)
+            const summary = routeSummaryLine(
+              { ...route, distanceKm: route.totalDistance ?? route.stats?.totalDistance ?? null },
+              formatWeightKg,
+            )
+            const revenue = route.stats?.revenue ?? route.economics?.revenueRub ?? 0
 
             return (
               <div key={route.id} className="rounded-xl border border-border bg-card shadow-sm p-4">
                 <Link href={`/lm/routes/${route.id}`} className="block active:opacity-80">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 text-[15px] font-semibold text-foreground">{routeSummary(route)}</p>
+                    <p className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
+                      {waypointLine(points)}
+                    </p>
                     <span
                       className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
                     >
-                      {meta.label}
+                      {routeStageLabel(route.status)}
                     </span>
                   </div>
 
@@ -151,11 +233,6 @@ export default function LogistRoutesPage() {
                     <p className="flex items-center gap-2">
                       <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate">{route.driver?.name || "водитель не назначен"}</span>
-                      {!route.driver && route.status === "planned" ? (
-                        <span className="ml-auto shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
-                          нужно согласовать
-                        </span>
-                      ) : null}
                     </p>
                     <p className="flex items-center gap-2">
                       <Truck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -166,11 +243,21 @@ export default function LogistRoutesPage() {
                     </p>
                     <p className="flex items-center gap-2">
                       <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      {formatCount(ordersCount, ["заказ", "заказа", "заказов"])}
-                      {distance ? <span className="text-muted-foreground">· {distance} км</span> : null}
-                      <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground/80" />
+                      <span className="truncate">{summary}</span>
+                      {revenue > 0 ? (
+                        <span className="ml-auto shrink-0 font-medium text-foreground">
+                          {formatMoney(revenue)}
+                        </span>
+                      ) : null}
                     </p>
                   </div>
+
+                  <p
+                    className={`mt-2.5 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ${HINT_TONE[hint.tone]}`}
+                  >
+                    <HintIcon tone={hint.tone} />
+                    <span className="truncate">{hint.text}</span>
+                  </p>
                 </Link>
 
                 {tel ? (
@@ -188,13 +275,4 @@ export default function LogistRoutesPage() {
       </div>
     </>
   )
-}
-
-function plural(count: number, forms: [string, string, string]): string {
-  const n = Math.abs(count) % 100
-  const tail = n % 10
-  if (n > 10 && n < 20) return forms[2]
-  if (tail > 1 && tail < 5) return forms[1]
-  if (tail === 1) return forms[0]
-  return forms[2]
 }

@@ -12,6 +12,8 @@ import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { notifyDriverRouteAssigned } from "@/lib/routes/notify-driver"
+import { estimateFuelL } from "@/lib/fleet/fuel"
+import { fuelPriceRubPerL, routeEconomics } from "@/lib/routes/economics"
 import {
   ROUTE_STATUSES,
   OCCUPYING_ORDER_STATUSES,
@@ -95,6 +97,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       include: {
         driver: true,
         vehicle: true,
+        // Расходы нужны для блока «Деньги»: выручка, себестоимость, прибыль рейса
+        expenses: { select: { type: true, liters: true, amount: true } },
         orders: {
           where: scopedWhere(org.organizationId, {}),
           orderBy: routeOrdersOrderBy,
@@ -120,6 +124,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         include: {
           driver: true,
           vehicle: true,
+          expenses: { select: { type: true, liters: true, amount: true } },
           orders: {
             where: scopedWhere(org.organizationId, {}),
             orderBy: routeOrdersOrderBy,
@@ -137,6 +142,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const stats = buildStats(route.orders)
 
+    // ── Деньги рейса: та же арифметика, что в списке рейсов и на борде «Деньги» ──
+    const expenses = (route.expenses ?? []) as {
+      type: string
+      liters: number | null
+      amount: number | null
+    }[]
+    const distanceKm =
+      route.totalDistance ??
+      route.orders.reduce((sum, order) => sum + (Number(order.distance) || 0), 0)
+    const factCostRub = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
+    const economics = routeEconomics({
+      revenueRub: stats.totalPrice,
+      distanceKm,
+      factCostRub: expenses.length > 0 ? factCostRub : null,
+      estimatedLiters: estimateFuelL(
+        {
+          capacity: route.vehicle?.capacity ?? null,
+          fuelConsumptionPer100: route.vehicle?.fuelConsumptionPer100 ?? null,
+        },
+        distanceKm,
+        stats.totalWeight,
+      ),
+      fuelPriceRubPerL: fuelPriceRubPerL(expenses),
+    })
+
     return NextResponse.json({
       success: true,
       route: {
@@ -146,6 +176,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         vehicle: route.vehicle,
         orders: route.orders,
         stats,
+        economics,
+        expenses: expenses.map((expense) => ({
+          type: expense.type,
+          amount: Number(expense.amount) || 0,
+          liters: expense.liters ?? null,
+        })),
         capacity: buildCapacity(route.vehicle?.capacity || 0, stats.totalWeight),
       },
     })
