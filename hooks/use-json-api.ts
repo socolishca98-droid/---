@@ -71,7 +71,11 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
       } catch (caught) {
         if (cancelled) return
         const raw = caught instanceof Error ? caught.message : "Не удалось загрузить данные"
-        if (raw.endsWith("||retry")) {
+        // Обрыв сети на телефоне («Failed to fetch») — такой же повод повторить,
+        // как и 5xx: без этого экран показывал ошибку при мигании связи.
+        const networkFailure = caught instanceof TypeError
+        if (raw.endsWith("||retry") || (networkFailure && attempt < 2)) {
+          attempt += 1
           if (timerRef.current) clearTimeout(timerRef.current)
           retryScheduled = true
           timerRef.current = setTimeout(() => {
@@ -79,7 +83,9 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
           }, 1200 * (attempt + 1))
           return
         }
-        setError(raw.replace("||retry", ""))
+        setError(
+          networkFailure ? "Нет соединения. Проверьте интернет и повторите." : raw.replace("||retry", ""),
+        )
       } finally {
         if (!cancelled && !retryScheduled) {
           loadedOnce.current = true
