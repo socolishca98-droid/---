@@ -28,22 +28,19 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-screen text-foreground">
-      {/* Статичный фон компьютерной версии: градиент + сетка, без анимаций */}
-      <div className="theme-canvas" aria-hidden>
-        <div className="theme-canvas__grid" />
-      </div>
-
       <div className="mx-auto max-w-md">
         {/* Полоса «Вы вошли как …» — только у владельца, когда он смотрит чужой аккаунт */}
         <AccountSwitchBanner className="sticky top-0 z-40" />
         <div
+          key={pathname}
           className={
             hideNav
               ? "pb-[env(safe-area-inset-bottom)]"
               : "pb-[calc(72px+env(safe-area-inset-bottom))]"
           }
         >
-          {children}
+          {/* Блоки раздела входят по очереди — как на компьютерной версии */}
+          <div className="stagger-in">{children}</div>
         </div>
       </div>
 

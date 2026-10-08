@@ -51,7 +51,7 @@ export function KpiCard({
   const valueSize = valueText.length > 9 ? "text-[20px]" : "text-2xl"
 
   const content = (
-    <div className="rounded-xl border border-border bg-card shadow-sm p-3.5 active:opacity-70">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-3.5 press">
       {loading ? (
         <div className="h-6 w-12 animate-pulse rounded-md bg-secondary" />
       ) : (
@@ -144,7 +144,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 rounded-lg bg-secondary px-3 py-1.5 text-[13px] font-medium text-foreground active:opacity-70"
+          className="mt-3 rounded-lg bg-secondary px-3 py-1.5 text-[13px] font-medium text-foreground press"
         >
           Повторить
         </button>
@@ -179,7 +179,7 @@ export function LinkRow({
   )
 
   const className =
-    "flex min-h-[52px] w-full items-center gap-3 border-b border-border px-4 text-left last:border-b-0 active:opacity-70"
+    "flex min-h-[52px] w-full items-center gap-3 border-b border-border px-4 text-left last:border-b-0 press"
 
   if (href) {
     return (
@@ -210,9 +210,9 @@ export function ActionButton({
   full?: boolean
 }) {
   const tones: Record<string, string> = {
-    default: "bg-secondary text-foreground active:opacity-70",
-    primary: "bg-primary text-primary-foreground active:opacity-70",
-    danger: "bg-destructive/15 text-destructive border border-destructive/30 active:opacity-70",
+    default: "bg-secondary text-foreground press",
+    primary: "bg-primary text-primary-foreground press",
+    danger: "bg-destructive/15 text-destructive border border-destructive/30 press",
   }
   return (
     <button

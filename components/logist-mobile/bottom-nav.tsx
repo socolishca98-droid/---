@@ -33,11 +33,18 @@ export function LogistBottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium ${
+              className={`press flex flex-1 flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors duration-300 ${
                 active ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.9} />
+              {/* Пилюля активного раздела — как подсветка пункта в боковом меню компьютера */}
+              <span
+                className={`flex h-7 w-14 items-center justify-center rounded-full transition-all duration-300 ${
+                  active ? "scale-100 bg-primary/15" : "scale-90 bg-transparent"
+                }`}
+              >
+                <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.9} />
+              </span>
               {tab.label}
             </Link>
           )
