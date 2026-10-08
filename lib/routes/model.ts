@@ -205,6 +205,13 @@ function sortBySequence(orders: readonly RouteOrderLike[]): RouteOrderLike[] {
   })
 }
 
+/** Город из адреса: «Москва, улица Складочная, 8» → «Москва». */
+export function cityFromAddress(value: unknown): string {
+  const text = typeof value === "string" ? value.trim() : ""
+  if (!text) return ""
+  return text.split(",")[0].replace(/^г\.\s*/i, "").trim()
+}
+
 /**
  * Человекочитаемое имя рейса: «Ярославль → Иваново → Санкт-Петербург».
  * Точки берутся в порядке routeSequence, подряд идущие дубли схлопываются.
@@ -214,7 +221,9 @@ export function buildRouteName(orders: readonly RouteOrderLike[]): string {
   const points: string[] = []
 
   const push = (value: unknown) => {
-    const city = typeof value === "string" ? value.trim() : ""
+    // В заказах лежит полный адрес («Москва, улица Складочная, 8»), а в имени
+    // рейса логисту нужен город — иначе название не влезает ни в список, ни в шапку.
+    const city = cityFromAddress(value)
     if (!city) return
     if (points[points.length - 1]?.toLowerCase() === city.toLowerCase()) return
     points.push(city)

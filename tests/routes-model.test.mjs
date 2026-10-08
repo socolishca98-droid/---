@@ -254,6 +254,14 @@ test("подряд идущие одинаковые города схлопыв
   assert.equal(name, "Москва → иваново → Кострома")
 })
 
+test("в имени рейса — города, а не полные адреса", () => {
+  const name = buildRouteName([
+    order({ routeFrom: "Москва, улица Складочная, 8", routeTo: "Смоленск, улица Смольянинова, 12", routeSequence: 1 }),
+    order({ id: "o2", routeFrom: "Смоленск, улица Смольянинова, 12", routeTo: "г. Витебск, улица Замковая, 1", routeSequence: 2 }),
+  ])
+  assert.equal(name, "Москва → Смоленск → Витебск")
+})
+
 test("пустые города пропускаются, пустой рейс даёт пустое имя", () => {
   assert.equal(buildRouteName([]), "")
   assert.equal(buildRouteName([order({ routeFrom: "", routeTo: "  " })]), "")

@@ -46,6 +46,7 @@
     "../lib/client-cache-core.ts",
     "../lib/logist-mobile/routing.ts",
     "../lib/logist-mobile/format.ts",
-    "../lib/logist-mobile/order-flow.ts"
+    "../lib/logist-mobile/order-flow.ts",
+    "../lib/logist-mobile/route-assistant.ts"
   ]
 }

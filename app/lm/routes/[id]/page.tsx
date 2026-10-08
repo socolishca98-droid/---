@@ -6,16 +6,28 @@
 
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowRight, Clock, MessageCircle, Phone, Truck, User } from "lucide-react"
+import { toast } from "sonner"
+import { ArrowRight, Clock, Loader2, MessageCircle, Phone, Truck, User } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { OrderStatusChip } from "@/components/logist-mobile/order-card"
 import { Card, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
-import { useJsonApi } from "@/hooks/use-json-api"
+import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
-import { ROUTE_STATUS_META, type MobileRoute } from "@/lib/logist-mobile/types"
+import {
+  assignableDriversForVehicle,
+  driverOfVehicle,
+  sortDriversForAssignment,
+} from "@/lib/logist-mobile/route-assistant"
+import {
+  DRIVER_STATUS_META,
+  ROUTE_STATUS_META,
+  type MobileDriver,
+  type MobileRoute,
+} from "@/lib/logist-mobile/types"
 import {
   formatDateTime,
   formatMoney,
@@ -34,11 +46,41 @@ export default function LogistRoutePage() {
   const { data, error, loading, reload } = useJsonApi<{ route: MobileRoute }>(
     routeId ? `/api/routes/${routeId}` : null,
   )
+  const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
+  const [busy, setBusy] = useState(false)
+  const [changeDriver, setChangeDriver] = useState(false)
+
   const route = data?.route ?? null
+  const drivers = driversState.data?.drivers ?? []
   const meta = ROUTE_STATUS_META[route?.status ?? "planned"] ?? ROUTE_STATUS_META.planned
 
   const driverTel = telHref(route?.driver?.phone)
   const driverWa = whatsappHref(route?.driver?.phone)
+  const needsApproval = Boolean(route && !route.driver)
+  // Машина закреплена за одним водителем: подбираем только тех, кого сервер примет
+  const vehicleOwner = driverOfVehicle(route?.vehicle?.id, drivers)
+  const crewOptions = route?.vehicle
+    ? assignableDriversForVehicle(route.vehicle, drivers)
+    : sortDriversForAssignment(drivers)
+
+  /** Согласовать рейс: отдать водителю. Он получает уведомление, рейс — в работе. */
+  async function handOver(driver: MobileDriver) {
+    if (!route) return
+    setBusy(true)
+    const result = await apiSend(`/api/routes/${route.id}`, "PATCH", {
+      driverId: driver.id,
+      ...(route.status === "planned" ? { status: "active" } : {}),
+    })
+    setBusy(false)
+
+    if (!result.ok) {
+      toast.error(result.error || "Не удалось передать рейс")
+      return
+    }
+    toast.success(`${driver.name.split(" ")[0]} получил рейс — ушло уведомление`)
+    setChangeDriver(false)
+    reload()
+  }
 
   return (
     <>
@@ -112,22 +154,28 @@ export default function LogistRoutePage() {
                 </div>
               </div>
 
-              {driverTel || driverWa ? (
-                <div className="mt-3 grid grid-cols-2 gap-2.5">
+              {route.driver ? (
+                <div className="mt-3 grid grid-cols-3 gap-2">
                   {driverTel ? (
                     <a
                       href={driverTel}
-                      className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[14px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                      className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-emerald-500/15 text-[13.5px] font-medium text-emerald-200 active:bg-emerald-500/25"
                     >
-                      <Phone className="h-4 w-4" /> Позвонить
+                      <Phone className="h-4 w-4" /> Звонок
                     </a>
                   ) : null}
+                  <Link
+                    href={`/lm/chat/${route.driver.id}`}
+                    className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12"
+                  >
+                    <MessageCircle className="h-4 w-4" /> Чат
+                  </Link>
                   {driverWa ? (
                     <a
                       href={driverWa}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                      className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12"
                     >
                       <MessageCircle className="h-4 w-4" /> WhatsApp
                     </a>
@@ -135,6 +183,89 @@ export default function LogistRoutePage() {
                 </div>
               ) : null}
             </Card>
+
+            {/* Согласование рейса: пока водителя нет, рейс никому не передан */}
+            {needsApproval ? (
+              <Card className="mt-3 border-amber-500/25 bg-amber-500/[0.06]">
+                <p className="text-[15px] font-semibold text-white">Рейс собран — передайте водителю</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">
+                  Выберите водителя: он получит уведомление и увидит рейс в приложении. Свободные — сверху.
+                </p>
+                {vehicleOwner ? (
+                  <p className="mt-2 text-[12.5px] text-zinc-400">
+                    {route.vehicle?.plate} закреплена за {vehicleOwner.name.split(" ")[0]} — передать можно ему.
+                  </p>
+                ) : null}
+                {crewOptions.length === 0 ? (
+                  <p className="mt-2 text-[12.5px] text-zinc-400">
+                    Свободных водителей нет. Передайте рейс, когда кто-то освободится.
+                  </p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {crewOptions.map((item) => {
+                      const meta = DRIVER_STATUS_META[item.status] ?? DRIVER_STATUS_META.offline
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void handOver(item)}
+                          className="rounded-full border border-white/12 bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-100 active:bg-white/10 disabled:opacity-40"
+                        >
+                          {item.name.split(" ")[0]}
+                          {item.vehiclePlate ? ` · ${item.vehiclePlate}` : ""}
+                          <span className={`ml-1.5 ${meta.text}`}>· {meta.label.toLowerCase()}</span>
+                        </button>
+                      )
+                    })}
+                </div>
+                {busy ? (
+                  <p className="mt-2 inline-flex items-center gap-2 text-[12.5px] text-zinc-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Передаю рейс…
+                  </p>
+                ) : null}
+              </Card>
+            ) : route.driver ? (
+              <button
+                type="button"
+                onClick={() => setChangeDriver((value) => !value)}
+                className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 text-[13px] font-medium text-orange-400"
+              >
+                {changeDriver ? "Отменить" : "Сменить водителя"}
+              </button>
+            ) : null}
+
+            {changeDriver && route.driver ? (
+              <Card className="mt-2">
+                <p className="text-[12.5px] text-zinc-500">Передать рейс другому водителю</p>
+                {crewOptions.filter((item) => item.id !== route.driver?.id).length === 0 ? (
+                  <p className="mt-1.5 text-[12.5px] text-zinc-400">
+                    {vehicleOwner
+                      ? `Машина ${route.vehicle?.plate} закреплена за ${vehicleOwner.name.split(" ")[0]} — передать можно только ему.`
+                      : "Свободных водителей нет."}
+                  </p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {crewOptions
+                    .filter((item) => item.id !== route.driver?.id)
+                    .map((item) => {
+                      const meta = DRIVER_STATUS_META[item.status] ?? DRIVER_STATUS_META.offline
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void handOver(item)}
+                          className="rounded-full border border-white/10 px-3 py-1.5 text-[13px] text-zinc-200 active:bg-white/10 disabled:opacity-40"
+                        >
+                          {item.name.split(" ")[0]}
+                          <span className={`ml-1.5 ${meta.text}`}>· {meta.label.toLowerCase()}</span>
+                        </button>
+                      )
+                    })}
+                </div>
+              </Card>
+            ) : null}
 
             <h2 className="mb-2.5 mt-6 text-[15px] font-semibold text-white">
               Заказы в рейсе · {route.orders?.length ?? 0}
