@@ -167,7 +167,7 @@ export default function LogistChatThreadPage() {
         {tel ? (
           <a
             href={tel}
-            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[13.5px] font-medium text-emerald-200 active:bg-emerald-500/25"
+            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-success/15 text-[13.5px] font-medium text-success active:opacity-70"
           >
             <Phone className="h-4 w-4" /> Позвонить {driver?.phone ? `· ${driver.phone}` : ""}
           </a>
@@ -197,15 +197,15 @@ export default function LogistChatThreadPage() {
                     className={`flex flex-col ${mine ? "items-end" : "items-start"}`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 ${
-                        mine ? "bg-orange-500/20 text-white" : "bg-white/[0.06] text-zinc-200"
+                      className={`max-w-[80%] rounded-xl px-3.5 py-2.5 ${
+                        mine ? "bg-primary/20 text-foreground" : "bg-secondary text-foreground"
                       }`}
                     >
                       <p className="whitespace-pre-wrap break-words text-[14px]">{body}</p>
-                      <p className="mt-1 text-right text-[10.5px] text-zinc-400/80">{stamp}</p>
+                      <p className="mt-1 text-right text-[10.5px] text-muted-foreground/80">{stamp}</p>
                     </div>
                     {mine && pendingIds.has(message.id) ? (
-                      <span className="mt-0.5 text-[10.5px] text-zinc-500">Отправляется…</span>
+                      <span className="mt-0.5 text-[10.5px] text-muted-foreground">Отправляется…</span>
                     ) : null}
                   </div>
                 )
@@ -218,7 +218,7 @@ export default function LogistChatThreadPage() {
 
       {/* Поле ввода прижато к низу: только безопасная зона, без полосы под меню */}
       <div
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-white/8 bg-[#0b0b0e]/95 backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border surface-glass backdrop-blur"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)" }}
       >
         <div className="mx-auto flex max-w-md items-end gap-2 px-4 pt-2.5">
@@ -233,13 +233,13 @@ export default function LogistChatThreadPage() {
             }}
             rows={1}
             placeholder="Сообщение водителю"
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-white/8 bg-white/[0.04] px-3.5 py-3 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-border bg-secondary px-3.5 py-3 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
           <button
             type="button"
             onClick={() => void send()}
             disabled={sending || !text.trim()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white active:bg-orange-600 disabled:opacity-40"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground active:opacity-70 disabled:opacity-40"
             aria-label="Отправить"
           >
             {sending ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Send className="h-4.5 w-4.5" />}

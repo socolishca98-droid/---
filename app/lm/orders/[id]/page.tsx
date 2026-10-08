@@ -214,28 +214,28 @@ export default function LogistOrderPage() {
           <>
             {/* 1. Что дальше — главное действие экрана */}
             {isFinal(order.status) ? (
-              <Card className="border-emerald-500/25 bg-emerald-500/[0.06]">
-                <p className="flex items-center gap-2 text-[15px] font-semibold text-emerald-200">
+              <Card className="border-success/25 bg-success/10">
+                <p className="flex items-center gap-2 text-[15px] font-semibold text-success">
                   <CheckCircle2 className="h-4.5 w-4.5" />
                   Заказ закрыт: {orderStatusLabel(order.status).toLowerCase()}
                 </p>
-                <p className="mt-1 text-[13px] text-emerald-100/70">
+                <p className="mt-1 text-[13px] text-success/70">
                   Вернуть в работу можно из полной версии — на телефоне закрытые заказы не правят.
                 </p>
               </Card>
             ) : step ? (
-              <Card className="border-orange-500/25 bg-orange-500/[0.06]">
-                <p className="text-[12px] uppercase tracking-wide text-orange-200/70">Что дальше</p>
-                <p className="mt-1 text-[15px] font-semibold leading-snug text-white">{step.title}</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">{step.why}</p>
+              <Card className="border-primary/25 bg-primary/[0.06]">
+                <p className="text-[12px] uppercase tracking-wide text-primary/70">Что дальше</p>
+                <p className="mt-1 text-[15px] font-semibold leading-snug text-foreground">{step.title}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">{step.why}</p>
                 <button
                   type="button"
                   disabled={busy !== null}
                   onClick={() => setConfirm(step.status)}
                   className={`mt-3 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold disabled:opacity-50 ${
                     step.tone === "success"
-                      ? "bg-emerald-500/90 text-white active:bg-emerald-600"
-                      : "bg-orange-500 text-white active:bg-orange-600"
+                      ? "bg-success/90 text-primary-foreground active:opacity-70-600"
+                      : "bg-primary text-primary-foreground active:opacity-70"
                   }`}
                 >
                   {step.tone === "success" ? <Check className="h-5 w-5" /> : null}
@@ -248,24 +248,24 @@ export default function LogistOrderPage() {
                       type="button"
                       onClick={() => setMoreOpen((value) => !value)}
                       aria-expanded={moreOpen}
-                      className="mt-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 text-[13px] font-medium text-zinc-400 active:text-zinc-200"
+                      className="mt-2 flex min-h-[40px] w-full items-center justify-center gap-1.5 text-[13px] font-medium text-muted-foreground active:text-foreground"
                     >
                       Другие действия
                       <ChevronDown className={`h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
                     </button>
 
                     {moreOpen ? (
-                      <div className="mt-1 space-y-2 border-t border-white/8 pt-3">
+                      <div className="mt-1 space-y-2 border-t border-border pt-3">
                         {others.map((item) => (
                           <button
                             key={item}
                             type="button"
                             disabled={busy !== null}
                             onClick={() => setConfirm(item)}
-                            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-white/6 px-3.5 text-left text-[14px] text-zinc-100 active:bg-white/10 disabled:opacity-40"
+                            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-secondary px-3.5 text-left text-[14px] text-foreground active:opacity-70 disabled:opacity-40"
                           >
                             {orderStatusLabel(item)}
-                            <ArrowRight className="h-4 w-4 text-zinc-500" />
+                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
                           </button>
                         ))}
                         {closing.map((item) => (
@@ -274,10 +274,10 @@ export default function LogistOrderPage() {
                             type="button"
                             disabled={busy !== null}
                             onClick={() => setConfirm(item)}
-                            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-red-500/10 px-3.5 text-left text-[14px] text-red-200 active:bg-red-500/20 disabled:opacity-40"
+                            className="flex min-h-[44px] w-full items-center justify-between rounded-xl bg-destructive/10 px-3.5 text-left text-[14px] text-destructive active:opacity-70 disabled:opacity-40"
                           >
                             {orderStatusLabel(item)}
-                            <ArrowRight className="h-4 w-4 text-red-300/60" />
+                            <ArrowRight className="h-4 w-4 text-destructive/60" />
                           </button>
                         ))}
                       </div>
@@ -293,25 +293,25 @@ export default function LogistOrderPage() {
                 {checks.map((check) => (
                   <div
                     key={check.id}
-                    className={`flex items-start gap-2.5 rounded-2xl border px-3.5 py-3 ${
+                    className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-3 ${
                       check.tone === "warn"
-                        ? "border-amber-500/25 bg-amber-500/[0.07]"
-                        : "border-white/8 bg-white/[0.03]"
+                        ? "border-warning/40 bg-warning/[0.07]"
+                        : "border-border bg-card shadow-sm"
                     }`}
                   >
                     {check.tone === "warn" ? (
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                     ) : (
-                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
-                    <p className={`flex-1 text-[13px] leading-snug ${check.tone === "warn" ? "text-amber-100" : "text-zinc-300"}`}>
+                    <p className={`flex-1 text-[13px] leading-snug ${check.tone === "warn" ? "text-warning" : "text-foreground/90"}`}>
                       {check.text}
                     </p>
                     {check.fix ? (
                       <button
                         type="button"
                         onClick={() => applyFix(check.fix as CheckFix)}
-                        className="shrink-0 rounded-lg bg-white/10 px-2.5 py-1.5 text-[12.5px] font-medium text-white active:bg-white/15"
+                        className="shrink-0 rounded-lg bg-secondary px-2.5 py-1.5 text-[12.5px] font-medium text-foreground active:opacity-70"
                       >
                         Исправить
                       </button>
@@ -324,8 +324,8 @@ export default function LogistOrderPage() {
             {/* 3. Этапы: где заказ сейчас */}
             <Card className="mt-3">
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-[14px] font-semibold text-white">Ход заказа</p>
-                <p className="text-[12.5px] text-zinc-500">{progressLabel(order.status)}</p>
+                <p className="text-[14px] font-semibold text-foreground">Ход заказа</p>
+                <p className="text-[12.5px] text-muted-foreground">{progressLabel(order.status)}</p>
               </div>
               <ol className="mt-3 flex items-center">
                 {steps.map((item, index) => (
@@ -333,27 +333,27 @@ export default function LogistOrderPage() {
                     <span
                       title={item.title}
                       aria-label={item.title}
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[10px] ${
                         item.state === "done"
-                          ? "border-orange-500/40 bg-orange-500/20 text-orange-200"
+                          ? "border-primary/40 bg-primary/20 text-primary"
                           : item.state === "current"
-                            ? "border-orange-500 bg-orange-500 text-white"
+                            ? "border-primary bg-primary text-primary-foreground"
                             : item.state === "closed"
-                              ? "border-white/10 bg-white/5 text-zinc-500"
-                              : "border-white/10 bg-white/[0.03] text-zinc-600"
+                              ? "border-border bg-secondary text-muted-foreground"
+                              : "border-border bg-card shadow-sm text-muted-foreground/80"
                       }`}
                     >
                       {item.state === "done" ? <Check className="h-3.5 w-3.5" /> : index + 1}
                     </span>
                     {index < 5 ? (
                       <span
-                        className={`h-px flex-1 ${item.state === "done" ? "bg-orange-500/40" : "bg-white/10"}`}
+                        className={`h-px flex-1 ${item.state === "done" ? "bg-primary/40" : "bg-secondary"}`}
                       />
                     ) : null}
                   </li>
                 ))}
               </ol>
-              <p className="mt-2.5 text-[12.5px] text-zinc-500">
+              <p className="mt-2.5 text-[12.5px] text-muted-foreground">
                 {currentStep
                   ? `Этап «${currentStep.title}» — дальше: ${step ? step.title.toLowerCase() : "работа завершена"}`
                   : "Заказ закрыт — этапы пройдены"}
@@ -364,10 +364,10 @@ export default function LogistOrderPage() {
             <Card className="mt-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-white">
+                  <p className="text-[15px] font-semibold text-foreground">
                     {order.clientName?.trim() || "Клиент не указан"}
                   </p>
-                  <p className="mt-0.5 text-[12.5px] text-zinc-400">
+                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                     {order.clientContact?.trim() || "контакт не указан"}
                   </p>
                 </div>
@@ -378,7 +378,7 @@ export default function LogistOrderPage() {
                 {tel ? (
                   <a
                     href={tel}
-                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[14px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[14px] font-medium text-success active:opacity-70"
                   >
                     <Phone className="h-4 w-4" /> Позвонить
                   </a>
@@ -388,14 +388,14 @@ export default function LogistOrderPage() {
                     href={wa}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-secondary text-[14px] font-medium text-foreground active:opacity-70"
                   >
                     <MessageCircle className="h-4 w-4" /> WhatsApp
                   </a>
                 ) : null}
               </div>
 
-              <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
+              <div className="mt-3 space-y-2 border-t border-border pt-3">
                 <AddressRow
                   label="Откуда"
                   address={order.routeFrom}
@@ -410,19 +410,19 @@ export default function LogistOrderPage() {
                   copied={copied === "to"}
                   onCopy={() => void copy(order.routeTo, "to")}
                 />
-                <div className="border-t border-white/8 pt-3">
+                <div className="border-t border-border pt-3">
                   {routeMaps ? (
                     <a
                       href={routeMaps}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-sky-500/15 text-[14px] font-medium text-sky-200 active:bg-sky-500/25"
+                    className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-chart-2/15 text-[14px] font-medium text-chart-2 active:opacity-70-2/25"
                     >
                       <Navigation className="h-4 w-4" /> Маршрут в навигаторе
                     </a>
                   ) : null}
                   {order.distance ? (
-                    <p className="mt-1.5 text-[12.5px] text-zinc-500">Расстояние: {order.distance} км</p>
+                    <p className="mt-1.5 text-[12.5px] text-muted-foreground">Расстояние: {order.distance} км</p>
                   ) : null}
                 </div>
               </div>
@@ -431,35 +431,35 @@ export default function LogistOrderPage() {
             {/* 5. Груз и деньги */}
             <div className="mt-3 grid grid-cols-2 gap-2.5">
               <Card>
-                <p className="text-[12px] text-zinc-500">Цена</p>
-                <p className="mt-0.5 text-[16px] font-semibold text-white">
+                <p className="text-[12px] text-muted-foreground">Цена</p>
+                <p className="mt-0.5 text-[16px] font-semibold text-foreground">
                   {formatMoney(order.agreedPrice ?? order.price)}
                 </p>
                 {order.paymentType && PAYMENT_TYPE_LABELS[order.paymentType] ? (
-                  <p className="mt-0.5 text-[12px] text-zinc-500">{PAYMENT_TYPE_LABELS[order.paymentType]}</p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">{PAYMENT_TYPE_LABELS[order.paymentType]}</p>
                 ) : null}
                 <button
                   type="button"
                   onClick={() => setEditOpen(true)}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-orange-400"
+                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary"
                 >
                   <Pencil className="h-3 w-3" /> Изменить
                 </button>
               </Card>
               <Card>
-                <p className="text-[12px] text-zinc-500">Срок выгрузки</p>
+                <p className="text-[12px] text-muted-foreground">Срок выгрузки</p>
                 <p
                   className={`mt-0.5 text-[16px] font-semibold ${
-                    deadline.overdue ? "text-red-300" : deadline.soon ? "text-amber-300" : "text-white"
+                    deadline.overdue ? "text-destructive" : deadline.soon ? "text-warning" : "text-foreground"
                   }`}
                 >
                   {deadline.text}
                 </p>
-                <p className="mt-0.5 text-[12px] text-zinc-500">{formatDateShort(order.deadline)}</p>
+                <p className="mt-0.5 text-[12px] text-muted-foreground">{formatDateShort(order.deadline)}</p>
                 <button
                   type="button"
                   onClick={() => setEditOpen(true)}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-orange-400"
+                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary"
                 >
                   <Pencil className="h-3 w-3" /> Изменить
                 </button>
@@ -484,11 +484,11 @@ export default function LogistOrderPage() {
             <div id="assign-block" className="mt-3">
             <Card>
               <div className="flex items-center justify-between">
-                <p className="text-[14px] font-semibold text-white">Исполнение</p>
+                <p className="text-[14px] font-semibold text-foreground">Исполнение</p>
                 <button
                   type="button"
                   onClick={() => setAssignOpen((value) => !value)}
-                  className="text-[13px] font-medium text-orange-400"
+                  className="text-[13px] font-medium text-primary"
                 >
                   {assignOpen ? "Закрыть" : "Изменить"}
                 </button>
@@ -514,13 +514,13 @@ export default function LogistOrderPage() {
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <a
                     href={telHref(driver.phone) || "#"}
-                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-secondary text-[14px] font-medium text-foreground active:opacity-70"
                   >
                     <Phone className="h-4 w-4" /> Водителю
                   </a>
                   <Link
                     href={`/lm/chat/${driver.id}`}
-                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-secondary text-[14px] font-medium text-foreground active:opacity-70"
                   >
                     <MessageCircle className="h-4 w-4" /> В чат
                   </Link>
@@ -528,18 +528,18 @@ export default function LogistOrderPage() {
               ) : null}
 
               {assignOpen ? (
-                <div className="mt-3 space-y-3 border-t border-white/8 pt-3">
-                  <p className="text-[12.5px] leading-relaxed text-zinc-500">
+                <div className="mt-3 space-y-3 border-t border-border pt-3">
+                  <p className="text-[12.5px] leading-relaxed text-muted-foreground">
                     Свободные водители сверху. Машина подставляется вместе с водителем, но её можно
                     выбрать отдельно.
                   </p>
                   <div>
-                    <p className="mb-1.5 text-[12.5px] text-zinc-500">Водитель</p>
+                    <p className="mb-1.5 text-[12.5px] text-muted-foreground">Водитель</p>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => void assign(null, order.assignedVehicleId)}
-                        className="rounded-full border border-white/10 px-3 py-1.5 text-[13px] text-zinc-300"
+                        className="rounded-md border border-border px-3 py-1.5 text-[13px] text-foreground/90"
                       >
                         снять
                       </button>
@@ -550,10 +550,10 @@ export default function LogistOrderPage() {
                             key={item.id}
                             type="button"
                             onClick={() => void assign(item.id, order.assignedVehicleId)}
-                            className={`rounded-full border px-3 py-1.5 text-[13px] ${
+                            className={`rounded-md border px-3 py-1.5 text-[13px] ${
                               item.id === order.assignedDriverId
-                                ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                                : "border-white/10 text-zinc-200"
+                                ? "border-primary/40 bg-primary/15 text-primary"
+                                : "border-border text-foreground"
                             }`}
                           >
                             {item.name.split(" ")[0]}
@@ -565,12 +565,12 @@ export default function LogistOrderPage() {
                   </div>
 
                   <div>
-                    <p className="mb-1.5 text-[12.5px] text-zinc-500">Машина</p>
+                    <p className="mb-1.5 text-[12.5px] text-muted-foreground">Машина</p>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => void assign(order.assignedDriverId, null)}
-                        className="rounded-full border border-white/10 px-3 py-1.5 text-[13px] text-zinc-300"
+                        className="rounded-md border border-border px-3 py-1.5 text-[13px] text-foreground/90"
                       >
                         снять
                       </button>
@@ -581,10 +581,10 @@ export default function LogistOrderPage() {
                             key={item.id}
                             type="button"
                             onClick={() => void assign(order.assignedDriverId, item.id)}
-                            className={`rounded-full border px-3 py-1.5 text-[13px] ${
+                            className={`rounded-md border px-3 py-1.5 text-[13px] ${
                               item.id === order.assignedVehicleId
-                                ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                                : "border-white/10 text-zinc-200"
+                                ? "border-primary/40 bg-primary/15 text-primary"
+                                : "border-border text-foreground"
                             }`}
                           >
                             {item.plate}
@@ -592,7 +592,7 @@ export default function LogistOrderPage() {
                         ))}
                     </div>
                   </div>
-                  {busy === "assign" ? <p className="text-[12.5px] text-zinc-500">Сохраняю…</p> : null}
+                  {busy === "assign" ? <p className="text-[12.5px] text-muted-foreground">Сохраняю…</p> : null}
                 </div>
               ) : null}
             </Card>
@@ -600,7 +600,7 @@ export default function LogistOrderPage() {
 
             <Link
               href={`/orders/${order.id}`}
-              className="mt-3 block rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-[13px] text-zinc-400"
+              className="mt-3 block rounded-xl border border-border bg-card shadow-sm/60 px-4 py-3 text-center text-[13px] text-muted-foreground"
             >
               Открыть в полной версии
             </Link>
@@ -652,17 +652,17 @@ function AddressRow({
 }) {
   return (
     <div>
-      <p className="flex items-center gap-1.5 text-[12px] text-zinc-500">
+      <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <MapPin className="h-3.5 w-3.5" /> {label}
       </p>
       {/* Адрес на всю ширину: он должен читаться целиком, а кнопки — под ним */}
-      <p className="mt-0.5 text-[14px] leading-snug text-zinc-100">{address}</p>
+      <p className="mt-0.5 text-[14px] leading-snug text-foreground">{address}</p>
       <div className="mt-1.5 flex gap-1.5">
         <button
           type="button"
           onClick={onCopy}
           aria-label={`Скопировать адрес: ${label}`}
-          className="flex h-9 items-center rounded-lg bg-white/8 px-3 text-[12.5px] font-medium text-zinc-200 active:bg-white/12"
+          className="flex h-9 items-center rounded-lg bg-secondary px-3 text-[12.5px] font-medium text-foreground active:opacity-70"
         >
           {copied ? "Скопировано" : "Копировать"}
         </button>
@@ -672,7 +672,7 @@ function AddressRow({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Открыть в навигаторе: ${label}`}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-sky-500/15 px-3 text-[12.5px] font-medium text-sky-200 active:bg-sky-500/25"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-chart-2/15 px-3 text-[12.5px] font-medium text-chart-2 active:opacity-70-2/25"
           >
             <Navigation className="h-3.5 w-3.5" /> Навигатор
           </a>
@@ -730,7 +730,7 @@ function EditSheet({
     >
       <div className="space-y-2.5">
         <label className="block">
-          <span className="mb-1.5 block text-[12.5px] text-zinc-500">Цена, ₽</span>
+          <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Цена, ₽</span>
           <input
             value={price}
             onChange={(event) => setPrice(event.target.value.replace(/[^\d]/g, ""))}
@@ -740,7 +740,7 @@ function EditSheet({
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-[12.5px] text-zinc-500">Телефон клиента</span>
+          <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Телефон клиента</span>
           <input
             value={contact}
             onChange={(event) => setContact(event.target.value)}
@@ -750,7 +750,7 @@ function EditSheet({
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-[12.5px] text-zinc-500">Выгрузить до</span>
+          <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Выгрузить до</span>
           <input
             type="date"
             value={deadline}
@@ -764,7 +764,7 @@ function EditSheet({
         type="button"
         disabled={saving}
         onClick={() => void save()}
-        className="mt-3 flex min-h-[50px] w-full items-center justify-center rounded-2xl bg-orange-500 text-[15px] font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+        className="mt-3 flex min-h-[50px] w-full items-center justify-center rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
       >
         {saving ? "Сохраняю…" : "Сохранить"}
       </button>
@@ -773,7 +773,7 @@ function EditSheet({
 }
 
 const inputClass =
-  "min-h-[48px] w-full rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none"
+  "min-h-[48px] w-full rounded-xl border border-border bg-card px-3.5 text-[15px] text-foreground placeholder:text-muted-foreground/80 focus:border-primary/50 focus:outline-none"
 
 function Row({
   icon,
@@ -786,9 +786,9 @@ function Row({
 }) {
   return (
     <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 shrink-0 text-zinc-500">{icon}</span>
-      <span className="shrink-0 text-zinc-500">{label}</span>
-      <span className="ml-auto min-w-0 text-right text-zinc-100">{value}</span>
+      <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="ml-auto min-w-0 text-right text-foreground">{value}</span>
     </div>
   )
 }

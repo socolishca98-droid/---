@@ -111,7 +111,7 @@ export default function LogistFleetPage() {
               />
             </div>
 
-            <div className="mt-3 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]">
+            <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
               <LinkRow icon={<FuelIcon className="h-4.5 w-4.5" />} label="Топливо" href="/lm/fuel" />
               <LinkRow icon={<Settings2 className="h-4.5 w-4.5" />} label="Настройки" href="/lm/settings" />
             </div>
@@ -122,10 +122,10 @@ export default function LogistFleetPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setTab(item.id)}
-                  className={`shrink-0 rounded-full border px-3.5 py-2 text-[13px] font-medium ${
+                  className={`shrink-0 rounded-md border px-3.5 py-2 text-[13px] font-medium ${
                     tab === item.id
-                      ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                      : "border-white/8 bg-white/[0.03] text-zinc-400"
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-border bg-card shadow-sm text-muted-foreground"
                   }`}
                 >
                   {item.label}
@@ -142,21 +142,21 @@ export default function LogistFleetPage() {
                     const maintenanceDeadline = deadlinesByVehicle.get(vehicle.id)?.maintenance
 
                     return (
-                      <div key={vehicle.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                      <div key={vehicle.id} className="rounded-xl border border-border bg-card shadow-sm p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-[15px] font-semibold text-white">{vehicle.plate}</p>
-                            <p className="mt-0.5 truncate text-[13px] text-zinc-400">
+                            <p className="text-[15px] font-semibold text-foreground">{vehicle.plate}</p>
+                            <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
                               {[vehicle.brand, vehicle.model].filter(Boolean).join(" ") || vehicle.type || "—"}
                               {vehicle.year ? ` · ${vehicle.year}` : ""}
                             </p>
                           </div>
-                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11.5px] ${meta.style}`}>
+                          <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[11.5px] ${meta.style}`}>
                             {meta.label}
                           </span>
                         </div>
 
-                        <p className="mt-2 text-[12.5px] text-zinc-500">
+                        <p className="mt-2 text-[12.5px] text-muted-foreground">
                           {[
                             vehicle.type,
                             vehicle.capacity ? `до ${(vehicle.capacity / 1000).toFixed(1).replace(".0", "")} т` : null,
@@ -168,7 +168,7 @@ export default function LogistFleetPage() {
                         </p>
 
                         {maintenanceDeadline ? (
-                          <p className={`mt-1.5 text-[12.5px] ${DEADLINE_STATUS_META[maintenanceDeadline.status]?.style ?? "text-zinc-400"}`}>
+                          <p className={`mt-1.5 text-[12.5px] ${DEADLINE_STATUS_META[maintenanceDeadline.status]?.style ?? "text-muted-foreground"}`}>
                             ТО {formatDateShort(maintenanceDeadline.date)}
                             {maintenanceDeadline.daysLeft >= 0
                               ? ` · через ${maintenanceDeadline.daysLeft} дн.`
@@ -178,21 +178,21 @@ export default function LogistFleetPage() {
 
                         {driver ? (
                           <div className="mt-3 flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-400">
-                              <Truck className="mr-1.5 inline h-3.5 w-3.5 text-zinc-500" />
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+                              <Truck className="mr-1.5 inline h-3.5 w-3.5 text-muted-foreground" />
                               {driver.name}
                             </span>
                             {tel ? (
                               <a
                                 href={tel}
-                                className="flex min-h-[40px] items-center gap-2 rounded-xl bg-emerald-500/15 px-3.5 text-[13px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                                className="flex min-h-[40px] items-center gap-2 rounded-xl bg-success/15 px-3.5 text-[13px] font-medium text-success active:opacity-70"
                               >
                                 <Phone className="h-4 w-4" /> Позвонить
                               </a>
                             ) : null}
                           </div>
                         ) : (
-                          <p className="mt-2.5 text-[12.5px] text-zinc-600">Водитель не закреплён</p>
+                          <p className="mt-2.5 text-[12.5px] text-muted-foreground/80">Водитель не закреплён</p>
                         )}
                       </div>
                     )
@@ -212,14 +212,14 @@ export default function LogistFleetPage() {
                       return (
                         <div
                           key={`${row.vehicle.id}-${row.kind}`}
-                          className={`rounded-2xl border p-4 ${
-                            late ? "border-red-500/25 bg-red-500/[0.06]" : soon ? "border-amber-500/25 bg-amber-500/[0.06]" : "border-white/8 bg-white/[0.03]"
+                          className={`rounded-xl border p-4 ${
+                            late ? "border-destructive/25 bg-destructive/[0.06]" : soon ? "border-warning/40 bg-warning/10" : "border-border bg-card shadow-sm"
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[15px] font-semibold text-white">{row.vehicle.plate}</p>
-                              <p className="mt-0.5 text-[13px] text-zinc-400">
+                              <p className="text-[15px] font-semibold text-foreground">{row.vehicle.plate}</p>
+                              <p className="mt-0.5 text-[13px] text-muted-foreground">
                                 {row.label} · {formatDateShort(row.deadline.date)}
                               </p>
                             </div>

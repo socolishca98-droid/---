@@ -148,14 +148,14 @@ export default function RouteAssistantPage() {
         ) : (
           <>
             {/* Итог: что помощник нашёл и собрал */}
-            <Card className="border-orange-500/25 bg-orange-500/[0.06]">
-              <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
-                <Sparkles className="h-4.5 w-4.5 text-orange-300" />
+            <Card className="border-primary/25 bg-primary/[0.06]">
+              <p className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+                <Sparkles className="h-4.5 w-4.5 text-primary" />
                 {summary.routes > 0
                   ? `Собрал ${summary.routes} ${plural(summary.routes, ["рейс", "рейса", "рейсов"])} из ${summary.orders} ${plural(summary.orders, ["заказа", "заказов", "заказов"])}`
                   : "Собирать пока нечего"}
               </p>
-              <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">
+              <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">
                 {summary.routes > 0
                   ? `Согласованные заказы, которые ещё не в рейсе. Проверьте состав и предложите рейс — дальше назначите водителя.`
                   : readyCount === 0
@@ -163,15 +163,15 @@ export default function RouteAssistantPage() {
                     : "Все согласованные заказы уже разобраны по рейсам."}
               </p>
               {summary.routes > 0 ? (
-                <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-zinc-400">
+                <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
                   <span>
-                    Заказов в предложениях: <span className="text-white">{summary.orders}</span>
+                    Заказов в предложениях: <span className="text-foreground">{summary.orders}</span>
                   </span>
                   <span>
-                    Выручка: <span className="text-white">{formatMoney(summary.revenue)}</span>
+                    Выручка: <span className="text-foreground">{formatMoney(summary.revenue)}</span>
                   </span>
                   {summary.unplaced > 0 ? (
-                    <span className="text-amber-200">Не разобрано: {summary.unplaced}</span>
+                    <span className="text-warning">Не разобрано: {summary.unplaced}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -183,7 +183,7 @@ export default function RouteAssistantPage() {
                   vehiclesState.reload()
                   driversState.reload()
                 }}
-                className="mt-3 inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-white/8 px-3.5 text-[13px] font-medium text-white active:bg-white/12"
+                className="mt-3 inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-secondary px-3.5 text-[13px] font-medium text-foreground active:opacity-70"
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Пересобрать
               </button>
@@ -202,7 +202,7 @@ export default function RouteAssistantPage() {
                   action={
                     <Link
                       href="/lm/orders"
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white active:bg-white/12"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
                     >
                       К заказам
                     </Link>
@@ -218,24 +218,24 @@ export default function RouteAssistantPage() {
                   const tooHeavy = vehiclesForCargo(proposal.weightKg, proposal.volumeM3, vehicles).length === 0
 
                   return (
-                    <Card key={proposal.id} className={proposal.urgent ? "border-amber-500/30" : ""}>
+                    <Card key={proposal.id} className={proposal.urgent ? "border-warning/30" : ""}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-[15.5px] font-semibold leading-snug text-white">{proposal.name}</p>
-                          <p className="mt-0.5 text-[12.5px] text-zinc-400">{proposalLine(proposal)}</p>
+                          <p className="text-[15.5px] font-semibold leading-snug text-foreground">{proposal.name}</p>
+                          <p className="mt-0.5 text-[12.5px] text-muted-foreground">{proposalLine(proposal)}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => setHidden((prev) => [...prev, proposal.id])}
                           aria-label="Скрыть предложение"
-                          className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 active:bg-white/8"
+                          className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
                         >
                           <X className="h-4 w-4" />
                         </button>
                       </div>
 
                       {proposal.urgent ? (
-                        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-1 text-[12px] text-amber-200">
+                        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-warning/10 px-2 py-1 text-[12px] text-warning">
                           <AlertTriangle className="h-3.5 w-3.5" /> {proposal.deadlineText}
                         </p>
                       ) : null}
@@ -243,8 +243,8 @@ export default function RouteAssistantPage() {
                       {/* Почему собрали именно так */}
                       <ul className="mt-2.5 space-y-1">
                         {proposal.reasons.map((reason) => (
-                          <li key={reason} className="flex items-start gap-1.5 text-[12.5px] leading-snug text-zinc-400">
-                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-zinc-600" />
+                          <li key={reason} className="flex items-start gap-1.5 text-[12.5px] leading-snug text-muted-foreground">
+                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-secondary" />
                             {reason}
                           </li>
                         ))}
@@ -254,7 +254,7 @@ export default function RouteAssistantPage() {
                       <button
                         type="button"
                         onClick={() => setOpen(expanded ? null : proposal.id)}
-                        className="mt-2.5 inline-flex min-h-[36px] items-center gap-1.5 text-[12.5px] font-medium text-orange-400"
+                        className="mt-2.5 inline-flex min-h-[36px] items-center gap-1.5 text-[12.5px] font-medium text-primary"
                       >
                         {expanded ? "Свернуть состав" : `Показать заказы (${proposal.orders.length})`}
                       </button>
@@ -264,14 +264,14 @@ export default function RouteAssistantPage() {
                           <Link
                             key={order.id}
                             href={`/lm/orders/${order.id}`}
-                            className="flex items-start gap-2 rounded-xl bg-white/[0.03] px-2.5 py-2 active:bg-white/[0.06]"
+                            className="flex items-start gap-2 rounded-xl bg-card shadow-sm px-2.5 py-2 active:opacity-70"
                           >
-                            <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                            <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] text-zinc-100">
+                              <span className="block truncate text-[13px] text-foreground">
                                 {order.clientName?.trim() || shortCity(order.routeFrom)}
                               </span>
-                              <span className="mt-0.5 flex items-center gap-1 text-[12px] text-zinc-500">
+                              <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
                                 {shortCity(order.routeFrom)}
                                 <ArrowRight className="h-3 w-3" />
                                 {shortCity(order.routeTo)}
@@ -284,29 +284,29 @@ export default function RouteAssistantPage() {
                           </Link>
                         ))}
                         {!expanded && proposal.orders.length > 3 ? (
-                          <p className="px-1 text-[12px] text-zinc-500">
+                          <p className="px-1 text-[12px] text-muted-foreground">
                             и ещё {proposal.orders.length - 3} {plural(proposal.orders.length - 3, ["заказ", "заказа", "заказов"])}
                           </p>
                         ) : null}
                       </div>
 
                       {tooHeavy ? (
-                        <p className="mt-3 rounded-xl bg-amber-500/[0.08] px-3 py-2 text-[12.5px] text-amber-100">
+                        <p className="mt-3 rounded-xl bg-warning/10 px-3 py-2 text-[12.5px] text-warning">
                           Свободной машины под этот вес нет. Уберите часть заказов или добавьте машину в автопарк.
                         </p>
                       ) : null}
 
                       {/* Экипаж: помощник уже подобрал машину и водителя — можно поменять */}
-                      <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
-                        <p className="text-[12px] text-zinc-500">Машина</p>
+                      <div className="mt-3 space-y-2 border-t border-border pt-3">
+                        <p className="text-[12px] text-muted-foreground">Машина</p>
                         <div className="flex flex-wrap gap-1.5">
                           <button
                             type="button"
                             onClick={() => setVehicleChoice((prev) => ({ ...prev, [proposal.id]: "none" }))}
-                            className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
+                            className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
                               !vehicle
-                                ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                                : "border-white/10 text-zinc-300"
+                                ? "border-primary/40 bg-primary/15 text-primary"
+                                : "border-border text-foreground/90"
                             }`}
                           >
                             без машины
@@ -319,12 +319,12 @@ export default function RouteAssistantPage() {
                                 key={item.id}
                                 type="button"
                                 onClick={() => setVehicleChoice((prev) => ({ ...prev, [proposal.id]: item.id }))}
-                                className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
+                                className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
                                   active
-                                    ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
+                                    ? "border-primary/40 bg-primary/15 text-primary"
                                     : item.status === "available"
-                                      ? "border-white/10 text-zinc-200"
-                                      : "border-white/10 text-amber-200/70"
+                                      ? "border-border text-foreground"
+                                      : "border-border text-warning/70"
                                 }`}
                               >
                                 {item.plate}
@@ -336,13 +336,13 @@ export default function RouteAssistantPage() {
                           })}
                         </div>
 
-                        <p className="text-[12px] text-zinc-500">Водитель (можно назначить потом)</p>
+                        <p className="text-[12px] text-muted-foreground">Водитель (можно назначить потом)</p>
                         <div className="flex flex-wrap gap-1.5">
                           <button
                             type="button"
                             onClick={() => setDriverChoice((prev) => ({ ...prev, [proposal.id]: "none" }))}
-                            className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
-                              !driver ? "border-orange-500/40 bg-orange-500/15 text-orange-300" : "border-white/10 text-zinc-300"
+                            className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
+                              !driver ? "border-primary/40 bg-primary/15 text-primary" : "border-border text-foreground/90"
                             }`}
                           >
                             назначу позже
@@ -355,10 +355,10 @@ export default function RouteAssistantPage() {
                                 key={item.id}
                                 type="button"
                                 onClick={() => setDriverChoice((prev) => ({ ...prev, [proposal.id]: item.id }))}
-                                className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
+                                className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
                                   active
-                                    ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                                    : "border-white/10 text-zinc-200"
+                                    ? "border-primary/40 bg-primary/15 text-primary"
+                                    : "border-border text-foreground"
                                 }`}
                               >
                                 {item.name.split(" ")[0]}
@@ -370,13 +370,13 @@ export default function RouteAssistantPage() {
                         </div>
 
                         {!vehicle && !driver ? (
-                          <p className="rounded-xl bg-amber-500/[0.08] px-3 py-2 text-[12.5px] text-amber-100">
+                          <p className="rounded-xl bg-warning/10 px-3 py-2 text-[12.5px] text-warning">
                             Свободной машины под этот груз сейчас нет. Рейс соберём без машины — назначите её
                             в карточке рейса, когда освободится.
                           </p>
                         ) : null}
                         {vehicle && !driver && driverOfVehicle(vehicle.id, drivers) ? (
-                          <p className="rounded-xl bg-amber-500/[0.08] px-3 py-2 text-[12.5px] text-amber-100">
+                          <p className="rounded-xl bg-warning/10 px-3 py-2 text-[12.5px] text-warning">
                             {vehicle.plate} закреплена за {driverOfVehicle(vehicle.id, drivers)?.name.split(" ")[0]} —
                             водителя назначите, когда он освободится.
                           </p>
@@ -387,12 +387,12 @@ export default function RouteAssistantPage() {
                         type="button"
                         disabled={busy !== null || tooHeavy}
                         onClick={() => void propose(proposal)}
-                        className="mt-3 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-orange-500 text-[15px] font-semibold text-white active:bg-orange-600 disabled:opacity-40"
+                        className="mt-3 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
                       >
                         {busy === proposal.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <Truck className="h-4.5 w-4.5" />}
                         {busy === proposal.id ? "Предлагаю…" : "Предложить рейс"}
                       </button>
-                      <p className="mt-1.5 text-center text-[12px] text-zinc-500">
+                      <p className="mt-1.5 text-center text-[12px] text-muted-foreground">
                         {tooHeavy
                           ? "Под этот вес машины в автопарке нет"
                           : driver
@@ -407,7 +407,7 @@ export default function RouteAssistantPage() {
 
             {/* Пусто совсем: заказов нет */}
             {!loading && proposals.length === 0 && readyCount === 0 && orders.length > 0 ? (
-              <p className="mt-3 px-1 text-center text-[12.5px] text-zinc-500">
+              <p className="mt-3 px-1 text-center text-[12.5px] text-muted-foreground">
                 Всего заказов: {orders.length}. В сборку попадают только согласованные — те, где вы договорились
                 о цене и условиях.
               </p>

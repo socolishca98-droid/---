@@ -50,9 +50,9 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  pending: { label: "Ждёт одобрения", className: "bg-amber-500/15 text-amber-200" },
-  active: { label: "Активен", className: "bg-emerald-500/15 text-emerald-200" },
-  suspended: { label: "Доступ закрыт", className: "bg-red-500/15 text-red-200" },
+  pending: { label: "Ждёт одобрения", className: "bg-warning/15 text-warning" },
+  active: { label: "Активен", className: "bg-success/15 text-success" },
+  suspended: { label: "Доступ закрыт", className: "bg-destructive/15 text-destructive" },
 }
 
 interface StaffRow {
@@ -192,22 +192,22 @@ export default function MobileUsersPage() {
     <>
       <LogistHeader title="Сотрудники" subtitle={subtitle} userName={user?.name} />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             inputMode="search"
             placeholder="Имя, телефон, почта"
-            className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] pl-9 pr-9 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+            className="h-11 w-full rounded-xl border border-border bg-secondary pl-9 pr-9 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
           {query ? (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Очистить"
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-white/8"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
             >
               <X className="h-4 w-4" />
             </button>
@@ -220,10 +220,10 @@ export default function MobileUsersPage() {
               key={item.id}
               type="button"
               onClick={() => setStatus(item.id)}
-              className={`rounded-full border px-3 py-1.5 text-[13px] font-medium ${
+              className={`rounded-md border px-3 py-1.5 text-[13px] font-medium ${
                 status === item.id
-                  ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                  : "border-white/8 bg-white/[0.03] text-zinc-400"
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-card shadow-sm text-muted-foreground"
               }`}
             >
               {item.label}
@@ -257,12 +257,12 @@ export default function MobileUsersPage() {
             return (
               <Card key={row.id} className="space-y-3">
                 <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/8 text-[13px] font-semibold text-zinc-200">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-[13px] font-semibold text-foreground">
                     {initials(row.name)}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold text-white">{row.name}</p>
-                    <p className="mt-0.5 truncate text-[13px] text-zinc-400">
+                    <p className="truncate text-[15px] font-semibold text-foreground">{row.name}</p>
+                    <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
                       {ROLE_LABELS[row.role] ?? row.role}
                       {row.email ? ` · ${row.email}` : row.phone ? ` · ${row.phone}` : ""}
                     </p>
@@ -271,14 +271,14 @@ export default function MobileUsersPage() {
                         {meta.label}
                       </span>
                       {row.activeSessions > 0 ? (
-                        <span className="rounded-full bg-white/8 px-2 py-0.5 text-zinc-400">
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
                           {row.activeSessions} сессий
                         </span>
                       ) : null}
                       {row.driverId ? (
                         <Link
                           href="/lm/drivers"
-                          className="rounded-full bg-white/8 px-2 py-0.5 text-zinc-400"
+                          className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground"
                         >
                           карточка водителя
                         </Link>
@@ -287,7 +287,7 @@ export default function MobileUsersPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1 text-[12.5px] text-zinc-500">
+                <div className="space-y-1 text-[12.5px] text-muted-foreground">
                   {row.lastLoginAt ? <p>Последний вход: {formatRelative(row.lastLoginAt)}</p> : null}
                   {row.status === "pending" ? (
                     <p>
@@ -296,7 +296,7 @@ export default function MobileUsersPage() {
                     </p>
                   ) : null}
                   {row.status === "suspended" ? (
-                    <p className="text-red-300/80">
+                    <p className="text-destructive/80">
                       Заблокирован {formatDateShort(row.suspendedAt)}
                       {row.suspendReason ? ` · ${row.suspendReason}` : ""}
                     </p>
@@ -304,12 +304,12 @@ export default function MobileUsersPage() {
                 </div>
 
                 {shown ? (
-                  <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] p-3">
-                    <p className="text-[12px] text-emerald-200">
+                  <div className="rounded-xl border border-success/25 bg-success/[0.08] p-3">
+                    <p className="text-[12px] text-success">
                       Временный пароль — передайте сотруднику, он сменит его при входе:
                     </p>
                     <div className="mt-2 flex items-center gap-2">
-                      <code className="flex-1 select-all rounded-lg bg-black/30 px-3 py-2 text-[15px] font-semibold tracking-wide text-white">
+                      <code className="flex-1 select-all rounded-lg bg-black/30 px-3 py-2 text-[15px] font-semibold tracking-wide text-foreground">
                         {shown}
                       </code>
                       <button
@@ -318,7 +318,7 @@ export default function MobileUsersPage() {
                           void navigator.clipboard.writeText(shown)
                           toast.success("Пароль скопирован")
                         }}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white active:bg-white/15"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground active:opacity-70"
                         aria-label="Скопировать пароль"
                       >
                         <Copy className="h-4 w-4" />
@@ -328,8 +328,8 @@ export default function MobileUsersPage() {
                 ) : null}
 
                 {roleFor === row.id ? (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                    <p className="text-[12.5px] text-zinc-400">Новая роль</p>
+                  <div className="rounded-xl border border-border bg-card shadow-sm p-3">
+                    <p className="text-[12.5px] text-muted-foreground">Новая роль</p>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       {[
                         { id: "logist", label: "Логист" },
@@ -346,8 +346,8 @@ export default function MobileUsersPage() {
                           }}
                           className={`min-h-[44px] rounded-xl text-[14px] font-medium disabled:opacity-40 ${
                             option.id === row.role
-                              ? "bg-orange-500/20 text-orange-200"
-                              : "bg-white/8 text-white active:bg-white/12"
+                              ? "bg-primary/20 text-primary"
+                              : "bg-secondary text-foreground active:opacity-70"
                           }`}
                         >
                           {option.label}
@@ -358,12 +358,12 @@ export default function MobileUsersPage() {
                 ) : null}
 
                 {suspendFor === row.id ? (
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="rounded-xl border border-border bg-card shadow-sm p-3">
                     <input
                       value={suspendReason}
                       onChange={(event) => setSuspendReason(event.target.value)}
                       placeholder="Причина блокировки (необязательно)"
-                      className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] px-3 text-[14.5px] text-white placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none"
+                      className="h-11 w-full rounded-xl border border-border bg-secondary px-3 text-[14.5px] text-foreground placeholder:text-muted-foreground/80 focus:border-primary/50 focus:outline-none"
                     />
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <button
@@ -372,7 +372,7 @@ export default function MobileUsersPage() {
                           setSuspendFor(null)
                           setSuspendReason("")
                         }}
-                        className="min-h-[44px] rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                        className="min-h-[44px] rounded-xl bg-secondary text-[14px] font-medium text-foreground active:opacity-70"
                       >
                         Отмена
                       </button>
@@ -387,7 +387,7 @@ export default function MobileUsersPage() {
                           setSuspendReason("")
                           if (done) void load(1, false)
                         }}
-                        className="min-h-[44px] rounded-xl bg-red-500/20 text-[14px] font-medium text-red-200 active:bg-red-500/30 disabled:opacity-40"
+                        className="min-h-[44px] rounded-xl bg-destructive/20 text-[14px] font-medium text-destructive active:opacity-70 disabled:opacity-40"
                       >
                         Заблокировать
                       </button>
@@ -467,7 +467,7 @@ export default function MobileUsersPage() {
                       {row.role === "driver" && telHref(row.phone) ? (
                         <a
                           href={telHref(row.phone) ?? undefined}
-                          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white active:bg-white/12"
+                          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
                         >
                           <Phone className="h-4 w-4" /> Позвонить
                         </a>
@@ -487,7 +487,7 @@ export default function MobileUsersPage() {
                       setSuspendFor(row.id)
                       setSuspendReason("")
                     }}
-                    className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl bg-white/[0.04] text-[13px] font-medium text-red-300 active:bg-white/8"
+                    className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] font-medium text-destructive active:opacity-70"
                   >
                     <Ban className="h-3.5 w-3.5" /> Закрыть доступ
                   </button>
@@ -509,8 +509,8 @@ export default function MobileUsersPage() {
         ) : null}
 
         <Card className="mt-1 flex items-start gap-3">
-          <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
-          <p className="text-[12.5px] leading-relaxed text-zinc-500">
+          <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="text-[12.5px] leading-relaxed text-muted-foreground">
             Заявки появляются после регистрации по коду приглашения. Код создаётся в разделе
             «Организация».
 

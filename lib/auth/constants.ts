@@ -14,6 +14,10 @@ export const STAFF_COOKIE = "loginex_staff_session"
 /** Cookie с сессией водителя (driver) */
 export const DRIVER_COOKIE = "loginex_driver_session"
 
+/** Cookie владельца платформы: хранит его собственную сессию, пока он смотрит
+ *  чужой аккаунт. Нужна, чтобы одним нажатием вернуться к себе. */
+export const IMPERSONATION_COOKIE = "loginex_owner_session"
+
 /** Заголовки, которые middleware проставляет после проверки токена.
  *  Входящие запросы с такими заголовками middleware всегда очищает,
  *  чтобы клиент не мог их подделать. */

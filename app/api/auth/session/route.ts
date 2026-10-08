@@ -21,11 +21,23 @@ import {
 } from "@/lib/auth/session"
 
 import { DRIVER_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
+import { loadActingOwner } from "@/lib/auth/impersonation"
+import { isOwnerEmail } from "@/lib/auth/owner"
 
 export const dynamic = "force-dynamic"
 
+/** Кто смотрит чужой аккаунт и является ли текущий пользователь владельцем.
+ *  Владельцу клиент показывает вход на страницу администрирования. */
+async function accessContext(request: NextRequest) {
+  const acting = await loadActingOwner(request)
+  return {
+    owner: acting ? { name: acting.name, email: acting.email } : null,
+  }
+}
+
 export async function GET(request: NextRequest) {
   const kind = request.nextUrl.searchParams.get("kind") || "auto"
+  const context = await accessContext(request)
 
   try {
     if (kind === "driver") {
@@ -37,7 +49,12 @@ export async function GET(request: NextRequest) {
         )
       }
       await touchSession(session.sessionId)
-      return NextResponse.json({ success: true, session: publicSessionView(session) })
+      return NextResponse.json({
+        success: true,
+        session: publicSessionView(session),
+        impersonation: context.owner,
+        isOwner: false,
+      })
     }
 
     if (kind === "staff") {
@@ -49,7 +66,12 @@ export async function GET(request: NextRequest) {
         )
       }
       await touchSession(session.sessionId)
-      return NextResponse.json({ success: true, session: publicSessionView(session) })
+      return NextResponse.json({
+        success: true,
+        session: publicSessionView(session),
+        impersonation: context.owner,
+        isOwner: !context.owner && isOwnerEmail(session.user.email),
+      })
     }
 
     const session = (await loadStaffSession(request)) || (await loadDriverSession(request))
@@ -60,7 +82,12 @@ export async function GET(request: NextRequest) {
       )
     }
     await touchSession(session.sessionId)
-    return NextResponse.json({ success: true, session: publicSessionView(session) })
+    return NextResponse.json({
+      success: true,
+      session: publicSessionView(session),
+      impersonation: context.owner,
+      isOwner: !context.owner && session.kind === "staff" && isOwnerEmail(session.user.email),
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[auth/session] error:", message)

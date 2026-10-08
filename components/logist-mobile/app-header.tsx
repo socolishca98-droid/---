@@ -37,7 +37,7 @@ export function LogistHeader({
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-white/8 bg-[#0b0b0e]/95 backdrop-blur"
+      className="sticky top-0 z-30 border-b border-border surface-glass backdrop-blur"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div className="mx-auto flex max-w-md items-center gap-3 px-4 py-3">
@@ -45,25 +45,25 @@ export function LogistHeader({
           <Link
             href={mobileParentPath(pathname)}
             aria-label="Назад"
-            className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:bg-white/8"
+            className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:opacity-70"
           >
-            <ArrowLeft className="h-5 w-5 text-zinc-200" />
+            <ArrowLeft className="h-5 w-5 text-foreground" />
           </Link>
         ) : null}
 
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[17px] font-semibold leading-tight text-white">{title}</h1>
-          {subtitle ? <p className="truncate text-[12px] text-zinc-500">{subtitle}</p> : null}
+          <h1 className="truncate text-[17px] font-semibold leading-tight text-foreground">{title}</h1>
+          {subtitle ? <p className="truncate text-[12px] text-muted-foreground">{subtitle}</p> : null}
         </div>
 
         <Link
           href="/lm/notifications"
           aria-label="Уведомления"
-          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:bg-white/8"
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:opacity-70"
         >
-          <Bell className="h-5 w-5 text-zinc-200" />
+          <Bell className="h-5 w-5 text-foreground" />
           {unread > 0 ? (
-            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-semibold text-white">
+            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
               {unread > 99 ? "99+" : unread}
             </span>
           ) : null}
@@ -72,7 +72,7 @@ export function LogistHeader({
         <Link
           href="/lm/more"
           aria-label="Профиль"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-[12px] font-semibold text-orange-300"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary"
         >
           {userName ? initials(userName) : "?"}
         </Link>

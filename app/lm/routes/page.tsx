@@ -71,34 +71,34 @@ export default function LogistRoutesPage() {
       <div className="px-4 pt-3.5">
         <Link
           href="/lm/routes/assistant"
-          className={`flex items-center gap-3 rounded-2xl border px-4 py-3 active:bg-white/[0.06] ${
+          className={`flex items-center gap-3 rounded-xl border px-4 py-3 active:opacity-70 ${
             proposals.length > 0
-              ? "border-orange-500/30 bg-orange-500/[0.08]"
-              : "border-white/8 bg-white/[0.03]"
+              ? "border-primary/30 bg-primary/[0.08]"
+              : "border-border bg-card shadow-sm"
           }`}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/15 text-orange-300">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
             <Sparkles className="h-4.5 w-4.5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[14.5px] font-semibold text-white">Помощник сборки</span>
-            <span className="mt-0.5 block text-[12.5px] text-zinc-400">
+            <span className="block text-[14.5px] font-semibold text-foreground">Помощник сборки</span>
+            <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
               {proposals.length > 0
                 ? `Собрал ${proposalSummary(proposals, 0).routes} ${plural(proposals.length, ["рейс", "рейса", "рейсов"])} — проверьте и предложите`
                 : "Согласованные заказы соберутся в рейсы сами"}
             </span>
           </span>
           {proposals.length > 0 ? (
-            <span className="shrink-0 rounded-full bg-orange-500 px-2.5 py-1 text-[12px] font-semibold text-white">
+            <span className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-[12px] font-semibold text-primary-foreground">
               {proposals.length}
             </span>
           ) : (
-            <ArrowRight className="h-4 w-4 shrink-0 text-zinc-500" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
         </Link>
       </div>
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 mt-3 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 mt-3 border-b border-border surface-glass px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="flex gap-2">
           {TABS.map((item) => (
             <button
@@ -107,8 +107,8 @@ export default function LogistRoutesPage() {
               onClick={() => setTab(item.id)}
               className={`flex-1 rounded-xl border px-3 py-2 text-[13px] font-medium ${
                 tab === item.id
-                  ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                  : "border-white/8 bg-white/[0.03] text-zinc-400"
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-card shadow-sm text-muted-foreground"
               }`}
             >
               {item.label}
@@ -136,39 +136,39 @@ export default function LogistRoutesPage() {
             const distance = route.stats?.totalDistance
 
             return (
-              <div key={route.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+              <div key={route.id} className="rounded-xl border border-border bg-card shadow-sm p-4">
                 <Link href={`/lm/routes/${route.id}`} className="block active:opacity-80">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 text-[15px] font-semibold text-white">{routeSummary(route)}</p>
+                    <p className="min-w-0 flex-1 text-[15px] font-semibold text-foreground">{routeSummary(route)}</p>
                     <span
-                      className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
+                      className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
                     >
                       {meta.label}
                     </span>
                   </div>
 
-                  <div className="mt-2 space-y-1.5 text-[13px] text-zinc-400">
+                  <div className="mt-2 space-y-1.5 text-[13px] text-muted-foreground">
                     <p className="flex items-center gap-2">
-                      <User className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate">{route.driver?.name || "водитель не назначен"}</span>
                       {!route.driver && route.status === "planned" ? (
-                        <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-200">
+                        <span className="ml-auto shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
                           нужно согласовать
                         </span>
                       ) : null}
                     </p>
                     <p className="flex items-center gap-2">
-                      <Truck className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      <Truck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate">
                         {route.vehicle?.plate || "машина не назначена"}
                         {route.vehicle?.type ? ` · ${route.vehicle.type}` : ""}
                       </span>
                     </p>
                     <p className="flex items-center gap-2">
-                      <Package className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       {formatCount(ordersCount, ["заказ", "заказа", "заказов"])}
-                      {distance ? <span className="text-zinc-500">· {distance} км</span> : null}
-                      <ArrowRight className="ml-auto h-4 w-4 text-zinc-600" />
+                      {distance ? <span className="text-muted-foreground">· {distance} км</span> : null}
+                      <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground/80" />
                     </p>
                   </div>
                 </Link>
@@ -176,7 +176,7 @@ export default function LogistRoutesPage() {
                 {tel ? (
                   <a
                     href={tel}
-                    className="mt-3 flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-emerald-500/12 text-[13.5px] font-medium text-emerald-200 active:bg-emerald-500/20"
+                    className="mt-3 flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-success/12 text-[13.5px] font-medium text-success active:opacity-70"
                   >
                     <Phone className="h-4 w-4" /> Позвонить водителю
                   </a>

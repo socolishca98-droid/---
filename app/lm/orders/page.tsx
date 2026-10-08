@@ -79,22 +79,22 @@ export default function LogistOrdersPage() {
         userName={user?.name}
       />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             inputMode="search"
             placeholder="Номер, клиент, город, груз…"
-            className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] pl-9 pr-9 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+            className="h-11 w-full rounded-xl border border-border bg-secondary pl-9 pr-9 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
           {query ? (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Очистить поиск"
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-white/8"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
             >
               <X className="h-4 w-4" />
             </button>
@@ -113,8 +113,8 @@ export default function LogistOrdersPage() {
                 aria-pressed={active}
                 className={`flex min-h-[46px] flex-col items-center justify-center rounded-xl border px-1 py-1.5 text-[12.5px] font-medium transition-colors ${
                   active
-                    ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                    : "border-white/8 bg-white/[0.03] text-zinc-400"
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-border bg-card shadow-sm text-muted-foreground"
                 }`}
               >
                 <span className="text-[15px] font-semibold leading-none">{count}</span>
@@ -138,7 +138,7 @@ export default function LogistOrdersPage() {
             action={
               <Link
                 href="/lm/orders/new"
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-orange-500 px-4 text-[14px] font-semibold text-white active:bg-orange-600"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
               >
                 <Plus className="h-4 w-4" /> Новый заказ
               </Link>
@@ -166,7 +166,7 @@ export default function LogistOrdersPage() {
                     <button
                       type="button"
                       onClick={resetFilters}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-white/8 px-4 text-[14px] font-medium text-white active:bg-white/12"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
                     >
                       Сбросить фильтры
                     </button>
@@ -175,7 +175,7 @@ export default function LogistOrdersPage() {
               />
             ) : (
               <div className="space-y-2.5">
-                <p className="px-1 text-[12px] text-zinc-500">
+                <p className="px-1 text-[12px] text-muted-foreground">
                   {filtered.length === 1 ? "1 заказ" : `${filtered.length} заказов`}
                   {stage !== "all" ? " в этом этапе" : ""}
                 </p>
@@ -183,7 +183,7 @@ export default function LogistOrdersPage() {
                   <OrderCard key={order.id} order={order} />
                 ))}
                 {total > orders.length ? (
-                  <p className="pt-1 text-center text-[12px] text-zinc-600">
+                  <p className="pt-1 text-center text-[12px] text-muted-foreground/80">
                     Показаны последние {orders.length} из {total} — остальные в полной версии
                   </p>
                 ) : null}
@@ -196,7 +196,7 @@ export default function LogistOrdersPage() {
       <Link
         href="/lm/orders/new"
         aria-label="Новый заказ"
-        className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-[max(1rem,calc(50%-13rem))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg shadow-orange-500/20 active:bg-orange-600"
+        className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-[max(1rem,calc(50%-13rem))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-orange-500/20 active:opacity-70"
       >
         <Plus className="h-6 w-6" />
       </Link>
@@ -230,14 +230,14 @@ function StageStrip({
             type="button"
             onClick={() => onSelect(item.stage)}
             aria-pressed={active}
-            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors ${
+            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors ${
               active
-                ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                : "border-white/8 bg-white/[0.03] text-zinc-400"
+                ? "border-primary/40 bg-primary/15 text-primary"
+                : "border-border bg-card shadow-sm text-muted-foreground"
             }`}
           >
             {item.title}
-            <span className={active ? "text-orange-200/80" : "text-zinc-500"}>{item.count}</span>
+            <span className={active ? "text-primary/80" : "text-foreground0"}>{item.count}</span>
           </button>
         )
       })}

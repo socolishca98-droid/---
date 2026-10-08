@@ -55,22 +55,22 @@ export default function LogistDriversPage() {
     <>
       <LogistHeader title="Водители" subtitle={`${data?.drivers?.length ?? 0} в организации`} userName={user?.name} />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-2.5 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 pb-2.5 pt-3 backdrop-blur">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             inputMode="search"
             placeholder="Имя, телефон, машина"
-            className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] pl-9 pr-9 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+            className="h-11 w-full rounded-xl border border-border bg-secondary pl-9 pr-9 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
           {query ? (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Очистить"
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-white/8"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
             >
               <X className="h-4 w-4" />
             </button>
@@ -83,10 +83,10 @@ export default function LogistDriversPage() {
               key={item.id}
               type="button"
               onClick={() => setFilter(item.id)}
-              className={`rounded-full border px-3 py-1.5 text-[13px] font-medium ${
+              className={`rounded-md border px-3 py-1.5 text-[13px] font-medium ${
                 filter === item.id
-                  ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                  : "border-white/8 bg-white/[0.03] text-zinc-400"
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-card shadow-sm text-muted-foreground"
               }`}
             >
               {item.label}
@@ -112,41 +112,41 @@ export default function LogistDriversPage() {
               new Date(driver.medicalExpiry).getTime() - Date.now() < 30 * 86400000
 
             return (
-              <div key={driver.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+              <div key={driver.id} className="rounded-xl border border-border bg-card shadow-sm p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-[15px] font-semibold text-white">{driver.name}</p>
+                    <p className="truncate text-[15px] font-semibold text-foreground">{driver.name}</p>
                     <p className="mt-0.5 flex items-center gap-1.5 text-[13px]">
                       <span className={`inline-block h-2 w-2 rounded-full ${meta.dot}`} />
                       <span className={meta.text}>{meta.label}</span>
                       {driver.lastGpsUpdate ? (
-                        <span className="text-zinc-600">· {formatRelative(driver.lastGpsUpdate)}</span>
+                        <span className="text-muted-foreground/80">· {formatRelative(driver.lastGpsUpdate)}</span>
                       ) : null}
                     </p>
                   </div>
-                  <span className="shrink-0 text-right text-[12px] text-zinc-500">
+                  <span className="shrink-0 text-right text-[12px] text-muted-foreground">
                     {driver.ordersCompleted != null
                       ? formatCount(driver.ordersCompleted, ["рейс", "рейса", "рейсов"])
                       : ""}
                   </span>
                 </div>
 
-                <div className="mt-2.5 space-y-1.5 text-[13px] text-zinc-400">
+                <div className="mt-2.5 space-y-1.5 text-[13px] text-muted-foreground">
                   {driver.vehiclePlate ? (
                     <p className="flex items-center gap-2">
-                      <Truck className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      <Truck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       {driver.vehiclePlate}
                       {driver.vehicleType ? ` · ${driver.vehicleType}` : ""}
                     </p>
                   ) : null}
                   {driver.currentLocation ? (
                     <p className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate">{driver.currentLocation}</span>
                     </p>
                   ) : null}
                   {expirySoon ? (
-                    <p className="text-amber-300">
+                    <p className="text-warning">
                       Медосмотр истекает {formatDateShort(driver.medicalExpiry)}
                     </p>
                   ) : null}
@@ -156,12 +156,12 @@ export default function LogistDriversPage() {
                   {tel ? (
                     <a
                       href={tel}
-                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[13.5px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[13.5px] font-medium text-success active:opacity-70"
                     >
                       <Phone className="h-4 w-4" /> Позвонить
                     </a>
                   ) : (
-                    <span className="flex min-h-[44px] items-center justify-center rounded-xl bg-white/5 text-[13px] text-zinc-600">
+                    <span className="flex min-h-[44px] items-center justify-center rounded-xl bg-secondary text-[13px] text-muted-foreground/80">
                       нет телефона
                     </span>
                   )}
@@ -170,7 +170,7 @@ export default function LogistDriversPage() {
                       href={wa}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12"
+                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-secondary text-[13.5px] font-medium text-foreground active:opacity-70"
                     >
                       <MessageCircle className="h-4 w-4" /> WhatsApp
                     </a>

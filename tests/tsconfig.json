@@ -25,6 +25,7 @@
     "../lib/auth/token.ts",
     "../lib/auth/startup.ts",
     "../lib/auth/password.ts",
+    "../lib/auth/owner.ts",
     "../lib/routes/model.ts",
     "../lib/orders/stages.ts",
     "../lib/routes/optimizer.ts",

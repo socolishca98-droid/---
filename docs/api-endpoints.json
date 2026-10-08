@@ -1,9 +1,24 @@
 {
-  "generatedAt": "2026-10-08T06:59:06.148Z",
+  "generatedAt": "2026-10-08T18:03:18.344Z",
   "endpoints": [
     {
       "method": "GET",
+      "route": "/api/admin/accounts",
+      "group": "admin"
+    },
+    {
+      "method": "GET",
       "route": "/api/admin/audit",
+      "group": "admin"
+    },
+    {
+      "method": "POST",
+      "route": "/api/admin/impersonate",
+      "group": "admin"
+    },
+    {
+      "method": "POST",
+      "route": "/api/admin/return",
       "group": "admin"
     },
     {

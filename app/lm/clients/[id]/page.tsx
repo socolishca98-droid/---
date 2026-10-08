@@ -74,7 +74,7 @@ export default function LogistClientPage() {
               <div className="grid grid-cols-2 gap-2.5">
                 <a
                   href={tel}
-                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[14px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[14px] font-medium text-success active:opacity-70"
                 >
                   <Phone className="h-4 w-4" /> Позвонить
                 </a>
@@ -83,14 +83,14 @@ export default function LogistClientPage() {
                     href={wa}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-secondary text-[14px] font-medium text-foreground active:opacity-70"
                   >
                     <MessageCircle className="h-4 w-4" /> WhatsApp
                   </a>
                 ) : (
                   <Link
                     href="/lm/orders"
-                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[14px] font-medium text-white active:bg-white/12"
+                    className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-secondary text-[14px] font-medium text-foreground active:opacity-70"
                   >
                     Заказы клиента
                   </Link>
@@ -137,7 +137,7 @@ export default function LogistClientPage() {
                   />
                 </div>
 
-                <p className="mt-2.5 text-[12.5px] text-zinc-500">
+                <p className="mt-2.5 text-[12.5px] text-muted-foreground">
                   {formatCount(stats.total, ["заказ", "заказа", "заказов"])} всего · {stats.active} в работе ·{" "}
                   {stats.delivered} доставлено
                   {stats.lastOrderAt ? ` · последний ${formatRelative(stats.lastOrderAt)}` : ""}
@@ -147,7 +147,7 @@ export default function LogistClientPage() {
 
             <SectionTitle
               title="Заказы клиента"
-              action={<Link href="/lm/orders" className="text-orange-400">Все заказы</Link>}
+              action={<Link href="/lm/orders" className="text-primary">Все заказы</Link>}
             />
 
             <div className="space-y-2.5">
@@ -155,34 +155,34 @@ export default function LogistClientPage() {
                 <Link
                   key={order.id}
                   href={`/lm/orders/${order.id}`}
-                  className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]"
+                  className="flex items-start gap-3 rounded-xl border border-border bg-card shadow-sm p-3.5 active:opacity-70"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14.5px] font-medium text-white">
+                    <p className="truncate text-[14.5px] font-medium text-foreground">
                       {routeTitle(order.routeFrom, order.routeTo)}
                     </p>
-                    <p className="mt-0.5 text-[12.5px] text-zinc-500">
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                       № {shortRef(order.id)}
                       {order.deadline ? ` · до ${formatDateShort(order.deadline)}` : ""}
                       {order.agreedPrice || order.price ? ` · ${formatMoney(order.agreedPrice ?? order.price)}` : ""}
                     </p>
                   </div>
                   <span
-                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[11.5px] ${
-                      ORDER_STATUS_STYLES[order.status] ?? "border-white/10 bg-white/5 text-zinc-300"
+                    className={`shrink-0 rounded-md border px-2 py-0.5 text-[11.5px] ${
+                      ORDER_STATUS_STYLES[order.status] ?? "border-border bg-secondary text-foreground/90"
                     }`}
                   >
                     {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS] ?? order.status}
                   </span>
-                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-600" />
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/80" />
                 </Link>
               ))}
             </div>
 
             {client.notes ? (
               <Card className="mt-3">
-                <p className="text-[12px] uppercase tracking-wide text-zinc-500">Заметки</p>
-                <p className="mt-1 text-[13.5px] text-zinc-300">{client.notes}</p>
+                <p className="text-[12px] uppercase tracking-wide text-muted-foreground">Заметки</p>
+                <p className="mt-1 text-[13.5px] text-foreground/90">{client.notes}</p>
               </Card>
             ) : null}
           </>
@@ -195,10 +195,10 @@ export default function LogistClientPage() {
 function Line({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3">
-      <span className="mt-0.5 text-zinc-500">{icon}</span>
+      <span className="mt-0.5 text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[12px] text-zinc-500">{label}</span>
-        <span className="block break-words text-[14px] text-white">{value || "—"}</span>
+        <span className="block text-[12px] text-muted-foreground">{label}</span>
+        <span className="block break-words text-[14px] text-foreground">{value || "—"}</span>
       </span>
     </div>
   )
@@ -214,15 +214,15 @@ function Metric({
   tone?: "default" | "good" | "warn" | "bad"
 }) {
   const tones: Record<string, string> = {
-    default: "text-white",
-    good: "text-emerald-300",
-    warn: "text-amber-300",
-    bad: "text-red-300",
+    default: "text-foreground",
+    good: "text-success",
+    warn: "text-warning",
+    bad: "text-destructive",
   }
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3.5">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-3.5">
       <p className={`text-[16px] font-semibold ${tones[tone]}`}>{value}</p>
-      <p className="mt-1 text-[12.5px] text-zinc-400">{label}</p>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">{label}</p>
     </div>
   )
 }

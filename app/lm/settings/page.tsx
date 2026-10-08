@@ -61,7 +61,7 @@ function minutesHuman(value: string): string {
 }
 
 const inputClass =
-  "min-h-[48px] w-full rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none"
+  "min-h-[48px] w-full rounded-xl border border-border bg-card px-3.5 text-[15px] text-foreground placeholder:text-muted-foreground/80 focus:border-primary/50 focus:outline-none"
 
 export default function MobileSettingsPage() {
   const { user } = useStaffSession()
@@ -217,15 +217,15 @@ export default function MobileSettingsPage() {
               />
 
               {suggestions.length > 0 ? (
-                <div className="overflow-hidden rounded-xl border border-white/10">
+                <div className="overflow-hidden rounded-xl border border-border">
                   {suggestions.map((item, index) => (
                     <button
                       key={`${item.lat}-${item.lng}-${index}`}
                       type="button"
                       onClick={() => pickPlace(item)}
-                      className="flex min-h-[48px] w-full items-start gap-2 border-b border-white/5 px-3 py-2.5 text-left text-[13.5px] text-zinc-200 last:border-b-0 active:bg-white/8"
+                      className="flex min-h-[48px] w-full items-start gap-2 border-b border-border px-3 py-2.5 text-left text-[13.5px] text-foreground last:border-b-0 active:opacity-70"
                     >
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="line-clamp-2">{item.label}</span>
                     </button>
                   ))}
@@ -253,7 +253,7 @@ export default function MobileSettingsPage() {
                 type="button"
                 onClick={() => void findBase()}
                 disabled={searching}
-                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12 disabled:opacity-50"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-secondary text-[13.5px] font-medium text-foreground active:opacity-70 disabled:opacity-50"
               >
                 {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Найти координаты по адресу
@@ -268,10 +268,10 @@ export default function MobileSettingsPage() {
               >
                 <SectionHeading icon={<Timer className="h-4 w-4" />} title="Нормы труда и отдыха" />
                 <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${openSection === "rest" ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${openSection === "rest" ? "rotate-180" : ""}`}
                 />
               </button>
-              <p className="-mt-1 text-[12.5px] text-zinc-500">
+              <p className="-mt-1 text-[12.5px] text-muted-foreground">
                 По этим минутам считается переработка в рейсах и подсказки логисту.
               </p>
 
@@ -305,15 +305,15 @@ export default function MobileSettingsPage() {
               >
                 <SectionHeading icon={<FileText className="h-4 w-4" />} title="Реквизиты для документов" />
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-[12px] text-zinc-500">
+                  <span className="text-[12px] text-muted-foreground">
                     {filledRequisites} из {REQUISITE_FIELDS.length}
                   </span>
                   <ChevronDown
-                    className={`h-4 w-4 text-zinc-500 transition-transform ${openSection === "requisites" ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 text-muted-foreground transition-transform ${openSection === "requisites" ? "rotate-180" : ""}`}
                   />
                 </div>
               </button>
-              <p className="-mt-1 text-[12.5px] text-zinc-500">
+              <p className="-mt-1 text-[12.5px] text-muted-foreground">
                 Печатаются в заявке, ТТН и путевом листе от имени компании.
               </p>
 
@@ -343,8 +343,8 @@ export default function MobileSettingsPage() {
                     onClick={() => pickTheme(item.value)}
                     className={`min-h-[44px] rounded-xl text-[13.5px] font-medium ${
                       theme === item.value
-                        ? "bg-orange-500/20 text-orange-200"
-                        : "bg-white/8 text-white active:bg-white/12"
+                        ? "bg-primary/20 text-primary"
+                        : "bg-secondary text-foreground active:opacity-70"
                     }`}
                   >
                     {item.label}
@@ -358,7 +358,7 @@ export default function MobileSettingsPage() {
 
       {!error && !loading ? (
         <div
-          className="fixed left-0 right-0 z-30 border-t border-white/8 bg-[#0b0b0e]/95 px-4 py-2.5 backdrop-blur"
+          className="fixed left-0 right-0 z-30 border-t border-border surface-glass px-4 py-2.5 backdrop-blur"
           style={{ bottom: "calc(72px + env(safe-area-inset-bottom))" }}
         >
           <div className="mx-auto max-w-md">
@@ -366,7 +366,7 @@ export default function MobileSettingsPage() {
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-orange-500 text-[15px] font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Save className="h-4.5 w-4.5" />}
               Сохранить
@@ -381,8 +381,8 @@ export default function MobileSettingsPage() {
 function SectionHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
-      <span className="shrink-0 text-zinc-500">{icon}</span>
-      <h2 className="min-w-0 text-left text-[15px] font-semibold text-white">{title}</h2>
+      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      <h2 className="min-w-0 text-left text-[15px] font-semibold text-foreground">{title}</h2>
     </div>
   )
 }
@@ -404,7 +404,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[12.5px] text-zinc-400">{label}</span>
+      <span className="mb-1 block text-[12.5px] text-muted-foreground">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -412,7 +412,7 @@ function Field({
         inputMode={inputMode}
         className={inputClass}
       />
-      {hint ? <span className="mt-1 block text-[11.5px] text-zinc-500">{hint}</span> : null}
+      {hint ? <span className="mt-1 block text-[11.5px] text-muted-foreground">{hint}</span> : null}
     </label>
   )
 }

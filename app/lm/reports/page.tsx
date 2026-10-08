@@ -82,7 +82,7 @@ export default function LogistReportsPage() {
             <SectionTitle
               title="Что требует решения"
               action={
-                <button type="button" onClick={reload} className="inline-flex items-center gap-1 text-orange-400">
+                <button type="button" onClick={reload} className="inline-flex items-center gap-1 text-primary">
                   <RefreshCw className="h-3.5 w-3.5" /> Обновить
                 </button>
               }
@@ -115,23 +115,23 @@ export default function LogistReportsPage() {
 
                     meta.tone === "ok"
 
-                      ? "text-emerald-300"
+                      ? "text-success"
 
                       : meta.tone === "warn"
 
-                        ? "text-amber-300"
+                        ? "text-warning"
 
                         : meta.tone === "critical"
 
-                          ? "text-red-300"
+                          ? "text-destructive"
 
-                          : "text-zinc-400"
+                          : "text-muted-foreground"
 
                   return (
 
-                    <div key={insight.id} className={`rounded-2xl border p-4 ${meta.style}`}>
+                    <div key={insight.id} className={`rounded-xl border p-4 ${meta.style}`}>
 
-                      <p className="flex items-start gap-2 text-[14.5px] font-medium text-white">
+                      <p className="flex items-start gap-2 text-[14.5px] font-medium text-foreground">
 
                         <LevelIcon className={`mt-0.5 h-4 w-4 shrink-0 ${iconTone}`} />
 
@@ -139,10 +139,10 @@ export default function LogistReportsPage() {
 
                       </p>
                       {insight.detail ? (
-                        <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">{insight.detail}</p>
+                        <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">{insight.detail}</p>
                       ) : null}
                       {insight.source ? (
-                        <p className="mt-1.5 text-[11.5px] text-zinc-500">Источник: {insight.source}</p>
+                        <p className="mt-1.5 text-[11.5px] text-muted-foreground">Источник: {insight.source}</p>
                       ) : null}
                     </div>
                   )
@@ -172,17 +172,17 @@ export default function LogistReportsPage() {
                 <Card className="space-y-2">
                   {(report.orders.topDirections ?? []).slice(0, 5).map((direction, index) => (
                     <div key={`${direction.from}-${direction.to}-${index}`} className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-[13.5px] text-zinc-300">
+                      <p className="min-w-0 truncate text-[13.5px] text-foreground/90">
                         {shortCity(direction.from)} → {shortCity(direction.to)}
                       </p>
-                      <p className="shrink-0 text-[13px] text-zinc-500">{direction.count}</p>
+                      <p className="shrink-0 text-[13px] text-muted-foreground">{direction.count}</p>
                     </div>
                   ))}
                 </Card>
               </>
             ) : null}
 
-            <p className="mt-4 pb-2 text-center text-[12px] text-zinc-600">
+            <p className="mt-4 pb-2 text-center text-[12px] text-muted-foreground/80">
               Полные отчёты с графиками — в полной версии на компьютере
             </p>
           </>
@@ -196,10 +196,10 @@ function Row({ label, value, hint }: { label: string; value: string; hint?: stri
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-[13.5px] text-zinc-300">{label}</p>
-        {hint ? <p className="text-[11.5px] text-zinc-500">{hint}</p> : null}
+        <p className="text-[13.5px] text-foreground/90">{label}</p>
+        {hint ? <p className="text-[11.5px] text-muted-foreground">{hint}</p> : null}
       </div>
-      <p className="shrink-0 text-[14px] font-medium text-white">{value}</p>
+      <p className="shrink-0 text-[14px] font-medium text-foreground">{value}</p>
     </div>
   )
 }

@@ -22,7 +22,7 @@ export function LogistBottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/8 bg-[#0b0b0e]/95 backdrop-blur"
+      className="fixed bottom-0 left-0 right-0 z-40 border-t border-border surface-glass backdrop-blur"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="mx-auto flex max-w-md items-stretch justify-between px-1">
@@ -34,7 +34,7 @@ export function LogistBottomNav() {
               key={tab.href}
               href={tab.href}
               className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium ${
-                active ? "text-orange-400" : "text-zinc-500"
+                active ? "text-primary" : "text-muted-foreground"
               }`}
             >
               <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.9} />

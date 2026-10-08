@@ -43,17 +43,17 @@ export default function LogistPhotosPage() {
         userName={user?.name}
       />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-2.5 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 py-2.5 backdrop-blur">
         <div className="flex flex-wrap gap-2">
           {FILTERS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setFilter(item.id)}
-              className={`rounded-full border px-3 py-1.5 text-[13px] font-medium ${
+              className={`rounded-md border px-3 py-1.5 text-[13px] font-medium ${
                 filter === item.id
-                  ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                  : "border-white/8 bg-white/[0.03] text-zinc-400"
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-card shadow-sm text-muted-foreground"
               }`}
             >
               {item.label}
@@ -80,15 +80,15 @@ export default function LogistPhotosPage() {
                 key={photo.id}
                 type="button"
                 onClick={() => setOpened(photo)}
-                className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03] text-left active:border-orange-500/40"
+                className="overflow-hidden rounded-xl border border-border bg-card shadow-sm text-left active:border-primary/40"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={photo.url} alt={photo.description || "Фото"} className="h-40 w-full object-cover" loading="lazy" />
                 <span className="block px-3 py-2">
-                  <span className="block text-[12.5px] font-medium text-white">
+                  <span className="block text-[12.5px] font-medium text-foreground">
                     {PHOTO_TYPE_LABELS[photo.type] ?? photo.type}
                   </span>
-                  <span className="mt-0.5 block truncate text-[11.5px] text-zinc-500">
+                  <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
                     {photo.description || formatDateTime(photo.createdAt)}
                   </span>
                 </span>
@@ -105,16 +105,16 @@ export default function LogistPhotosPage() {
         >
           <div className="flex items-center justify-between px-4 py-3">
             <div className="min-w-0">
-              <p className="truncate text-[15px] font-medium text-white">
+              <p className="truncate text-[15px] font-medium text-foreground">
                 {PHOTO_TYPE_LABELS[opened.type] ?? opened.type}
               </p>
-              <p className="text-[12px] text-zinc-400">{formatDateTime(opened.createdAt)}</p>
+              <p className="text-[12px] text-muted-foreground">{formatDateTime(opened.createdAt)}</p>
             </div>
             <button
               type="button"
               onClick={() => setOpened(null)}
               aria-label="Закрыть"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white active:bg-white/20"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground active:opacity-70"
             >
               <X className="h-5 w-5" />
             </button>
@@ -127,7 +127,7 @@ export default function LogistPhotosPage() {
             <div className="px-4 pb-4">
               <a
                 href={`/lm/orders/${opened.orderId}`}
-                className="flex min-h-[48px] items-center justify-center rounded-xl bg-orange-500 text-[14.5px] font-semibold text-white active:bg-orange-600"
+                className="flex min-h-[48px] items-center justify-center rounded-xl bg-primary text-[14.5px] font-semibold text-primary-foreground active:opacity-70"
               >
                 Открыть заказ
               </a>

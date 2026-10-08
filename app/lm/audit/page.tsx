@@ -55,14 +55,14 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
 }
 
 const TONE_BY_ACTION: Record<string, string> = {
-  delete: "bg-red-500/15 text-red-200",
-  reject: "bg-red-500/15 text-red-200",
-  suspend: "bg-red-500/15 text-red-200",
-  deactivate: "bg-red-500/15 text-red-200",
-  login: "bg-sky-500/15 text-sky-200",
-  approve: "bg-emerald-500/15 text-emerald-200",
-  restore: "bg-emerald-500/15 text-emerald-200",
-  activate: "bg-emerald-500/15 text-emerald-200",
+  delete: "bg-destructive/15 text-destructive",
+  reject: "bg-destructive/15 text-destructive",
+  suspend: "bg-destructive/15 text-destructive",
+  deactivate: "bg-destructive/15 text-destructive",
+  login: "bg-chart-2/15 text-chart-2",
+  approve: "bg-success/15 text-success",
+  restore: "bg-success/15 text-success",
+  activate: "bg-success/15 text-success",
 }
 
 interface AuditRow {
@@ -180,20 +180,20 @@ export default function MobileAuditPage() {
     <>
       <LogistHeader title="Журнал действий" subtitle="Кто что менял в организации" back userName={user?.name} />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 pb-3 pt-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 pb-3 pt-3 backdrop-blur">
         {/* Действий много: на телефоне удобнее системный список, чем лента чипов */}
         <label className="block">
           <span className="sr-only">Действие</span>
           <select
             value={action}
             onChange={(event) => setAction(event.target.value)}
-            className="h-11 w-full appearance-none rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white focus:border-orange-500/50 focus:outline-none"
+            className="h-11 w-full appearance-none rounded-xl border border-border bg-secondary px-3.5 text-[15px] text-foreground focus:border-primary/50 focus:outline-none"
           >
-            <option value="all" className="bg-[#15151a]">
+            <option value="all" className="bg-card shadow-sm">
               Все действия
             </option>
             {Object.entries(ACTION_LABELS).map(([id, label]) => (
-              <option key={id} value={id} className="bg-[#15151a]">
+              <option key={id} value={id} className="bg-card shadow-sm">
                 {label}
               </option>
             ))}
@@ -214,7 +214,7 @@ export default function MobileAuditPage() {
           />
         ) : (
           rows.map((row) => {
-            const tone = TONE_BY_ACTION[row.action] ?? "bg-white/8 text-zinc-300"
+            const tone = TONE_BY_ACTION[row.action] ?? "bg-secondary text-foreground/90"
             const extra = details(row.metadata)
             return (
               <Card key={row.id}>
@@ -222,20 +222,20 @@ export default function MobileAuditPage() {
                   <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-medium ${tone}`}>
                     {ACTION_LABELS[row.action] ?? row.action}
                   </span>
-                  <span className="shrink-0 text-[11.5px] text-zinc-500">{formatRelative(row.createdAt)}</span>
+                  <span className="shrink-0 text-[11.5px] text-muted-foreground">{formatRelative(row.createdAt)}</span>
                 </div>
 
-                <p className="mt-2 truncate text-[14px] font-medium text-white">
+                <p className="mt-2 truncate text-[14px] font-medium text-foreground">
                   {row.actorEmail ?? "система"}
                 </p>
 
-                <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-400">
+                <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
                   {TARGET_TYPE_LABELS[row.targetType] ?? row.targetType}
                   {row.targetEmail ? `: ${row.targetEmail}` : ""}
                   {extra ? ` · ${extra}` : ""}
                 </p>
 
-                <p className="mt-1 text-[11.5px] text-zinc-600">
+                <p className="mt-1 text-[11.5px] text-muted-foreground/80">
                   {formatDateTime(row.createdAt)}
                   {row.ip ? ` · IP ${row.ip}` : ""}
                 </p>

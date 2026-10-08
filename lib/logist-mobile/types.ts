@@ -116,19 +116,25 @@ export interface MobileNotification {
 // Подписи и цвета статусов
 // ---------------------------------------------------------------------------
 
-/** Цветной чип статуса заказа: классы Tailwind. */
+/**
+ * Цветной чип статуса заказа.
+ *
+ * Цвета берём из токенов темы (те же, что в компьютерной версии), а не из
+ * произвольных оттенков Tailwind: тогда чипы выглядят частью продукта, а смена
+ * палитры в globals.css меняет оба контура сразу.
+ */
 export const ORDER_STATUS_STYLES: Record<string, string> = {
-  search: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30",
-  negotiation: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  agreed: "bg-sky-500/15 text-sky-300 border-sky-500/30",
-  in_route: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
-  documents: "bg-violet-500/15 text-violet-300 border-violet-500/30",
-  assigned: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
-  control: "bg-orange-500/15 text-orange-300 border-orange-500/30",
-  delivered: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  cancelled: "bg-red-500/15 text-red-300 border-red-500/30",
-  rejected: "bg-red-500/15 text-red-300 border-red-500/30",
-  expired: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  search: "bg-secondary text-muted-foreground border-border",
+  negotiation: "bg-warning/15 text-warning border-warning/30",
+  agreed: "bg-chart-2/15 text-chart-2 border-chart-2/30",
+  in_route: "bg-primary/15 text-primary border-primary/30",
+  documents: "bg-chart-5/15 text-chart-5 border-chart-5/30",
+  assigned: "bg-chart-3/15 text-chart-3 border-chart-3/30",
+  control: "bg-primary/15 text-primary border-primary/30",
+  delivered: "bg-success/15 text-success border-success/30",
+  cancelled: "bg-destructive/15 text-destructive border-destructive/30",
+  rejected: "bg-destructive/15 text-destructive border-destructive/30",
+  expired: "bg-secondary text-muted-foreground border-border",
 }
 
 /** Группы для фильтров списка заказов. */
@@ -146,19 +152,19 @@ export const ORDER_FILTERS: { id: string; label: string; statuses: string[] }[] 
 export const ATTENTION_STATUSES = ["negotiation", "agreed", "documents", "assigned"]
 
 export const DRIVER_STATUS_META: Record<string, { label: string; dot: string; text: string }> = {
-  available: { label: "Свободен", dot: "bg-emerald-400", text: "text-emerald-300" },
-  busy: { label: "В рейсе", dot: "bg-amber-400", text: "text-amber-300" },
-  offline: { label: "Не на связи", dot: "bg-zinc-500", text: "text-zinc-400" },
-  maintenance: { label: "На ТО", dot: "bg-sky-400", text: "text-sky-300" },
+  available: { label: "Свободен", dot: "bg-success", text: "text-success" },
+  busy: { label: "В рейсе", dot: "bg-warning", text: "text-warning" },
+  offline: { label: "Не на связи", dot: "bg-muted-foreground", text: "text-muted-foreground" },
+  maintenance: { label: "На ТО", dot: "bg-chart-2", text: "text-chart-2" },
 }
 
 export const ROUTE_STATUS_META: Record<string, { label: string; style: string }> = {
-  planned: { label: "Запланирован", style: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
-  draft: { label: "Черновик", style: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30" },
-  in_progress: { label: "В пути", style: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
-  active: { label: "В пути", style: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
-  completed: { label: "Завершён", style: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  cancelled: { label: "Отменён", style: "bg-red-500/15 text-red-300 border-red-500/30" },
+  planned: { label: "Запланирован", style: "bg-chart-2/15 text-chart-2 border-chart-2/30" },
+  draft: { label: "Черновик", style: "bg-secondary text-muted-foreground border-border" },
+  in_progress: { label: "В пути", style: "bg-primary/15 text-primary border-primary/30" },
+  active: { label: "В пути", style: "bg-primary/15 text-primary border-primary/30" },
+  completed: { label: "Завершён", style: "bg-success/15 text-success border-success/30" },
+  cancelled: { label: "Отменён", style: "bg-destructive/15 text-destructive border-destructive/30" },
 }
 
 export const PAYMENT_TYPE_LABELS: Record<string, string> = {
@@ -307,17 +313,17 @@ export interface MobileChatMessage {
 }
 
 export const VEHICLE_STATUS_META: Record<string, { label: string; style: string }> = {
-  available: { label: "Свободна", style: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  in_use: { label: "В рейсе", style: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
-  maintenance: { label: "На ТО", style: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  offline: { label: "Не в работе", style: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30" },
+  available: { label: "Свободна", style: "bg-success/15 text-success border-success/30" },
+  in_use: { label: "В рейсе", style: "bg-chart-2/15 text-chart-2 border-chart-2/30" },
+  maintenance: { label: "На ТО", style: "bg-warning/15 text-warning border-warning/30" },
+  offline: { label: "Не в работе", style: "bg-secondary text-foreground/90 border-border" },
 }
 
 /** Состояние срока (ТО, страховка): сколько дней осталось до даты. */
 export const DEADLINE_STATUS_META: Record<string, { label: string; style: string }> = {
-  ok: { label: "в порядке", style: "text-zinc-400" },
-  soon: { label: "скоро", style: "text-amber-300" },
-  overdue: { label: "просрочено", style: "text-red-300" },
+  ok: { label: "в порядке", style: "text-muted-foreground" },
+  soon: { label: "скоро", style: "text-warning" },
+  overdue: { label: "просрочено", style: "text-destructive" },
 }
 
 /**
@@ -326,11 +332,11 @@ export const DEADLINE_STATUS_META: Record<string, { label: string; style: string
  * в пустые квадраты.
  */
 export const INSIGHT_LEVEL_META: Record<string, { tone: "ok" | "warn" | "critical" | "info"; style: string }> = {
-  ok: { tone: "ok", style: "border-emerald-500/25 bg-emerald-500/[0.06]" },
-  warn: { tone: "warn", style: "border-amber-500/25 bg-amber-500/[0.06]" },
-  warning: { tone: "warn", style: "border-amber-500/25 bg-amber-500/[0.06]" },
-  critical: { tone: "critical", style: "border-red-500/25 bg-red-500/[0.06]" },
-  info: { tone: "info", style: "border-white/10 bg-white/[0.03]" },
+  ok: { tone: "ok", style: "border-success/25 bg-success/10" },
+  warn: { tone: "warn", style: "border-warning/25 bg-warning/10" },
+  warning: { tone: "warn", style: "border-warning/25 bg-warning/10" },
+  critical: { tone: "critical", style: "border-destructive/25 bg-destructive/10" },
+  info: { tone: "info", style: "border-border bg-white/[0.03]" },
 }
 
 // --- Поиск грузов (ATI), топливо, фото -------------------------------------

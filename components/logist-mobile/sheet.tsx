@@ -49,21 +49,21 @@ export function Sheet({
         className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
       />
       <div
-        className="relative w-full max-w-md rounded-t-3xl border-t border-white/10 bg-[#141418] pb-[calc(16px+env(safe-area-inset-bottom))] shadow-2xl"
+        className="relative w-full max-w-md rounded-t-3xl border-t border-border bg-card pb-[calc(16px+env(safe-area-inset-bottom))] shadow-2xl"
         style={{ animation: "sheet-up 180ms ease-out" }}
       >
         <div className="flex items-start gap-3 px-4 pt-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[16px] font-semibold leading-snug text-white">{title}</p>
+            <p className="text-[16px] font-semibold leading-snug text-foreground">{title}</p>
             {description ? (
-              <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">{description}</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{description}</p>
             ) : null}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Закрыть шторку"
-            className="-mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 active:bg-white/8"
+            className="-mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
           >
             <X className="h-4.5 w-4.5" />
           </button>
@@ -97,9 +97,9 @@ export function ConfirmSheet({
   onClose: () => void
 }) {
   const tones: Record<string, string> = {
-    primary: "bg-orange-500 text-white active:bg-orange-600",
-    success: "bg-emerald-500/90 text-white active:bg-emerald-600",
-    danger: "bg-red-500/90 text-white active:bg-red-600",
+    primary: "bg-primary text-primary-foreground active:opacity-70-600",
+    success: "bg-success/90 text-foreground active:opacity-70-600",
+    danger: "bg-destructive/90 text-foreground active:opacity-70-600",
   }
 
   return (
@@ -108,7 +108,7 @@ export function ConfirmSheet({
         type="button"
         disabled={busy}
         onClick={onConfirm}
-        className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold disabled:opacity-50 ${tones[tone]}`}
+        className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold disabled:opacity-50 ${tones[tone]}`}
       >
         {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
         {busy ? "Сохраняю…" : confirmLabel}
@@ -116,7 +116,7 @@ export function ConfirmSheet({
       <button
         type="button"
         onClick={onClose}
-        className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-2xl text-[14px] font-medium text-zinc-400 active:bg-white/5"
+        className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-xl text-[14px] font-medium text-muted-foreground active:opacity-70"
       >
         Не сейчас
       </button>

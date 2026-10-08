@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next"
 
+import { AccountSwitchBanner } from "@/components/account-switch-banner"
+
 export const metadata: Metadata = {
   title: "Водитель | АИ Логистика",
   description: "Мобильное приложение водителя",
@@ -28,6 +30,8 @@ export default function MobileLayout({
   return (
     <div className="min-h-screen bg-[#09090b] text-white flex justify-center">
       <div className="w-full max-w-md mx-auto relative">
+        {/* Уведомление владельцу: он смотрит приложение водителя, а не свой кабинет */}
+        <AccountSwitchBanner className="sticky top-0 z-50" />
         {children}
       </div>
     </div>

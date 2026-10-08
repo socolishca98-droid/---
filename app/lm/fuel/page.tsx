@@ -65,8 +65,8 @@ export default function LogistFuelPage() {
               onClick={() => setDays(period.id)}
               className={`h-10 flex-1 rounded-xl border text-[13px] font-medium ${
                 days === period.id
-                  ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                  : "border-white/8 bg-white/[0.03] text-zinc-400"
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border bg-card shadow-sm text-muted-foreground"
               }`}
             >
               {period.label}
@@ -102,12 +102,12 @@ export default function LogistFuelPage() {
             ) : (
               <div className="space-y-2.5">
                 {vehicles.map((vehicle) => (
-                  <Card key={vehicle.vehicleId} className={vehicle.flag ? "border-amber-500/25 bg-amber-500/[0.06]" : ""}>
+                  <Card key={vehicle.vehicleId} className={vehicle.flag ? "border-warning/25 bg-warning/10" : ""}>
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-[15px] font-semibold text-white">{vehicle.plate}</p>
-                      <p className="shrink-0 text-[14px] font-medium text-white">{formatMoney(vehicle.amountRub)}</p>
+                      <p className="text-[15px] font-semibold text-foreground">{vehicle.plate}</p>
+                      <p className="shrink-0 text-[14px] font-medium text-foreground">{formatMoney(vehicle.amountRub)}</p>
                     </div>
-                    <p className="mt-1.5 text-[12.5px] text-zinc-400">
+                    <p className="mt-1.5 text-[12.5px] text-muted-foreground">
                       {[
                         `рейсов: ${vehicle.routes}`,
                         vehicle.liters !== null ? `факт ${liters(vehicle.liters)}` : null,
@@ -118,7 +118,7 @@ export default function LogistFuelPage() {
                         .join(" · ")}
                     </p>
                     {vehicle.flag ? (
-                      <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-amber-300">
+                      <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-warning">
                         <TriangleAlert className="h-3.5 w-3.5" />
                         Расход выше нормы
                         {vehicle.diffPct !== null ? ` на ${Math.round(vehicle.diffPct)}%` : ""}
@@ -135,21 +135,21 @@ export default function LogistFuelPage() {
             ) : (
               <div className="space-y-2.5">
                 {entries.slice(0, 30).map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3.5">
+                  <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card shadow-sm p-3.5">
                     <div className="min-w-0">
-                      <p className="truncate text-[14px] text-white">
+                      <p className="truncate text-[14px] text-foreground">
                         {entry.vehiclePlate || "машина не указана"}
                         {entry.driverName ? ` · ${entry.driverName}` : ""}
                       </p>
-                      <p className="mt-0.5 truncate text-[12.5px] text-zinc-500">
+                      <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
                         {formatDateShort(entry.spentAt)}
                         {entry.vendor ? ` · ${entry.vendor}` : ""}
                         {entry.routeName ? ` · ${entry.routeName}` : ""}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-[14px] font-medium text-white">{formatMoney(entry.amountRub)}</p>
-                      <p className="text-[12px] text-zinc-500">
+                      <p className="text-[14px] font-medium text-foreground">{formatMoney(entry.amountRub)}</p>
+                      <p className="text-[12px] text-muted-foreground">
                         {liters(entry.liters)}
                         {entry.pricePerL !== null ? ` · ${price(entry.pricePerL)}` : ""}
                       </p>

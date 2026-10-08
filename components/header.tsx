@@ -35,12 +35,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { AccountSwitchBanner } from "@/components/account-switch-banner"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { Badge } from "@/components/ui/badge"
-import { Building2, KeyRound, Loader2, LogOut, Menu, ShieldCheck, Users } from "lucide-react"
+import { Building2, KeyRound, Loader2, LogOut, Menu, ShieldCheck, UserCog, Users } from "lucide-react"
 import { MobileNav } from "@/components/mobile-nav"
 import { toast } from "sonner"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
+import { useJsonApi } from "@/hooks/use-json-api"
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Администратор",
@@ -52,6 +54,23 @@ function initials(name: string): string {
   if (parts.length === 0) return "?"
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+/**
+ * Пункт «Вход в любой аккаунт» — только у владельца платформы.
+ * Флаг приходит из /api/auth/session (см. app/api/auth/session/route.ts).
+ */
+function OwnerMenuItem() {
+  const { data } = useJsonApi<{ isOwner?: boolean }>("/api/auth/session")
+  if (!data?.isOwner) return null
+  return (
+    <DropdownMenuItem asChild>
+      <Link href="/owner" className="flex items-center gap-2 cursor-pointer">
+        <UserCog className="h-4 w-4" />
+        Вход в любой аккаунт
+      </Link>
+    </DropdownMenuItem>
+  )
 }
 
 export function Header() {
@@ -145,6 +164,8 @@ export function Header() {
 
   return (
     <>
+      {/* Владелец в чужом аккаунте: всегда видно, где ты, и как вернуться */}
+      <AccountSwitchBanner />
       <header className="surface-glass sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/70 px-4 lg:px-6">
         <button
           type="button"
@@ -204,6 +225,9 @@ export function Header() {
               )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+
+            {/* Владелец платформы: вход в любой аккаунт одной кнопкой */}
+            <OwnerMenuItem />
 
             <DropdownMenuItem asChild>
               <Link href="/organization" className="flex items-center gap-2 cursor-pointer">

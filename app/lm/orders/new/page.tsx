@@ -235,7 +235,7 @@ export default function NewOrderPage() {
         <Step n={2} title="Груз" hint="Можно пропустить: вес и объём уточните позже.">
           <div className="space-y-3">
             <label className="block">
-              <span className="mb-1.5 block text-[12.5px] text-zinc-500">Что везём</span>
+              <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Что везём</span>
               <input
                 value={form.cargoType}
                 onChange={(event) => update("cargoType", event.target.value)}
@@ -249,10 +249,10 @@ export default function NewOrderPage() {
                   key={item}
                   type="button"
                   onClick={() => update("cargoType", item)}
-                  className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
+                  className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
                     form.cargoType === item
-                      ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                      : "border-white/10 text-zinc-300"
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-border text-foreground/90"
                   }`}
                 >
                   {item}
@@ -261,7 +261,7 @@ export default function NewOrderPage() {
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <label className="block">
-                <span className="mb-1.5 block text-[12.5px] text-zinc-500">Вес, кг</span>
+                <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Вес, кг</span>
                 <input
                   value={form.weight}
                   onChange={(event) => update("weight", event.target.value.replace(/[^\d]/g, ""))}
@@ -272,7 +272,7 @@ export default function NewOrderPage() {
                 {errors.weight ? <ErrorText>{errors.weight}</ErrorText> : null}
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-[12.5px] text-zinc-500">Объём, м³</span>
+                <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Объём, м³</span>
                 <input
                   value={form.volume}
                   onChange={(event) => update("volume", event.target.value.replace(/[^\d.,]/g, ""))}
@@ -289,7 +289,7 @@ export default function NewOrderPage() {
         <Step n={3} title="Клиент и деньги" hint="Можно заполнить потом — карточка напомнит.">
           <div className="space-y-3">
             <label className="block">
-              <span className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-zinc-500">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
                 <User className="h-3.5 w-3.5" /> Клиент
               </span>
               <input
@@ -298,14 +298,14 @@ export default function NewOrderPage() {
                 onFocus={() => setFocus("clientName")}
                 onBlur={() => window.setTimeout(() => setFocus(null), 150)}
                 placeholder="ООО «Ромашка»"
-                className={pickedClient ? `${inputClass} border-emerald-500/40` : inputClass}
+                className={pickedClient ? `${inputClass} border-success/40` : inputClass}
               />
               {pickedClient ? (
-                <span className="mt-1.5 inline-flex items-center gap-1 text-[12px] text-emerald-300">
+                <span className="mt-1.5 inline-flex items-center gap-1 text-[12px] text-success">
                   <Check className="h-3.5 w-3.5" /> {pickedClient}
                 </span>
               ) : (
-                <span className="mt-1.5 block text-[12px] text-zinc-600">
+                <span className="mt-1.5 block text-[12px] text-muted-foreground/80">
                   Начните вводить — подставим контакт из справочника
                 </span>
               )}
@@ -325,7 +325,7 @@ export default function NewOrderPage() {
                       )
                       setFocus(null)
                     }}
-                    className="rounded-full border border-white/10 px-3 py-1.5 text-[12.5px] text-zinc-200"
+                    className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground"
                   >
                     {client.name}
                     {client.phone ? ` · ${client.phone}` : ""}
@@ -335,7 +335,7 @@ export default function NewOrderPage() {
             ) : null}
 
             <label className="block">
-              <span className="mb-1.5 block text-[12.5px] text-zinc-500">Контакт клиента</span>
+              <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Контакт клиента</span>
               <input
                 value={form.clientContact}
                 onChange={(event) => update("clientContact", event.target.value)}
@@ -346,7 +346,7 @@ export default function NewOrderPage() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-zinc-500">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
                 <Wallet className="h-3.5 w-3.5" /> Цена, ₽
               </span>
               <input
@@ -359,7 +359,7 @@ export default function NewOrderPage() {
             </label>
 
             <div>
-              <span className="mb-1.5 block text-[12.5px] text-zinc-500">Выгрузить до</span>
+              <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Выгрузить до</span>
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { id: "today", label: "Сегодня", days: 0 },
@@ -372,10 +372,10 @@ export default function NewOrderPage() {
                       key={item.id}
                       type="button"
                       onClick={() => pickDeadline(item.days)}
-                      className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
+                      className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
                         active
-                          ? "border-orange-500/40 bg-orange-500/15 text-orange-300"
-                          : "border-white/10 text-zinc-300"
+                          ? "border-primary/40 bg-primary/15 text-primary"
+                          : "border-border text-foreground/90"
                       }`}
                     >
                       {item.label}
@@ -385,8 +385,8 @@ export default function NewOrderPage() {
                 <button
                   type="button"
                   onClick={() => pickDeadline(null)}
-                  className={`rounded-full border px-3 py-1.5 text-[12.5px] ${
-                    ownDate ? "border-orange-500/40 bg-orange-500/15 text-orange-300" : "border-white/10 text-zinc-300"
+                  className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
+                    ownDate ? "border-primary/40 bg-primary/15 text-primary" : "border-border text-foreground/90"
                   }`}
                 >
                   Своя дата
@@ -406,14 +406,14 @@ export default function NewOrderPage() {
 
         {/* Итог перед сохранением: видно, что получится */}
         {readyToSave ? (
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-            <p className="text-[12px] uppercase tracking-wide text-zinc-500">Получится</p>
-            <p className="mt-1 flex items-center gap-1.5 text-[14px] font-medium text-white">
+          <div className="rounded-xl border border-border bg-card shadow-sm px-4 py-3">
+            <p className="text-[12px] uppercase tracking-wide text-muted-foreground">Получится</p>
+            <p className="mt-1 flex items-center gap-1.5 text-[14px] font-medium text-foreground">
               <span className="truncate">{form.routeFrom.trim()}</span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-zinc-500" />
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{form.routeTo.trim()}</span>
             </p>
-            <p className="mt-0.5 text-[12.5px] text-zinc-400">
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
               {[
                 form.cargoType.trim() || "груз",
                 form.weight.trim() ? `${form.weight.trim()} кг` : null,
@@ -430,13 +430,13 @@ export default function NewOrderPage() {
           type="button"
           disabled={saving}
           onClick={() => void submit()}
-          className="mt-1 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 text-[15px] font-semibold text-white active:bg-orange-600 disabled:opacity-40"
+          className="mt-1 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
         >
           {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
           {saving ? "Создаю…" : "Создать заказ"}
         </button>
 
-        <p className="pb-2 text-center text-[12px] text-zinc-600">
+        <p className="pb-2 text-center text-[12px] text-muted-foreground/80">
           Водителя и машину назначите в карточке — или соберёте заказ в рейс.
         </p>
       </div>
@@ -462,14 +462,14 @@ function Step({
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-white/8 bg-white/[0.02] p-3.5">
+    <section className="rounded-xl border border-border bg-card shadow-sm/60 p-3.5">
       <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-[12px] font-semibold text-orange-300">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary">
           {n}
         </span>
         <div className="min-w-0">
-          <p className="text-[14.5px] font-semibold text-white">{title}</p>
-          <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">{hint}</p>
+          <p className="text-[14.5px] font-semibold text-foreground">{title}</p>
+          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">{hint}</p>
         </div>
       </div>
       <div className="mt-3">{children}</div>
@@ -506,7 +506,7 @@ function SuggestionField({
   return (
     <div>
       <label className="block">
-        <span className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-zinc-500">
+        <span className="mb-1.5 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
           {icon} {label}
         </span>
         <input
@@ -528,7 +528,7 @@ function SuggestionField({
               key={item}
               type="button"
               onClick={() => onPick(item)}
-              className="max-w-full truncate rounded-full border border-white/10 px-3 py-1.5 text-[12.5px] text-zinc-300"
+              className="max-w-full truncate rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground/90"
             >
               {item}
             </button>
@@ -540,14 +540,14 @@ function SuggestionField({
 }
 
 function ErrorText({ children }: { children: React.ReactNode }) {
-  return <span className="mt-1.5 block text-[12px] text-red-300">{children}</span>
+  return <span className="mt-1.5 block text-[12px] text-destructive">{children}</span>
 }
 
 const inputClass =
-  "min-h-[48px] w-full rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white placeholder:text-zinc-600 focus:border-orange-500/50 focus:outline-none"
+  "min-h-[48px] w-full rounded-xl border border-border bg-card px-3.5 text-[15px] text-foreground placeholder:text-muted-foreground/80 focus:border-primary/50 focus:outline-none"
 
 function fieldClass(invalid: boolean): string {
   return invalid
-    ? "min-h-[48px] w-full rounded-xl border border-red-500/50 bg-red-500/[0.06] px-3.5 text-[15px] text-white placeholder:text-zinc-600 focus:border-red-500/70 focus:outline-none"
+    ? "min-h-[48px] w-full rounded-xl border border-destructive/50 bg-destructive/10 px-3.5 text-[15px] text-foreground placeholder:text-muted-foreground/80 focus:border-destructive/70 focus:outline-none"
     : inputClass
 }

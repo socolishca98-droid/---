@@ -102,15 +102,15 @@ export default function LogistRoutePage() {
           <>
             <Card>
               <div className="flex items-start justify-between gap-3">
-                <p className="min-w-0 flex-1 text-[16px] font-semibold leading-snug text-white">
+                <p className="min-w-0 flex-1 text-[16px] font-semibold leading-snug text-foreground">
                   {route.name || "Рейс"}
                 </p>
-                <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}>
+                <span className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}>
                   {meta.label}
                 </span>
               </div>
 
-              {route.notes ? <p className="mt-2 text-[13px] text-zinc-400">{route.notes}</p> : null}
+              {route.notes ? <p className="mt-2 text-[13px] text-muted-foreground">{route.notes}</p> : null}
 
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 <Metric
@@ -122,33 +122,33 @@ export default function LogistRoutePage() {
               </div>
 
               {route.economics?.revenueRub ? (
-                <p className="mt-3 text-[13px] text-zinc-400">
-                  Выручка рейса: <span className="text-white">{formatMoney(route.economics.revenueRub)}</span>
+                <p className="mt-3 text-[13px] text-muted-foreground">
+                  Выручка рейса: <span className="text-foreground">{formatMoney(route.economics.revenueRub)}</span>
                 </p>
               ) : null}
             </Card>
 
             <Card className="mt-3">
-              <p className="text-[14px] font-semibold text-white">Экипаж</p>
+              <p className="text-[14px] font-semibold text-foreground">Экипаж</p>
               <div className="mt-2.5 space-y-2 text-[13.5px]">
                 <div className="flex items-center gap-2.5">
-                  <User className="h-4 w-4 shrink-0 text-zinc-500" />
-                  <span className="text-zinc-400">Водитель</span>
-                  <span className="ml-auto text-right text-zinc-100">
+                  <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="text-muted-foreground">Водитель</span>
+                  <span className="ml-auto text-right text-foreground">
                     {route.driver?.name || "не назначен"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2.5">
-                  <Truck className="h-4 w-4 shrink-0 text-zinc-500" />
-                  <span className="text-zinc-400">Машина</span>
-                  <span className="ml-auto text-right text-zinc-100">
+                  <Truck className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="text-muted-foreground">Машина</span>
+                  <span className="ml-auto text-right text-foreground">
                     {route.vehicle ? `${route.vehicle.plate}${route.vehicle.type ? ` · ${route.vehicle.type}` : ""}` : "не назначена"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2.5">
-                  <Clock className="h-4 w-4 shrink-0 text-zinc-500" />
-                  <span className="text-zinc-400">Старт</span>
-                  <span className="ml-auto text-right text-zinc-100">
+                  <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="text-muted-foreground">Старт</span>
+                  <span className="ml-auto text-right text-foreground">
                     {route.startedAt ? formatDateTime(route.startedAt) : "не начат"}
                   </span>
                 </div>
@@ -159,14 +159,14 @@ export default function LogistRoutePage() {
                   {driverTel ? (
                     <a
                       href={driverTel}
-                      className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-emerald-500/15 text-[13.5px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                      className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-success/15 text-[13.5px] font-medium text-success active:opacity-70"
                     >
                       <Phone className="h-4 w-4" /> Звонок
                     </a>
                   ) : null}
                   <Link
                     href={`/lm/chat/${route.driver.id}`}
-                    className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12"
+                    className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-secondary text-[13.5px] font-medium text-foreground active:opacity-70"
                   >
                     <MessageCircle className="h-4 w-4" /> Чат
                   </Link>
@@ -175,7 +175,7 @@ export default function LogistRoutePage() {
                       href={driverWa}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-white/8 text-[13.5px] font-medium text-white active:bg-white/12"
+                      className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl bg-secondary text-[13.5px] font-medium text-foreground active:opacity-70"
                     >
                       <MessageCircle className="h-4 w-4" /> WhatsApp
                     </a>
@@ -186,18 +186,18 @@ export default function LogistRoutePage() {
 
             {/* Согласование рейса: пока водителя нет, рейс никому не передан */}
             {needsApproval ? (
-              <Card className="mt-3 border-amber-500/25 bg-amber-500/[0.06]">
-                <p className="text-[15px] font-semibold text-white">Рейс собран — передайте водителю</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-zinc-300">
+              <Card className="mt-3 border-warning/40 bg-warning/10">
+                <p className="text-[15px] font-semibold text-foreground">Рейс собран — передайте водителю</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">
                   Выберите водителя: он получит уведомление и увидит рейс в приложении. Свободные — сверху.
                 </p>
                 {vehicleOwner ? (
-                  <p className="mt-2 text-[12.5px] text-zinc-400">
+                  <p className="mt-2 text-[12.5px] text-muted-foreground">
                     {route.vehicle?.plate} закреплена за {vehicleOwner.name.split(" ")[0]} — передать можно ему.
                   </p>
                 ) : null}
                 {crewOptions.length === 0 ? (
-                  <p className="mt-2 text-[12.5px] text-zinc-400">
+                  <p className="mt-2 text-[12.5px] text-muted-foreground">
                     Свободных водителей нет. Передайте рейс, когда кто-то освободится.
                   </p>
                 ) : null}
@@ -210,7 +210,7 @@ export default function LogistRoutePage() {
                           type="button"
                           disabled={busy}
                           onClick={() => void handOver(item)}
-                          className="rounded-full border border-white/12 bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-100 active:bg-white/10 disabled:opacity-40"
+                          className="rounded-md border border-border bg-secondary px-3 py-2 text-[13px] text-foreground active:opacity-70 disabled:opacity-40"
                         >
                           {item.name.split(" ")[0]}
                           {item.vehiclePlate ? ` · ${item.vehiclePlate}` : ""}
@@ -220,7 +220,7 @@ export default function LogistRoutePage() {
                     })}
                 </div>
                 {busy ? (
-                  <p className="mt-2 inline-flex items-center gap-2 text-[12.5px] text-zinc-400">
+                  <p className="mt-2 inline-flex items-center gap-2 text-[12.5px] text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Передаю рейс…
                   </p>
                 ) : null}
@@ -229,7 +229,7 @@ export default function LogistRoutePage() {
               <button
                 type="button"
                 onClick={() => setChangeDriver((value) => !value)}
-                className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 text-[13px] font-medium text-orange-400"
+                className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 text-[13px] font-medium text-primary"
               >
                 {changeDriver ? "Отменить" : "Сменить водителя"}
               </button>
@@ -237,9 +237,9 @@ export default function LogistRoutePage() {
 
             {changeDriver && route.driver ? (
               <Card className="mt-2">
-                <p className="text-[12.5px] text-zinc-500">Передать рейс другому водителю</p>
+                <p className="text-[12.5px] text-muted-foreground">Передать рейс другому водителю</p>
                 {crewOptions.filter((item) => item.id !== route.driver?.id).length === 0 ? (
-                  <p className="mt-1.5 text-[12.5px] text-zinc-400">
+                  <p className="mt-1.5 text-[12.5px] text-muted-foreground">
                     {vehicleOwner
                       ? `Машина ${route.vehicle?.plate} закреплена за ${vehicleOwner.name.split(" ")[0]} — передать можно только ему.`
                       : "Свободных водителей нет."}
@@ -256,7 +256,7 @@ export default function LogistRoutePage() {
                           type="button"
                           disabled={busy}
                           onClick={() => void handOver(item)}
-                          className="rounded-full border border-white/10 px-3 py-1.5 text-[13px] text-zinc-200 active:bg-white/10 disabled:opacity-40"
+                          className="rounded-md border border-border px-3 py-1.5 text-[13px] text-foreground active:opacity-70 disabled:opacity-40"
                         >
                           {item.name.split(" ")[0]}
                           <span className={`ml-1.5 ${meta.text}`}>· {meta.label.toLowerCase()}</span>
@@ -267,7 +267,7 @@ export default function LogistRoutePage() {
               </Card>
             ) : null}
 
-            <h2 className="mb-2.5 mt-6 text-[15px] font-semibold text-white">
+            <h2 className="mb-2.5 mt-6 text-[15px] font-semibold text-foreground">
               Заказы в рейсе · {route.orders?.length ?? 0}
             </h2>
             <div className="space-y-2.5">
@@ -275,24 +275,24 @@ export default function LogistRoutePage() {
                 <Link
                   key={order.id}
                   href={`/lm/orders/${order.id}`}
-                  className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 active:bg-white/[0.06]"
+                  className="flex items-start gap-3 rounded-xl border border-border bg-card shadow-sm p-3.5 active:opacity-70"
                 >
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/8 text-[12px] font-semibold text-zinc-300">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[12px] font-semibold text-foreground/90">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-2">
-                      <span className="min-w-0 truncate text-[14.5px] font-medium text-white">
+                      <span className="min-w-0 truncate text-[14.5px] font-medium text-foreground">
                         {order.clientName || shortCity(order.routeFrom)}
                       </span>
                       <OrderStatusChip status={order.status} />
                     </span>
-                    <span className="mt-1 flex items-center gap-1.5 text-[12.5px] text-zinc-400">
+                    <span className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
                       {shortCity(order.routeFrom)}
-                      <ArrowRight className="h-3.5 w-3.5 text-zinc-600" />
+                      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/80" />
                       {shortCity(order.routeTo)}
                     </span>
-                    <span className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-zinc-500">
+                    <span className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-muted-foreground">
                       {order.cargoType ? <span>{order.cargoType}</span> : null}
                       {order.weight ? <span>{formatWeightKg(order.weight)}</span> : null}
                       {order.agreedPrice || order.price ? (
@@ -312,9 +312,9 @@ export default function LogistRoutePage() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-white/[0.04] py-2">
-      <p className="text-[15px] font-semibold text-white">{value}</p>
-      <p className="text-[11.5px] text-zinc-500">{label}</p>
+    <div className="rounded-xl bg-secondary py-2">
+      <p className="text-[15px] font-semibold text-foreground">{value}</p>
+      <p className="text-[11.5px] text-muted-foreground">{label}</p>
     </div>
   )
 }

@@ -90,22 +90,22 @@ export default function LogistChatPage() {
         userName={user?.name}
       />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 py-3 backdrop-blur">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             inputMode="search"
             placeholder="Имя или машина"
-            className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] pl-9 pr-9 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+            className="h-11 w-full rounded-xl border border-border bg-secondary pl-9 pr-9 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
           {query ? (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Очистить"
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-white/8"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
             >
               <X className="h-4 w-4" />
             </button>
@@ -133,13 +133,13 @@ export default function LogistChatPage() {
                 <Link
                   key={driver.id}
                   href={`/lm/chat/${driver.id}`}
-                  className={`flex items-center gap-3 rounded-2xl border p-4 active:bg-white/[0.06] ${
+                  className={`flex items-center gap-3 rounded-xl border p-4 active:opacity-70 ${
                     unread > 0
-                      ? "border-orange-500/40 bg-orange-500/[0.08]"
-                      : "border-white/8 bg-white/[0.03]"
+                      ? "border-primary/40 bg-primary/[0.08]"
+                      : "border-border bg-card shadow-sm"
                   }`}
                 >
-                  <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/8 text-[15px] font-semibold text-white">
+                  <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary text-[15px] font-semibold text-foreground">
                     {driver.name
                       .trim()
                       .split(/\s+/)
@@ -152,13 +152,13 @@ export default function LogistChatPage() {
                     <span className="flex items-baseline gap-2">
                       <span
                         className={`min-w-0 flex-1 truncate text-[15px] ${
-                          unread > 0 ? "font-semibold text-white" : "font-medium text-white"
+                          unread > 0 ? "font-semibold text-foreground" : "font-medium text-foreground"
                         }`}
                       >
                         {driver.name}
                       </span>
                       {thread ? (
-                        <span className="shrink-0 text-[11px] text-zinc-500">
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
                           {formatRelative(thread.lastMessage.createdAt)}
                         </span>
                       ) : null}
@@ -167,7 +167,7 @@ export default function LogistChatPage() {
                     {preview ? (
                       <span
                         className={`mt-0.5 block truncate text-[13px] ${
-                          unread > 0 ? "text-zinc-200" : "text-zinc-500"
+                          unread > 0 ? "text-foreground" : "text-muted-foreground"
                         }`}
                       >
                         {preview}
@@ -177,18 +177,18 @@ export default function LogistChatPage() {
                         <span className={`inline-block h-2 w-2 rounded-full ${meta.dot}`} />
                         <span className={meta.text}>{meta.label}</span>
                         {driver.vehiclePlate ? (
-                          <span className="text-zinc-600">· {driver.vehiclePlate}</span>
+                          <span className="text-muted-foreground/80">· {driver.vehiclePlate}</span>
                         ) : null}
                       </span>
                     )}
                   </span>
 
                   {unread > 0 ? (
-                    <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[11px] font-semibold text-white">
+                    <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
                       {unread > 99 ? "99+" : unread}
                     </span>
                   ) : (
-                    <ChevronRight className="h-4 w-4 shrink-0 text-zinc-600" />
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/80" />
                   )}
                 </Link>
               )

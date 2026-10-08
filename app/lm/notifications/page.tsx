@@ -109,10 +109,10 @@ export default function LogistNotificationsPage() {
                 key={item.id}
                 type="button"
                 onClick={() => void open(item)}
-                className={`block w-full rounded-2xl border p-4 text-left active:bg-white/[0.06] ${
+                className={`block w-full rounded-xl border p-4 text-left active:opacity-70 ${
                   item.isRead
-                    ? "border-white/8 bg-white/[0.02]"
-                    : "border-orange-500/25 bg-orange-500/[0.07]"
+                    ? "border-border bg-card shadow-sm/60"
+                    : "border-primary/25 bg-primary/[0.07]"
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -121,16 +121,16 @@ export default function LogistNotificationsPage() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-2">
-                      <span className={`text-[14.5px] font-medium ${item.isRead ? "text-zinc-300" : "text-white"}`}>
+                      <span className={`text-[14.5px] font-medium ${item.isRead ? "text-foreground/90" : "text-foreground"}`}>
                         {item.title}
                       </span>
-                      <span className="shrink-0 text-[11.5px] text-zinc-500">{formatRelative(item.createdAt)}</span>
+                      <span className="shrink-0 text-[11.5px] text-muted-foreground">{formatRelative(item.createdAt)}</span>
                     </span>
                     {item.message ? (
-                      <span className="mt-1 block text-[13px] leading-relaxed text-zinc-400">{item.message}</span>
+                      <span className="mt-1 block text-[13px] leading-relaxed text-muted-foreground">{item.message}</span>
                     ) : null}
                     {item.priority === "high" && !item.isRead ? (
-                      <span className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] text-amber-300">
+                      <span className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] text-warning">
                         <AlertTriangle className="h-3.5 w-3.5" /> важное
                       </span>
                     ) : null}

@@ -179,7 +179,7 @@ export default function LogistSearchPage() {
         userName={user?.name}
       />
 
-      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-white/8 bg-[#0b0b0e]/95 px-4 py-3 backdrop-blur">
+      <div className="sticky top-[calc(57px+env(safe-area-inset-top))] z-20 border-b border-border surface-glass px-4 py-3 backdrop-blur">
         <div className="flex gap-2">
           <TabButton active={tab === "base"} onClick={() => setTab("base")} icon={<Database className="h-4 w-4" />}>
             Своя база{stats ? ` (${stats.new})` : ""}
@@ -193,20 +193,20 @@ export default function LogistSearchPage() {
       {tab === "base" ? (
         <div className="px-4 pt-3.5">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               inputMode="search"
               placeholder="Город, груз, фирма"
-              className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] pl-9 pr-9 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+              className="h-11 w-full rounded-xl border border-border bg-secondary pl-9 pr-9 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
             />
             {query ? (
               <button
                 type="button"
                 onClick={() => setQuery("")}
                 aria-label="Очистить"
-                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-white/8"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -217,10 +217,10 @@ export default function LogistSearchPage() {
             <select
               value={harvestMode}
               onChange={(event) => setHarvestMode(event.target.value)}
-              className="h-10 flex-1 rounded-xl border border-white/8 bg-white/[0.04] px-3 text-[13.5px] text-white"
+              className="h-10 flex-1 rounded-xl border border-border bg-secondary px-3 text-[13.5px] text-foreground"
             >
               {HARVEST_MODES.map((mode) => (
-                <option key={mode.id} value={mode.id} className="bg-[#0b0b0e]">
+                <option key={mode.id} value={mode.id} className="bg-background">
                   {mode.label}
                 </option>
               ))}
@@ -229,7 +229,7 @@ export default function LogistSearchPage() {
               type="button"
               onClick={() => void runHarvester()}
               disabled={harvesting}
-              className="flex h-10 items-center gap-2 rounded-xl bg-orange-500 px-4 text-[13.5px] font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+              className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[13.5px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
             >
               {harvesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Собрать
@@ -249,7 +249,7 @@ export default function LogistSearchPage() {
               />
             ) : (
               <>
-                <p className="px-1 text-[12.5px] text-zinc-500">
+                <p className="px-1 text-[12.5px] text-muted-foreground">
                   Показаны {loads.length} из {total}
                 </p>
                 {loads.map((load) => (
@@ -269,7 +269,7 @@ export default function LogistSearchPage() {
               <SmallField label="Вес от, т" value={weightMin} onChange={setWeightMin} inputMode="decimal" />
               <SmallField label="Вес до, т" value={weightMax} onChange={setWeightMax} inputMode="decimal" />
             </div>
-            <p className="text-[12px] text-zinc-500">
+            <p className="text-[12px] text-muted-foreground">
               Живой запрос тратит лимиты подключённого аккаунта ATI.SU — пользуйтесь, когда в своей базе пусто.
             </p>
             <ActionButton tone="primary" full onClick={() => void runLiveSearch()} disabled={scanning}>
@@ -310,7 +310,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border text-[13.5px] font-medium ${
-        active ? "border-orange-500/40 bg-orange-500/15 text-orange-300" : "border-white/8 bg-white/[0.03] text-zinc-400"
+        active ? "border-primary/40 bg-primary/15 text-primary" : "border-border bg-card shadow-sm text-muted-foreground"
       }`}
     >
       {icon}
@@ -322,15 +322,15 @@ function TabButton({
 /** Одна карточка груза — общая для своей базы и живого поиска. */
 function LoadCard({ load, busy, onTake }: { load: MobileAtiLoad; busy: boolean; onTake: () => void }) {
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 text-[15px] font-semibold text-white">
+        <p className="min-w-0 text-[15px] font-semibold text-foreground">
           {shortCity(load.routeFrom)} → {shortCity(load.routeTo)}
         </p>
-        <p className="shrink-0 text-[15px] font-semibold text-emerald-300">{formatMoney(load.price)}</p>
+        <p className="shrink-0 text-[15px] font-semibold text-success">{formatMoney(load.price)}</p>
       </div>
 
-      <p className="mt-1.5 text-[12.5px] text-zinc-400">
+      <p className="mt-1.5 text-[12.5px] text-muted-foreground">
         {[
           load.distance ? formatKm(load.distance) : null,
           load.weight ? formatWeightKg(load.weight) : null,
@@ -342,14 +342,14 @@ function LoadCard({ load, busy, onTake }: { load: MobileAtiLoad; busy: boolean; 
       </p>
 
       {load.firmName || load.contactName ? (
-        <p className="mt-1 flex items-center gap-1.5 truncate text-[12.5px] text-zinc-500">
+        <p className="mt-1 flex items-center gap-1.5 truncate text-[12.5px] text-muted-foreground">
           <Phone className="h-3.5 w-3.5 shrink-0" />
           {[load.firmName, load.contactName, load.contactPhone].filter(Boolean).join(" · ")}
         </p>
       ) : null}
 
       {load.routeFrom || load.routeTo ? (
-        <p className="mt-1 flex items-start gap-1.5 text-[12px] text-zinc-600">
+        <p className="mt-1 flex items-start gap-1.5 text-[12px] text-muted-foreground/80">
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span className="line-clamp-2">
             {load.routeFrom} → {load.routeTo}
@@ -361,7 +361,7 @@ function LoadCard({ load, busy, onTake }: { load: MobileAtiLoad; busy: boolean; 
         type="button"
         onClick={onTake}
         disabled={busy}
-        className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-orange-500 text-[14px] font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+        className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
         Взять в работу
@@ -408,10 +408,10 @@ function CityField({
 
   if (value) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3.5 py-2.5">
+      <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3.5 py-2.5">
         <span className="min-w-0 flex-1">
-          <span className="block text-[11.5px] text-orange-300/80">{label}</span>
-          <span className="block truncate text-[14px] text-white">{value.fullName}</span>
+          <span className="block text-[11.5px] text-primary/80">{label}</span>
+          <span className="block truncate text-[14px] text-foreground">{value.fullName}</span>
         </span>
         <button
           type="button"
@@ -419,7 +419,7 @@ function CityField({
             onChange(null)
             setText("")
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-orange-200 active:bg-white/10"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-primary active:opacity-70"
           aria-label="Убрать город"
         >
           <X className="h-4 w-4" />
@@ -430,15 +430,15 @@ function CityField({
 
   return (
     <div>
-      <label className="mb-1 block text-[11.5px] text-zinc-500">{label}</label>
+      <label className="mb-1 block text-[11.5px] text-muted-foreground">{label}</label>
       <input
         value={text}
         onChange={(event) => setText(event.target.value)}
         placeholder={placeholder}
-        className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] px-3.5 text-[15px] text-white placeholder:text-zinc-500 focus:border-orange-500/50 focus:outline-none"
+        className="h-11 w-full rounded-xl border border-border bg-secondary px-3.5 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
       />
       {suggestions.length > 0 ? (
-        <div className="mt-1.5 overflow-hidden rounded-xl border border-white/8 bg-[#111114]">
+        <div className="mt-1.5 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           {suggestions.map((city) => (
             <button
               key={city.id}
@@ -447,7 +447,7 @@ function CityField({
                 onChange(city)
                 setSuggestions([])
               }}
-              className="block w-full px-3.5 py-2.5 text-left text-[13.5px] text-zinc-200 active:bg-white/8"
+              className="block w-full px-3.5 py-2.5 text-left text-[13.5px] text-foreground active:opacity-70"
             >
               {city.fullName}
             </button>
@@ -471,12 +471,12 @@ function SmallField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11.5px] text-zinc-500">{label}</span>
+      <span className="mb-1 block text-[11.5px] text-muted-foreground">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         inputMode={inputMode}
-        className="h-11 w-full rounded-xl border border-white/8 bg-white/[0.04] px-3 text-[15px] text-white focus:border-orange-500/50 focus:outline-none"
+        className="h-11 w-full rounded-xl border border-border bg-secondary px-3 text-[15px] text-foreground focus:border-primary/50 focus:outline-none"
       />
     </label>
   )

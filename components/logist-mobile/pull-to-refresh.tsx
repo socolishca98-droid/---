@@ -113,12 +113,12 @@ export function PullToRefresh({
   return (
     <div ref={hostRef} className={className}>
       <div
-        className="flex items-center justify-center overflow-hidden text-zinc-400"
+        className="flex items-center justify-center overflow-hidden text-muted-foreground"
         style={{ height: distance }}
         aria-hidden={distance === 0}
       >
         <Loader2
-          className={`h-4 w-4 ${busy || ready ? "animate-spin text-orange-400" : ""}`}
+          className={`h-4 w-4 ${busy || ready ? "animate-spin text-primary" : ""}`}
           style={{ opacity: Math.min(1, distance / TRIGGER) }}
         />
         <span className="ml-2 text-[12px]" style={{ opacity: Math.min(1, distance / TRIGGER) }}>

@@ -332,12 +332,12 @@ export function DriversMap() {
   }, [])
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#0b0b0e]">
+    <div className="relative h-full w-full overflow-hidden bg-background">
       <div ref={containerRef} className="absolute inset-0 z-0" />
 
       {/* Пока тайлы не приехали — ровная подложка. Без «дыхания» и мигания. */}
       <div
-        className={`pointer-events-none absolute inset-0 z-[1] bg-[#0b0b0e] transition-opacity duration-500 ${
+        className={`pointer-events-none absolute inset-0 z-[1] bg-background transition-opacity duration-500 ${
           tilesReady ? "opacity-0" : "opacity-100"
         }`}
         aria-hidden="true"
@@ -350,10 +350,10 @@ export function DriversMap() {
             <button
               type="button"
               onClick={() => setShowRoutes((value) => !value)}
-              className={`flex h-10 items-center gap-2 rounded-full border px-3.5 text-[13px] font-medium backdrop-blur ${
+              className={`flex h-10 items-center gap-2 rounded-md border px-3.5 text-[13px] font-medium backdrop-blur ${
                 showRoutes
-                  ? "border-orange-500/40 bg-orange-500/20 text-orange-200"
-                  : "border-white/10 bg-black/60 text-zinc-300"
+                  ? "border-primary/40 bg-primary/20 text-primary"
+                  : "border-border bg-black/60 text-foreground/90"
               }`}
             >
               <RouteIcon className="h-4 w-4" />
@@ -362,7 +362,7 @@ export function DriversMap() {
             <button
               type="button"
               onClick={fitAll}
-              className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3.5 text-[13px] font-medium text-zinc-200 backdrop-blur"
+              className="flex h-10 items-center gap-2 rounded-md border border-border bg-black/60 px-3.5 text-[13px] font-medium text-foreground backdrop-blur"
             >
               <Crosshair className="h-4 w-4" />
               Все
@@ -374,7 +374,7 @@ export function DriversMap() {
               type="button"
               onClick={() => zoom(1)}
               aria-label="Приблизить"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white backdrop-blur"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-black/60 text-foreground backdrop-blur"
             >
               <Plus className="h-4.5 w-4.5" />
             </button>
@@ -382,7 +382,7 @@ export function DriversMap() {
               type="button"
               onClick={() => zoom(-1)}
               aria-label="Отдалить"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white backdrop-blur"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-black/60 text-foreground backdrop-blur"
             >
               <Minus className="h-4.5 w-4.5" />
             </button>
@@ -394,18 +394,18 @@ export function DriversMap() {
       {selectedDriver && !sheetOpen ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-2 z-[3]">
           <div className="mx-auto max-w-md px-3">
-            <div className="pointer-events-auto rounded-2xl border border-white/10 bg-[#111114]/95 p-3.5 backdrop-blur">
+            <div className="pointer-events-auto rounded-xl border border-border bg-card shadow-sm/95 p-3.5 backdrop-blur">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-[14.5px] font-medium text-white">{selectedDriver.name}</p>
-                  <p className="mt-0.5 truncate text-[12.5px] text-zinc-400">
+                  <p className="truncate text-[14.5px] font-medium text-foreground">{selectedDriver.name}</p>
+                  <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
                     {[selectedDriver.vehiclePlate, selectedDriver.currentLocation].filter(Boolean).join(" · ") || "нет данных"}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelected(null)}
-                  className="shrink-0 text-[12.5px] text-zinc-400"
+                  className="shrink-0 text-[12.5px] text-muted-foreground"
                 >
                   Скрыть
                 </button>
@@ -414,14 +414,14 @@ export function DriversMap() {
                 <button
                   type="button"
                   onClick={() => focusDriver(selectedDriver)}
-                  className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[13px] font-medium text-white active:bg-white/12"
+                  className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] font-medium text-foreground active:opacity-70"
                 >
                   <Crosshair className="h-4 w-4" /> На карте
                 </button>
                 {telHref(selectedDriver.phone) ? (
                   <a
                     href={telHref(selectedDriver.phone) as string}
-                    className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[13px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                    className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[13px] font-medium text-success active:opacity-70"
                   >
                     <Phone className="h-4 w-4" /> Позвонить
                   </a>
@@ -435,19 +435,19 @@ export function DriversMap() {
       {/* Нижняя шторка: список машин или кнопка его открыть */}
       <div className="absolute inset-x-0 bottom-0 z-[4]">
         <div className="mx-auto max-w-md">
-          <div className="rounded-t-3xl border border-b-0 border-white/10 bg-[#0b0b0e]/95 backdrop-blur">
+          <div className="rounded-t-3xl border border-b-0 border-border surface-glass backdrop-blur">
             <button
               type="button"
               onClick={() => setSheetOpen((value) => !value)}
               className="flex w-full items-center justify-between gap-3 px-4 py-3"
             >
-              <span className="flex items-center gap-2 text-[14.5px] font-medium text-white">
+              <span className="flex items-center gap-2 text-[14.5px] font-medium text-foreground">
                 Машины на карте
-                <span className="rounded-full bg-white/8 px-2 py-0.5 text-[12px] text-zinc-300">
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[12px] text-foreground/90">
                   {onMapDrivers.length}
                 </span>
               </span>
-              <span className="flex items-center gap-2 text-[12.5px] text-zinc-400">
+              <span className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
                 {updatedAt ? formatRelative(updatedAt) : loading ? "загрузка…" : "нет данных"}
                 {sheetOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
               </span>
@@ -456,7 +456,7 @@ export function DriversMap() {
             {sheetOpen ? (
               <div className="max-h-[42vh] overflow-y-auto overscroll-contain px-3 pb-3">
                 {onMapDrivers.length === 0 ? (
-                  <p className="px-1 pb-2 text-[13px] text-zinc-500">
+                  <p className="px-1 pb-2 text-[13px] text-muted-foreground">
                     Координат пока нет — водители появятся на карте после первой отправки геопозиции.
                   </p>
                 ) : (
@@ -468,18 +468,18 @@ export function DriversMap() {
                       return (
                         <div
                           key={driver.id}
-                          className={`rounded-2xl border p-3 ${
-                            active ? "border-orange-500/40 bg-orange-500/[0.08]" : "border-white/8 bg-white/[0.03]"
+                          className={`rounded-xl border p-3 ${
+                            active ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-card shadow-sm"
                           }`}
                         >
                           <button type="button" onClick={() => focusDriver(driver)} className="block w-full text-left">
-                            <span className="block truncate text-[14.5px] font-medium text-white">{driver.name}</span>
+                            <span className="block truncate text-[14.5px] font-medium text-foreground">{driver.name}</span>
                             <span className="mt-0.5 flex items-center gap-1.5 text-[12.5px]">
                               <span className={`inline-block h-2 w-2 rounded-full ${meta.dot}`} />
                               <span className={meta.text}>{meta.label}</span>
-                              {driver.vehiclePlate ? <span className="text-zinc-500">· {driver.vehiclePlate}</span> : null}
+                              {driver.vehiclePlate ? <span className="text-muted-foreground">· {driver.vehiclePlate}</span> : null}
                             </span>
-                            <span className="mt-1 block truncate text-[12px] text-zinc-500">
+                            <span className="mt-1 block truncate text-[12px] text-muted-foreground">
                               {driver.routeFrom && driver.routeTo
                                 ? `${driver.routeFrom} → ${driver.routeTo}`
                                 : driver.currentLocation || "маршрут не указан"}
@@ -489,19 +489,19 @@ export function DriversMap() {
                             <button
                               type="button"
                               onClick={() => focusDriver(driver)}
-                              className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-white/8 text-[13px] font-medium text-white active:bg-white/12"
+                              className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] font-medium text-foreground active:opacity-70"
                             >
                               <Crosshair className="h-4 w-4" /> Показать
                             </button>
                             {tel ? (
                               <a
                                 href={tel}
-                                className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-emerald-500/15 text-[13px] font-medium text-emerald-200 active:bg-emerald-500/25"
+                                className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[13px] font-medium text-success active:opacity-70"
                               >
                                 <Phone className="h-4 w-4" /> Позвонить
                               </a>
                             ) : (
-                              <span className="flex min-h-[42px] items-center justify-center rounded-xl bg-white/5 text-[12.5px] text-zinc-600">
+                              <span className="flex min-h-[42px] items-center justify-center rounded-xl bg-secondary text-[12.5px] text-muted-foreground/80">
                                 нет телефона
                               </span>
                             )}
@@ -514,7 +514,7 @@ export function DriversMap() {
                 <button
                   type="button"
                   onClick={() => void load()}
-                  className="mt-2 flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-white/[0.04] text-[13px] text-zinc-300"
+                  className="mt-2 flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] text-foreground/90"
                 >
                   <RefreshCw className="h-4 w-4" /> Обновить
                 </button>

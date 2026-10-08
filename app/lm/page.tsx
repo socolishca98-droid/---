@@ -162,9 +162,9 @@ export default function LogistHomePage() {
         {loading ? (
           <ListSkeleton rows={2} />
         ) : actions.length === 0 ? (
-          <div className="flex min-h-[56px] items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.07] px-4">
-            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
-            <span className="text-[13.5px] text-emerald-100">
+          <div className="flex min-h-[56px] items-center gap-3 rounded-xl border border-success/25 bg-success/[0.07] px-4">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+            <span className="text-[13.5px] text-success">
               Срочного нет: заказы распределены, сроки в порядке
             </span>
           </div>
@@ -174,20 +174,20 @@ export default function LogistHomePage() {
               const Icon = action.icon
               const tone =
                 action.tone === "danger"
-                  ? "border-red-500/35 bg-red-500/[0.09] text-red-100"
-                  : "border-amber-500/30 bg-amber-500/[0.09] text-amber-100"
-              const iconTone = action.tone === "danger" ? "text-red-300" : "text-amber-300"
+                  ? "border-destructive/35 bg-destructive/10 text-destructive"
+                  : "border-warning/30 bg-warning/10 text-warning"
+              const iconTone = action.tone === "danger" ? "text-destructive" : "text-warning"
 
               return (
                 <Link
                   key={action.key}
                   href={action.href}
-                  className={`flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 active:opacity-90 ${tone}`}
+                  className={`flex min-h-[64px] items-center gap-3 rounded-xl border px-4 active:opacity-90 ${tone}`}
                 >
                   <Icon className={`h-5 w-5 shrink-0 ${iconTone}`} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14.5px] font-semibold">{action.title}</span>
-                    <span className="mt-0.5 block text-[12px] text-zinc-400/90">{action.hint}</span>
+                    <span className="mt-0.5 block text-[12px] text-muted-foreground/90">{action.hint}</span>
                   </span>
                   <ArrowRight className={`h-4 w-4 shrink-0 ${iconTone}`} />
                 </Link>
@@ -230,23 +230,23 @@ export default function LogistHomePage() {
         <div className="mt-4 grid grid-cols-3 gap-2.5">
           <Link
             href="/lm/orders/new"
-            className="flex min-h-[76px] flex-col items-start justify-between rounded-2xl bg-orange-500 p-3.5 text-white active:bg-orange-600"
+            className="flex min-h-[76px] flex-col items-start justify-between rounded-xl bg-primary p-3.5 text-primary-foreground active:opacity-70"
           >
             <Plus className="h-5.5 w-5.5" />
             <span className="text-[13.5px] font-semibold leading-tight">Новый заказ</span>
           </Link>
           <Link
             href="/lm/map"
-            className="flex min-h-[76px] flex-col items-start justify-between rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 text-zinc-100 active:bg-white/[0.06]"
+            className="flex min-h-[76px] flex-col items-start justify-between rounded-xl border border-border bg-card shadow-sm p-3.5 text-foreground active:opacity-70"
           >
-            <MapIcon className="h-5.5 w-5.5 text-orange-300" />
+            <MapIcon className="h-5.5 w-5.5 text-primary" />
             <span className="text-[13.5px] font-medium leading-tight">Карта</span>
           </Link>
           <Link
             href="/lm/drivers"
-            className="flex min-h-[76px] flex-col items-start justify-between rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 text-zinc-100 active:bg-white/[0.06]"
+            className="flex min-h-[76px] flex-col items-start justify-between rounded-xl border border-border bg-card shadow-sm p-3.5 text-foreground active:opacity-70"
           >
-            <Truck className="h-5.5 w-5.5 text-orange-300" />
+            <Truck className="h-5.5 w-5.5 text-primary" />
             <span className="text-[13.5px] font-medium leading-tight">Водители</span>
           </Link>
         </div>
@@ -276,7 +276,7 @@ export default function LogistHomePage() {
               return (
                 <div key={order.id}>
                   {deadline.overdue ? (
-                    <div className="mb-1 inline-flex items-center gap-1 text-[11.5px] text-red-300">
+                    <div className="mb-1 inline-flex items-center gap-1 text-[11.5px] text-destructive">
                       <AlertTriangle className="h-3.5 w-3.5" />
                       {deadline.text}
                     </div>
@@ -303,27 +303,27 @@ export default function LogistHomePage() {
                 <Link
                   key={route.id}
                   href={`/lm/routes/${route.id}`}
-                  className="block rounded-2xl border border-white/8 bg-white/[0.03] p-4 active:bg-white/[0.06]"
+                  className="block rounded-xl border border-border bg-card shadow-sm p-4 active:opacity-70"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-white">
+                    <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
                       {route.name || (first ? routeTitle(first.routeFrom, last?.routeTo) : "Рейс")}
                     </p>
                     <span
-                      className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
+                      className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
                     >
                       {meta.label}
                     </span>
                   </div>
-                  <p className="mt-1.5 flex items-center gap-1.5 truncate text-[13px] text-zinc-400">
-                    <Users className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                  <p className="mt-1.5 flex items-center gap-1.5 truncate text-[13px] text-muted-foreground">
+                    <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     {route.driver?.name || "водитель не назначен"}
                     {route.vehicle?.plate ? (
-                      <span className="text-zinc-500">· {route.vehicle.plate}</span>
+                      <span className="text-muted-foreground">· {route.vehicle.plate}</span>
                     ) : null}
                   </p>
                   {route.orders?.length ? (
-                    <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-zinc-500">
+                    <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
                       <Package className="h-3.5 w-3.5" />
                       {route.orders.length} {plural(route.orders.length, ["заказ", "заказа", "заказов"])}
                       <ArrowRight className="ml-auto h-3.5 w-3.5" />
