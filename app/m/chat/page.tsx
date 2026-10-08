@@ -22,6 +22,7 @@ interface ChatMessage {
   content: string
   type: string
   isImportant?: boolean
+  isRead?: boolean
   createdAt: string
 }
 
@@ -34,6 +35,15 @@ export default function DriverChatPage() {
   const router = useRouter()
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Прокрутка и отметки прочтения (пункты 1.1–1.3 чек-листа):
+  //  • nearBottom — человек читает конец ленты (только тогда её можно дёргать);
+  //  • markedRead — id, по которым отметка уже отправлена, чтобы не слать дважды;
+  //  • lastMessageId/firstLoad — понять, что пришло новое сообщение и первый ли это показ.
+  const nearBottomRef = useRef(true)
+  const markedReadRef = useRef<Set<string>>(new Set())
+  const lastMessageIdRef = useRef<string | null>(null)
+  const firstLoadRef = useRef(true)
 
   // Сессия — серверная (httpOnly-cookie): читать «driver_session» из
   // localStorage бессмысленно, такой записи после задачи 1 не существует
@@ -62,11 +72,32 @@ export default function DriverChatPage() {
     if (!driver?.id) return
 
     try {
-      const res = await fetch(`/api/chat?driverId=${driver.id}`)
+      const res = await fetch(`/api/chat?driverId=${driver.id}`, { cache: "no-store" })
       const data = await res.json()
 
       if (data.success) {
-        setMessages(data.messages)
+        const list = (data.messages || []) as ChatMessage[]
+        setMessages(list)
+
+        // Входящие без отметки о прочтении — гасим сразу, иначе точка
+        // непрочитанного горит вечно (раньше отметки у водителя не было вовсе).
+        const unread = list.filter(
+          (message) =>
+            message.senderId !== driver.id &&
+            !message.isRead &&
+            !markedReadRef.current.has(message.id),
+        )
+        if (unread.length > 0) {
+          for (const message of unread) markedReadRef.current.add(message.id)
+          void fetch("/api/chat", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageIds: unread.map((message) => message.id) }),
+          }).catch(() => {
+            // не получилось отметить — попробуем при следующем обновлении
+            for (const message of unread) markedReadRef.current.delete(message.id)
+          })
+        }
       }
     } catch (error) {
       console.error("Failed to fetch messages:", error)
@@ -108,14 +139,30 @@ export default function DriverChatPage() {
   // Автообновление
   useEffect(() => {
     if (!driver?.id) return
-    const interval = setInterval(fetchMessages, 5000)
+    const interval = setInterval(() => {
+      // В фоне опрос не нужен: он будит телефон и жжёт батарею
+      if (document.visibilityState !== "visible") return
+      void fetchMessages()
+    }, 5000)
     return () => clearInterval(interval)
   }, [driver?.id, fetchMessages])
 
-  // Скролл вниз
+  // Автопрокрутка: раньше она срабатывала на каждое обновление (раз в 5 секунд)
+  // и выдёргивала человека из истории. Теперь — только если он и так внизу.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const last = messages.length > 0 ? messages[messages.length - 1] : null
+    const lastId = last?.id ?? null
+    const changed = lastId !== lastMessageIdRef.current
+    lastMessageIdRef.current = lastId
+    if (!changed) return
+
+    const container = scrollRef.current
+    if (!container) return
+
+    if (firstLoadRef.current || nearBottomRef.current) {
+      const instant = firstLoadRef.current
+      firstLoadRef.current = false
+      container.scrollTo({ top: container.scrollHeight, behavior: instant ? "auto" : "smooth" })
     }
   }, [messages])
 
@@ -142,6 +189,7 @@ export default function DriverChatPage() {
 
       const data = await res.json()
       if (data.success) {
+        nearBottomRef.current = true
         setMessages((prev) => [...prev, data.message])
       } else {
         setNewMessage(content)
@@ -299,7 +347,14 @@ export default function DriverChatPage() {
       </header>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        ref={scrollRef}
+        onScroll={(event) => {
+          const el = event.currentTarget
+          nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+        }}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
         {isLoading ? (
           <div className="flex justify-center py-10">
             <Loader2 className="h-6 w-6 animate-spin text-gray-500" />

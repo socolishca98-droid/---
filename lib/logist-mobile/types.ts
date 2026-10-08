@@ -278,6 +278,21 @@ export interface MobileInsight {
   source: string | null
 }
 
+/** Переписка с водителем для списка чата (GET /api/lm/chat-threads) */
+export interface MobileChatThread {
+  driverId: string
+  lastMessage: {
+    id: string
+    content: string
+    createdAt: string
+    /** Последнее сообщение написал водитель (а не штаб) */
+    fromDriver: boolean
+    isImportant: boolean
+  }
+  /** Сколько сообщений водителя ещё не прочитано */
+  unreadCount: number
+}
+
 export interface MobileChatMessage {
   id: string
   senderId: string | null

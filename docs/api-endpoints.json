@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-08T04:44:09.409Z",
+  "generatedAt": "2026-10-08T06:59:06.148Z",
   "endpoints": [
     {
       "method": "GET",
@@ -303,12 +303,22 @@
     },
     {
       "method": "GET",
+      "route": "/api/lm/chat-threads",
+      "group": "lm"
+    },
+    {
+      "method": "GET",
       "route": "/api/lm/map",
       "group": "lm"
     },
     {
       "method": "POST",
       "route": "/api/m/base-route",
+      "group": "m"
+    },
+    {
+      "method": "GET",
+      "route": "/api/m/chat-unread",
       "group": "m"
     },
     {

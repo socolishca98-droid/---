@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import { SosButton } from "@/components/driver-mobile/sos-button"
+import { DriverChatButton } from "@/components/driver-mobile/chat-button"
 import { DriverNotificationsBell } from "@/components/driver-mobile/notifications-bell"
 import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
@@ -22,7 +23,6 @@ import {
   Fuel,
   CheckCircle,
   Play,
-  MessageCircle,
   ChevronRight,
   Locate,
   WifiOff,
@@ -974,12 +974,7 @@ export default function MobileHomePage() {
 
               <DriverNotificationsBell driverId={driver.id} />
 
-              <button
-                onClick={() => router.push("/m/chat")}
-                className="p-2.5 hover:bg-gray-800 rounded-xl transition-colors"
-              >
-                <MessageCircle className="h-5 w-5 text-gray-400" />
-              </button>
+              <DriverChatButton />
             </div>
           </div>
         </div>

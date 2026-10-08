@@ -6,6 +6,12 @@
 // четырёх экранов — лишний вес бандла. Зато здесь есть то, что реально нужно
 // на телефоне: повтор при обрыве сети (мобильный интернет рвётся постоянно)
 // и понятная ошибка вместо бесконечного скелетона.
+//
+// Важно про медленную связь: одновременные запросы не запускаются. Раньше
+// опрос раз в 5 секунд отменял ещё не завершившийся запрос (эффект
+// перезапускался и «отменял» предыдущий), и на слабой сети экран мог вечно
+// показывать скелетоны — в том числе в чате. Теперь новый запрос встаёт в
+// очередь и стартует после ответа на текущий.
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -31,6 +37,10 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
   const [tick, setTick] = useState(0)
   const loadedOnce = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Идёт запрос: второй параллельно не запускаем */
+  const inFlightRef = useRef(false)
+  /** Во время запроса попросили обновление — повторим сразу после ответа */
+  const queuedRef = useRef(false)
 
   const reload = useCallback(() => setTick((value) => value + 1), [])
 
@@ -40,12 +50,35 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
       return
     }
 
-    // URL появляется позже первого рендера (ждём сессию): включаем скелетон
-    // сразу, иначе экран на секунды показывает нули вместо «загружается».
-    setLoading(true)
+    // Скелетон только на первой загрузке: при обновлении данные уже на
+    // экране, и подменять их заглушками нельзя (иначе «мигает»).
+    if (!loadedOnce.current) setLoading(true)
 
     let cancelled = false
     let attempt = 0
+
+    const finish = () => {
+      inFlightRef.current = false
+      if (!cancelled) {
+        loadedOnce.current = true
+        setLoading(false)
+      }
+      // Пока шёл запрос, могли попросить обновление (жест «потянуть вниз»
+      // или опрос чата) — выполняем его одним дополнительным заходом.
+      if (queuedRef.current) {
+        queuedRef.current = false
+        setTick((value) => value + 1)
+      }
+    }
+
+    if (inFlightRef.current) {
+      queuedRef.current = true
+      return () => {
+        cancelled = true
+      }
+    }
+
+    inFlightRef.current = true
 
     const load = async (): Promise<void> => {
       // Пока идёт повтор после временной ошибки, экран не должен показывать
@@ -87,10 +120,9 @@ export function useJsonApi<T>(url: string | null): JsonApiState<T> {
           networkFailure ? "Нет соединения. Проверьте интернет и повторите." : raw.replace("||retry", ""),
         )
       } finally {
-        if (!cancelled && !retryScheduled) {
-          loadedOnce.current = true
-          setLoading(false)
-        }
+        // Ошибка уже показана, повтор запланирован — иначе закрываем запрос:
+        // скелетон гасим, очередь проверяем.
+        if (!retryScheduled) finish()
       }
     }
 

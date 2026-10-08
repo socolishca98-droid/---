@@ -1,6 +1,6 @@
 // app/api/chat/route.ts - P1-6 zod
 
-import { requireAnyAuth, requireStaffAuth } from "@/lib/api-auth"
+import { requireAnyAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -181,10 +181,11 @@ const patchSchema = z.object({
 })
 
 export async function PATCH(request: NextRequest) {
-  const __auth = await requireStaffAuth(request)
-  if (__auth.error) return __auth.error
-  const __org = requireStaffOrganization(__auth.user)
-  if (!__org.ok) return __org.response
+  // Отметку «прочитано» ставят обе стороны: логист, открыв переписку, и
+  // водитель, открыв чат со штабом. До этого у водителя отметки не было вовсе,
+  // поэтому точка непрочитанного горела вечно.
+  const auth = await requireAnyAuth(request)
+  if (auth.error) return auth.error
 
   try {
     const rawBody = await request.json().catch(() => null)
@@ -198,9 +199,33 @@ export async function PATCH(request: NextRequest) {
 
     const { messageIds } = parsed.data
 
+    if (auth.type === "driver") {
+      const organizationId = auth.driver.organizationId
+      if (!organizationId) {
+        return NextResponse.json(
+          { success: false, error: "Учётная запись не привязана к организации" },
+          { status: 403 },
+        )
+      }
+
+      await prisma.chatMessage.updateMany({
+        // водитель может отметить только входящие ему сообщения своей организации
+        where: scopedWhere(organizationId, {
+          id: { in: messageIds },
+          recipientId: auth.driver.id,
+        }),
+        data: { isRead: true, readAt: new Date() },
+      })
+
+      return NextResponse.json({ success: true })
+    }
+
+    const org = requireStaffOrganization(auth.user)
+    if (!org.ok) return org.response
+
     await prisma.chatMessage.updateMany({
       // отметить прочитанными можно только сообщения своей организации
-      where: scopedWhere(__org.organizationId, { id: { in: messageIds } }),
+      where: scopedWhere(org.organizationId, { id: { in: messageIds } }),
       data: { isRead: true, readAt: new Date() }
     })
 

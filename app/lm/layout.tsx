@@ -9,7 +9,7 @@
 
 import type { Metadata, Viewport } from "next"
 
-import { LogistBottomNav } from "@/components/logist-mobile/bottom-nav"
+import { LogistMobileChrome } from "@/components/logist-mobile/chrome"
 
 export const metadata: Metadata = {
   title: "Логистика · мобильная панель",
@@ -35,14 +35,7 @@ export default function LogistMobileLayout({
 }: {
   children: React.ReactNode
 }) {
-  return (
-    <div className="min-h-screen bg-[#0b0b0e] text-white">
-      <div className="mx-auto max-w-md">
-        {/* Отступ снизу — под фиксированную навигацию плюс «безопасная зона» */}
-        <div className="pb-[calc(72px+env(safe-area-inset-bottom))]">{children}</div>
-      </div>
-
-      <LogistBottomNav />
-    </div>
-  )
+  // Отступ снизу и видимость меню решает оболочка: на переписке меню
+  // прячется, чтобы не мешать полю ввода (пункт 1.7).
+  return <LogistMobileChrome>{children}</LogistMobileChrome>
 }
