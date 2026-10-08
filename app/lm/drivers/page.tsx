@@ -14,7 +14,7 @@ import { EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile
 import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { DRIVER_STATUS_META, type MobileDriver } from "@/lib/logist-mobile/types"
-import { formatDateShort, formatRelative, telHref, whatsappHref } from "@/lib/logist-mobile/format"
+import { formatDateShort, formatRelative, telHref, whatsappHref, formatCount } from "@/lib/logist-mobile/format"
 
 const FILTERS = [
   { id: "all", label: "Все" },
@@ -125,7 +125,9 @@ export default function LogistDriversPage() {
                     </p>
                   </div>
                   <span className="shrink-0 text-right text-[12px] text-zinc-500">
-                    {driver.ordersCompleted != null ? `${driver.ordersCompleted} рейсов` : ""}
+                    {driver.ordersCompleted != null
+                      ? formatCount(driver.ordersCompleted, ["рейс", "рейса", "рейсов"])
+                      : ""}
                   </span>
                 </div>
 

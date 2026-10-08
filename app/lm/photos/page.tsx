@@ -13,7 +13,7 @@ import { EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile
 import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { PHOTO_TYPE_LABELS, type MobilePhoto } from "@/lib/logist-mobile/types"
-import { formatDateTime } from "@/lib/logist-mobile/format"
+import { formatDateTime, formatCount } from "@/lib/logist-mobile/format"
 
 const FILTERS = [
   { id: "all", label: "Все" },
@@ -39,7 +39,7 @@ export default function LogistPhotosPage() {
     <>
       <LogistHeader
         title="Фото"
-        subtitle={data?.photos ? `${data.photos.length} снимков` : undefined}
+        subtitle={data?.photos ? formatCount(data.photos.length, ["снимок", "снимка", "снимков"]) : undefined}
         userName={user?.name}
       />
 

@@ -18,7 +18,7 @@ import {
   type MobileDriver,
   type MobileFleetVehicle,
 } from "@/lib/logist-mobile/types"
-import { formatDateShort, formatMileage, telHref } from "@/lib/logist-mobile/format"
+import { formatDateShort, formatMileage, telHref, formatCount } from "@/lib/logist-mobile/format"
 
 interface Deadline {
   status: string
@@ -80,7 +80,7 @@ export default function LogistFleetPage() {
     <>
       <LogistHeader
         title="Автопарк"
-        subtitle={list.length ? `${list.length} машин` : undefined}
+        subtitle={list.length ? formatCount(list.length, ["машина", "машины", "машин"]) : undefined}
         userName={user?.name}
       />
 

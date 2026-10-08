@@ -23,6 +23,7 @@ import {
   shortCity,
   telHref,
   whatsappHref,
+  plural,
 } from "@/lib/logist-mobile/format"
 
 export default function LogistRoutePage() {
@@ -70,7 +71,10 @@ export default function LogistRoutePage() {
               {route.notes ? <p className="mt-2 text-[13px] text-zinc-400">{route.notes}</p> : null}
 
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                <Metric label="заказов" value={String(route.orders?.length ?? 0)} />
+                <Metric
+                  label={plural(route.orders?.length ?? 0, ["заказ", "заказа", "заказов"])}
+                  value={String(route.orders?.length ?? 0)}
+                />
                 <Metric label="км" value={route.stats?.totalDistance ? String(route.stats.totalDistance) : "—"} />
                 <Metric label="вес" value={formatWeightKg(route.stats?.cargoWeight)} />
               </div>

@@ -15,7 +15,7 @@ import { EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile
 import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { ROUTE_STATUS_META, type MobileRoute } from "@/lib/logist-mobile/types"
-import { shortCity, telHref } from "@/lib/logist-mobile/format"
+import { shortCity, telHref, formatCount } from "@/lib/logist-mobile/format"
 
 const TABS = [
   { id: "active", label: "Активные" },
@@ -118,7 +118,7 @@ export default function LogistRoutesPage() {
                     </p>
                     <p className="flex items-center gap-2">
                       <Package className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                      {ordersCount} {ordersCount === 1 ? "заказ" : "заказов"}
+                      {formatCount(ordersCount, ["заказ", "заказа", "заказов"])}
                       {distance ? <span className="text-zinc-500">· {distance} км</span> : null}
                       <ArrowRight className="ml-auto h-4 w-4 text-zinc-600" />
                     </p>
