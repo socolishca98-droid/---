@@ -1,0 +1,315 @@
+"use client"
+
+// components/register/register-form.tsx
+//
+// Одна форма регистрации с фиксированным режимом. Экраны разделены по сценариям:
+//   create — «Создать компанию»: станете администратором новой организации, вход сразу.
+//   join   — «Войти по коду»: организация и роль берутся из кода, заявка ждёт одобрения.
+// Водители здесь не регистрируются: карточку заводит логист в Автопарке.
+
+import { useState, type FormEvent } from "react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { AlertCircle, ArrowLeft, Building2, CheckCircle2, KeyRound, Loader2, Truck } from "lucide-react"
+import { PRODUCT_NAME } from "@/lib/auth/constants"
+
+export type RegisterMode = "create" | "join"
+
+const COPY: Record<
+  RegisterMode,
+  { title: string; description: string; submit: string; icon: typeof Building2 }
+> = {
+  create: {
+    title: "Создать компанию",
+    description:
+      "Вы станете администратором новой организации и сможете выдавать коды приглашения сотрудникам.",
+    submit: "Создать организацию",
+    icon: Building2,
+  },
+  join: {
+    title: "Войти по коду",
+    description:
+      "Для логистов и администраторов. Код выдаёт администратор вашей компании. Роль задаётся в самом коде, а вход откроет администратор после одобрения.",
+    submit: "Отправить заявку",
+    icon: KeyRound,
+  },
+}
+
+export function RegisterForm({ mode }: { mode: RegisterMode }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const copy = COPY[mode]
+  const SubmitIcon = copy.icon
+
+  // Ссылка-приглашение: /register/join?invite=XXXX-XXXX-XXXX подставляет код
+  const inviteFromLink = (searchParams?.get("invite") || "").trim().toUpperCase()
+
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [repeatPassword, setRepeatPassword] = useState("")
+  const [organizationName, setOrganizationName] = useState("")
+  const [inviteCode, setInviteCode] = useState(inviteFromLink)
+
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [submitted, setSubmitted] = useState<{
+    message: string
+    organizationName?: string | null
+    canLogin: boolean
+  } | null>(null)
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError("")
+
+    if (password !== repeatPassword) {
+      setError("Пароли не совпадают")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          ...(mode === "create"
+            ? { organizationName: organizationName.trim() }
+            : { inviteCode: inviteCode.trim() }),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Не удалось отправить заявку")
+        return
+      }
+
+      setSubmitted({
+        message: data.message,
+        organizationName: data.organization?.name ?? null,
+        // Сценарий «своя компания» даёт доступ сразу, заявка по коду ждёт одобрения
+        canLogin: data.status === "active",
+      })
+      if (data.status === "active") {
+        setTimeout(() => router.push("/login"), 2500)
+      }
+    } catch {
+      setError("Ошибка соединения. Попробуйте ещё раз")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background/70 via-background/40 to-primary/10 p-4">
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4">
+            <Truck className="h-8 w-8 text-primary-foreground" />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight">{PRODUCT_NAME}</h1>
+          <p className="text-muted-foreground">доступ к системе для вашей компании</p>
+        </div>
+
+        <Card className="border-border/50 shadow-xl">
+          <CardHeader className="space-y-3 pb-4">
+            <CardTitle className="text-xl flex items-center gap-2">
+              <SubmitIcon className="h-5 w-5 text-primary" />
+              {copy.title}
+            </CardTitle>
+            <CardDescription>{copy.description}</CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {submitted ? (
+              <div className="space-y-4">
+                <div
+                  className={`flex items-start gap-2 text-sm p-3 rounded-lg ${
+                    submitted.canLogin
+                      ? "bg-emerald-500/10 text-emerald-500"
+                      : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  {submitted.canLogin ? (
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  )}
+                  <span>{submitted.message}</span>
+                </div>
+
+                {submitted.organizationName && (
+                  <p className="text-xs text-muted-foreground">
+                    Организация: <span className="text-foreground">{submitted.organizationName}</span>
+                  </p>
+                )}
+
+                {!submitted.canLogin && (
+                  <p className="text-xs text-muted-foreground">
+                    Администратор организации увидит заявку на экране «Организация» и откроет доступ.
+                    До одобрения вход недоступен.
+                  </p>
+                )}
+
+                <Button className="w-full h-11" onClick={() => router.push("/login")} type="button">
+                  Перейти к входу
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {mode === "create" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="organizationName">Название компании</Label>
+                    <Input
+                      id="organizationName"
+                      type="text"
+                      placeholder="ИП Фролов Иван Александрович"
+                      value={organizationName}
+                      onChange={(event) => setOrganizationName(event.target.value)}
+                      autoComplete="organization"
+                      required
+                      minLength={2}
+                      maxLength={120}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="inviteCode">Код приглашения</Label>
+                    <Input
+                      id="inviteCode"
+                      type="text"
+                      placeholder="XXXX-XXXX-XXXX"
+                      value={inviteCode}
+                      onChange={(event) =>
+                        setInviteCode(event.target.value.toUpperCase().slice(0, 14))
+                      }
+                      autoComplete="one-time-code"
+                      required
+                      className="font-mono tracking-widest uppercase"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Код выдаёт администратор компании на экране «Организация»
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="name">Имя и фамилия</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Иван Петров"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    autoComplete="name"
+                    required
+                    minLength={2}
+                    maxLength={80}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="ivan@company.ru"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Пароль</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    maxLength={128}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Не короче 8 символов, буквы и цифры
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="repeatPassword">Повторите пароль</Label>
+                  <Input
+                    id="repeatPassword"
+                    type="password"
+                    value={repeatPassword}
+                    onChange={(event) => setRepeatPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    maxLength={128}
+                  />
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <SubmitIcon className="h-4 w-4 mr-2" />
+                      {copy.submit}
+                    </>
+                  )}
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-3 text-center text-sm text-muted-foreground">
+          <p>
+            Водители регистрируются не здесь. Логист заводит карточку водителя в Автопарке, а вход
+            водителя — по телефону и паролю на{" "}
+            <Link href="/m/login" className="text-primary hover:underline">
+              /m/login
+            </Link>
+            .
+          </p>
+          <p>
+            <Link href="/register" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <ArrowLeft className="h-3.5 w-3.5" /> К выбору
+            </Link>
+            {" · "}
+            Уже есть доступ?{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              Войти
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -41,6 +41,8 @@ const PUBLIC_PATHS = new Set<string>([
   "/",
   "/login",
   "/register",
+  "/register/company",
+  "/register/join",
   "/m/login",
   "/api/auth/login",
   "/api/auth/register",
