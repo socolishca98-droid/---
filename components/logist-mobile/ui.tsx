@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react"
 // components/logist-mobile/ui.tsx
 //
 // Мелкие строительные блоки мобильных экранов логиста: карточки-показатели,
@@ -30,12 +31,15 @@ export function KpiCard({
   href,
   tone = "default",
   loading = false,
+  icon: Icon,
 }: {
   label: string
   value: string | number
   hint?: string
   href?: string
   tone?: "default" | "warn" | "good" | "accent"
+  /** Значок в цветном квадрате — как у плиток компьютерной версии */
+  icon?: LucideIcon
   /** Пока данные не пришли, вместо нуля — пульсирующая заглушка */
   loading?: boolean
 }) {
@@ -50,14 +54,30 @@ export function KpiCard({
   const valueText = String(value)
   const valueSize = valueText.length > 9 ? "text-[20px]" : "text-2xl"
 
+  const iconTones: Record<string, string> = {
+    default: "bg-secondary text-foreground",
+    warn: "bg-warning/15 text-warning",
+    good: "bg-success/15 text-success",
+    accent: "bg-primary/15 text-primary",
+  }
+
   const content = (
-    <div className="rounded-xl border border-border bg-card shadow-sm p-3.5 press">
-      {loading ? (
-        <div className="h-6 w-12 animate-pulse rounded-md bg-secondary" />
-      ) : (
-        <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>{value}</div>
-      )}
-      <div className="mt-1.5 text-[13px] leading-snug text-muted-foreground">{label}</div>
+    <div className="press rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors duration-200 hover:border-primary/40">
+      <div className="flex items-center gap-3">
+        {Icon ? (
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconTones[tone]}`}>
+            <Icon className="h-[18px] w-[18px]" />
+          </div>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          {loading ? (
+            <div className="h-6 w-12 animate-pulse rounded-md bg-secondary" />
+          ) : (
+            <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>{value}</div>
+          )}
+          <div className="mt-1.5 text-[12.5px] leading-snug text-muted-foreground">{label}</div>
+        </div>
+      </div>
       {hint ? <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div> : null}
     </div>
   )

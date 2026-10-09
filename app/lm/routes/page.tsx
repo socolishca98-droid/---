@@ -36,6 +36,7 @@ import {
 } from "@/lib/logist-mobile/route-assistant"
 import {
   routeListHint,
+  routeOrderProgress,
   routeStageLabel,
   routeSummaryLine,
   routeWaypoints,
@@ -217,43 +218,82 @@ export default function LogistRoutesPage() {
 
             return (
               <div key={route.id} className="rounded-xl border border-border bg-card shadow-sm p-4">
-                <Link href={`/lm/routes/${route.id}`} className="block active:opacity-80">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
-                      {waypointLine(points)}
-                    </p>
-                    <span
-                      className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
+                <Link href={`/lm/routes/${route.id}`} className="press block">
+                  {/* Строка как на компьютере: значок в цветном квадрате, маршрут, статус */}
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                        route.status === "completed"
+                          ? "bg-success/15 text-success"
+                          : route.status === "cancelled"
+                            ? "bg-destructive/15 text-destructive"
+                            : "bg-primary/15 text-primary"
+                      }`}
                     >
-                      {routeStageLabel(route.status)}
-                    </span>
+                      <Truck className="h-[18px] w-[18px]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-foreground">
+                          {waypointLine(points)}
+                        </p>
+                        <span
+                          className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
+                        >
+                          {routeStageLabel(route.status)}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 space-y-1 text-[13px] text-muted-foreground">
+                        <p className="flex items-center gap-2">
+                          <User className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{route.driver?.name || "водитель не назначен"}</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Package className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">
+                            {route.vehicle?.plate || "машина не назначена"}
+                            {route.vehicle?.type ? ` · ${route.vehicle.type}` : ""}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-2 space-y-1.5 text-[13px] text-muted-foreground">
-                    <p className="flex items-center gap-2">
-                      <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{route.driver?.name || "водитель не назначен"}</span>
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <Truck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">
-                        {route.vehicle?.plate || "машина не назначена"}
-                        {route.vehicle?.type ? ` · ${route.vehicle.type}` : ""}
-                      </span>
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{summary}</span>
-                      {revenue > 0 ? (
-                        <span className="ml-auto shrink-0 font-medium text-foreground">
-                          {formatMoney(revenue)}
-                        </span>
-                      ) : null}
-                    </p>
+                  {/* Сводка и деньги — справа, как в компьютерной карточке */}
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <p className="min-w-0 text-[12.5px] text-muted-foreground">{summary}</p>
+                    {revenue > 0 ? (
+                      <div className="shrink-0 text-right">
+                        <p className="text-[11px] text-muted-foreground">Выручка</p>
+                        <p className="text-[16px] font-semibold tabular-nums text-success">{formatMoney(revenue)}</p>
+                      </div>
+                    ) : null}
                   </div>
+
+                  {(() => {
+                    const progress = routeOrderProgress(route.orders)
+                    if (progress.total === 0) return null
+                    const percent = Math.round((progress.delivered / progress.total) * 100)
+                    return (
+                      <div className="mt-3">
+                        <div className="mb-1 flex justify-between text-[11.5px] text-muted-foreground">
+                          <span>Прогресс</span>
+                          <span className="tabular-nums">
+                            {progress.delivered} из {progress.total} · {percent}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   <p
-                    className={`mt-2.5 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ${HINT_TONE[hint.tone]}`}
+                    className={`mt-3 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ${HINT_TONE[hint.tone]}`}
                   >
                     <HintIcon tone={hint.tone} />
                     <span className="truncate">{hint.text}</span>

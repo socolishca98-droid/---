@@ -32,6 +32,7 @@ import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { OrderCard } from "@/components/logist-mobile/order-card"
 import { PullToRefresh } from "@/components/logist-mobile/pull-to-refresh"
 import { EmptyState, ErrorState, KpiCard, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
+import { Car } from "lucide-react"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
@@ -201,12 +202,14 @@ export default function LogistHomePage() {
           <KpiCard
             label="Заказов в работе"
             value={activeOrders.length}
+            icon={Package}
             loading={ordersLoading}
             href="/lm/orders"
           />
           <KpiCard
             label="Требуют внимания"
             value={attentionOrders.length}
+            icon={AlertTriangle}
             loading={ordersLoading}
             tone={attentionOrders.length > 0 ? "warn" : "good"}
             href="/lm/orders"
@@ -214,6 +217,7 @@ export default function LogistHomePage() {
           <KpiCard
             label="Активных рейсов"
             value={activeRoutes.length}
+            icon={RouteIcon}
             loading={routesLoading}
             tone="accent"
             href="/lm/routes"
@@ -221,6 +225,7 @@ export default function LogistHomePage() {
           <KpiCard
             label="Машин свободно"
             value={`${freeDrivers.length} из ${driverList.length}`}
+            icon={Car}
             loading={driversLoading}
             href="/lm/drivers"
           />
