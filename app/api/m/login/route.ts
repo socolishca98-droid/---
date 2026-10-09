@@ -13,7 +13,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { authenticateWithPassword } from "@/lib/auth/login"
-import { sessionCookie } from "@/lib/auth/session"
+import { expiredSessionCookie, sessionCookie } from "@/lib/auth/session"
+import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
 import {
   buildRateLimitHeaders,
   checkRateLimit,
@@ -120,6 +121,8 @@ export async function POST(request: NextRequest) {
       },
     })
     response.cookies.set(sessionCookie(result.session.cookieName, result.session.token))
+    // Новый вход — не «вход как»: старую cookie владельца сбрасываем, иначе полоса врёт
+    response.cookies.set(expiredSessionCookie(IMPERSONATION_COOKIE))
     return response
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"

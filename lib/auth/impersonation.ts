@@ -17,7 +17,7 @@
 import "server-only"
 import type { NextRequest } from "next/server"
 
-import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
+import { IMPERSONATION_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
 import { verifySessionToken } from "@/lib/auth/token"
 import { isOwnerEmail } from "@/lib/auth/owner"
 
@@ -39,6 +39,8 @@ export interface ActingOwner {
 export async function loadActingOwner(request: NextRequest): Promise<ActingOwner | null> {
   const token = request.cookies.get(IMPERSONATION_COOKIE)?.value
   if (!token) return null
+  // Без основной сессии «вход как» уже не действует: остался только хвост cookie
+  if (!request.cookies.get(STAFF_COOKIE)?.value) return null
 
   const payload = await verifySessionToken(token)
   if (!payload || payload.kind !== "staff") return null
