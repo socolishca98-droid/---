@@ -64,7 +64,7 @@ AUTH_SECRET=""     # сгенерировать: node -e "console.log(require('n
 ADMIN_EMAIL="admin@loginex.local"
 ADMIN_PASSWORD="ПридумайтеСложныйПароль1"
 ORGANIZATION_NAME="Название вашей организации"
-DRIVER_DEFAULT_PASSWORD="ПарольДляВодителей1"   # можно оставить пустым — сгенерируется
+DRIVER_DEFAULT_PASSWORD="<задайте-свой-пароль>"   # можно оставить пустым — сгенерируется
 ```
 
 Полный список переменных с пояснениями — в `.env.example`. Ключевые группы:

@@ -151,14 +151,25 @@ test("служебные подпути не прячутся за шаблон�
 test("статика и служебные пути Next.js не блокируются", () => {
   for (const pathname of [
     "/logo.png",
-    "/images/truck.jpg",
     "/favicon.ico",
     "/manifest.webmanifest",
-    "/fonts/inter.woff2",
     "/_next/static/chunks/main.js",
     "/_next/image?url=%2Flogo.png",
   ]) {
     assert.equal(area(pathname), "public", `${pathname} — статика`)
+  }
+})
+
+test("расширение файла не открывает защищённый путь (обход через .json/.txt)", () => {
+  for (const pathname of [
+    "/drivers/ivan.json",
+    "/orders/123.txt",
+    "/images/truck.jpg",
+    "/fonts/inter.woff2",
+    "/api/orders/123.json",
+    "/api/drivers/export.csv",
+  ]) {
+    assert.notEqual(area(pathname), "public", `${pathname} не должен быть публичным`)
   }
 })
 

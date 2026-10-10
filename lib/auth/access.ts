@@ -153,7 +153,9 @@ export function classifyRoute(rawPathname: string): RouteAccess {
   if (BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return { area: "public", isApi: false, loginPath, reason: "служебный путь Next.js" }
   }
-  if (STATIC_EXTENSION.test(pathname)) {
+  // Статика — только файлы в корне public/ (logo.png и т.п.). Раньше любой путь
+  // с расширением из списка (/drivers/x.json, /api/...txt) проходил без проверки входа.
+  if (!isApi && segments.length === 1 && STATIC_EXTENSION.test(pathname)) {
     return { area: "public", isApi: false, loginPath, reason: "статический файл" }
   }
 

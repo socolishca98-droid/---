@@ -16,6 +16,19 @@ const nextConfig = {
   // module .../tesseract.js/src/worker-script/node/index.js». Поэтому пакет
   // оставляем внешним: он подключается из node_modules как есть.
   serverExternalPackages: ["tesseract.js"],
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Permissions-Policy', value: 'camera=(self), geolocation=(self), microphone=()' },
+        ],
+      },
+    ]
+  },
   experimental: {
     optimizePackageImports: ['lucide-react', '@dnd-kit/core', '@dnd-kit/sortable'],
   },
