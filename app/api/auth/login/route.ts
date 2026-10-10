@@ -82,7 +82,13 @@ export async function POST(request: NextRequest) {
         mustChangePassword: result.mustChangePassword,
       },
     })
-    response.cookies.set(sessionCookie(result.session.cookieName, result.session.token))
+    response.cookies.set(
+      sessionCookie(
+        result.session.cookieName,
+        result.session.token,
+        Math.max(1, Math.round((result.session.expiresAt.getTime() - Date.now()) / 1000)),
+      ),
+    )
     // Новый вход — не «вход как»: старую cookie владельца сбрасываем, иначе полоса врёт
     response.cookies.set(expiredSessionCookie(IMPERSONATION_COOKIE))
     return response

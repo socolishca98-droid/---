@@ -11,6 +11,9 @@
 //
 // Файл чистый (без Prisma и Next), чтобы правило можно было тестировать.
 
+/** Срок сессии владельца: через это время нужен снова логин и пароль. */
+export const OWNER_SESSION_TTL_MINUTES = 30
+
 /** Email владельца платформы. Меняется переменной окружения OWNER_EMAIL. */
 export const DEFAULT_OWNER_EMAIL = "socolishca98@gmail.com"
 

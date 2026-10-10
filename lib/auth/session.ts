@@ -350,6 +350,8 @@ export interface IssueSessionParams {
   kind: SessionKind
   name?: string
   driverId?: string | null
+  /** срок жизни сессии; по умолчанию общий AUTH_SESSION_TTL_HOURS */
+  ttlMs?: number
   request?: NextRequest
 }
 
@@ -362,7 +364,7 @@ export interface IssuedSession {
 
 /** Создать запись Session в БД и подписать токен для cookie */
 export async function issueSession(params: IssueSessionParams): Promise<IssuedSession> {
-  const ttlMs = getSessionTtlMs()
+  const ttlMs = params.ttlMs ?? getSessionTtlMs()
   const expiresAt = new Date(Date.now() + ttlMs)
 
   const session = await prisma.session.create({
@@ -413,7 +415,7 @@ function clientIp(request?: NextRequest): string | null {
   return request.headers.get("x-real-ip")?.slice(0, 64) ?? null
 }
 
-export function sessionCookie(name: string, token: string) {
+export function sessionCookie(name: string, token: string, maxAgeSeconds?: number) {
   return {
     name,
     value: token,
@@ -421,7 +423,7 @@ export function sessionCookie(name: string, token: string) {
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: getSessionTtlSeconds(),
+    maxAge: maxAgeSeconds ?? getSessionTtlSeconds(),
   }
 }
 

@@ -20,6 +20,7 @@ import type { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { verifyPassword } from "@/lib/auth/password"
 import { issueSession, type IssuedSession } from "@/lib/auth/session"
+import { isOwnerEmail, OWNER_SESSION_TTL_MINUTES } from "@/lib/auth/owner"
 import {
   LOGIN_LOCK_MINUTES,
   MAX_FAILED_LOGINS,
@@ -167,12 +168,14 @@ export async function authenticateWithPassword(
     }
   }
 
+  // Владелец входит на короткую сессию: через OWNER_SESSION_TTL_MINUTES снова логин и пароль
   const session = await issueSession({
     userId: user.id,
     role: user.role as UserRole,
     kind,
     name: user.name,
     driverId: user.driverId,
+    ttlMs: isOwnerEmail(user.email) ? OWNER_SESSION_TTL_MINUTES * 60 * 1000 : undefined,
     request,
   })
 
