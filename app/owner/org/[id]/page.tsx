@@ -8,7 +8,21 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { Activity, ArrowLeft, Building2, Loader2, Package, Route as RouteIcon, Truck, UserCog, Users } from "lucide-react"
+import {
+  Activity,
+  ArrowLeft,
+  Building2,
+  Loader2,
+  LogOut,
+  Package,
+  Route as RouteIcon,
+  ShieldCheck,
+  ShieldOff,
+  Truck,
+  UserCog,
+  Users,
+} from "lucide-react"
+import { toast } from "sonner"
 
 import { OwnerShell } from "@/components/owner/owner-shell"
 import {
@@ -23,7 +37,7 @@ import {
   formatDateTime,
 } from "@/components/owner/owner-ui"
 import { enterAccount } from "@/components/owner/enter-account"
-import { useJsonApi } from "@/hooks/use-json-api"
+import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 
 interface OverviewOrg {
@@ -46,10 +60,29 @@ interface AccountsResponse {
   organizations: {
     id: string
     name: string
-    users: { id: string; name: string; email: string | null; role: string; status: string; lastLoginAt: string | null }[]
-    drivers: { id: string; userId: string | null; name: string; phone: string; statusLabel: string; vehiclePlate: string | null }[]
+    users: {
+      id: string
+      name: string
+      email: string | null
+      role: string
+      status: string
+      lastLoginAt: string | null
+      suspendReason: string | null
+    }[]
+    drivers: {
+      id: string
+      userId: string | null
+      userStatus: string | null
+      suspendReason: string | null
+      name: string
+      phone: string
+      statusLabel: string
+      vehiclePlate: string | null
+    }[]
   }[]
 }
+
+type AccessAction = "suspend" | "restore" | "revokeSessions"
 
 interface JournalResponse {
   total: number
@@ -91,6 +124,84 @@ export default function OwnerOrgPage() {
     setBusyId(item.id)
     await enterAccount(item)
     setBusyId(null)
+  }
+
+  /** Закрыть/открыть доступ и «Завершить сессии» — через PATCH /api/admin/accounts/[id]. */
+  async function access(userId: string, action: AccessAction, name: string) {
+    if (action === "suspend" && !window.confirm(`Закрыть доступ: ${name}? Все сессии будут завершены.`)) {
+      return
+    }
+    setBusyId(`${action}:${userId}`)
+    const result = await apiSend<{ message?: string }>(
+      `/api/admin/accounts/${encodeURIComponent(userId)}`,
+      "PATCH",
+      { action },
+    )
+    setBusyId(null)
+    if (!result.ok) {
+      toast.error(result.error || "Не получилось. Попробуйте ещё раз.")
+      return
+    }
+    toast.success(result.data?.message ?? "Готово")
+    accounts.reload()
+    journal.reload()
+  }
+
+  /** Кнопки управления доступом. Свой аккаунт не трогаем: самоотзыв запрещён. */
+  function AccessButtons({ userId, status, name }: { userId: string; status: string; name: string }) {
+    if (user && user.id === userId) {
+      return <p className="text-[11.5px] text-muted-foreground">Это ваш аккаунт</p>
+    }
+    const suspended = status === "suspended"
+    const btn =
+      "inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[12px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          disabled={busyId === `revokeSessions:${userId}`}
+          onClick={() => access(userId, "revokeSessions", name)}
+          title="Все сессии будут завершены, но вход по паролю останется"
+          className={btn}
+        >
+          {busyId === `revokeSessions:${userId}` ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <LogOut className="h-3.5 w-3.5" />
+          )}
+          Завершить сессии
+        </button>
+        {suspended ? (
+          <button
+            type="button"
+            disabled={busyId === `restore:${userId}`}
+            onClick={() => access(userId, "restore", name)}
+            className={`${btn} text-success`}
+          >
+            {busyId === `restore:${userId}` ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-3.5 w-3.5" />
+            )}
+            Открыть доступ
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busyId === `suspend:${userId}`}
+            onClick={() => access(userId, "suspend", name)}
+            className={`${btn} text-destructive`}
+          >
+            {busyId === `suspend:${userId}` ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ShieldOff className="h-3.5 w-3.5" />
+            )}
+            Закрыть доступ
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -140,7 +251,8 @@ export default function OwnerOrgPage() {
             <Tile icon={Activity} label="Доставлено заказов" value={formatCount(org.ordersDelivered)} delay={300} />
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_360px]">
+          {/* grid-cols-1: иначе на мобильном колонка равна max-content и обрезает экран */}
+          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
             <div className="flex flex-col gap-4">
               {/* Сотрудники */}
               <Panel title={`Сотрудники · ${group?.users.length ?? org.staff}`}>
@@ -159,24 +271,36 @@ export default function OwnerOrgPage() {
                         style={{ animation: `rise-in 420ms cubic-bezier(0.22, 1, 0.36, 1) ${index * 40}ms both` }}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[14px] font-medium">{person.name}</p>
-                          <p className="truncate text-[12.5px] text-muted-foreground">
-                            {ROLE_LABELS[person.role] ?? person.role} · {person.email ?? "без почты"} ·{" "}
-                            {USER_STATUS_LABELS[person.status] ?? person.status}
-                          </p>
-                          <p className="text-[11.5px] text-muted-foreground">
-                            Последний вход: {formatDateTime(person.lastLoginAt)}
-                          </p>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-[14px] font-medium">{person.name}</p>
+                              <p className="truncate text-[12.5px] text-muted-foreground">
+                                {ROLE_LABELS[person.role] ?? person.role} · {person.email ?? "без почты"} ·{" "}
+                                <span className={person.status === "suspended" ? "text-destructive" : undefined}>
+                                  {USER_STATUS_LABELS[person.status] ?? person.status}
+                                </span>
+                              </p>
+                              <p className="text-[11.5px] text-muted-foreground">
+                                Последний вход: {formatDateTime(person.lastLoginAt)}
+                                {person.status === "suspended" && person.suspendReason
+                                  ? ` · ${person.suspendReason}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busyId === person.id}
+                              onClick={() => enter({ kind: "staff", id: person.id, name: person.name })}
+                              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
+                            >
+                              {busyId === person.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
+                              Войти
+                            </button>
+                          </div>
+                          <div className="mt-2">
+                            <AccessButtons userId={person.id} status={person.status} name={person.name} />
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          disabled={busyId === person.id}
-                          onClick={() => enter({ kind: "staff", id: person.id, name: person.name })}
-                          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
-                        >
-                          {busyId === person.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                          Войти
-                        </button>
                       </li>
                     ))}
                   </ul>
@@ -196,21 +320,40 @@ export default function OwnerOrgPage() {
                         style={{ animation: `rise-in 420ms cubic-bezier(0.22, 1, 0.36, 1) ${index * 40}ms both` }}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[14px] font-medium">{driver.name}</p>
-                          <p className="truncate text-[12.5px] text-muted-foreground">
-                            {driver.phone}
-                            {driver.vehiclePlate ? ` · ${driver.vehiclePlate}` : ""} · {driver.statusLabel}
-                          </p>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-[14px] font-medium">{driver.name}</p>
+                              <p className="truncate text-[12.5px] text-muted-foreground">
+                                {driver.phone}
+                                {driver.vehiclePlate ? ` · ${driver.vehiclePlate}` : ""} · {driver.statusLabel}
+                                {driver.userStatus === "suspended" ? (
+                                  <span className="text-destructive"> · доступ закрыт</span>
+                                ) : null}
+                              </p>
+                              {driver.userStatus === "suspended" && driver.suspendReason ? (
+                                <p className="truncate text-[11.5px] text-muted-foreground">{driver.suspendReason}</p>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busyId === driver.id}
+                              onClick={() => enter({ kind: "driver", id: driver.id, name: driver.name })}
+                              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
+                            >
+                              {busyId === driver.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
+                              Войти как водитель
+                            </button>
+                          </div>
+                          <div className="mt-2">
+                            {driver.userId ? (
+                              <AccessButtons userId={driver.userId} status={driver.userStatus ?? "active"} name={driver.name} />
+                            ) : (
+                              <p className="text-[11.5px] text-muted-foreground">
+                                Учётной записи ещё нет — закрывать нечего
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          disabled={busyId === driver.id}
-                          onClick={() => enter({ kind: "driver", id: driver.id, name: driver.name })}
-                          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
-                        >
-                          {busyId === driver.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                          Войти как водитель
-                        </button>
                       </li>
                     ))}
                   </ul>

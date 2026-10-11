@@ -1,9 +1,14 @@
 {
-  "generatedAt": "2026-10-08T22:40:22.164Z",
+  "generatedAt": "2026-10-11T21:32:20.903Z",
   "endpoints": [
     {
       "method": "GET",
       "route": "/api/admin/accounts",
+      "group": "admin"
+    },
+    {
+      "method": "PATCH",
+      "route": "/api/admin/accounts/:id",
       "group": "admin"
     },
     {

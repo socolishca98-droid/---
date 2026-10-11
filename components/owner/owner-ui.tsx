@@ -28,6 +28,7 @@ export const ACTION_LABELS: Record<string, string> = {
   change_role: "Смена роли",
   invite_create: "Приглашение",
   invite_revoke: "Отзыв приглашения",
+  sessions_revoked: "Завершение сессий",
 }
 
 export const ACTION_OPTIONS = Object.keys(ACTION_LABELS)

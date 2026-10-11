@@ -201,7 +201,9 @@ export default function OwnerHomePage() {
       ) : null}
 
       {/* Компании */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_340px]">
+      {/* grid-cols-1 обязателен: без него мобильная колонка растягивается по
+          max-content длинной строки и страница уезжает вбок */}
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
         <div className="grid gap-3 sm:grid-cols-2">
           {overview.loading && !data ? (
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground">

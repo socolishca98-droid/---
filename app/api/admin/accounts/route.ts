@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
       organizationId: true,
       driverId: true,
       lastLoginAt: true,
+      suspendReason: true,
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
     take: LIMIT,
@@ -85,8 +86,15 @@ export async function GET(request: NextRequest) {
     take: LIMIT,
   })
 
-  const driverUserIds = new Map(
-    users.filter((user) => user.driverId).map((user) => [user.driverId as string, user.id]),
+  // Водителю доступ закрывается через его учётную запись (User): карточке
+  // Driver нужен и id учётки, и её статус — иначе кнопкам не на что опереться.
+  const driverUsers = new Map(
+    users
+      .filter((user) => user.driverId)
+      .map((user) => [
+        user.driverId as string,
+        { id: user.id, status: user.status, suspendReason: user.suspendReason },
+      ]),
   )
 
   const orgName = new Map(organizations.map((org) => [org.id, org.name]))
@@ -103,20 +111,26 @@ export async function GET(request: NextRequest) {
         role: user.role,
         status: user.status,
         lastLoginAt: user.lastLoginAt,
+        suspendReason: user.suspendReason,
         kind: "staff" as const,
       })),
     drivers: drivers
       .filter((driver) => driver.organizationId === org.id)
-      .map((driver) => ({
-        id: driver.id,
-        userId: driverUserIds.get(driver.id) ?? null,
-        name: driver.name,
-        phone: driver.phone,
-        status: driver.status,
-        statusLabel: DRIVER_STATUS_META[driver.status]?.label ?? driver.status,
-        vehiclePlate: driver.vehiclePlate,
-        kind: "driver" as const,
-      })),
+      .map((driver) => {
+        const account = driverUsers.get(driver.id) ?? null
+        return {
+          id: driver.id,
+          userId: account?.id ?? null,
+          userStatus: account?.status ?? null,
+          suspendReason: account?.suspendReason ?? null,
+          name: driver.name,
+          phone: driver.phone,
+          status: driver.status,
+          statusLabel: DRIVER_STATUS_META[driver.status]?.label ?? driver.status,
+          vehiclePlate: driver.vehiclePlate,
+          kind: "driver" as const,
+        }
+      }),
   }))
 
   // Пользователи без организации (например, владелец до привязки) — отдельной группой
@@ -132,6 +146,7 @@ export async function GET(request: NextRequest) {
         role: user.role,
         status: user.status,
         lastLoginAt: user.lastLoginAt,
+        suspendReason: user.suspendReason,
         kind: "staff" as const,
       })),
       drivers: [],
