@@ -27,25 +27,21 @@ export async function GET(request: NextRequest) {
   }
 
   const query = (request.nextUrl.searchParams.get("query") ?? "").trim()
-  const like = query.length > 0 ? query : null
+  // Поиск без учёта регистра делаем в JS: SQLite не поддерживает
+  // mode: "insensitive" в Prisma (то же правило, что в lib/organizations.ts),
+  // а Postgres и SQLite должны вести себя одинаково. Объём ограничен LIMIT.
+  const needle = query.length > 0 ? query.toLowerCase() : null
+  const matches = (...fields: Array<string | null | undefined>) =>
+    needle === null || fields.some((field) => (field ?? "").toLowerCase().includes(needle))
 
   const organizations = await prisma.organization.findMany({
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   })
 
-  const where = like
-    ? {
-        OR: [
-          { name: { contains: like, mode: "insensitive" as const } },
-          { email: { contains: like, mode: "insensitive" as const } },
-          { phone: { contains: like } },
-        ],
-      }
-    : {}
-
-  const users = await prisma.user.findMany({
-    where,
+  // Учётки берём без фильтра: они нужны целиком, чтобы связать водителей
+  // с их пользователями (статус доступа), даже когда ищут только водителя.
+  const allUsers = await prisma.user.findMany({
     select: {
       id: true,
       name: true,
@@ -61,19 +57,11 @@ export async function GET(request: NextRequest) {
     orderBy: [{ role: "asc" }, { name: "asc" }],
     take: LIMIT,
   })
+  const users = allUsers.filter((user) => matches(user.name, user.email, user.phone))
 
   // Водители — отдельные карточки: у некоторых ещё нет входа в приложение,
   // но войти «как водитель» всё равно нужно (проверить, что он видит).
-  const drivers = await prisma.driver.findMany({
-    where: like
-      ? {
-          OR: [
-            { name: { contains: like, mode: "insensitive" as const } },
-            { phone: { contains: like } },
-            { vehiclePlate: { contains: like, mode: "insensitive" as const } },
-          ],
-        }
-      : {},
+  const allDrivers = await prisma.driver.findMany({
     select: {
       id: true,
       name: true,
@@ -85,11 +73,14 @@ export async function GET(request: NextRequest) {
     orderBy: { name: "asc" },
     take: LIMIT,
   })
+  const drivers = allDrivers.filter((driver) =>
+    matches(driver.name, driver.phone, driver.vehiclePlate),
+  )
 
   // Водителю доступ закрывается через его учётную запись (User): карточке
   // Driver нужен и id учётки, и её статус — иначе кнопкам не на что опереться.
   const driverUsers = new Map(
-    users
+    allUsers
       .filter((user) => user.driverId)
       .map((user) => [
         user.driverId as string,
