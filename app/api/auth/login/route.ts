@@ -13,6 +13,7 @@ import { expiredSessionCookie, sessionCookie } from "@/lib/auth/session"
 import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
 
 import { STAFF_ROLES } from "@/lib/auth/constants"
+import { captureRouteError } from "@/lib/sentry"
 import {
   buildRateLimitHeaders,
   checkRateLimitAsync,
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[auth/login] error:", message)
+    captureRouteError("api/auth/login", error)
     return NextResponse.json(
       { success: false, error: "Не удалось выполнить вход. Попробуйте ещё раз" },
       { status: 500 },

@@ -41,6 +41,7 @@ import { checkOrganizationName, createOrganization } from "@/lib/organizations"
 import { registerSchema } from "@/lib/validators"
 import { prisma } from "@/lib/prisma"
 
+import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
 
 interface RegisterBody {
@@ -281,6 +282,7 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[auth/register] error:", message)
 
+    captureRouteError("api/auth/register", error)
     // Гонка при одновременной регистрации одного email
     if (message.includes("Unique constraint")) {
       return badRequest("Регистрация с этим email невозможна", "email_taken", 409)

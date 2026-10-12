@@ -39,6 +39,7 @@ import {
   type RouteOrderLike,
 } from "@/lib/routes/model"
 import { routeOrdersOrderBy, serializeRoute } from "@/lib/routes/service"
+import { captureRouteError } from "@/lib/sentry"
 import {
   canChangeOrderStatus,
   isOrderRouteable,
@@ -314,6 +315,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Route list error"
     console.error("[Routes API] GET /api/routes error:", message, error)
+    captureRouteError("api/routes", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
@@ -720,6 +722,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Route creation error"
     console.error("[Routes API] POST /api/routes error:", message, error)
+    captureRouteError("api/routes", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

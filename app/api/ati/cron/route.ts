@@ -23,6 +23,7 @@ import { prisma } from "@/lib/prisma"
 import { loadStaffSession } from "@/lib/auth/session"
 import { getDueScanProfiles, markProfileScanned, scanParamsForProfile } from "@/lib/ati/scan-schedule"
 
+import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
 
 /**
@@ -198,6 +199,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[CRON GET] Error:", message)
+    captureRouteError("api/ati/cron", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
@@ -219,6 +221,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[CRON POST] Error:", message)
+    captureRouteError("api/ati/cron", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

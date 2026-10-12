@@ -21,6 +21,7 @@ import { logRouteEvent } from "@/lib/routes/service"
 import { ocrDataPayload, recognizeDocumentOnPhoto } from "@/lib/ocr/service"
 import { buildStorageKey, photoUrlFromKey, putPhoto } from "@/lib/storage"
 
+import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
 
 /** Типы фото, которые понимает система (как в POST /api/photos). */
@@ -258,6 +259,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить фото"
     console.error("[Photos Upload] error:", message)
+    captureRouteError("api/photos/upload", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
