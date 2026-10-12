@@ -72,3 +72,6 @@ public/uploads/*
 /*-debug.txt
 /collected.txt
 /resume_block_files.txt
+
+# Кэш языковых данных Tesseract (OCR)
+.ocr-cache/
