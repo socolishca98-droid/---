@@ -74,7 +74,7 @@ export default function OwnerJournalPage() {
     if (first.error) setError(first.error)
   }, [first.error])
 
-  const forbidden = Boolean(error && /владельц/i.test(error))
+  const forbidden = Boolean(error && /недостаточно прав/i.test(error))
 
   async function loadMore() {
     setLoadingMore(true)
@@ -118,7 +118,7 @@ export default function OwnerJournalPage() {
 
       {forbidden ? (
         <div className="mt-6">
-          <Forbidden message="Этот экран доступен только владельцу платформы." />
+          <Forbidden message="Недостаточно прав для этого раздела." />
         </div>
       ) : null}
 

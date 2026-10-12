@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
-import { requireStaff, unauthorized } from "@/lib/auth/session"
+import { forbidden, requireStaff } from "@/lib/auth/session"
 import { isOwnerEmail } from "@/lib/auth/owner"
 
 export const dynamic = "force-dynamic"
@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
   if (!isOwnerEmail(auth.value.user.email)) {
-    return unauthorized("Раздел доступен только владельцу платформы")
+    // Нейтральный отказ: существование пульта владельца не раскрываем
+    return forbidden()
   }
 
   const params = request.nextUrl.searchParams

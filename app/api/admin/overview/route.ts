@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
-import { requireStaff, unauthorized } from "@/lib/auth/session"
+import { forbidden, requireStaff } from "@/lib/auth/session"
 import { isOwnerEmail } from "@/lib/auth/owner"
 
 export const dynamic = "force-dynamic"
@@ -20,6 +20,8 @@ export const dynamic = "force-dynamic"
 const OPEN_ROUTE_STATUSES = ["planned", "active", "in_transit"]
 // Заказ «в работе»: ещё не доставлен и не отменён
 const CLOSED_ORDER_STATUSES = ["delivered", "cancelled"]
+// «Сейчас в программе»: сессия жива и была активность за эти минуты
+const ONLINE_WINDOW_MINUTES = 15
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null
@@ -29,40 +31,76 @@ export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
   if (!isOwnerEmail(auth.value.user.email)) {
-    return unauthorized("Раздел доступен только владельцу платформы")
+    // Нейтральный отказ: существование пульта владельца не раскрываем
+    return forbidden()
   }
 
-  const [orgs, userGroups, driverGroups, vehicleGroups, routeGroups, orderGroups, auditGroups, recent] =
-    await Promise.all([
-      prisma.organization.findMany({
-        select: { id: true, name: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
-      }),
-      prisma.user.groupBy({
-        by: ["organizationId", "role"],
-        _count: { _all: true },
-        _max: { lastLoginAt: true },
-      }),
-      prisma.driver.groupBy({ by: ["organizationId"], _count: { _all: true } }),
-      prisma.vehicle.groupBy({ by: ["organizationId"], _count: { _all: true } }),
-      prisma.route.groupBy({ by: ["organizationId", "status"], _count: { _all: true } }),
-      prisma.order.groupBy({ by: ["organizationId", "status"], _count: { _all: true } }),
-      prisma.auditLog.groupBy({ by: ["organizationId"], _max: { createdAt: true } }),
-      prisma.auditLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 30,
-        select: {
-          id: true,
-          createdAt: true,
-          organizationId: true,
-          actorEmail: true,
-          action: true,
-          targetType: true,
-          targetEmail: true,
-          organization: { select: { name: true } },
-        },
-      }),
-    ])
+  const now = new Date()
+  const onlineSince = new Date(now.getTime() - ONLINE_WINDOW_MINUTES * 60_000)
+  const dayStart = new Date(now)
+  dayStart.setHours(0, 0, 0, 0)
+
+  const [
+    orgs,
+    userGroups,
+    statusGroups,
+    driverGroups,
+    vehicleGroups,
+    routeGroups,
+    orderGroups,
+    clientGroups,
+    auditGroups,
+    recent,
+    onlineNow,
+    loginsToday,
+  ] = await Promise.all([
+    prisma.organization.findMany({
+      select: { id: true, name: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.user.groupBy({
+      by: ["organizationId", "role"],
+      _count: { _all: true },
+      _max: { lastLoginAt: true },
+    }),
+    // Заявки на доступ и закрытые доступы — по каждой компании
+    prisma.user.groupBy({
+      by: ["organizationId", "status"],
+      _count: { _all: true },
+    }),
+    prisma.driver.groupBy({ by: ["organizationId"], _count: { _all: true } }),
+    prisma.vehicle.groupBy({ by: ["organizationId"], _count: { _all: true } }),
+    prisma.route.groupBy({ by: ["organizationId", "status"], _count: { _all: true } }),
+    prisma.order.groupBy({ by: ["organizationId", "status"], _count: { _all: true } }),
+    prisma.client.groupBy({ by: ["organizationId"], _count: { _all: true } }),
+    prisma.auditLog.groupBy({ by: ["organizationId"], _max: { createdAt: true } }),
+    prisma.auditLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        createdAt: true,
+        organizationId: true,
+        actorEmail: true,
+        action: true,
+        targetType: true,
+        targetEmail: true,
+        organization: { select: { name: true } },
+      },
+    }),
+    // Кто сейчас в программе: живая сессия с активностью за последние минуты
+    prisma.session.count({
+      where: {
+        revokedAt: null,
+        expiresAt: { gt: now },
+        OR: [
+          { lastSeenAt: { gt: onlineSince } },
+          { lastSeenAt: null, createdAt: { gt: onlineSince } },
+        ],
+      },
+    }),
+    prisma.session.count({ where: { createdAt: { gte: dayStart } } }),
+  ])
 
   type Bucket = {
     staff: number
@@ -70,6 +108,9 @@ export async function GET(request: NextRequest) {
     logists: number
     drivers: number
     vehicles: number
+    clients: number
+    pendingUsers: number
+    suspendedUsers: number
     activeRoutes: number
     completedRoutes: number
     ordersInWork: number
@@ -83,6 +124,9 @@ export async function GET(request: NextRequest) {
     logists: 0,
     drivers: 0,
     vehicles: 0,
+    clients: 0,
+    pendingUsers: 0,
+    suspendedUsers: 0,
     activeRoutes: 0,
     completedRoutes: 0,
     ordersInWork: 0,
@@ -111,8 +155,14 @@ export async function GET(request: NextRequest) {
     const last = group._max.lastLoginAt
     if (last && (!entry.lastLoginAt || last > entry.lastLoginAt)) entry.lastLoginAt = last
   }
+  for (const group of statusGroups) {
+    const entry = bucket(group.organizationId)
+    if (group.status === "pending") entry.pendingUsers += group._count._all
+    if (group.status === "suspended") entry.suspendedUsers += group._count._all
+  }
   for (const group of driverGroups) bucket(group.organizationId).drivers += group._count._all
   for (const group of vehicleGroups) bucket(group.organizationId).vehicles += group._count._all
+  for (const group of clientGroups) bucket(group.organizationId).clients += group._count._all
   for (const group of routeGroups) {
     const entry = bucket(group.organizationId)
     if (OPEN_ROUTE_STATUSES.includes(group.status)) entry.activeRoutes += group._count._all
@@ -142,6 +192,9 @@ export async function GET(request: NextRequest) {
       logists: entry.logists,
       drivers: entry.drivers,
       vehicles: entry.vehicles,
+      clients: entry.clients,
+      pendingUsers: entry.pendingUsers,
+      suspendedUsers: entry.suspendedUsers,
       activeRoutes: entry.activeRoutes,
       completedRoutes: entry.completedRoutes,
       ordersInWork: entry.ordersInWork,
@@ -158,18 +211,28 @@ export async function GET(request: NextRequest) {
       staff: sum.staff + org.staff,
       drivers: sum.drivers + org.drivers,
       vehicles: sum.vehicles + org.vehicles,
+      clients: sum.clients + org.clients,
+      pendingUsers: sum.pendingUsers + org.pendingUsers,
+      suspendedUsers: sum.suspendedUsers + org.suspendedUsers,
       activeRoutes: sum.activeRoutes + org.activeRoutes,
       ordersInWork: sum.ordersInWork + org.ordersInWork,
       ordersDelivered: sum.ordersDelivered + org.ordersDelivered,
+      onlineNow,
+      loginsToday,
     }),
     {
       organizations: 0,
       staff: orphan?.staff ?? 0,
       drivers: orphan?.drivers ?? 0,
       vehicles: orphan?.vehicles ?? 0,
+      clients: orphan?.clients ?? 0,
+      pendingUsers: orphan?.pendingUsers ?? 0,
+      suspendedUsers: orphan?.suspendedUsers ?? 0,
       activeRoutes: orphan?.activeRoutes ?? 0,
       ordersInWork: orphan?.ordersInWork ?? 0,
       ordersDelivered: orphan?.ordersDelivered ?? 0,
+      onlineNow,
+      loginsToday,
     },
   )
 

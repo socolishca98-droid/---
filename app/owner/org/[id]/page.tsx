@@ -117,7 +117,7 @@ export default function OwnerOrgPage() {
     [accounts.data, orgId],
   )
 
-  const forbidden = Boolean(overview.error && /владельц/i.test(overview.error))
+  const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
   const notFound = Boolean(overview.data && !org)
 
   async function enter(item: { kind: "staff" | "driver"; id: string; name: string }) {
@@ -215,7 +215,7 @@ export default function OwnerOrgPage() {
 
       {forbidden ? (
         <div className="mt-4">
-          <Forbidden message="Этот экран доступен только владельцу платформы." />
+          <Forbidden message="Недостаточно прав для этого раздела." />
         </div>
       ) : null}
 

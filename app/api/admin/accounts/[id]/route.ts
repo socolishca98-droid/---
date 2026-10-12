@@ -21,7 +21,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
-import { requireStaff, revokeAllSessions, unauthorized } from "@/lib/auth/session"
+import { forbidden, requireStaff, revokeAllSessions } from "@/lib/auth/session"
 import {
   OWNER_ACCOUNT_ACTIONS,
   type OwnerAccountAction,
@@ -41,7 +41,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const actor = auth.value.user
   if (!isOwnerEmail(actor.email)) {
-    return unauthorized("Управление доступом доступно только владельцу платформы")
+    // Нейтральный отказ: существование пульта владельца не раскрываем
+    return forbidden()
   }
 
   const { id } = await params

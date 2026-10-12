@@ -8,7 +8,24 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Activity, Building2, ChevronRight, Loader2, Package, Route as RouteIcon, Search, Truck, UserCog, Users, X } from "lucide-react"
+import {
+  Activity,
+  Building2,
+  ChevronRight,
+  Handshake,
+  KeyRound,
+  Loader2,
+  Package,
+  Radio,
+  Route as RouteIcon,
+  Search,
+  ShieldOff,
+  Truck,
+  UserCog,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react"
 
 import { OwnerShell } from "@/components/owner/owner-shell"
 import {
@@ -35,6 +52,9 @@ interface OverviewOrg {
   logists: number
   drivers: number
   vehicles: number
+  clients: number
+  pendingUsers: number
+  suspendedUsers: number
   activeRoutes: number
   completedRoutes: number
   ordersInWork: number
@@ -49,9 +69,14 @@ interface OverviewResponse {
     staff: number
     drivers: number
     vehicles: number
+    clients: number
+    pendingUsers: number
+    suspendedUsers: number
     activeRoutes: number
     ordersInWork: number
     ordersDelivered: number
+    onlineNow: number
+    loginsToday: number
   }
   organizations: OverviewOrg[]
   recent: {
@@ -84,7 +109,7 @@ export default function OwnerHomePage() {
     user && search ? `/api/admin/accounts?query=${encodeURIComponent(query.trim())}` : null,
   )
 
-  const forbidden = Boolean(overview.error && /владельц/i.test(overview.error))
+  const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
   const data = overview.data
   const totals = data?.totals
 
@@ -131,7 +156,7 @@ export default function OwnerHomePage() {
 
       {forbidden ? (
         <div className="mt-6">
-          <Forbidden message="Этот экран доступен только владельцу платформы. Войдите под аккаунтом владельца." />
+          <Forbidden message="Недостаточно прав для этого раздела." />
         </div>
       ) : null}
 
@@ -143,6 +168,30 @@ export default function OwnerHomePage() {
         <Tile icon={Package} label="Машин" value={totals ? formatCount(totals.vehicles) : "—"} delay={180} tone="chart-2" />
         <Tile icon={RouteIcon} label="Рейсов в работе" value={totals ? formatCount(totals.activeRoutes) : "—"} delay={240} tone="warning" />
         <Tile icon={Activity} label="Заказов в работе" value={totals ? formatCount(totals.ordersInWork) : "—"} delay={300} tone="success" />
+      </div>
+
+      {/* Живой пульс и контроль доступа */}
+      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <Tile
+          icon={Radio}
+          label="Сейчас в программе"
+          value={totals ? formatCount(totals.onlineNow) : "—"}
+          hint="активность за 15 минут"
+          delay={360}
+          tone="success"
+        />
+        <Tile icon={KeyRound} label="Входов сегодня" value={totals ? formatCount(totals.loginsToday) : "—"} delay={420} />
+        <Tile
+          icon={UserPlus}
+          label="Заявки на доступ"
+          value={totals ? formatCount(totals.pendingUsers) : "—"}
+          hint={totals && totals.pendingUsers > 0 ? "ждут одобрения" : undefined}
+          delay={480}
+          tone="warning"
+        />
+        <Tile icon={ShieldOff} label="Доступ закрыт" value={totals ? formatCount(totals.suspendedUsers) : "—"} delay={540} />
+        <Tile icon={Handshake} label="Клиентов" value={totals ? formatCount(totals.clients) : "—"} delay={600} tone="chart-2" />
+        <Tile icon={Activity} label="Доставлено заказов" value={totals ? formatCount(totals.ordersDelivered) : "—"} delay={660} />
       </div>
 
       {/* Поиск человека по всем компаниям */}
@@ -257,6 +306,20 @@ export default function OwnerHomePage() {
                 </div>
               </dl>
 
+              {org.pendingUsers > 0 || org.suspendedUsers > 0 ? (
+                <p className="mt-3 flex flex-wrap gap-1.5 text-[12px]">
+                  {org.pendingUsers > 0 ? (
+                    <span className="rounded-md bg-warning/15 px-2 py-0.5 text-warning">
+                      {org.pendingUsers} {plural(org.pendingUsers, ["заявка ждёт", "заявки ждут", "заявок ждут"])} одобрения
+                    </span>
+                  ) : null}
+                  {org.suspendedUsers > 0 ? (
+                    <span className="rounded-md bg-destructive/15 px-2 py-0.5 text-destructive">
+                      доступ закрыт: {org.suspendedUsers}
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
               <p className="mt-3 text-[12px] text-muted-foreground">
                 {org.staff > 0
                   ? `${org.admins} адм. · ${org.logists} лог. — ${plural(org.staff, ["сотрудник", "сотрудника", "сотрудников"])}`

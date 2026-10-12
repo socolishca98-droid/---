@@ -20,6 +20,7 @@
     "db:sql:routes": "prisma db execute --file prisma/sql/2026-09-22-route-model.sql --schema prisma/schema.prisma",
     "db:sql:requisites": "prisma db execute --file prisma/sql/2026-09-24-fleet-requisites.sql --schema prisma/schema.prisma",
     "seed:auth": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-auth.ts",
+    "seed:owner": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-owner.ts",
     "seed:demo": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-demo.ts",
     "db:migrate-task2": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/migrate-task2.ts",
     "db:migrate-order-stages": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/migrate-order-stages.ts",
