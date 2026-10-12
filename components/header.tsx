@@ -38,7 +38,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { AccountSwitchBanner } from "@/components/account-switch-banner"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { Badge } from "@/components/ui/badge"
-import { Building2, KeyRound, Loader2, LogOut, Menu, ShieldCheck, UserCog, Users } from "lucide-react"
+import { Building2, KeyRound, Loader2, LogOut, Menu, UserCog, Users } from "lucide-react"
 import { MobileNav } from "@/components/mobile-nav"
 import { toast } from "sonner"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
@@ -75,7 +75,7 @@ function OwnerMenuItem() {
 
 export function Header() {
   const router = useRouter()
-  const { user, logout } = useAuth()
+  const { user, logout, refresh } = useAuth()
 
   // Часы — только на клиенте: серверный рендер не должен «спорить» с
   // гидратацией из-за разного времени (приветствие по времени суток).
@@ -85,11 +85,69 @@ export function Header() {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   // На телефоне боковой панели нет — разделы открываются выдвижным меню
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
-  const [isPasswordOpen, setIsPasswordOpen] = useState(false)
+  // «Мой профиль»: свои имя и телефон + смена пароля в одном окне
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [profileName, setProfileName] = useState("")
+  const [profilePhone, setProfilePhone] = useState("")
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [repeatPassword, setRepeatPassword] = useState("")
   const [isChanging, setIsChanging] = useState(false)
+
+  // Форма профиля подставляется из базы (GET /api/auth/profile): в шапке
+  // живёт сессия, а телефон в неё не входит.
+  useEffect(() => {
+    if (!isProfileOpen) return
+    let alive = true
+    setProfileLoading(true)
+    fetch("/api/auth/profile", { cache: "no-store" })
+      .then((response) => response.json().catch(() => null))
+      .then((data) => {
+        if (!alive) return
+        if (data?.success && data.profile) {
+          setProfileName(String(data.profile.name ?? ""))
+          setProfilePhone(String(data.profile.phone ?? ""))
+        }
+      })
+      .catch(() => {
+        /* сеть недоступна — поля останутся пустыми, сохранение перезапишет */
+      })
+      .finally(() => {
+        if (alive) setProfileLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [isProfileOpen])
+
+  const handleSaveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setProfileSaving(true)
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: profileName, phone: profilePhone }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "Не удалось сохранить данные")
+        return
+      }
+      toast.success("Данные сохранены")
+      // Имя в шапке и приветствии должно обновиться сразу
+      await refresh()
+      setIsProfileOpen(false)
+    } catch (error) {
+      console.error("[header] сохранение профиля:", error)
+      toast.error("Ошибка соединения")
+    } finally {
+      setProfileSaving(false)
+    }
+  }
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -128,7 +186,7 @@ export function Header() {
       }
 
       toast.success("Пароль изменён. Остальные устройства вышли из системы")
-      setIsPasswordOpen(false)
+      setIsProfileOpen(false)
       setCurrentPassword("")
       setNewPassword("")
       setRepeatPassword("")
@@ -245,10 +303,10 @@ export function Header() {
 
             <DropdownMenuItem
               className="flex items-center gap-2 cursor-pointer"
-              onSelect={() => setIsPasswordOpen(true)}
+              onSelect={() => setIsProfileOpen(true)}
             >
-              <ShieldCheck className="h-4 w-4" />
-              Сменить пароль
+              <UserCog className="h-4 w-4" />
+              Мой профиль
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
@@ -269,71 +327,125 @@ export function Header() {
         </DropdownMenu>
       </div>
 
-      <Dialog open={isPasswordOpen} onOpenChange={setIsPasswordOpen}>
-        <DialogContent>
+      <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Смена пароля</DialogTitle>
+            <DialogTitle>Мой профиль</DialogTitle>
             <DialogDescription>
-              После смены пароля все другие сессии будут завершены — на других устройствах
-              потребуется войти заново.
+              Имя и телефон — только свои. Роль и организацию меняет администратор.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleChangePassword} className="space-y-4">
+          <form onSubmit={handleSaveProfile} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="current-password">Текущий пароль</Label>
+              <Label htmlFor="profile-name">Имя</Label>
               <Input
-                id="current-password"
-                type="password"
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
+                id="profile-name"
+                value={profileName}
+                onChange={(event) => setProfileName(event.target.value)}
+                disabled={profileLoading || profileSaving}
                 required
+                minLength={2}
+                maxLength={80}
+                autoComplete="name"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="header-new-password">Новый пароль</Label>
+              <Label htmlFor="profile-phone">Телефон</Label>
               <Input
-                id="header-new-password"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                required
-                minLength={8}
+                id="profile-phone"
+                value={profilePhone}
+                onChange={(event) => setProfilePhone(event.target.value)}
+                disabled={profileLoading || profileSaving}
+                placeholder="+7 900 555-44-33"
+                autoComplete="tel"
               />
-              <p className="text-xs text-muted-foreground">Минимум 8 символов, буквы и цифры</p>
+              <p className="text-xs text-muted-foreground">
+                {user?.role === "driver"
+                  ? "Телефон — это вход в приложение водителя, убрать его нельзя."
+                  : "Вход по-прежнему выполняется по email — телефон нужен для связи."}
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="header-repeat-password">Повторите новый пароль</Label>
-              <Input
-                id="header-repeat-password"
-                type="password"
-                autoComplete="new-password"
-                value={repeatPassword}
-                onChange={(event) => setRepeatPassword(event.target.value)}
-                required
-                minLength={8}
-              />
+              <Label htmlFor="profile-email">Email (логин)</Label>
+              <Input id="profile-email" value={user?.email ?? ""} disabled readOnly />
             </div>
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsPasswordOpen(false)}
-                disabled={isChanging}
-              >
-                Отмена
-              </Button>
-              <Button type="submit" disabled={isChanging || !currentPassword || !newPassword}>
-                {isChanging && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Сменить пароль
+              <Button type="submit" disabled={profileSaving || profileLoading}>
+                {profileSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Сохранить данные
               </Button>
             </DialogFooter>
           </form>
+
+          <div className="border-t border-border pt-4">
+            <DialogHeader>
+              <DialogTitle className="text-base">Смена пароля</DialogTitle>
+              <DialogDescription>
+                После смены пароля все другие сессии будут завершены — на других
+                устройствах потребуется войти заново.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleChangePassword} className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Текущий пароль</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="header-new-password">Новый пароль</Label>
+                <Input
+                  id="header-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  required
+                  minLength={8}
+                />
+                <p className="text-xs text-muted-foreground">Минимум 8 символов, буквы и цифры</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="header-repeat-password">Повторите новый пароль</Label>
+                <Input
+                  id="header-repeat-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={repeatPassword}
+                  onChange={(event) => setRepeatPassword(event.target.value)}
+                  required
+                  minLength={8}
+                />
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsProfileOpen(false)}
+                  disabled={isChanging}
+                >
+                  Закрыть
+                </Button>
+                <Button type="submit" disabled={isChanging || !currentPassword || !newPassword}>
+                  {isChanging && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Сменить пароль
+                </Button>
+              </DialogFooter>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
     </header>

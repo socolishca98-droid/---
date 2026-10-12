@@ -8,6 +8,7 @@ import Link from "next/link"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatPhone, telHref } from "@/lib/ui/phone"
+import { toast } from "sonner"
 import {
   Phone,
   Truck,
@@ -21,6 +22,8 @@ import {
   Shield,
   Award,
   Wrench,
+  KeyRound,
+  Pencil,
 } from "lucide-react"
 import { TruckLoader } from "@/components/ui/truck-loader"
 
@@ -50,10 +53,36 @@ export default function MobileProfilePage() {
   // Сессия — серверная (httpOnly-cookie), а не запись в localStorage:
   // раньше страница читала «driver_session», которой после задачи 1 больше
   // не существует, и любой вход заканчивался возвратом на экран логина
-  const { driver: session, isLoading: isSessionLoading, logout } = useDriverSession()
+  const { driver: session, isLoading: isSessionLoading, logout, updateDriver, refresh } =
+    useDriverSession()
   const [driver, setDriver] = useState<DriverProfile | null>(null)
   const [stats, setStats] = useState<DriverStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  // Свои данные: имя и телефон. Меняется только свой аккаунт — роут
+  // /api/auth/profile берёт id из сессии, роли и организации в нём нет.
+  const [editOpen, setEditOpen] = useState(false)
+  const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
+  const [savingData, setSavingData] = useState(false)
+
+  // Смена пароля. Форма открывается сама, если логист выдал временный
+  // пароль: /m/login отправляет сюда с ?changePassword=1.
+  const [pwOpen, setPwOpen] = useState(false)
+  const [currentPw, setCurrentPw] = useState("")
+  const [newPw, setNewPw] = useState("")
+  const [repeatPw, setRepeatPw] = useState("")
+  const [savingPw, setSavingPw] = useState(false)
+
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("changePassword") === "1") {
+        setPwOpen(true)
+      }
+    } catch {
+      /* истории нет — значит и флага нет */
+    }
+  }, [])
 
   const fetchProfile = useCallback(async (driverId: string) => {
     try {
@@ -107,6 +136,75 @@ export default function MobileProfilePage() {
           hiredAt: session.hiredAt ?? undefined,
         }
       : null)
+
+  const startEdit = () => {
+    setName(shown?.name ?? "")
+    setPhone(shown?.phone ?? "")
+    setPwOpen(false)
+    setEditOpen(true)
+  }
+
+  const saveData = async () => {
+    if (name.trim().length < 2) {
+      toast.error("Укажите имя")
+      return
+    }
+    setSavingData(true)
+    try {
+      const res = await fetch("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "Не удалось сохранить данные")
+        return
+      }
+      toast.success("Данные сохранены")
+      setEditOpen(false)
+      // Имя и телефон на экране берутся из сессии — обновляем и сразу, и с сервера
+      updateDriver({ name, phone })
+      await refresh()
+    } catch (error) {
+      console.error("[m/profile] сохранение данных:", error)
+      toast.error("Ошибка соединения")
+    } finally {
+      setSavingData(false)
+    }
+  }
+
+  const changePassword = async () => {
+    if (newPw !== repeatPw) {
+      toast.error("Новые пароли не совпадают")
+      return
+    }
+    setSavingPw(true)
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      })
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "Не удалось сменить пароль")
+        return
+      }
+      toast.success("Пароль изменён. Другие устройства вышли из системы")
+      setPwOpen(false)
+      setCurrentPw("")
+      setNewPw("")
+      setRepeatPw("")
+    } catch (error) {
+      console.error("[m/profile] смена пароля:", error)
+      toast.error("Ошибка соединения")
+    } finally {
+      setSavingPw(false)
+    }
+  }
 
   const handleLogout = async () => {
     const ok = await confirm({
@@ -190,6 +288,137 @@ export default function MobileProfilePage() {
       </div>
 
       <main className="p-4 space-y-4">
+        {/* Мои данные: имя и телефон — только свой аккаунт */}
+        <div className="bg-[#151518] border border-gray-800 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Мои данные</p>
+            {!editOpen && (
+              <button
+                type="button"
+                onClick={startEdit}
+                className="flex items-center gap-1.5 text-[13px] font-medium text-orange-400 active:opacity-70"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Изменить
+              </button>
+            )}
+          </div>
+
+          {editOpen ? (
+            <div className="mt-3 space-y-3">
+              <div>
+                <label htmlFor="m-profile-name" className="block text-[12px] text-gray-500 mb-1.5">
+                  Имя
+                </label>
+                <input
+                  id="m-profile-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
+                  className="w-full min-h-[48px] rounded-xl bg-[#0f0f12] border border-gray-700 px-3.5 text-[15px] text-white placeholder:text-gray-600 focus:border-orange-500/50 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="m-profile-phone" className="block text-[12px] text-gray-500 mb-1.5">
+                  Телефон (это вход в приложение)
+                </label>
+                <input
+                  id="m-profile-phone"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  className="w-full min-h-[48px] rounded-xl bg-[#0f0f12] border border-gray-700 px-3.5 text-[15px] text-white placeholder:text-gray-600 focus:border-orange-500/50 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(false)}
+                  disabled={savingData}
+                  className="flex-1 min-h-[48px] rounded-xl border border-gray-700 text-[14px] font-medium text-gray-300 active:opacity-70 disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveData()}
+                  disabled={savingData}
+                  className="flex-1 min-h-[48px] rounded-xl bg-orange-500 text-[14px] font-semibold text-black active:opacity-70 disabled:opacity-50"
+                >
+                  {savingData ? "Сохраняем…" : "Сохранить"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between text-[14px]">
+                <span className="text-gray-500">Имя</span>
+                <span className="font-medium text-white">{shown.name}</span>
+              </div>
+              <div className="flex items-center justify-between text-[14px]">
+                <span className="text-gray-500">Телефон</span>
+                <span className="font-medium text-white">
+                  {formatPhone(shown.phone) || "—"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditOpen(false)
+              setPwOpen((value) => !value)
+            }}
+            className="mt-3 w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-[#1c1c21] border border-gray-800 text-[14px] font-medium text-white active:opacity-70"
+          >
+            <KeyRound className="h-4 w-4 text-orange-400" />
+            {pwOpen ? "Отмена" : "Сменить пароль"}
+          </button>
+
+          {pwOpen && (
+            <div className="mt-3 space-y-3">
+              <input
+                type="password"
+                value={currentPw}
+                onChange={(event) => setCurrentPw(event.target.value)}
+                placeholder="Текущий пароль"
+                autoComplete="current-password"
+                className="w-full min-h-[48px] rounded-xl bg-[#0f0f12] border border-gray-700 px-3.5 text-[15px] text-white placeholder:text-gray-600 focus:border-orange-500/50 focus:outline-none"
+              />
+              <input
+                type="password"
+                value={newPw}
+                onChange={(event) => setNewPw(event.target.value)}
+                placeholder="Новый пароль (минимум 8 символов)"
+                autoComplete="new-password"
+                className="w-full min-h-[48px] rounded-xl bg-[#0f0f12] border border-gray-700 px-3.5 text-[15px] text-white placeholder:text-gray-600 focus:border-orange-500/50 focus:outline-none"
+              />
+              <input
+                type="password"
+                value={repeatPw}
+                onChange={(event) => setRepeatPw(event.target.value)}
+                placeholder="Повторите новый пароль"
+                autoComplete="new-password"
+                className="w-full min-h-[48px] rounded-xl bg-[#0f0f12] border border-gray-700 px-3.5 text-[15px] text-white placeholder:text-gray-600 focus:border-orange-500/50 focus:outline-none"
+              />
+              <p className="text-[11px] leading-relaxed text-gray-500">
+                Минимум 8 символов, буквы и цифры. После смены остальные устройства
+                выйдут из системы.
+              </p>
+              <button
+                type="button"
+                onClick={() => void changePassword()}
+                disabled={savingPw}
+                className="w-full min-h-[48px] rounded-xl bg-orange-500 text-[14px] font-semibold text-black active:opacity-70 disabled:opacity-50"
+              >
+                {savingPw ? "Меняем…" : "Сменить пароль"}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Автомобиль (чтение) */}
         <div className="bg-[#151518] border border-gray-800 rounded-2xl p-4">
           <div className="flex items-center gap-4">

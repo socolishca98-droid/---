@@ -21,6 +21,7 @@
   },
   "include": [
     "../lib/auth/constants.ts",
+    "../lib/profile.ts",
     "../lib/auth/access.ts",
     "../lib/auth/token.ts",
     "../lib/auth/startup.ts",

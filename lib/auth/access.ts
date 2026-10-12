@@ -95,6 +95,10 @@ const ANY_ROLE_API: { pattern: SegmentPattern; reason: string }[] = [
     reason: "пароль меняет и сотрудник, и водитель (в своём профиле)",
   },
   {
+    pattern: ["api", "auth", "profile"],
+    reason: "имя и телефон меняет и сотрудник, и водитель — только свои, id из сессии",
+  },
+  {
     pattern: ["api", "photos", "upload"],
     reason: "фото грузят и логист, и водитель: принадлежность проверяет обработчик",
   },

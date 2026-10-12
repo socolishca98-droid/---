@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-11T21:32:20.903Z",
+  "generatedAt": "2026-10-12T18:46:10.068Z",
   "endpoints": [
     {
       "method": "GET",
@@ -139,6 +139,16 @@
     {
       "method": "POST",
       "route": "/api/auth/logout",
+      "group": "auth"
+    },
+    {
+      "method": "GET",
+      "route": "/api/auth/profile",
+      "group": "auth"
+    },
+    {
+      "method": "PATCH",
+      "route": "/api/auth/profile",
       "group": "auth"
     },
     {

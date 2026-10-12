@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { hashPassword, validatePasswordStrength, verifyPassword } from "@/lib/auth/password"
 import { requireAnySession } from "@/lib/auth/session"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
 
@@ -48,7 +50,14 @@ export async function POST(request: NextRequest) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, passwordHash: true, passwordSalt: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        passwordHash: true,
+        passwordSalt: true,
+      },
     })
     if (!user) {
       return NextResponse.json(
@@ -78,6 +87,20 @@ export async function POST(request: NextRequest) {
         data: { revokedAt: new Date(), revokeReason: "password_changed" },
       }),
     ])
+
+    // Журнал действий: смена пароля — это событие безопасности, его видно
+    // в «Журнале действий» организации (GET /api/admin/audit).
+    await logAudit({
+      organizationId: user.organizationId,
+      actorId: user.id,
+      actorEmail: user.email,
+      action: "password_change",
+      targetId: user.id,
+      targetType: "user",
+      targetEmail: user.email,
+      metadata: { scope: "password", role: user.role },
+      ip: getClientIp(request),
+    })
 
     return NextResponse.json({ success: true, message: "Пароль изменён" })
   } catch (error) {
