@@ -50,3 +50,46 @@ test("несколько владельцев задаются через зап
   assert.ok(list.includes("b@y.ru"))
   assert.equal(isOwnerEmail("a@x.ru", env), true)
 })
+
+// ── Правила действий владельца над чужими учётками ─────────────────────────
+// PATCH /api/admin/accounts/[id]: закрыть/открыть доступ, завершить сессии.
+// Два запрета: самоотзыв и аккаунт другого владельца платформы.
+
+const { ownerActionBlockReason } = require("../.test-build/lib/auth/owner.js")
+
+test("самоотзыв запрещён: владелец не трогает собственный аккаунт", () => {
+  const reason = ownerActionBlockReason({
+    actorId: "u1",
+    targetId: "u1",
+    targetEmail: "кто-угодно@example.com",
+  })
+  assert.ok(reason, "должна быть причина запрета")
+  assert.match(reason, /собственн/i)
+})
+
+test("аккаунт другого владельца платформы неприкосновенен", () => {
+  const env = { OWNER_EMAIL: "boss@example.com" }
+  const reason = ownerActionBlockReason(
+    { actorId: "u1", targetId: "u2", targetEmail: "boss@example.com" },
+    env,
+  )
+  assert.ok(reason, "должна быть причина запрета")
+  assert.match(reason, /владельц/i)
+  // владелец по умолчанию тоже защищён
+  const reason2 = ownerActionBlockReason(
+    { actorId: "u1", targetId: "u3", targetEmail: DEFAULT_OWNER_EMAIL },
+    env,
+  )
+  assert.ok(reason2)
+})
+
+test("обычный сотрудник и водитель — действие разрешено (null)", () => {
+  assert.equal(
+    ownerActionBlockReason({ actorId: "u1", targetId: "u2", targetEmail: "logist@loginex.local" }),
+    null,
+  )
+  assert.equal(
+    ownerActionBlockReason({ actorId: "u1", targetId: "u2", targetEmail: null }),
+    null,
+  )
+})

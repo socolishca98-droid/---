@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
-import { issueSession, requireStaff, sessionCookie, unauthorized } from "@/lib/auth/session"
+import { forbidden, issueSession, requireStaff, sessionCookie } from "@/lib/auth/session"
 import { IMPERSONATION_COOKIE, DRIVER_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
 import { isOwnerEmail } from "@/lib/auth/owner"
 import { getSessionTtlSeconds } from "@/lib/auth/constants"
@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
 
   const owner = auth.value.user
   if (!isOwnerEmail(owner.email)) {
-    return unauthorized("Вход в чужой аккаунт доступен только владельцу платформы")
+    // Нейтральный отказ: существование «входа как» не раскрываем
+    return forbidden()
   }
 
   const body = (await request.json().catch(() => null)) as Body | null
@@ -65,6 +66,8 @@ export async function POST(request: NextRequest) {
   let targetName = ""
   let targetEmail: string | null = null
   let targetDriverId: string | null = null
+  // Компания входа — чтобы журнал владельца показывал, в какой компании вошли
+  let targetOrganizationId: string | null = null
   let redirectTo = "/lm"
 
   if (driverId) {
@@ -107,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     targetRole = "driver"
     targetDriverId = driver.id
+    targetOrganizationId = driver.organizationId ?? null
     targetName = driver.name
     redirectTo = "/m"
   } else if (userId) {
@@ -137,6 +141,7 @@ export async function POST(request: NextRequest) {
     targetName = user.name
     targetEmail = user.email
     targetDriverId = user.driverId
+    targetOrganizationId = user.organizationId ?? null
     redirectTo = user.role === "driver" ? "/m" : "/lm"
   }
 
@@ -183,7 +188,7 @@ export async function POST(request: NextRequest) {
   }
 
   await logAudit({
-    organizationId: null,
+    organizationId: targetOrganizationId,
     actorId: owner.id,
     actorEmail: owner.email,
     action: "impersonate",

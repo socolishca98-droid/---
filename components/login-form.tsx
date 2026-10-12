@@ -101,7 +101,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       return
     }
 
-    router.replace(explicitTarget ?? homeFor(result.role))
+    // Владелец платформы — на свой стартовый экран; остальные — по роли
+    router.replace(explicitTarget ?? (result.isOwner ? "/owner" : homeFor(result.role)))
     router.refresh()
   }
 

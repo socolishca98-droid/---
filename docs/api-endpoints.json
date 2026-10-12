@@ -1,9 +1,14 @@
 {
-  "generatedAt": "2026-10-08T18:03:18.344Z",
+  "generatedAt": "2026-10-11T21:32:20.903Z",
   "endpoints": [
     {
       "method": "GET",
       "route": "/api/admin/accounts",
+      "group": "admin"
+    },
+    {
+      "method": "PATCH",
+      "route": "/api/admin/accounts/:id",
       "group": "admin"
     },
     {
@@ -14,6 +19,16 @@
     {
       "method": "POST",
       "route": "/api/admin/impersonate",
+      "group": "admin"
+    },
+    {
+      "method": "GET",
+      "route": "/api/admin/journal",
+      "group": "admin"
+    },
+    {
+      "method": "GET",
+      "route": "/api/admin/overview",
       "group": "admin"
     },
     {

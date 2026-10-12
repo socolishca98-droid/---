@@ -12,6 +12,8 @@ import { LoginForm } from "@/components/login-form"
 import type { Metadata } from "next"
 import { PRODUCT_NAME, STAFF_COOKIE } from "@/lib/auth/constants"
 import { verifySessionToken } from "@/lib/auth/token"
+import { isOwnerEmail } from "@/lib/auth/owner"
+import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
@@ -34,7 +36,13 @@ export default async function LoginPage({
     if (session && session.kind === "staff") {
       // Логист работает с телефона — его место в мобильной панели /lm,
       // у администратора такой панели нет, ему нужна полная версия
-      const home = session.role === "logist" ? "/lm" : "/dashboard"
+      // Владелец платформы — на свой стартовый экран /owner
+      const owner = await prisma.user.findUnique({ where: { id: session.sub }, select: { email: true } })
+      const home = isOwnerEmail(owner?.email)
+        ? "/owner"
+        : session.role === "logist"
+          ? "/lm"
+          : "/dashboard"
       const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null
       redirect(safeNext ?? home)
     }

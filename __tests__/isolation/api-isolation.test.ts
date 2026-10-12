@@ -896,18 +896,32 @@ describe("заявки на присоединение: одобряет и ло
     expect(rowOf("user", world.pendingA).status).toBe("pending")
   })
 
-  it("логист не управляет доступом: suspend, restore, setRole, resetPassword, unlock — 403", async () => {
-    for (const action of ["suspend", "restore", "setRole", "resetPassword", "unlock"]) {
-      const response = await userPatch(
-        makeRequest("PATCH", `/api/auth/users/${world.logistA}`, {
-          cookie: cookieLogistA,
-          body: { action, role: "admin", reason: "тест", password: "Passw0rd!2345" },
-        }),
-        routeContext({ id: world.logistA }),
-      )
-      expect(response.status, `${action} → 403 для логиста`).toBe(403)
-    }
+  it("логист управляет доступом наравне с админом, но защиты остаются", async () => {
+    // Решение владельца (комментарий в app/api/auth/users/[id]/route.ts):
+    // админ и логист — один профиль, 403 для логиста больше нет.
+    // Проверяем, что при этом не обойти две защиты:
+
+    // 1) самому себе доступ не закрыть
+    const self = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.logistA}`, {
+        cookie: cookieLogistA,
+        body: { action: "suspend", reason: "тест" },
+      }),
+      routeContext({ id: world.logistA }),
+    )
+    expect(self.status, "suspend самому себе → 400").toBe(400)
     expect(rowOf("user", world.logistA).status).toBe("active")
+
+    // 2) единственного активного администратора не выключить
+    const lastAdmin = await userPatch(
+      makeRequest("PATCH", `/api/auth/users/${world.adminA}`, {
+        cookie: cookieLogistA,
+        body: { action: "suspend", reason: "тест" },
+      }),
+      routeContext({ id: world.adminA }),
+    )
+    expect(lastAdmin.status, "suspend единственного админа → 400").toBe(400)
+    expect(rowOf("user", world.adminA).status).toBe("active")
   })
 
   it("администратор закрывает доступ сотруднику и восстанавливает его (запись не удаляется)", async () => {

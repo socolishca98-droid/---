@@ -113,16 +113,15 @@ const TRIP_STATUSES = [
   },
 ] as const
 
+/**
+ * Смена приходит сырой записью DriverShift: длительности считаем на клиенте
+ * от startedAt/lastStatusChangeAt, а норму вождения — из блока rest ответа.
+ */
 interface Shift {
   id: string
   status: string
-  statusDuration: number
-  currentDrivingSeconds: number
-  totalShiftSeconds: number
-  drivingProgress: number
-  drivingRemaining: number
-  needsRest: boolean
-  restWarning: boolean
+  startedAt: string
+  lastStatusChangeAt: string
 }
 
 interface ActiveOrder {
@@ -980,9 +979,287 @@ export default function MobileHomePage() {
         </div>
       </header>
 
-      {/* Остальной JSX... (без изменений, код слишком длинный) */}
       <main className="p-4 space-y-4">
-        {/* ... */}
+        {/* Догрузы требуют ответа — всегда наверху */}
+        {proposedLoads.map((load) => (
+          <PendingLoadCard
+            key={load.id}
+            load={load}
+            onAccept={() => handleLoadProposal(load.id, true)}
+            onReject={(reason) => handleLoadProposal(load.id, false, reason)}
+          />
+        ))}
+
+        {isOnMaintenance && activeMaintenance ? (
+          /* Машина на ТО: смена и рейс недоступны, пока ремонт не закрыт */
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-amber-400" />
+              <span className="font-semibold text-amber-300">Машина на ТО</span>
+            </div>
+            <p className="text-sm text-gray-300">{activeMaintenance.description || activeMaintenance.type}</p>
+            <p className="text-xs text-gray-500">
+              Начато: {new Date(activeMaintenance.startedAt).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}
+            </p>
+            <button
+              type="button"
+              onClick={completeMaintenance}
+              disabled={isChangingStatus}
+              className="w-full min-h-[48px] rounded-xl bg-amber-500 text-black font-semibold active:opacity-80 disabled:opacity-50"
+            >
+              Завершить ТО
+            </button>
+          </div>
+        ) : !shift ? (
+          /* Смена не начата: одна большая понятная кнопка */
+          <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-800">
+                <Power className="h-5 w-5 text-gray-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold">Смена не начата</p>
+                <p className="text-xs text-gray-500">Начните смену, чтобы выйти на линию</p>
+              </div>
+            </div>
+            {activeOrder && (
+              <div className="flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 text-sm">
+                <Truck className="h-4 w-4 shrink-0 text-orange-400" />
+                <span className="truncate text-orange-200">
+                  Вас ждёт рейс: {activeOrder.routeFrom} → {activeOrder.routeTo}
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={startShift}
+              disabled={isChangingStatus}
+              className="flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl bg-orange-500 font-semibold text-white active:opacity-80 disabled:opacity-50"
+            >
+              <PlayCircle className="h-5 w-5" />
+              Начать смену
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Смена идёт: таймеры и норма вождения (цифры обновляются вместе с опросом раз в 30 с) */}
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-green-400" />
+                  <span className="text-sm font-medium text-green-400">Смена идёт</span>
+                </div>
+                <span className="text-sm text-gray-400">
+                  {formatDuration(Math.floor((Date.now() - new Date(shift.startedAt).getTime()) / 1000))}
+                </span>
+              </div>
+              {hasActiveTrip && rest && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>За рулём без перерыва</span>
+                    <span>{formatDuration(rest.drivingMinutes * 60)}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        rest.restDue ? "bg-red-500" : rest.minutesToRest <= 30 ? "bg-amber-500" : "bg-green-500"
+                      }`}
+                      style={{
+                        width: `${Math.min(100, Math.max(0, (rest.drivingMinutes / Math.max(1, rest.limitMin)) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  {rest.restDue && !rest.resting && (
+                    <p className="flex items-center gap-1.5 text-xs text-red-400">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      Пора отдохнуть: отметьте перерыв кнопкой «Отдых»
+                    </p>
+                  )}
+                  {rest?.resting && (
+                    <p className="flex items-center gap-1.5 text-xs text-amber-300">
+                      <Coffee className="h-3.5 w-3.5 shrink-0" />
+                      Отдых идёт: {rest.currentBreakMin} мин{rest.breakCounts ? "" : ` (зачтётся от ${rest.minBreakMin} мин)`}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {hasPendingTrip && activeOrder && (
+              /* Назначенный, но не начатый рейс */
+              <div className="rounded-2xl border border-orange-500/40 bg-orange-500/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Truck className="h-5 w-5 text-orange-400" />
+                  <span className="font-semibold text-orange-300">Вам назначен рейс</span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium">{activeOrder.routeFrom} → {activeOrder.routeTo}</p>
+                  <p className="text-xs text-gray-400">
+                    {activeOrder.cargoType}
+                    {activeOrder.distance > 0 && ` • ${activeOrder.distance} км`}
+                    {activeOrder.clientName && ` • ${activeOrder.clientName}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={acceptTrip}
+                  disabled={isChangingStatus}
+                  className="flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl bg-orange-500 font-semibold text-white active:opacity-80 disabled:opacity-50"
+                >
+                  <Play className="h-5 w-5" />
+                  Начать рейс
+                </button>
+              </div>
+            )}
+
+            {hasActiveTrip && activeOrder && (
+              <>
+                {/* Текущий рейс и точки маршрута */}
+                <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <currentTripStatus.icon className="h-4 w-4 shrink-0 text-orange-400" />
+                      <span className="truncate text-sm font-medium">{currentTripStatus.label}</span>
+                      <span className="shrink-0 text-xs text-gray-500">
+                        {formatDuration(Math.floor((Date.now() - new Date(shift.lastStatusChangeAt).getTime()) / 1000))}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs text-gray-500">Выполнено {routeProgress}%</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
+                    <div className="h-full rounded-full bg-orange-500 transition-all" style={{ width: `${routeProgress}%` }} />
+                  </div>
+                  <div className="space-y-1">
+                    {allRouteOrders.map((point, i) => {
+                      const closed = isOrderClosed(point.status)
+                      const isCurrent = point.id === activeOrder.id
+                      return (
+                        <button
+                          key={point.id}
+                          type="button"
+                          onClick={() => router.push(`/m/orders/${point.id}`)}
+                          className={`flex w-full min-h-[44px] items-center gap-3 rounded-xl px-3 py-2 text-left active:opacity-70 ${
+                            isCurrent ? "bg-orange-500/10 border border-orange-500/30" : "border border-transparent"
+                          }`}
+                        >
+                          {closed ? (
+                            <CheckCircle className="h-4 w-4 shrink-0 text-green-500" />
+                          ) : (
+                            <MapPin className={`h-4 w-4 shrink-0 ${isCurrent ? "text-orange-400" : "text-gray-500"}`} />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className={`truncate text-sm ${closed ? "text-gray-500 line-through" : ""}`}>
+                              {i + 1}. {point.routeFrom} → {point.routeTo}
+                            </p>
+                            <p className="truncate text-xs text-gray-500">
+                              {point.cargoType}
+                              {point.isAdditionalLoad && " • догруз"}
+                            </p>
+                          </div>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-gray-600" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Чем вы сейчас заняты: статусы рейса */}
+                <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Что сейчас делаете</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TRIP_STATUSES.map((status) => {
+                      const Icon = status.icon
+                      const isActive = shift.status === status.id
+                      const handleClick = () => {
+                        // «Отдых» фиксируется событием рейса (таймер отдыха), остальное — статусом смены
+                        if (status.id === "resting") {
+                          void toggleRest()
+                          return
+                        }
+                        void changeTripStatus(status.id)
+                      }
+                      const restActive = status.id === "resting" && rest?.resting
+                      return (
+                        <button
+                          key={status.id}
+                          type="button"
+                          onClick={handleClick}
+                          disabled={isChangingStatus}
+                          className={`flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl border p-2 text-xs font-medium transition-colors active:opacity-70 disabled:opacity-50 ${
+                            isActive || restActive
+                              ? "border-orange-500/50 bg-orange-500/15 text-orange-300"
+                              : "border-gray-800 bg-gray-900 text-gray-300"
+                          }`}
+                        >
+                          <span className={`flex h-7 w-7 items-center justify-center rounded-full ${status.color}`}>
+                            <Icon className="h-4 w-4 text-white" />
+                          </span>
+                          {status.id === "resting" && rest?.resting ? "Завершить отдых" : status.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={completeRoute}
+                  disabled={completingRoute}
+                  className="flex w-full min-h-[52px] items-center justify-center gap-2 rounded-xl bg-green-600 font-semibold text-white active:opacity-80 disabled:opacity-50"
+                >
+                  <Flag className="h-5 w-5" />
+                  {completingRoute ? "Завершаем..." : "Завершить рейс"}
+                </button>
+              </>
+            )}
+
+            {!activeOrder && (
+              /* Смена открыта, рейса нет */
+              <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-800">
+                    <ParkingCircle className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold">Ожидаю рейс</p>
+                    <p className="text-xs text-gray-500">Логист назначит задание — придёт уведомление</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeIdleStatus("maintenance")}
+                  disabled={isChangingStatus}
+                  className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-xl border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 active:opacity-70 disabled:opacity-50"
+                >
+                  <Wrench className="h-4 w-4 text-amber-400" />
+                  Отметить ТО / ремонт
+                </button>
+              </div>
+            )}
+
+            {/* Общие действия смены */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={goToBase}
+                disabled={isGoingToBase}
+                className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 active:opacity-70 disabled:opacity-50"
+              >
+                <Home className="h-4 w-4 text-sky-400" />
+                {isGoingToBase ? "Считаем..." : "На базу"}
+              </button>
+              <button
+                type="button"
+                onClick={endShift}
+                disabled={isChangingStatus}
+                className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-medium text-red-400 active:opacity-70 disabled:opacity-50"
+              >
+                <Power className="h-4 w-4" />
+                Завершить смену
+              </button>
+            </div>
+          </>
+        )}
       </main>
 
       {shift && !isOnMaintenance && <SosButton orderId={activeOrder?.id} />}

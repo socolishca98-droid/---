@@ -40,6 +40,8 @@ export interface LoginResult {
   mustChangePassword?: boolean
   /** Роль вошедшего — нужна, чтобы выбрать, куда его вести: логист → мобильная панель */
   role?: "admin" | "logist" | "driver"
+  /** Владелец платформы — ведём на стартовый экран /owner */
+  isOwner?: boolean
 }
 
 interface AuthContextType {
@@ -141,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ok: true,
           mustChangePassword: Boolean(data.user.mustChangePassword),
           role: data.user.role,
+          isOwner: Boolean(data.isOwner),
         }
       } catch (error) {
         console.error("[auth] ошибка входа:", error)

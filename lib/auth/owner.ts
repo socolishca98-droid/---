@@ -11,6 +11,9 @@
 //
 // Файл чистый (без Prisma и Next), чтобы правило можно было тестировать.
 
+/** Срок сессии владельца: через это время нужен снова логин и пароль. */
+export const OWNER_SESSION_TTL_MINUTES = 30
+
 /** Email владельца платформы. Меняется переменной окружения OWNER_EMAIL. */
 export const DEFAULT_OWNER_EMAIL = "socolishca98@gmail.com"
 
@@ -31,4 +34,34 @@ export function isOwnerEmail(
   const value = (email ?? "").trim().toLowerCase()
   if (!value) return false
   return ownerEmails(env).includes(value)
+}
+
+/** Действия владельца над чужой учётной записью (PATCH /api/admin/accounts/[id]). */
+export const OWNER_ACCOUNT_ACTIONS = ["suspend", "restore", "revokeSessions"] as const
+export type OwnerAccountAction = (typeof OWNER_ACCOUNT_ACTIONS)[number]
+
+/**
+ * Почему владельцу нельзя применить действие к этой учётной записи.
+ * null — можно. Правила:
+ *   1. Самоотзыв запрещён: владелец не может закрыть доступ или завершить
+ *      сессии самому себе (иначе можно случайно выпилить себя из системы).
+ *   2. Аккаунт другого владельца платформы неприкосновенен: владельцы не
+ *      воюют друг с другом через интерфейс.
+ * Функция чистая (без Prisma и Next) — правило проверяется тестами напрямую.
+ */
+export function ownerActionBlockReason(
+  params: {
+    actorId: string
+    targetId: string
+    targetEmail: string | null | undefined
+  },
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (params.actorId === params.targetId) {
+    return "Нельзя применить действие к собственному аккаунту"
+  }
+  if (isOwnerEmail(params.targetEmail, env)) {
+    return "Нельзя применить действие к аккаунту владельца платформы"
+  }
+  return null
 }

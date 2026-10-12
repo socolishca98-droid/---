@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
-import { requireStaff, unauthorized } from "@/lib/auth/session"
+import { forbidden, requireStaff } from "@/lib/auth/session"
 import { isOwnerEmail } from "@/lib/auth/owner"
 import { DRIVER_STATUS_META } from "@/lib/logist-mobile/types"
 
@@ -23,29 +23,26 @@ export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
   if (!isOwnerEmail(auth.value.user.email)) {
-    return unauthorized("Раздел доступен только владельцу платформы")
+    // Нейтральный отказ: существование пульта владельца не раскрываем
+    return forbidden()
   }
 
   const query = (request.nextUrl.searchParams.get("query") ?? "").trim()
-  const like = query.length > 0 ? query : null
+  // Поиск без учёта регистра делаем в JS: SQLite не поддерживает
+  // mode: "insensitive" в Prisma (то же правило, что в lib/organizations.ts),
+  // а Postgres и SQLite должны вести себя одинаково. Объём ограничен LIMIT.
+  const needle = query.length > 0 ? query.toLowerCase() : null
+  const matches = (...fields: Array<string | null | undefined>) =>
+    needle === null || fields.some((field) => (field ?? "").toLowerCase().includes(needle))
 
   const organizations = await prisma.organization.findMany({
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   })
 
-  const where = like
-    ? {
-        OR: [
-          { name: { contains: like, mode: "insensitive" as const } },
-          { email: { contains: like, mode: "insensitive" as const } },
-          { phone: { contains: like } },
-        ],
-      }
-    : {}
-
-  const users = await prisma.user.findMany({
-    where,
+  // Учётки берём без фильтра: они нужны целиком, чтобы связать водителей
+  // с их пользователями (статус доступа), даже когда ищут только водителя.
+  const allUsers = await prisma.user.findMany({
     select: {
       id: true,
       name: true,
@@ -56,23 +53,16 @@ export async function GET(request: NextRequest) {
       organizationId: true,
       driverId: true,
       lastLoginAt: true,
+      suspendReason: true,
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
     take: LIMIT,
   })
+  const users = allUsers.filter((user) => matches(user.name, user.email, user.phone))
 
   // Водители — отдельные карточки: у некоторых ещё нет входа в приложение,
   // но войти «как водитель» всё равно нужно (проверить, что он видит).
-  const drivers = await prisma.driver.findMany({
-    where: like
-      ? {
-          OR: [
-            { name: { contains: like, mode: "insensitive" as const } },
-            { phone: { contains: like } },
-            { vehiclePlate: { contains: like, mode: "insensitive" as const } },
-          ],
-        }
-      : {},
+  const allDrivers = await prisma.driver.findMany({
     select: {
       id: true,
       name: true,
@@ -84,9 +74,19 @@ export async function GET(request: NextRequest) {
     orderBy: { name: "asc" },
     take: LIMIT,
   })
+  const drivers = allDrivers.filter((driver) =>
+    matches(driver.name, driver.phone, driver.vehiclePlate),
+  )
 
-  const driverUserIds = new Map(
-    users.filter((user) => user.driverId).map((user) => [user.driverId as string, user.id]),
+  // Водителю доступ закрывается через его учётную запись (User): карточке
+  // Driver нужен и id учётки, и её статус — иначе кнопкам не на что опереться.
+  const driverUsers = new Map(
+    allUsers
+      .filter((user) => user.driverId)
+      .map((user) => [
+        user.driverId as string,
+        { id: user.id, status: user.status, suspendReason: user.suspendReason },
+      ]),
   )
 
   const orgName = new Map(organizations.map((org) => [org.id, org.name]))
@@ -103,20 +103,26 @@ export async function GET(request: NextRequest) {
         role: user.role,
         status: user.status,
         lastLoginAt: user.lastLoginAt,
+        suspendReason: user.suspendReason,
         kind: "staff" as const,
       })),
     drivers: drivers
       .filter((driver) => driver.organizationId === org.id)
-      .map((driver) => ({
-        id: driver.id,
-        userId: driverUserIds.get(driver.id) ?? null,
-        name: driver.name,
-        phone: driver.phone,
-        status: driver.status,
-        statusLabel: DRIVER_STATUS_META[driver.status]?.label ?? driver.status,
-        vehiclePlate: driver.vehiclePlate,
-        kind: "driver" as const,
-      })),
+      .map((driver) => {
+        const account = driverUsers.get(driver.id) ?? null
+        return {
+          id: driver.id,
+          userId: account?.id ?? null,
+          userStatus: account?.status ?? null,
+          suspendReason: account?.suspendReason ?? null,
+          name: driver.name,
+          phone: driver.phone,
+          status: driver.status,
+          statusLabel: DRIVER_STATUS_META[driver.status]?.label ?? driver.status,
+          vehiclePlate: driver.vehiclePlate,
+          kind: "driver" as const,
+        }
+      }),
   }))
 
   // Пользователи без организации (например, владелец до привязки) — отдельной группой
@@ -132,6 +138,7 @@ export async function GET(request: NextRequest) {
         role: user.role,
         status: user.status,
         lastLoginAt: user.lastLoginAt,
+        suspendReason: user.suspendReason,
         kind: "staff" as const,
       })),
       drivers: [],

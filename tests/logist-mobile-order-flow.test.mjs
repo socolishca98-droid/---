@@ -128,14 +128,16 @@ test("что мешает заказу: подсказки с понятной �
   assert.equal(stuck.find((item) => item.id === "driver").tone, "warn")
   assert.equal(stuck.find((item) => item.id === "price").fix, "price")
 
-  // Полный заказ: не мешает ничего
+  // Полный заказ: не мешает ничего. Срок — всегда в будущем относительно
+  // «сегодня», иначе тест начинал падать, как только календарь догонял дату.
+  const futureDeadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
   assert.deepEqual(
     orderChecks(
       order({
         status: "control",
         price: 38000,
         clientContact: "+7 495 123-45-67",
-        deadline: "2026-10-10T18:00:00.000Z",
+        deadline: futureDeadline,
         assignedDriverId: "driver-1",
         assignedVehicleId: "vehicle-1",
       }),
