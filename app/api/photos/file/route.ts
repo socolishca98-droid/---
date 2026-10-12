@@ -2,35 +2,25 @@
 //
 // Отдаёт файл фотографии ПОСЛЕ проверки доступа.
 //
-// Зачем: фото лежат в public/uploads, а Next отдаёт всё из public статикой —
-// без сессии и без проверки организации. Ссылку на снимок ТТН достаточно
-// переслать в мессенджере, и её откроет кто угодно. Поэтому обращения к
-// /uploads/** переписываются на этот роут (proxy.ts), который проверяет,
-// что человек вошёл и что фото принадлежит его организации.
+// Зачем: фото лежат в хранилище (public/uploads либо S3-совместимое —
+// см. lib/storage.ts), и если отдавать их напрямую, ссылку на снимок ТТН
+// достаточно переслать в мессенджере, и её откроет кто угодно. Поэтому
+// обращения к /uploads/** переписываются на этот роут (proxy.ts), который
+// проверяет, что человек вошёл и что фото принадлежит его организации.
+// Файл читается через lib/storage — роут не знает, где физически лежит фото.
 //
 // Путь берётся из query-параметра path в том же виде, в каком он хранится в
 // Photo.url: /uploads/<организация>/<дата>/<имя файла>.
 
 import { NextRequest, NextResponse } from "next/server"
 
-import { existsSync, readFileSync } from "node:fs"
-import path from "node:path"
-
 import { requireAnySession } from "@/lib/auth/session"
-
-const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads")
-
-/** Расширения, которые реально приходят с телефона водителя и из сканера. */
-const CONTENT_TYPES: Record<string, string> = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".heic": "image/heic",
-  ".heif": "image/heif",
-  ".pdf": "application/pdf",
-}
+import {
+  contentTypeForFileName,
+  normalizeStorageKey,
+  organizationFromStorageKey,
+  readPhoto,
+} from "@/lib/storage"
 
 export async function GET(request: NextRequest) {
   const auth = await requireAnySession(request)
@@ -48,17 +38,28 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const requested = request.nextUrl.searchParams.get("path") ?? ""
-  const segments = requested.split("/").filter(Boolean)
+  // Путь фото приходит двумя путями, и оба нужно поддержать:
+  //   * прямой вызов роута с ?path=/uploads/... (так его зовут тесты и API);
+  //   * обращение к /uploads/**, которое proxy переписывает на этот роут.
+  // Во втором случае query рерайта до обработчика не доходит — роут видит
+  // исходный адрес, поэтому путь берём из pathname.
+  const requested =
+    request.nextUrl.searchParams.get("path") ?? request.nextUrl.pathname ?? ""
 
-  // /uploads/<организация>/<дата>/<имя>
-  if (segments[0] !== "uploads" || segments.length < 4) {
+  // Попытка выйти за пределы каталога загрузок («../..», обратные слэши) —
+  // это не «фото не нашлось», а заведомо недопустимый путь.
+  if (requested.includes("..") || requested.includes("\\")) {
+    return NextResponse.json({ success: false, error: "Недопустимый путь" }, { status: 400 })
+  }
+
+  const key = normalizeStorageKey(requested)
+
+  // /uploads/<организация>/<дата>/<имя> — организация, дата и имя файла.
+  if (!key || key.split("/").length !== 3) {
     return NextResponse.json({ success: false, error: "Фото не найдено" }, { status: 404 })
   }
 
-  const [, photoOrganizationId, ...rest] = segments as [string, string, ...string[]]
-
-  if (photoOrganizationId !== organizationId) {
+  if (organizationFromStorageKey(key) !== organizationId) {
     // Не раскрываем, существует ли файл: чужая организация — просто «нет доступа»
     return NextResponse.json(
       { success: false, error: "Фото принадлежит другой организации" },
@@ -66,25 +67,17 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // Каталог организации — часть пути на диске: public/uploads/<организация>/<дата>/<имя>.
-  // Берём уже сверенный с сессией сегмент, а не сырую строку из запроса.
-  const resolvedRoot = path.resolve(UPLOADS_ROOT)
-  const absolute = path.resolve(path.join(resolvedRoot, photoOrganizationId, ...rest))
-  if (absolute !== resolvedRoot && !absolute.startsWith(resolvedRoot + path.sep)) {
-    return NextResponse.json({ success: false, error: "Недопустимый путь" }, { status: 400 })
-  }
-
-  if (!existsSync(absolute)) {
+  const bytes = await readPhoto(key)
+  if (!bytes) {
     return NextResponse.json({ success: false, error: "Фото не найдено" }, { status: 404 })
   }
 
-  const extension = path.extname(absolute).toLowerCase()
-  const bytes = readFileSync(absolute)
+  const fileName = key.split("/").pop() as string
 
   return new NextResponse(new Uint8Array(bytes), {
     status: 200,
     headers: {
-      "content-type": CONTENT_TYPES[extension] ?? "application/octet-stream",
+      "content-type": contentTypeForFileName(fileName),
       // Кэш только свой (private): ссылку нельзя передать и открыть без входа
       "cache-control": "private, max-age=300, must-revalidate",
       "x-content-type-options": "nosniff",

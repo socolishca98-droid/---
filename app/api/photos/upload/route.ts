@@ -5,10 +5,10 @@
 // Раньше «загрузка» была имитацией: браузер присылал blob:-ссылку на файл,
 // а тип и данные «распознавания» подбирались случайным числом. Файл никуда
 // не сохранялся, поэтому ни в истории рейса, ни в карточке клиента фото быть
-// не могло. Теперь файл приходит на сервер, кладётся в public/uploads,
-// а чек и накладная сразу распознаются локальным OCR.
+// не могло. Теперь файл приходит на сервер, кладётся в хранилище
+// (lib/storage.ts: public/uploads или S3-совместимое), а чек и накладная
+// сразу распознаются локальным OCR.
 
-import { mkdir, writeFile } from "node:fs/promises"
 import { toLocalDateKey } from "@/lib/dates"
 import path from "node:path"
 
@@ -19,6 +19,7 @@ import { requireAnySession } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 import { ocrDataPayload, recognizeDocumentOnPhoto } from "@/lib/ocr/service"
+import { buildStorageKey, photoUrlFromKey, putPhoto } from "@/lib/storage"
 
 export const dynamic = "force-dynamic"
 
@@ -149,42 +150,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Сохраняем файл: public/uploads/<организация>/<дата>/<имя>.
-    // Корень каталога — константа (папка задана статически), динамическая часть
-    // добавляется второй ступенью: иначе сборщик считает путь произвольным и
-    // тянет в образ весь проект целиком
-    const uploadsRoot = path.join(process.cwd(), "public", "uploads")
-    // Каталог <организация>/<дата> собирается во время исполнения, поэтому
-    // статически проследить его нельзя. Явно отказываем сборщику в трейсинге:
-    // иначе Turbopack включает в образ весь проект (public, исходники) и
-    // предупреждает «Dynamic filesystem access causes tracing of the whole project».
-    const relativeDir = path.join(
-      /* turbopackIgnore: true */
-      org.organizationId ?? "shared",
+    // Сохраняем файл через хранилище (lib/storage.ts): local по умолчанию,
+    // S3-совместимое — если задан STORAGE_DRIVER=s3. Ключ файла —
+    // <организация>/<дата>/<имя>, и в ссылке он выглядит так же, как раньше
+    // лежал на диске: /uploads/<организация>/<дата>/<имя>.
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(file.name || "photo")}`
+    const storageKey = buildStorageKey({
+      organizationId: org.organizationId ?? "shared",
       // папка загрузки — по местному дню, а не по UTC (lib/dates.ts)
-      toLocalDateKey(new Date()),
-    )
-    const absoluteDir = path.join(uploadsRoot, relativeDir)
-
-    // Страховка: запись строго внутри public/uploads, даже если идентификатор
-    // организации когда-нибудь окажется похож на «../../etc»
-    const normalizedRoot = path.resolve(uploadsRoot)
-    const resolvedDir = path.resolve(absoluteDir)
-    if (resolvedDir !== normalizedRoot && !resolvedDir.startsWith(normalizedRoot + path.sep)) {
+      dateKey: toLocalDateKey(new Date()),
+      fileName,
+    })
+    if (!storageKey) {
       return NextResponse.json(
-        { success: false, error: "Недопустимый каталог загрузки" },
+        { success: false, error: "Не удалось построить имя файла для хранилища" },
         { status: 400 },
       )
     }
 
-    await mkdir(resolvedDir, { recursive: true })
-
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(file.name || "photo")}`
-    const absolutePath = path.join(resolvedDir, fileName)
     const bytes = Buffer.from(await file.arrayBuffer())
-    await writeFile(absolutePath, bytes)
-
-    const url = `/uploads/${relativeDir.split(path.sep).join("/")}/${fileName}`
+    await putPhoto(storageKey, bytes, file.type)
+    const url = photoUrlFromKey(storageKey)
 
     const photo = (await prisma.photo.create({
       data: {

@@ -41,6 +41,19 @@ function fileRequest(requestedPath: string, cookie?: string) {
   )
 }
 
+/**
+ * Обращение к /uploads/... после рерайта из proxy: query-параметра path уже
+ * нет, путь лежит в адресе. Именно на этом раньше ломался роут — регрессия.
+ */
+function uploadsPathRequest(organizationId: string, cookie?: string) {
+  const headers: Record<string, string> = {}
+  if (cookie) headers.cookie = cookie
+  return new NextRequest(
+    `http://localhost/uploads/${organizationId}/${DATE_DIR}/${FILE_NAME}`,
+    { method: "GET", headers },
+  )
+}
+
 function photoUrl(organizationId: string) {
   return `/uploads/${organizationId}/${DATE_DIR}/${FILE_NAME}`
 }
@@ -111,6 +124,20 @@ describe("GET /api/photos/file", () => {
   it("путь не из хранилища — 404", async () => {
     const response = await photoFileGet(fileRequest("/uploads/short", staffA))
     expect(response.status).toBe(404)
+  })
+
+  it("после рерайта из proxy (путь в адресе, без query) файл тоже отдаёт", async () => {
+    const response = await photoFileGet(uploadsPathRequest(world.orgA, staffA))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("image/jpeg")
+    const bytes = Buffer.from(await response.arrayBuffer())
+    expect(bytes.equals(JPEG_BYTES)).toBe(true)
+  })
+
+  it("после рерайта чужая организация по-прежнему не проходит", async () => {
+    const response = await photoFileGet(uploadsPathRequest(world.orgA, staffB))
+    expect(response.status).toBe(403)
   })
 
   it("своего файла, которого нет на диске, — 404", async () => {

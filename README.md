@@ -82,6 +82,17 @@ DRIVER_DEFAULT_PASSWORD="ПарольДляВодителей1"   # можно �
 | `TRAFFIC_PROVIDER` | `mock` (по умолчанию) или `yandex` + `YANDEX_ROUTING_API_KEY` |
 | `SENTRY_DSN` | необязательно; без DSN мониторинг отключён |
 | `OCR_LANGUAGES`, `OCR_TIMEOUT_MS`, `OCR_CACHE_DIR`, `OCR_LANG_PATH` | локальный Tesseract для распознавания чеков и накладных |
+| `STORAGE_DRIVER` | где лежат фото: `local` (по умолчанию, `public/uploads`) или `s3` |
+| `STORAGE_LOCAL_ROOT` | каталог файлов в local-режиме (по умолчанию `public/uploads`) |
+| `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | доступ к S3-совместимому хранилищу (Yandex Object Storage, Cloudflare R2, Supabase Storage, MinIO, AWS) |
+| `STORAGE_S3_PREFIX`, `STORAGE_S3_PATH_STYLE` | префикс ключей внутри бакета и path-style адресация (MinIO) |
+
+**Фото и serverless.** Файлы по умолчанию лежат в `public/uploads` — этого
+достаточно для одного сервера и Docker. На Vercel файловая система эфемерна,
+поэтому для прода включите `STORAGE_DRIVER=s3` и укажите любое
+S3-совместимое хранилище. Доступ к фото при этом не меняется: файл отдаёт
+роут `/api/photos/file` после проверки организации, публичный bucket не нужен.
+Фото, загруженные до переезда, читаются с диска (`lib/storage.ts`).
 
 ## 3. База данных
 
