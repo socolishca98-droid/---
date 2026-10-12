@@ -15,10 +15,10 @@ import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
 import { STAFF_ROLES } from "@/lib/auth/constants"
 import {
   buildRateLimitHeaders,
-  checkRateLimit,
+  checkRateLimitAsync,
   getClientIp,
-  recordFailure,
-  resetRateLimit,
+  recordFailureAsync,
+  resetRateLimitAsync,
 } from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   const identifier = String(body.email ?? "")
   const rateLimitKey = `auth-login:${getClientIp(request)}:${identifier.toLowerCase()}`
-  const rateLimit = checkRateLimit(rateLimitKey)
+  const rateLimit = await checkRateLimitAsync(rateLimitKey)
   if (!rateLimit.allowed) {
     return NextResponse.json(
       {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.ok) {
-      const afterFailure = recordFailure(rateLimitKey)
+      const afterFailure = await recordFailureAsync(rateLimitKey)
       return NextResponse.json(
         { success: false, error: result.error, code: result.code },
         {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    resetRateLimit(rateLimitKey)
+    await resetRateLimitAsync(rateLimitKey)
 
     const response = NextResponse.json({
       success: true,

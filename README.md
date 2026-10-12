@@ -78,6 +78,8 @@ DRIVER_DEFAULT_PASSWORD="ПарольДляВодителей1"   # можно �
 | `ORGANIZATION_NAME` | организация-владелец данных (мультитенантность) |
 | `DRIVER_DEFAULT_PASSWORD` | стартовый пароль водителей; они меняют его при входе |
 | `CRON_SECRET` | доступ к планировщику сканирования ATI |
+| `RATE_LIMIT_DRIVER` | где считать попытки входа: `memory` (по умолчанию) или `upstash` |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Redis (Upstash) для общего счётчика попыток — нужен на serverless |
 | `ATI_CLIENT_ID` / `ATI_TOKEN` | интеграция с ATI.SU (без них грузы не подтягиваются) |
 | `TRAFFIC_PROVIDER` | `mock` (по умолчанию) или `yandex` + `YANDEX_ROUTING_API_KEY` |
 | `SENTRY_DSN` | необязательно; без DSN мониторинг отключён |
@@ -86,6 +88,15 @@ DRIVER_DEFAULT_PASSWORD="ПарольДляВодителей1"   # можно �
 | `STORAGE_LOCAL_ROOT` | каталог файлов в local-режиме (по умолчанию `public/uploads`) |
 | `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | доступ к S3-совместимому хранилищу (Yandex Object Storage, Cloudflare R2, Supabase Storage, MinIO, AWS) |
 | `STORAGE_S3_PREFIX`, `STORAGE_S3_PATH_STYLE` | префикс ключей внутри бакета и path-style адресация (MinIO) |
+
+**Ограничение попыток входа.** Счётчик по умолчанию живёт в памяти процесса —
+этого хватает одному серверу и Docker. На Vercel каждый запрос может приехать
+на другой инстанс, поэтому для прода подключите Redis (Upstash):
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — лимитер переключится
+сам (`RATE_LIMIT_DRIVER=upstash` включать необязательно). Дополнительных
+пакетов не требуется: запросы идут по REST, счётчик держит один атомарный
+Lua-сценарий. Если Redis не ответит, лимитер не блокирует всех подряд, а
+считает попытки в памяти процесса и пишет предупреждение в лог.
 
 **Фото и serverless.** Файлы по умолчанию лежат в `public/uploads` — этого
 достаточно для одного сервера и Docker. На Vercel файловая система эфемерна,

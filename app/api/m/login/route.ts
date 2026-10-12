@@ -17,10 +17,10 @@ import { expiredSessionCookie, sessionCookie } from "@/lib/auth/session"
 import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
 import {
   buildRateLimitHeaders,
-  checkRateLimit,
+  checkRateLimitAsync,
   getClientIp,
-  recordFailure,
-  resetRateLimit,
+  recordFailureAsync,
+  resetRateLimitAsync,
 } from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   const identifier = String(body.phone ?? "")
   const rateLimitKey = `m-login:${getClientIp(request)}:${identifier.replace(/\D/g, "")}`
-  const rateLimit = checkRateLimit(rateLimitKey)
+  const rateLimit = await checkRateLimitAsync(rateLimitKey)
   if (!rateLimit.allowed) {
     return NextResponse.json(
       {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.ok) {
-      const afterFailure = recordFailure(rateLimitKey)
+      const afterFailure = await recordFailureAsync(rateLimitKey)
       return NextResponse.json(
         { success: false, error: result.error, code: result.code },
         {
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    resetRateLimit(rateLimitKey)
+    await resetRateLimitAsync(rateLimitKey)
 
     if (!result.driverId) {
       return NextResponse.json(

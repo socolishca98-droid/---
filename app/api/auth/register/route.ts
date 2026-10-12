@@ -33,9 +33,9 @@ import {
 } from "@/lib/invites"
 import {
   buildRateLimitHeaders,
-  checkRateLimit,
+  checkRateLimitAsync,
   getClientIp,
-  recordFailure,
+  recordFailureAsync,
 } from "@/lib/rate-limiter"
 import { checkOrganizationName, createOrganization } from "@/lib/organizations"
 import { registerSchema } from "@/lib/validators"
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
   const rateLimitKey = creatingOrganization
     ? `auth-register-org:${ip}`
     : `auth-register-invite:${ip}`
-  const rateLimit = checkRateLimit(rateLimitKey)
+  const rateLimit = await checkRateLimitAsync(rateLimitKey)
   if (!rateLimit.allowed) {
     return badRequest(
       "Слишком много попыток регистрации. Повторите через 15 минут",
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) {
       // Сообщение одинаковое для всех случаев: не раскрываем, есть ли такой адрес
-      if (!creatingOrganization) recordFailure(rateLimitKey)
+      if (!creatingOrganization) await recordFailureAsync(rateLimitKey)
       return badRequest(
         "Регистрация с этим email невозможна. Обратитесь к администратору вашей организации",
         "email_taken",
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       })
       if (duplicateOrganization) {
         // Такая компания уже зарегистрирована — присоединяться нужно по коду
-        recordFailure(rateLimitKey)
+        await recordFailureAsync(rateLimitKey)
         return badRequest(
           `Организация «${duplicateOrganization.name}» уже зарегистрирована. Попросите у её администратора код приглашения`,
           "organization_exists",
@@ -196,13 +196,13 @@ export async function POST(request: NextRequest) {
     // ── Сценарий B: присоединение по коду приглашения ─────────────────────
     const normalizedCode = normalizeInviteCode(rawInviteCode)
     if (!normalizedCode) {
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest("Код приглашения имеет неверный формат", "invalid_invite")
     }
 
     const invite = await findInviteByCode(normalizedCode)
     if (!invite) {
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest(
         "Приглашение не найдено. Проверьте код или запросите новый у администратора",
         "invalid_invite",
@@ -212,13 +212,13 @@ export async function POST(request: NextRequest) {
 
     const validity = evaluateInvite(invite)
     if (!validity.ok) {
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest(validity.message, `invite_${validity.reason}`, 410)
     }
 
     if (!INVITE_ROLES.includes(invite.role as InviteRole)) {
       // Код создан с ролью, которой больше нет в продукте — не угадываем
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest(
         "Приглашение выдано с недопустимой ролью. Попросите администратора создать новый код",
         "invalid_invite",
