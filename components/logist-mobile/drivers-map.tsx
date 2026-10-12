@@ -19,7 +19,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { ChevronDown, ChevronUp, Crosshair, Minus, Phone, Plus, RefreshCw, Route as RouteIcon } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronUp,
+  Crosshair,
+  Info,
+  LocateFixed,
+  Minus,
+  Phone,
+  Plus,
+  RefreshCw,
+  Route as RouteIcon,
+  Search,
+  X,
+} from "lucide-react"
+import { toast } from "sonner"
 
 import { DRIVER_STATUS_META } from "@/lib/logist-mobile/types"
 import { formatRelative, telHref } from "@/lib/logist-mobile/format"
@@ -61,6 +75,14 @@ const STATUS_COLORS: Record<string, string> = {
   offline: "#a1a1aa",
   maintenance: "#fbbf24",
 }
+
+/** Легенда: что значат цвета точек и линий на карте. */
+const LEGEND_ITEMS: Array<{ color: string; label: string }> = [
+  { color: STATUS_COLORS.available, label: "Свободен" },
+  { color: STATUS_COLORS.busy, label: "В рейсе" },
+  { color: STATUS_COLORS.maintenance, label: "Ремонт" },
+  { color: STATUS_COLORS.offline, label: "Не на связи" },
+]
 
 /** Цвета ниток: рейсы должны отличаться друг от друга, иначе каша. */
 const ROUTE_COLORS = ["#fb923c", "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#facc15", "#22d3ee"]
@@ -110,6 +132,11 @@ export function DriversMap() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
+  // 6.1: легенда цветов; 6.2: поиск по списку машин; 6.4: моё местоположение
+  const [legendOpen, setLegendOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const [locating, setLocating] = useState(false)
+  const myMarker = useRef<L.CircleMarker | null>(null)
 
   // --- данные ---------------------------------------------------------------
   // Один лёгкий запрос вместо двух тяжёлых: сервер уже проредил нитки рейсов
@@ -185,6 +212,7 @@ export function DriversMap() {
       driverMarkers.current.clear()
       routeLines.current.clear()
       baseMarker.current = null
+      myMarker.current = null
       fitDone.current = false
       map.remove()
       mapRef.current = null
@@ -306,6 +334,55 @@ export function DriversMap() {
 
   const onMapDrivers = drivers.filter((driver) => driver.latitude !== null && driver.longitude !== null)
 
+  // 6.2: поиск по имени, номеру машины и маршруту — без учёта регистра.
+  // Фильтруется список в шторке; маркеры на карте остаются, чтобы картина
+  // «где все машины» не пропадала во время набора.
+  const visibleDrivers = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return onMapDrivers
+    return onMapDrivers.filter((driver) =>
+      [driver.name, driver.vehiclePlate, driver.routeFrom, driver.routeTo, driver.currentLocation]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(needle)),
+    )
+  }, [onMapDrivers, query])
+
+  // 6.4: «моё местоположение» — спросить браузер и подлететь к точке
+  const locateMe = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!("geolocation" in navigator)) {
+      toast.error("Браузер не отдаёт геопозицию")
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocating(false)
+        const here: [number, number] = [position.coords.latitude, position.coords.longitude]
+        if (!myMarker.current) {
+          myMarker.current = L.circleMarker(here, {
+            radius: 8,
+            color: "#ffffff",
+            weight: 2.5,
+            fillColor: "#60a5fa",
+            fillOpacity: 1,
+          })
+            .bindTooltip("Вы здесь", { direction: "top" })
+            .addTo(map)
+        } else {
+          myMarker.current.setLatLng(here)
+        }
+        map.flyTo(here, Math.max(map.getZoom(), 13), { duration: 0.6 })
+      },
+      () => {
+        setLocating(false)
+        toast.error("Геопозиция недоступна: разрешите доступ в браузере")
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    )
+  }, [])
+
   const focusDriver = useCallback((driver: MapDriver) => {
     if (driver.latitude === null || driver.longitude === null) return
     mapRef.current?.flyTo([driver.latitude, driver.longitude], 13, { duration: 0.6 })
@@ -367,6 +444,18 @@ export function DriversMap() {
               <Crosshair className="h-4 w-4" />
               Все
             </button>
+            <button
+              type="button"
+              onClick={() => setLegendOpen((value) => !value)}
+              aria-label="Легенда карты"
+              className={`flex h-10 w-10 items-center justify-center rounded-md border backdrop-blur ${
+                legendOpen
+                  ? "border-primary/40 bg-primary/20 text-primary"
+                  : "border-border bg-black/60 text-foreground/90"
+              }`}
+            >
+              <Info className="h-4 w-4" />
+            </button>
           </div>
 
           <div className="pointer-events-auto flex flex-col gap-2">
@@ -386,13 +475,54 @@ export function DriversMap() {
             >
               <Minus className="h-4.5 w-4.5" />
             </button>
+            <button
+              type="button"
+              onClick={locateMe}
+              aria-label="Моё местоположение"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-black/60 text-foreground backdrop-blur"
+            >
+              {locating ? (
+                <RefreshCw className="h-4.5 w-4.5 animate-spin" />
+              ) : (
+                <LocateFixed className="h-4.5 w-4.5" />
+              )}
+            </button>
           </div>
         </div>
+
+        {/* 6.1: легенда — что значат цвета. Открывается кнопкой ⓘ */}
+        {legendOpen ? (
+          <div className="mx-auto max-w-md px-3 pt-2">
+            <div className="pointer-events-auto inline-block rounded-xl border border-border bg-black/70 p-3 text-[12.5px] text-foreground backdrop-blur">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {LEGEND_ITEMS.map((item) => (
+                  <span key={item.label} className="flex items-center gap-2">
+                    <span
+                      className="inline-block h-3 w-3 rounded-full border-2 border-white"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    {item.label}
+                  </span>
+                ))}
+                <span className="flex items-center gap-2">
+                  <span className="inline-block h-3 w-3 rounded-full border-[3px] border-[#fb923c] bg-[#0b0b0e]" />
+                  База
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="inline-block h-1 w-4 rounded-full bg-[#fb923c]" />
+                  Нитка рейса
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Карточка выбранной машины — над шторкой, в пределах экрана */}
       {selectedDriver && !sheetOpen ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-2 z-[3]">
+        // bottom-16: карточка целиком НАД свёрнутой шторкой «Машины на карте»,
+        // иначе кнопки «На карте» и «Позвонить» прячутся под неё
+        <div className="pointer-events-none absolute inset-x-0 bottom-16 z-[3]">
           <div className="mx-auto max-w-md px-3">
             <div className="pointer-events-auto rounded-xl border border-border bg-card shadow-sm/95 p-3.5 backdrop-blur">
               <div className="flex items-start justify-between gap-3">
@@ -400,6 +530,11 @@ export function DriversMap() {
                   <p className="truncate text-[14.5px] font-medium text-foreground">{selectedDriver.name}</p>
                   <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
                     {[selectedDriver.vehiclePlate, selectedDriver.currentLocation].filter(Boolean).join(" · ") || "нет данных"}
+                  </p>
+                  {/* 6.3: время до базы появится после подключения провайдера
+                      пробок (Яндекс JS API — ждёт ключа). Пока честно: нет данных. */}
+                  <p className="mt-0.5 truncate text-[12px] text-muted-foreground/80">
+                    До базы: нет данных о пробках
                   </p>
                 </div>
                 <button
@@ -444,7 +579,7 @@ export function DriversMap() {
               <span className="flex items-center gap-2 text-[14.5px] font-medium text-foreground">
                 Машины на карте
                 <span className="rounded-full bg-secondary px-2 py-0.5 text-[12px] text-foreground/90">
-                  {onMapDrivers.length}
+                  {query.trim() ? `${visibleDrivers.length} из ${onMapDrivers.length}` : onMapDrivers.length}
                 </span>
               </span>
               <span className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
@@ -455,13 +590,38 @@ export function DriversMap() {
 
             {sheetOpen ? (
               <div className="max-h-[42vh] overflow-y-auto overscroll-contain px-3 pb-3">
+                {/* 6.2: поиск машины — имя, номер, маршрут */}
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Найти: имя, номер машины, маршрут"
+                    className="h-11 w-full rounded-xl border border-border bg-background/70 pl-9 pr-9 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                  {query ? (
+                    <button
+                      type="button"
+                      onClick={() => setQuery("")}
+                      aria-label="Очистить поиск"
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
                 {onMapDrivers.length === 0 ? (
                   <p className="px-1 pb-2 text-[13px] text-muted-foreground">
                     Координат пока нет — водители появятся на карте после первой отправки геопозиции.
                   </p>
+                ) : visibleDrivers.length === 0 ? (
+                  <p className="px-1 pb-2 text-[13px] text-muted-foreground">
+                    Никого не нашли по запросу «{query.trim()}». Сотрите запрос — машины вернутся.
+                  </p>
                 ) : (
                   <div className="space-y-2">
-                    {onMapDrivers.map((driver) => {
+                    {visibleDrivers.map((driver) => {
                       const meta = DRIVER_STATUS_META[driver.status] ?? DRIVER_STATUS_META.offline
                       const tel = telHref(driver.phone)
                       const active = driver.id === selected
