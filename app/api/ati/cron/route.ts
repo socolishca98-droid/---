@@ -25,6 +25,13 @@ import { getDueScanProfiles, markProfileScanned, scanParamsForProfile } from "@/
 
 export const dynamic = "force-dynamic"
 
+/**
+ * Сколько длится вызов планировщика. Скан идёт по организациям одна за другой,
+ * и на проде (Pro) лимит по умолчанию в 60 секунд может не хватить. На Hobby
+ * значение урезается планом (10 с) — там расписание всё равно реже.
+ */
+export const maxDuration = 60
+
 const ACTIONS = ["all", "scan", "clean"] as const
 type Action = (typeof ACTIONS)[number]
 

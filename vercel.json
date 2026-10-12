@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/ati/cron",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

@@ -108,6 +108,8 @@ npm run seed:demo     # 4. (необязательно) демо-данные �
 | `AUTH_SESSION_TTL_HOURS` | нет | срок жизни сессии, по умолчанию 12 |
 | `TRAFFIC_PROVIDER` | нет | `mock` или `yandex` (+`YANDEX_ROUTING_API_KEY`) |
 | `CRON_SECRET` | нет | если пользуетесь планировщиком сканирования ATI |
+| `STORAGE_DRIVER` + `STORAGE_S3_*` | **да** (иначе фото пропадут) | `s3` и доступ к объектному хранилищу |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | рекомендуется | общий счётчик попыток входа |
 | `ADMIN_*`, `ORGANIZATION_NAME`, `DRIVER_DEFAULT_PASSWORD` | нет | нужны только скрипту `seed:auth`; на Vercel безвредны |
 | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` | нет | мониторинг ошибок |
 
@@ -124,6 +126,68 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
 > Рекомендуется также указать **Node.js 22.x** в Settings → General.
 
 4. Нажмите **Deploy**.
+
+## 4.1 Планировщик сканирования ATI (cron)
+
+Расписание лежит в `vercel.json` — оно попадает в репозиторий вместе с кодом:
+
+```json
+{
+  "crons": [{ "path": "/api/ati/cron", "schedule": "*/15 * * * *" }]
+}
+```
+
+Что важно знать:
+
+- **Vercel вызывает путь сам** (GET) и, если в окружении задан `CRON_SECRET`,
+  подставляет его в заголовок `Authorization: Bearer …`. Роут проверяет секрет
+  в постоянном времени, без секрета отдаёт 503 (fail closed).
+- **Тариф решает частоту.** На Hobby планировщик запускается реже расписания
+  (до двух задач и примерно раз в сутки), на Pro — точно по расписанию. Если
+  нужен скан каждые 15 минут, требуется план Pro (или внешний cron с тем же
+  `CRON_SECRET`).
+- Роут объявляет `maxDuration = 60`: скан идёт по подключённым организациям
+  одна за другой, и на проде лимит по умолчанию может не хватить. На Hobby
+  значение урезается планом.
+- Что сканировать, решают профили `AtiScanConfig` в интерфейсе: города,
+  радиус, минимальный вес, типы кузова и интервал. Профилей нет — сканируются
+  грузы всех видимых площадок.
+
+Проверить вручную (тот же путь, что и у планировщика):
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  https://<ваш-проект>.vercel.app/api/ati/cron
+```
+
+## 4.2 Фото на Vercel: включить объектное хранилище
+
+На Vercel файловая система эфемерна: фото, загруженные в `public/uploads`,
+пропадут при следующем выкате. Поэтому для прода:
+
+```ini
+STORAGE_DRIVER="s3"
+STORAGE_S3_ENDPOINT="https://storage.yandexcloud.net"   # или R2 / Supabase / MinIO / AWS
+STORAGE_S3_BUCKET="loginex-photos"
+STORAGE_S3_REGION="ru-central1"
+STORAGE_S3_ACCESS_KEY_ID="…"
+STORAGE_S3_SECRET_ACCESS_KEY="…"
+```
+
+Доступ к фото не меняется: файл по-прежнему отдаёт роут `/api/photos/file`
+после проверки организации, публичный bucket не нужен. Фото, загруженные до
+переезда, читаются с диска. Если бакет общий — задайте `STORAGE_S3_PREFIX`.
+
+## 4.3 Ограничение попыток входа на serverless
+
+Счётчик попыток по умолчанию живёт в памяти одного инстанса — на Vercel
+запросы расходятся по инстансам, и перебор паролей продолжился бы. Для прода
+подключите Redis (Upstash) — лимитер переключится сам:
+
+```ini
+UPSTASH_REDIS_REST_URL="https://loginex.upstash.io"
+UPSTASH_REDIS_REST_TOKEN="…"
+```
 
 ## 5. Проверить
 
@@ -155,6 +219,9 @@ https://<ваш-проект>.vercel.app/m/login
 | `db:push` виснет/падает через порт 6543 | транзакционный пулер не выполняет DDL | запускать `db:push` с `DIRECT_URL` |
 | `sorry, too many clients already` | приложение ходит напрямую, без пулера | `DATABASE_URL` = Transaction pooler + `connection_limit=1` |
 | Данные пропали после деплоя | Preview-окружение смотрит в другую базу | проверить env для Preview |
+| Планировщик ATI не запускается | на Hobby cron реже расписания (до раз в сутки) | план Pro или внешний cron с `CRON_SECRET` |
+| Фото пропали после выката | файлы лежали в эфемерной `public/uploads` | `STORAGE_DRIVER=s3` + ключи хранилища |
+| Деплой падает с `ENOENT … next-server.js.nft.json` | `output: standalone` на Vercel | уже исправлено: standalone выключен при `VERCEL=1` |
 | `Failed to type check` на `AtiCache` | в коде сортировка по несуществующему полю | исправлено: `orderBy: { scannedAt: "desc" }` |
 
 ## Обновление схемы в будущем
