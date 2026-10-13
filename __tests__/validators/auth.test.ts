@@ -33,6 +33,7 @@ describe("auth validators P1-6", () => {
       password: "longpassword123",
       name: " Test User ",
       organizationName: "  ООО   Ромашка ",
+      acceptedTerms: true,
     })
     expect(res.success).toBe(true)
     if (res.success) {
@@ -48,8 +49,32 @@ describe("auth validators P1-6", () => {
       password: "longpassword123",
       name: "Test User",
       inviteCode: "ABCD-2345-EFGH",
+      acceptedTerms: true,
     })
     expect(res.success).toBe(true)
+  })
+
+  it("registerSchema требует согласия на обработку данных (152-ФЗ)", () => {
+    const withoutConsent = registerSchema.safeParse({
+      email: "a@b.com",
+      password: "longpassword123",
+      name: "Test User",
+      organizationName: "ООО Ромашка",
+      acceptedTerms: false,
+    })
+    expect(withoutConsent.success).toBe(false)
+    if (!withoutConsent.success) {
+      expect(withoutConsent.error.issues[0].message).toMatch(/Примите условия/)
+    }
+
+    const withConsent = registerSchema.safeParse({
+      email: "a@b.com",
+      password: "longpassword123",
+      name: "Test User",
+      organizationName: "ООО Ромашка",
+      acceptedTerms: true,
+    })
+    expect(withConsent.success).toBe(true)
   })
 
   it("registerSchema отклоняет оба сценария сразу и ни одного", () => {

@@ -944,6 +944,13 @@ model User {
 
   mustChangePassword Boolean  @default(false)
   lastLoginAt        DateTime?
+
+  /// Согласие на обработку персональных данных (152-ФЗ): когда, какая редакция
+  /// документов была принята и с какого адреса. Хранится на учётной записи —
+  /// по нему видно, что человек согласился, и с какой версией документов.
+  consentAcceptedAt   DateTime?
+  consentVersion      String?
+  consentIp           String?
   failedLoginCount   Int      @default(0)
   lockedUntil        DateTime?
 

@@ -31,6 +31,14 @@ test("экраны восстановления пароля публичны �
   }
 })
 
+test("юридические документы публичны — их читают до регистрации", () => {
+  for (const pathname of ["/privacy", "/terms"]) {
+    const access = classifyRoute(pathname)
+    assert.equal(access.area, "public", `${pathname} должен быть публичным`)
+    assert.equal(access.isApi, false, `${pathname} — страница, не API`)
+  }
+})
+
 test("публичные эндпоинты авторизации", () => {
   for (const pathname of [
     "/api/auth/login",

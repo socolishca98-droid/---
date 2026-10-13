@@ -79,6 +79,14 @@ export const registerSchema = z
       .max(20, "Код приглашения слишком длинный")
       .optional()
       .or(z.literal("")),
+    // Согласие на обработку персональных данных (152-ФЗ). Без него регистрация
+    // невозможна: согласие — правовое основание обработки, а не формальность.
+    acceptedTerms: z.literal(true, {
+      errorMap: () => ({
+        message:
+          "Примите условия: согласие на обработку персональных данных и пользовательское соглашение",
+      }),
+    }),
   })
   .superRefine((value, ctx) => {
     const hasOrganization = (value.organizationName ?? "").trim().length > 0

@@ -42,6 +42,7 @@ import { registerSchema } from "@/lib/validators"
 import { prisma } from "@/lib/prisma"
 
 import { captureRouteError } from "@/lib/sentry"
+import { CONSENT_VERSION } from "@/lib/legal"
 export const dynamic = "force-dynamic"
 
 interface RegisterBody {
@@ -50,6 +51,8 @@ interface RegisterBody {
   password?: unknown
   organizationName?: unknown
   inviteCode?: unknown
+  /** Согласие на обработку персональных данных (152-ФЗ). */
+  acceptedTerms?: unknown
 }
 
 function badRequest(error: string, code?: string, status = 400, headers?: Record<string, string>) {
@@ -72,6 +75,7 @@ export async function POST(request: NextRequest) {
     password: body.password,
     organizationName: body.organizationName,
     inviteCode: body.inviteCode,
+    acceptedTerms: body.acceptedTerms,
   })
 
   if (!parsed.success) {
@@ -161,6 +165,10 @@ export async function POST(request: NextRequest) {
           status: "active",
           approvedAt: new Date(),
           organizationId: organization.id,
+          // Согласие на обработку данных: когда, какая редакция, с какого адреса
+          consentAcceptedAt: new Date(),
+          consentVersion: CONSENT_VERSION,
+          consentIp: ip,
         },
         select: { id: true, email: true, name: true, role: true, status: true, organizationId: true },
       })
@@ -238,6 +246,9 @@ export async function POST(request: NextRequest) {
         status: "pending",
         organizationId: invite.organizationId,
         inviteCodeId: invite.id,
+        consentAcceptedAt: new Date(),
+        consentVersion: CONSENT_VERSION,
+        consentIp: ip,
       },
       select: {
         id: true,

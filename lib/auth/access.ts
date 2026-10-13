@@ -44,6 +44,10 @@ const PUBLIC_PATHS = new Set<string>([
   // экраны восстановления пароля — до входа по определению
   "/forgot-password",
   "/reset-password",
+  // юридические документы должны открываться без входа: согласие имеет смысл
+  // только если документ можно прочитать до регистрации
+  "/privacy",
+  "/terms",
   "/m/login",
   "/api/auth/login",
   "/api/auth/register",
