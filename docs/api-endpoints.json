@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T04:18:28.249Z",
+  "generatedAt": "2026-10-13T05:32:41.448Z",
   "endpoints": [
     {
       "method": "GET",
@@ -644,6 +644,11 @@
     {
       "method": "GET",
       "route": "/api/reports/export",
+      "group": "reports"
+    },
+    {
+      "method": "GET",
+      "route": "/api/reports/shift-time",
       "group": "reports"
     },
     {

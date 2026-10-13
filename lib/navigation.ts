@@ -22,6 +22,7 @@ import {
   Warehouse,
   Wrench,
   type LucideIcon,
+  Timer,
 } from "lucide-react"
 
 /** Какие счётчики может показывать пункт меню. */
@@ -52,6 +53,8 @@ export const NAV_ITEMS: NavItem[] = [
   { name: "Чат", href: "/chat", icon: MessageSquare, badgeKey: "chat" },
   { name: "Оплаты", href: "/payments", icon: CreditCard },
   { name: "Отчёты", href: "/reports", icon: FileBarChart },
+  // время водителей — по отметкам из приложения водителя, отдельный отчёт
+  { name: "Время водителей", href: "/reports/time", icon: Timer },
   // журнал действий — для админа: кто и что менял в организации
   { name: "Журнал", href: "/audit", icon: ScrollText },
   { name: "Сотрудники", href: "/users", icon: Users },

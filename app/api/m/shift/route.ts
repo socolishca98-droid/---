@@ -1,135 +1,85 @@
 // app/api/m/shift/route.ts
+//
+// Смена водителя: начать, переключить статус, завершить.
+//
+// Раньше здесь была неприятная поломка: экран водителя отправлял
+// { action: "status", status: "loading" }, а обработчик знал только «начать
+// смену» и отвечал success, ничего не меняя. Кнопки «Погрузка», «Выгрузка»,
+// «Отдых» лишь подсвечивались на экране — время не учитывалось, аналитики не
+// существовало. Теперь каждое действие доходит до журнала ShiftEvent, итоги
+// по группам пересчитываются из журнала, а отдых дополнительно пишется в
+// рейс (по нему считаются нормы).
+//
+// Вся логика — в lib/shift/service.ts, здесь только транспорт и авторизация.
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
-import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
+import { prisma } from "@/lib/prisma"
 import {
-  REST_END,
-  REST_START,
-  currentBreak,
-  drivingMinutes,
-  restVerdict,
-  sumRestMinutes,
-} from "@/lib/rest/norms"
+  changeShiftStatus,
+  closeShift,
+  getActiveOrderForDriver,
+  getShiftSnapshot,
+} from "@/lib/shift/service"
+import { SELECTABLE_SHIFT_STATUSES } from "@/lib/shift/timeline"
 
-// Заказ занимает водителя/машину, пока он в рейсе, на документах, назначен или на контроле
-// (канон жизненного цикла заказа — lib/orders/stages.ts)
-const ACTIVE_ORDER_STATUSES = OCCUPYING_ORDER_STATUSES
+export const dynamic = "force-dynamic"
 
-async function getActiveOrderForDriver(driverId: string, organizationId: string) {
-  return prisma.order.findFirst({
-    where: scopedWhere(organizationId, {
-      assignedDriverId: driverId,
-      status: { in: ACTIVE_ORDER_STATUSES as any },
-    }),
-    orderBy: { createdAt: "asc" },
+/** Ответ экрана водителя: смена + итоги + нормы отдыха + активный заказ. */
+function snapshotPayload(snapshot: Awaited<ReturnType<typeof getShiftSnapshot>>) {
+  if (!snapshot) {
+    return NextResponse.json({ success: false, error: "Смена не начата" }, { status: 400 })
+  }
+
+  return NextResponse.json({
+    success: true,
+    shift: snapshot.shift,
+    // Секунды в текущем статусе — экран тикает их сам, не дожидаясь опроса
+    statusSeconds: snapshot.statusSeconds,
+    totals: snapshot.totals,
+    segments: snapshot.segments,
+    rest: snapshot.rest,
+    activeOrder: snapshot.activeOrder,
+    statuses: SELECTABLE_SHIFT_STATUSES,
   })
 }
 
-// GET /api/m/shift
-// Текущая активная смена + активный заказ (если есть).
-// Водитель — из проверенной сессии, query-параметр driverId больше не принимается.
+// GET /api/m/shift — снимок текущей смены водителя
 export async function GET(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  const driverId = auth.value.driver.id
-
   try {
+    const snapshot = await getShiftSnapshot({
+      driverId: auth.value.driver.id,
+      organizationId: org.organizationId,
+    })
 
-    const [shift, activeOrder] = await Promise.all([
-      prisma.driverShift.findFirst({
-        where: scopedWhere(org.organizationId, {
-          driverId,
-          endedAt: null,
-        }),
-        orderBy: { startedAt: "desc" },
-      }),
-      getActiveOrderForDriver(driverId, org.organizationId),
-    ])
-
-    // ── Нормы отдыха: непрерывное время в пути по смене и событиям отдыха ──
-    let rest: {
-      resting: boolean
-      restDue: boolean
-      drivingMinutes: number
-      minutesToRest: number
-      currentBreakMin: number
-      breakCounts: boolean
-      limitMin: number
-      minBreakMin: number
-    } | null = null
-
-    if (shift) {
-      const settings = await prisma.fleetSettings.findFirst({
-        where: scopedWhere(org.organizationId),
-        select: { restDriveLimitMin: true, restMinBreakMin: true },
+    if (!snapshot) {
+      return NextResponse.json({
+        success: true,
+        shift: null,
+        statuses: SELECTABLE_SHIFT_STATUSES,
       })
-      const limitMin = settings?.restDriveLimitMin ?? 270
-      const minBreakMin = settings?.restMinBreakMin ?? 45
-
-      const events = activeOrder?.routeId
-        ? await prisma.routeEvent.findMany({
-            where: scopedWhere(org.organizationId, {
-              routeId: activeOrder.routeId,
-              driverId,
-              type: "status",
-              status: { in: [REST_START, REST_END] },
-            }),
-            select: { status: true, createdAt: true },
-          })
-        : []
-
-      const now = new Date()
-      const shiftStart = new Date(shift.startedAt)
-      const restMinutes = sumRestMinutes(events, shiftStart, now)
-      const breakInfo = currentBreak(events, now)
-      const verdict = restVerdict({
-        shiftStart,
-        now,
-        restMinutes,
-        resting: breakInfo.resting,
-        currentBreakMin: breakInfo.currentBreakMin,
-        limitMin,
-        minBreakMin,
-      })
-      rest = {
-        resting: verdict.resting,
-        restDue: verdict.restDue,
-        drivingMinutes: drivingMinutes(shiftStart, now, restMinutes),
-        minutesToRest: verdict.minutesToRest,
-        currentBreakMin: verdict.currentBreakMin,
-        breakCounts: verdict.breakCounts,
-        limitMin,
-        minBreakMin,
-      }
     }
 
-    return NextResponse.json({
-      success: true,
-      shift,
-      activeOrder,
-      rest,
-    })
-  } catch (error: any) {
-    console.error("[m/shift] GET Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Shift GET error" },
-      { status: 500 },
-    )
+    return snapshotPayload(snapshot)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shift GET error"
+    console.error("[m/shift] GET Error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
 // POST /api/m/shift
-// body не требуется: смена стартует для водителя из сессии
-// Старт смены:
-// - если есть активный заказ → Shift.status = 'driving', Driver.status = 'busy'
-// - если нет заказа → Shift.status = 'waiting', Driver.status = 'available'
+// body: { action?: "start" | "status" | "end", status?, orderId?, latitude?, longitude? }
+//   start  — начать смену (по умолчанию)
+//   status — переключить статус («в пути», «погрузка», «отдых»…)
+//   end    — завершить смену
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
@@ -139,270 +89,184 @@ export async function POST(request: NextRequest) {
   const driverId = auth.value.driver.id
 
   try {
-
-    const driver = await prisma.driver.findFirst({
-      where: scopedWhere(org.organizationId, { id: driverId }),
-    })
-
-    if (!driver) {
-      return NextResponse.json(
-        { success: false, error: "Driver not found" },
-        { status: 404 },
-      )
+    const body = (await request.json().catch(() => ({}))) as {
+      action?: string
+      status?: string
+      orderId?: string | null
+      latitude?: number | null
+      longitude?: number | null
     }
 
-    // Проверяем, что нет уже активной смены
-    const existingShift = await prisma.driverShift.findFirst({
+    const action = body.action ?? "start"
+
+    if (action === "status") {
+      if (!body.status) {
+        return NextResponse.json(
+          { success: false, error: "Укажите статус", code: "status_required" },
+          { status: 400 },
+        )
+      }
+
+      const result = await changeShiftStatus({
+        driverId,
+        organizationId: org.organizationId,
+        status: body.status,
+        orderId: body.orderId ?? null,
+        latitude: body.latitude ?? null,
+        longitude: body.longitude ?? null,
+      })
+
+      if (!result.ok) {
+        return NextResponse.json({ success: false, error: result.error }, { status: result.status })
+      }
+
+      const payload = snapshotPayload(result.snapshot ?? null)
+      if (payload.status !== 200) return payload
+      // Дополняем ответ длительностью завершившегося статуса: экран показывает
+      // «погрузка: 1 ч 20 мин» сразу после нажатия, не пересчитывая сам.
+      const json = await payload.json()
+      return NextResponse.json({ ...json, seconds: result.seconds ?? 0 })
+    }
+
+    if (action === "end") {
+      const closed = await closeShift({ driverId, organizationId: org.organizationId })
+      if (!closed.ok) {
+        return NextResponse.json({ success: false, error: closed.error }, { status: 400 })
+      }
+      return NextResponse.json({ success: true, shift: null })
+    }
+
+    // ── action: "start" ───────────────────────────────────────────────────
+    const existing = await prisma.driverShift.findFirst({
       where: scopedWhere(org.organizationId, { driverId, endedAt: null }),
       orderBy: { startedAt: "desc" },
     })
 
-    if (existingShift) {
-      return NextResponse.json({
-        success: true,
-        alreadyActive: true,
-        shift: existingShift,
+    if (existing) {
+      const snapshot = await getShiftSnapshot({
+        driverId,
+        organizationId: org.organizationId,
       })
+      const payload = snapshotPayload(snapshot)
+      if (payload.status !== 200) return payload
+      const json = await payload.json()
+      return NextResponse.json({ ...json, alreadyActive: true })
     }
 
+    // Активный заказ водителя — тем же способом, что и вся остальная смена
     const activeOrder = await getActiveOrderForDriver(driverId, org.organizationId)
 
-    const { shift } = await prisma.$transaction(async (tx) => {
-      const shiftStatus = activeOrder ? "driving" : "waiting"
+    // Стартовый статус: если рейс уже назначен — «в пути», иначе «ожидаю рейс»
+    const startStatus = activeOrder ? "driving" : "waiting"
 
-      const newShift = await tx.driverShift.create({
+    const now = new Date()
+    const shift = await prisma.$transaction(async (tx) => {
+      const created = await tx.driverShift.create({
         data: {
           organizationId: org.organizationId,
           driverId,
-          status: shiftStatus,
-          startedAt: new Date(),
-          lastStatusChangeAt: new Date(),
+          status: startStatus,
+          startedAt: now,
+          lastStatusChangeAt: now,
+          drivingSinceRestSeconds: 0,
         },
       })
 
-      // Driver.status в БД:
-      //   maintenance — только руками/ТО
-      //   busy       — есть активный заказ
-      //   available  — нет заказа
-      if (driver.status !== "maintenance") {
-        await tx.driver.updateMany({
-          where: scopedWhere(org.organizationId, { id: driverId }),
-          data: {
-            status: activeOrder ? "busy" : "available",
-          },
-        })
-      }
+      // Первое событие журнала: с какого статуса началась смена. Без него
+      // таймлайн начался бы с пустоты и первые минуты не попали бы в итоги.
+      await tx.shiftEvent.create({
+        data: {
+          organizationId: org.organizationId,
+          shiftId: created.id,
+          type: "status",
+          metadata: JSON.stringify({
+            from: null,
+            to: startStatus,
+            seconds: 0,
+            bucket: startStatus === "driving" ? "driving" : "waiting",
+            orderId: activeOrder?.id ?? null,
+            reason: "shift_start",
+          }),
+        },
+      })
 
-      return { shift: newShift }
+      await tx.driver.updateMany({
+        where: scopedWhere(org.organizationId, { id: driverId, status: { not: "maintenance" } }),
+        data: { status: activeOrder ? "busy" : "available" },
+      })
+
+      return created
     })
 
-    // ── Нормы отдыха: непрерывное время в пути по смене и событиям отдыха ──
-    let rest: {
-      resting: boolean
-      restDue: boolean
-      drivingMinutes: number
-      minutesToRest: number
-      currentBreakMin: number
-      breakCounts: boolean
-      limitMin: number
-      minBreakMin: number
-    } | null = null
-
-    if (shift) {
-      const settings = await prisma.fleetSettings.findFirst({
-        where: scopedWhere(org.organizationId),
-        select: { restDriveLimitMin: true, restMinBreakMin: true },
-      })
-      const limitMin = settings?.restDriveLimitMin ?? 270
-      const minBreakMin = settings?.restMinBreakMin ?? 45
-
-      const events = activeOrder?.routeId
-        ? await prisma.routeEvent.findMany({
-            where: scopedWhere(org.organizationId, {
-              routeId: activeOrder.routeId,
-              driverId,
-              type: "status",
-              status: { in: [REST_START, REST_END] },
-            }),
-            select: { status: true, createdAt: true },
-          })
-        : []
-
-      const now = new Date()
-      const shiftStart = new Date(shift.startedAt)
-      const restMinutes = sumRestMinutes(events, shiftStart, now)
-      const breakInfo = currentBreak(events, now)
-      const verdict = restVerdict({
-        shiftStart,
-        now,
-        restMinutes,
-        resting: breakInfo.resting,
-        currentBreakMin: breakInfo.currentBreakMin,
-        limitMin,
-        minBreakMin,
-      })
-      rest = {
-        resting: verdict.resting,
-        restDue: verdict.restDue,
-        drivingMinutes: drivingMinutes(shiftStart, now, restMinutes),
-        minutesToRest: verdict.minutesToRest,
-        currentBreakMin: verdict.currentBreakMin,
-        breakCounts: verdict.breakCounts,
-        limitMin,
-        minBreakMin,
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      shift,
-      activeOrder,
-      rest,
+    const snapshot = await getShiftSnapshot({
+      driverId,
+      organizationId: org.organizationId,
+      now,
     })
-  } catch (error: any) {
-    console.error("[m/shift] POST Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Shift start error" },
-      { status: 500 },
-    )
+
+    const payload = snapshotPayload(snapshot)
+    if (payload.status !== 200) return payload
+    const json = await payload.json()
+    return NextResponse.json({ ...json, shift: { ...json.shift, id: shift.id } })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shift POST error"
+    console.error("[m/shift] POST Error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
-// PATCH /api/m/shift
-// body: { status: 'driving' | 'waiting' | 'resting' | 'sleeping' | 'loading' | 'unloading' }
-// Обновление статуса текущей смены (для карты / аналитики)
+// PATCH /api/m/shift — смена статуса (совместимость с прежним вызовом)
 export async function PATCH(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  const driverId = auth.value.driver.id
-
   try {
-    const body = await request.json().catch(() => ({}))
-    const { status } = body as {
-      status?: string
+    const body = (await request.json().catch(() => ({}))) as { status?: string }
+    if (!body.status) {
+      return NextResponse.json({ success: false, error: "status required" }, { status: 400 })
     }
 
-    if (!status) {
-      return NextResponse.json(
-        { success: false, error: "status required" },
-        { status: 400 },
-      )
+    const result = await changeShiftStatus({
+      driverId: auth.value.driver.id,
+      organizationId: org.organizationId,
+      status: body.status,
+    })
+
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status })
     }
 
-    const shift = await prisma.driverShift.findFirst({
-      where: scopedWhere(org.organizationId, { driverId, endedAt: null }),
-      orderBy: { startedAt: "desc" },
-    })
-
-    if (!shift) {
-      return NextResponse.json(
-        { success: false, error: "No active shift" },
-        { status: 400 },
-      )
-    }
-
-    const allowedStatuses = [
-      "driving",
-      "waiting",
-      "resting",
-      "sleeping",
-      "loading",
-      "unloading",
-    ]
-    if (!allowedStatuses.includes(status)) {
-      return NextResponse.json(
-        { success: false, error: "Invalid shift status" },
-        { status: 400 },
-      )
-    }
-
-    await prisma.driverShift.updateMany({
-      where: scopedWhere(org.organizationId, { id: shift.id }),
-      data: {
-        status,
-        lastStatusChangeAt: new Date(),
-      },
-    })
-
-    const updated = await prisma.driverShift.findFirstOrThrow({
-      where: scopedWhere(org.organizationId, { id: shift.id }),
-    })
-
-    return NextResponse.json({
-      success: true,
-      shift: updated,
-    })
-  } catch (error: any) {
-    console.error("[m/shift] PATCH Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Shift update error" },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: true, shift: result.snapshot?.shift, seconds: result.seconds })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shift update error"
+    console.error("[m/shift] PATCH Error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
-// DELETE /api/m/shift — завершение своей смены
-// - если нет активных заказов → Driver.status = 'available'
-// - если есть активные заказы (теоретически) → Driver.status = 'busy'
+// DELETE /api/m/shift — завершение смены
 export async function DELETE(request: NextRequest) {
   const auth = await requireDriver(request)
   if (!auth.ok) return auth.response
   const org = requireOrganization(auth.value)
   if (!org.ok) return org.response
 
-  const driverId = auth.value.driver.id
-
   try {
-
-    const shift = await prisma.driverShift.findFirst({
-      where: scopedWhere(org.organizationId, { driverId, endedAt: null }),
-      orderBy: { startedAt: "desc" },
+    const closed = await closeShift({
+      driverId: auth.value.driver.id,
+      organizationId: org.organizationId,
     })
 
-    if (!shift) {
-      return NextResponse.json({
-        success: true,
-        alreadyEnded: true,
-      })
+    if (!closed.ok) {
+      return NextResponse.json({ success: false, error: closed.error }, { status: 400 })
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.driverShift.updateMany({
-        where: scopedWhere(org.organizationId, { id: shift.id }),
-        data: {
-          endedAt: new Date(),
-          lastStatusChangeAt: new Date(),
-        },
-      })
-
-      const activeOrdersCount = await tx.order.count({
-        where: scopedWhere(org.organizationId, {
-          assignedDriverId: driverId,
-          status: { in: ACTIVE_ORDER_STATUSES as any },
-        }),
-      })
-
-      const newStatus = activeOrdersCount > 0 ? "busy" : "available"
-
-      await tx.driver.updateMany({
-        where: scopedWhere(org.organizationId, { id: driverId }),
-        data: {
-          status: newStatus,
-        },
-      })
-    })
-
-    return NextResponse.json({
-      success: true,
-    })
-  } catch (error: any) {
-    console.error("[m/shift] DELETE Error:", error)
-    return NextResponse.json(
-      { success: false, error: error.message || "Shift end error" },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shift end error"
+    console.error("[m/shift] DELETE Error:", message)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
