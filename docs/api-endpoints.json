@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-12T18:46:10.068Z",
+  "generatedAt": "2026-10-13T04:18:28.249Z",
   "endpoints": [
     {
       "method": "GET",
@@ -133,6 +133,11 @@
     },
     {
       "method": "POST",
+      "route": "/api/auth/forgot-password",
+      "group": "auth"
+    },
+    {
+      "method": "POST",
       "route": "/api/auth/login",
       "group": "auth"
     },
@@ -154,6 +159,16 @@
     {
       "method": "POST",
       "route": "/api/auth/register",
+      "group": "auth"
+    },
+    {
+      "method": "GET",
+      "route": "/api/auth/reset-password",
+      "group": "auth"
+    },
+    {
+      "method": "POST",
+      "route": "/api/auth/reset-password",
       "group": "auth"
     },
     {

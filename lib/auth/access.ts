@@ -41,9 +41,15 @@ const PUBLIC_PATHS = new Set<string>([
   "/",
   "/login",
   "/register",
+  // экраны восстановления пароля — до входа по определению
+  "/forgot-password",
+  "/reset-password",
   "/m/login",
   "/api/auth/login",
   "/api/auth/register",
+  // восстановление пароля: человек пришёл без сессии — именно поэтому он тут
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
   "/api/auth/logout",
   "/api/auth/session",
   // выдача CSRF-токена нужна до входа (клиентский CsrfProvider дёргает его при старте)

@@ -22,6 +22,7 @@ import { getActiveAtiToken } from "@/lib/ati/connection"
 import { prisma } from "@/lib/prisma"
 import { loadStaffSession } from "@/lib/auth/session"
 import { getDueScanProfiles, markProfileScanned, scanParamsForProfile } from "@/lib/ati/scan-schedule"
+import { cleanupPasswordResetTokens } from "@/lib/password-reset"
 
 import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
@@ -176,6 +177,8 @@ async function runActions(action: Action, mode: string) {
   if (action === "clean" || action === "all") {
     console.log("[CRON] Starting cleanup...")
     results.cleanup = await cleanExpiredCache()
+    // Ссылки восстановления пароля тоже мусор: держать их после истечения незачем
+    results.passwordResetTokens = await cleanupPasswordResetTokens()
   }
 
   if (action === "scan" || action === "all") {

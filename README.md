@@ -85,9 +85,20 @@ DRIVER_DEFAULT_PASSWORD="ПарольДляВодителей1"   # можно �
 | `SENTRY_DSN` | необязательно; без DSN мониторинг отключён |
 | `OCR_LANGUAGES`, `OCR_TIMEOUT_MS`, `OCR_CACHE_DIR`, `OCR_LANG_PATH` | локальный Tesseract для распознавания чеков и накладных |
 | `STORAGE_DRIVER` | где лежат фото: `local` (по умолчанию, `public/uploads`) или `s3` |
+| `MAIL_DRIVER`, `MAIL_FROM`, `UNISENDER_API_KEY` / `RESEND_API_KEY` | отправка писем: `console` (по умолчанию, ссылки в журнале) или `unisender` / `resend` |
+| `PASSWORD_RESET_TTL_MINUTES` | срок жизни ссылки восстановления пароля (по умолчанию 60) |
+| `APP_URL` | адрес приложения для ссылок в письмах |
 | `STORAGE_LOCAL_ROOT` | каталог файлов в local-режиме (по умолчанию `public/uploads`) |
 | `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | доступ к S3-совместимому хранилищу (Yandex Object Storage, Cloudflare R2, Supabase Storage, MinIO, AWS) |
 | `STORAGE_S3_PREFIX`, `STORAGE_S3_PATH_STYLE` | префикс ключей внутри бакета и path-style адресация (MinIO) |
+
+**Восстановление пароля.** Человек сам восстанавливает доступ: `/forgot-password`
+присылает на почту учётной записи ссылку на `/reset-password`. Ссылка одноразовая,
+живёт `PASSWORD_RESET_TTL_MINUTES` (по умолчанию час), в базе хранится только её
+хаш, а успешная смена пароля закрывает все прежние сессии. Ответ на запрос не
+говорит, существует ли адрес, — иначе форма стала бы способом проверить
+регистрацию человека. Письма по умолчанию не уходят наружу (`MAIL_DRIVER=console`:
+ссылка печатается в журнал сервера) — для прода подключите Unisender или Resend.
 
 **Ограничение попыток входа.** Счётчик по умолчанию живёт в памяти процесса —
 этого хватает одному серверу и Docker. На Vercel каждый запрос может приехать

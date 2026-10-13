@@ -259,6 +259,14 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       </form>
 
       <div className="mt-6 pt-4 border-t border-border/50 space-y-2.5">
+        {/* Забытый пароль раньше означал «зовите администратора» — теперь
+            человек восстанавливает доступ сам, ссылкой на почту */}
+        <p className="text-sm text-muted-foreground text-center">
+          Забыли пароль?{" "}
+          <Link href="/forgot-password" className="text-primary hover:underline font-medium">
+            Восстановить доступ
+          </Link>
+        </p>
         <p className="text-sm text-muted-foreground text-center">
           Нет учётной записи?{" "}
           <Link href="/register" className="text-primary hover:underline font-medium">
