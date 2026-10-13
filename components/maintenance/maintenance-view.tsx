@@ -66,6 +66,8 @@ interface MaintenanceData {
   }
   vehicles: MaintenanceVehicle[]
   logs: MaintenanceLogRow[]
+  /** Мета пагинации журнала: «показано N из M» */
+  pagination?: { total: number; shown: number }
 }
 
 // Те же подписи типов, что в диалоге обслуживания автопарка
@@ -292,7 +294,14 @@ export function MaintenanceView() {
       </div>
 
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Журнал работ</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">Журнал работ</h2>
+          {data?.pagination && data.pagination.total > data.pagination.shown && (
+            <span className="text-xs text-muted-foreground">
+              показано {data.pagination.shown} из {data.pagination.total}
+            </span>
+          )}
+        </div>
         <DataTable
           columns={logColumns}
           rows={data?.logs ?? []}

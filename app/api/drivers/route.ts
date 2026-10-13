@@ -10,6 +10,7 @@ import { generateTemporaryPassword, hashPassword } from "@/lib/auth/password"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { parseDateValue } from "@/lib/dates"
+import { paginationMeta, parsePagination } from "@/lib/pagination"
 // ✅ Допустимые статусы водителя
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 
@@ -57,26 +58,41 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Стандартный запрос с фильтрацией по статусу
+    // Стандартный запрос с фильтрацией по статусу.
+    // Пагинация обязательна: раньше список был без ограничений, а каждый
+    // водитель тянет за собой все свои доставки и фото — страница /drivers
+    // росла вместе с организацией и начинала тормозить.
     const where: Record<string, unknown> = {}
     if (status && status !== "all") {
       where.status = status
     }
 
-    const rows = await prisma.driver.findMany({
-      where: scopedWhere(org.organizationId, where),
-      orderBy: { name: "asc" },
-      include: {
-        orders: {
-          where: scopedWhere(org.organizationId, { status: "delivered" }),
-          select: { id: true, deliveredAt: true, deadline: true },
-        },
-        photos: {
-          where: scopedWhere(org.organizationId, { type: "document" }),
-          select: { orderId: true },
-        },
-      },
+    const pagination = parsePagination({
+      limit: searchParams.get("limit"),
+      offset: searchParams.get("offset"),
+      page: searchParams.get("page"),
+      pageSize: searchParams.get("pageSize"),
     })
+
+    const [rows, total] = await Promise.all([
+      prisma.driver.findMany({
+        where: scopedWhere(org.organizationId, where),
+        orderBy: { name: "asc" },
+        skip: pagination.offset,
+        take: pagination.limit,
+        include: {
+          orders: {
+            where: scopedWhere(org.organizationId, { status: "delivered" }),
+            select: { id: true, deliveredAt: true, deadline: true },
+          },
+          photos: {
+            where: scopedWhere(org.organizationId, { type: "document" }),
+            select: { orderId: true },
+          },
+        },
+      }),
+      prisma.driver.count({ where: scopedWhere(org.organizationId, where) }),
+    ])
 
     // Рейтинг водителя — из проверяемых фактов: доставки в срок и документы.
     // Считается только по данным своей организации (scopedWhere выше).
@@ -98,7 +114,13 @@ export async function GET(request: NextRequest) {
       return { ...driver, rating }
     })
 
-    return NextResponse.json({ success: true, drivers })
+    return NextResponse.json({
+      success: true,
+      drivers,
+      // Мета пагинации: интерфейс пишет «показано N из M» вместо молчаливой
+      // обрезки, которой раньше не было вовсе.
+      pagination: paginationMeta(total, pagination, rows.length),
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Drivers GET error"
     console.error("[Drivers] GET Error:", message)

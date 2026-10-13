@@ -60,6 +60,8 @@ interface FuelData {
   }
   vehicles: FuelVehicle[]
   entries: FuelEntry[]
+  /** Мета пагинации книги чеков: «показано N из M» */
+  pagination?: { total: number; shown: number }
 }
 
 function money(value: number | null | undefined): string {
@@ -229,7 +231,14 @@ export function FuelView() {
       </div>
 
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Книга чеков</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">Книга чеков</h2>
+          {data?.pagination && data.pagination.total > data.pagination.shown && (
+            <span className="text-xs text-muted-foreground">
+              показано {data.pagination.shown} из {data.pagination.total}
+            </span>
+          )}
+        </div>
         <DataTable
           columns={entryColumns}
           rows={data?.entries ?? []}

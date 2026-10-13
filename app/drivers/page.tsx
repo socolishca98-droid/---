@@ -100,6 +100,8 @@ export default function DriversPage() {
   const router = useRouter()
 
   const [drivers, setDrivers] = useState<DriverItem[]>([])
+  /** Мета пагинации: показываем «показано N из M», а не молча обрезаем список */
+  const [paginationLabel, setPaginationLabel] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -125,9 +127,19 @@ export default function DriversPage() {
   const loadDrivers = useCallback(async () => {
     try {
       // Через кеш: тот же справочник нужен чату, фото и автопарку
-      const data = await fetchJsonCached<{ success?: boolean; drivers?: any[] }>("/api/drivers")
+      // Страница на 200 водителей: парк редко больше, а список с вложенными
+      // доставками и фото не должен грузиться целиком.
+      const data = await fetchJsonCached<{
+        success?: boolean
+        drivers?: any[]
+        pagination?: { total: number; shown: number }
+      }>("/api/drivers?limit=200")
       if (data.success && Array.isArray(data.drivers)) {
         setDrivers(data.drivers)
+        const meta = data.pagination
+        setPaginationLabel(
+          meta && meta.total > meta.shown ? `показано ${meta.shown} из ${meta.total}` : null,
+        )
       } else {
         toast.error("Не удалось получить список водителей")
       }
@@ -377,6 +389,12 @@ export default function DriversPage() {
               </Button>
             </div>
           </div>
+
+          {paginationLabel && (
+            <p className="text-xs text-muted-foreground">
+              {paginationLabel} — уточните поиск, чтобы увидеть остальных
+            </p>
+          )}
 
           {/* Drivers Grid */}
           {filteredDrivers.length === 0 ? (
