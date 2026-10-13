@@ -53,6 +53,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { getPhotoQueue } from "@/lib/offline/photo-queue"
+import { useAdaptivePolling } from "@/hooks/use-adaptive-polling"
 import { TruckLoader } from "@/components/ui/truck-loader"
 
 interface Shift {
@@ -143,7 +144,6 @@ export default function MobileHomePage() {
   const [pendingPhotos, setPendingPhotos] = useState(0)
 
   const gpsIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const dataIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const watchIdRef = useRef<number | null>(null)
 
   const { addNotification } = useDriverNotifications(driver?.id)
@@ -236,18 +236,16 @@ export default function MobileHomePage() {
     }
   }, [driver?.id])
 
-  useEffect(() => {
-    if (isAuthenticated && driver?.id) {
-      fetchData()
-      // Опрос реже, чем раньше: таймеры на экране тикают сами, сервер нужен
-      // только для новых точек, догрузов и норм отдыха.
-      dataIntervalRef.current = setInterval(fetchData, 30000)
-    }
-
-    return () => {
-      if (dataIntervalRef.current) clearInterval(dataIntervalRef.current)
-    }
-  }, [isAuthenticated, driver?.id, fetchData])
+  // Опрос данных рейса: адаптивный. Таймеры на экране тикают сами, сервер
+  // нужен только для новых точек, догрузов и норм отдыха — поэтому интервал
+  // побольше, а в скрытой вкладке и без сети опрос выключен совсем.
+  const dataPolling = useAdaptivePolling(
+    () => {
+      if (!isAuthenticated || !driver?.id) return
+      return fetchData()
+    },
+    { baseMs: 30_000, maxMs: 120_000 },
+  )
 
   // ── GPS ────────────────────────────────────────────────────────────────
   const sendLocation = useCallback(
