@@ -16,6 +16,7 @@
     "db:push": "node scripts/prisma-schema.mjs db push",
     "db:studio": "node scripts/prisma-schema.mjs studio",
     "db:check": "node scripts/check-db.mjs",
+    "db:backup": "node scripts/db-backup.mjs",
     "db:sql:auth": "prisma db execute --file prisma/sql/2026-09-21-auth-users-sessions.sql --schema prisma/schema.prisma",
     "db:sql:routes": "prisma db execute --file prisma/sql/2026-09-22-route-model.sql --schema prisma/schema.prisma",
     "db:sql:requisites": "prisma db execute --file prisma/sql/2026-09-24-fleet-requisites.sql --schema prisma/schema.prisma",
