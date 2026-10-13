@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T07:04:48.034Z",
+  "generatedAt": "2026-10-13T19:55:40.263Z",
   "endpoints": [
     {
       "method": "GET",
@@ -635,6 +635,21 @@
       "method": "POST",
       "route": "/api/photos/upload",
       "group": "photos"
+    },
+    {
+      "method": "GET",
+      "route": "/api/push",
+      "group": "push"
+    },
+    {
+      "method": "POST",
+      "route": "/api/push",
+      "group": "push"
+    },
+    {
+      "method": "DELETE",
+      "route": "/api/push",
+      "group": "push"
     },
     {
       "method": "GET",

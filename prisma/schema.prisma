@@ -580,6 +580,28 @@ model Notification {
   @@index([organizationId])
 }
 
+// Подписка браузера/устройства на Web Push. Один пользователь может получать
+// пуши с нескольких устройств (телефон + компьютер), поэтому endpoint уникален,
+// а записей на пользователя много. Уведомления внутри приложения и так видны в
+// разделе «Уведомления» — пуши нужны, когда приложение закрыто или свёрнуто.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Адрес push-сервиса (браузера). Уникален: повторная подписка с того же
+  /// браузера не должна плодить записи.
+  endpoint  String   @unique
+  /// Публичный ключ клиента (ECDH P-256) в base64url — им шифруется payload.
+  p256dh    String
+  /// Секрет аутентификации клиента в base64url.
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
 // ============================================
 // ЧАТ / СООБЩЕНИЯ
 // ============================================
@@ -959,6 +981,7 @@ model User {
 
   sessions  Session[]
   passwordResetTokens PasswordResetToken[]
+  pushSubscriptions PushSubscription[]
 
   @@index([status])
   @@index([role])

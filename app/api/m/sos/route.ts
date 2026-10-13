@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { notify } from "@/lib/notifications/create"
 
 import { SOS_LABELS } from "@/lib/sos-labels"
 import { requireDriver } from "@/lib/auth/session"
@@ -92,21 +93,21 @@ export async function POST(request: NextRequest) {
     // Создаём уведомление для логистов
     const sosLabel = SOS_LABELS[type] || SOS_LABELS.other
 
-    await prisma.notification.create({
-      data: {
-        organizationId: org.organizationId,
-        userId: "all_logists",
-        userRole: "logist",
-        type: "sos_alert",
-        title: "🆘 SOS от водителя",
-        message: `${driver.name} (${driver.vehiclePlate || "Нет ТС"}) отправил сигнал: ${sosLabel}${
-          message ? `. ${message}` : ""
-        }`,
-        driverId,
-        orderId: linkedOrder?.id ?? null,
-        sosId: sos.id,
-        priority: "critical",
-      },
+    // Уведомление адресовано роли («всем логистам») — пуш уйдёт каждому
+    // логисту организации, иначе сигнал увидел бы только тот, кто открыл экран.
+    await notify({
+      organizationId: org.organizationId,
+      userId: "all_logists",
+      userRole: "logist",
+      type: "sos_alert",
+      title: "🆘 SOS от водителя",
+      message: `${driver.name} (${driver.vehiclePlate || "Нет ТС"}) отправил сигнал: ${sosLabel}${
+        message ? `. ${message}` : ""
+      }`,
+      driverId,
+      orderId: linkedOrder?.id ?? null,
+      sosId: sos.id,
+      priority: "critical",
     })
 
     // Добавляем сообщение в чат как системное уведомление

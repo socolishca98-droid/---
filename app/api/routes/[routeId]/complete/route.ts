@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { createNotification, deliverNotificationPush, type NotificationInput } from "@/lib/notifications/create"
 import { estimateFuelL, fuelAfterRoute } from "@/lib/fleet/fuel"
 
 import {
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Интерактивная транзакция делает десяток записей (точки, статус, топливо,
     // водитель, машина, уведомление): на медленной базе пяти секунд по умолчанию
     // не хватает, и завершение рейса падало с «Transaction not found».
+    let completionPush: NotificationInput | undefined
     await prisma.$transaction(async (tx) => {
       if (force && pendingOrders.length > 0) {
         await tx.order.updateMany({
@@ -189,18 +191,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           data: { endedAt: now, status: "completed" },
         })
 
-        await tx.notification.create({
-          data: {
-            organizationId: org.organizationId,
-            userId: assignedDriverId,
-            userRole: "driver",
-            type: "route_completed",
-            title: "Рейс завершён",
-            message: `Маршрут из ${orders.length} точек успешно завершён`,
-            routeId,
-            priority: "normal",
-          },
-        })
+        completionPush = {
+          organizationId: org.organizationId,
+          userId: assignedDriverId,
+          userRole: "driver",
+          type: "route_completed",
+          title: "Рейс завершён",
+          message: `Маршрут из ${orders.length} точек успешно завершён`,
+          routeId,
+          priority: "normal",
+        }
+        await createNotification(tx, completionPush, { push: false }) // пуш — после коммита
 
         await tx.driver.updateMany({
           where: scopedWhere(org.organizationId, { id: assignedDriverId }),
@@ -225,6 +226,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         }
       }
     }, { maxWait: 10_000, timeout: 30_000 })
+
+    // Пуш — после коммита: внутри транзакции SQLite заблокировал бы базу
+    if (completionPush) {
+      await deliverNotificationPush(completionPush)
+    }
 
     const updated = await prisma.route.findFirst({
       where: scopedWhere(org.organizationId, { id: routeId }),

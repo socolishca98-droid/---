@@ -27,6 +27,7 @@ import { PendingLoadCard } from "@/components/driver-mobile/pending-load-card"
 import { ActionGrid } from "@/components/driver-mobile/action-grid"
 import { ControlPanel } from "@/components/driver-mobile/control-panel"
 import { RestCard } from "@/components/driver-mobile/rest-card"
+import { PushCard as DriverPushCard } from "@/components/driver-mobile/push-card"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
@@ -1054,6 +1055,9 @@ export default function MobileHomePage() {
                 {completingRoute ? "Завершаем..." : "Завершить рейс"}
               </button>
             )}
+
+            {/* ── Пуши: рейс и догруз должны доходить со свёрнутым приложением ── */}
+            <DriverPushCard />
 
             {/* ── Общие действия смены ── */}
             <div className="grid grid-cols-2 gap-2">

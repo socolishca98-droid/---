@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { createNotification, deliverNotificationPush, type NotificationInput } from "@/lib/notifications/create"
 
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
@@ -179,24 +180,29 @@ export async function POST(
       // Общая таблица AtiCache намеренно не меняется: это накопленная база всей
       // платформы, пометка «imported» спрятала бы груз от других организаций.
 
+      let orderPush: NotificationInput | undefined
       if (driverId) {
-        await tx.notification.create({
-          data: {
-            organizationId: org.organizationId,
-            userId: driverId,
-            userRole: "driver",
-            type: proposeToDriver ? "load_proposal" : "load_added",
-            title: proposeToDriver ? "Предложен догруз" : "Добавлен догруз",
-            message: `${routeFrom} → ${routeTo}, ${((weight || 0) / 1000).toFixed(1)}т`,
-            orderId: order.id,
-            routeId,
-            priority: "high",
-          },
-        })
+        orderPush = {
+          organizationId: org.organizationId,
+          userId: driverId,
+          userRole: "driver",
+          type: proposeToDriver ? "load_proposal" : "load_added",
+          title: proposeToDriver ? "Предложен догруз" : "Добавлен догруз",
+          message: `${routeFrom} → ${routeTo}, ${((weight || 0) / 1000).toFixed(1)}т`,
+          orderId: order.id,
+          routeId,
+          priority: "high",
+        }
+        await createNotification(tx, orderPush, { push: false }) // пуш — после коммита
       }
 
-      return order
+      return { order, push: orderPush }
     })
+
+    // Пуш — после коммита: внутри транзакции SQLite заблокировал бы базу
+    if (newOrder.push) {
+      await deliverNotificationPush(newOrder.push)
+    }
 
     // итоги и имя рейса пересчитываются по его заказам
     const summary = await recalcRoute(prisma, routeId, org.organizationId)

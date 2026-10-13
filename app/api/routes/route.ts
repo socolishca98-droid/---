@@ -30,6 +30,7 @@ import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { notifyDriverRouteAssigned } from "@/lib/routes/notify-driver"
+import { deliverNotificationPush, type NotificationInput } from "@/lib/notifications/create"
 import {
   ROUTE_STATUSES,
   buildRouteName,
@@ -685,8 +686,9 @@ export async function POST(request: NextRequest) {
 
       // Рейс сразу назначен водителю — он должен увидеть его в мобильном
       // приложении без звонка логиста (задача 3, пункт 3).
+      let routePush: NotificationInput | undefined
       if (driverId) {
-        await notifyDriverRouteAssigned(tx, {
+        const assigned = await notifyDriverRouteAssigned(tx, {
           organizationId: org.organizationId,
           driverId,
           routeId: route.id,
@@ -694,6 +696,7 @@ export async function POST(request: NextRequest) {
           ordersCount: routeOrders.length,
           actorName,
         })
+        routePush = assigned.push
       }
 
       const summary = summarizeRoute(routeOrders)
@@ -709,8 +712,14 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      return { route: finalRoute, orders: routeOrders }
+      return { route: finalRoute, orders: routeOrders, routePush }
     })
+
+    // Пуш уведомления — только после коммита: внутри транзакции SQLite
+    // заблокировал бы базу, и доставка встала бы колом.
+    if (created.routePush) {
+      await deliverNotificationPush(created.routePush)
+    }
 
     return NextResponse.json({
       success: true,

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Building2, Fuel, Map as MapIcon, Save, Timer } from "lucide-react"
 import { PageLayout } from "@/components/page-layout"
+import { PushCard } from "@/components/settings/push-card"
 import { AddressInput } from "@/components/address-input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -332,6 +333,9 @@ export default function SettingsPage() {
             ))}
           </CardContent>
         </Card>
+
+        {/* ── Уведомления на устройства ─────────────────────────────── */}
+        <PushCard />
       </div>
     </PageLayout>
   )

@@ -15,6 +15,7 @@ import path from "node:path"
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
+import { notify } from "@/lib/notifications/create"
 import { requireAnySession } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
@@ -189,19 +190,17 @@ export async function POST(request: NextRequest) {
     // раньше это делал старый JSON-эндпоинт /api/m/photos, теперь — здесь,
     // потому что загрузка у водителя одна
     if (session.kind === "driver") {
-      await prisma.notification.create({
-        data: {
-          organizationId: org.organizationId,
-          userId: "logist",
-          userRole: "logist",
-          type: "new_photo",
-          title: "Новое фото от водителя",
-          message: `Водитель загрузил фото: ${type}`,
-          driverId,
-          orderId,
-          photoId: photo.id,
-          priority: type === "damage" ? "high" : "normal",
-        },
+      await notify({
+        organizationId: org.organizationId,
+        userId: "logist",
+        userRole: "logist",
+        type: "new_photo",
+        title: "Новое фото от водителя",
+        message: `Водитель загрузил фото: ${type}`,
+        driverId,
+        orderId,
+        photoId: photo.id,
+        priority: type === "damage" ? "high" : "normal",
       })
     }
 
