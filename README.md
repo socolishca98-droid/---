@@ -81,8 +81,11 @@ DRIVER_DEFAULT_PASSWORD="ПарольДляВодителей1"   # можно �
 | `RATE_LIMIT_DRIVER` | где считать попытки входа: `memory` (по умолчанию) или `upstash` |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Redis (Upstash) для общего счётчика попыток — нужен на serverless |
 | `ATI_CLIENT_ID` / `ATI_TOKEN` | интеграция с ATI.SU (без них грузы не подтягиваются) |
-| `TRAFFIC_PROVIDER` | `mock` (по умолчанию) или `yandex` + `YANDEX_ROUTING_API_KEY` |
+| `TRAFFIC_PROVIDER` | источник пробок: `estimate` (по умолчанию, оценка по времени суток), `2gis` + `TWOGIS_API_KEY`, `yandex` + `YANDEX_ROUTING_API_KEY`, `mock` (демо) |
 | `SENTRY_DSN` | необязательно; без DSN мониторинг отключён |
+| `TWOGIS_API_KEY` | ключ 2ГИС Routing API (реальные пробки по России); демо-ключ — 1 000 запросов и маршрут до 50 км |
+| `YANDEX_GEOCODER_API_KEY` | Яндекс.Геокодер (координаты адресов), бесплатно 1 000 запросов/сутки |
+| `YANDEX_ROUTING_API_KEY` | ключ сервиса «Маршрутизация»; ключ геокодера для него не работает |
 | `OCR_LANGUAGES`, `OCR_TIMEOUT_MS`, `OCR_CACHE_DIR`, `OCR_LANG_PATH` | локальный Tesseract для распознавания чеков и накладных |
 | `STORAGE_DRIVER` | где лежат фото: `local` (по умолчанию, `public/uploads`) или `s3` |
 | `MAIL_DRIVER`, `MAIL_FROM`, `UNISENDER_API_KEY` / `RESEND_API_KEY` | отправка писем: `console` (по умолчанию, ссылки в журнале) или `unisender` / `resend` |

@@ -280,7 +280,10 @@ export async function POST(request: NextRequest) {
       let traffic: SourceTraffic = "estimate"
       let trafficNote = "Оценка по времени суток (внешний сервис пробок не настроен)"
 
-      if (trafficProvider === "yandex") {
+      // Провайдеры пробок: «yandex» (Яндекс.Маршрутизация, от 120 000 ₽/год) и
+      // «2gis» (2ГИС Routing API: демо-ключ бесплатно, дальше от 6 701 ₽ за
+      // 10 000 запросов). Оба деградируют до оценки по времени суток.
+      if (trafficProvider === "yandex" || trafficProvider === "2gis") {
         try {
           const trafficResult = await getRouteTraffic({
             routeId: `optimizer:${variant}:${points.map((p) => `${p.coordinates.lat.toFixed(3)},${p.coordinates.lng.toFixed(3)}`).join("|")}`,
@@ -294,11 +297,17 @@ export async function POST(request: NextRequest) {
             trafficDelayMin = trafficResult.summary.delayMin
             etaMin = baseMin + trafficDelayMin
             traffic = "yandex"
-            trafficNote = `Яндекс.Маршрутизация: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
+            trafficNote =
+              trafficProvider === "2gis"
+                ? `2ГИС: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
+                : `Яндекс.Маршрутизация: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
           }
         } catch (error) {
-          console.error("[optimizer] Яндекс.Маршрутизация недоступна:", error)
-          trafficNote = "Яндекс.Маршрутизация недоступна — оценка по времени суток"
+          console.error(`[optimizer] ${trafficProvider} недоступен:`, error)
+          trafficNote =
+            trafficProvider === "2gis"
+              ? "2ГИС недоступен — оценка по времени суток"
+              : "Яндекс.Маршрутизация недоступна — оценка по времени суток"
         }
       }
 
