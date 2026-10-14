@@ -40,8 +40,10 @@ describe("buildSegmentsFromSteps — класс дороги из шагов OSR
     // Реальный пробел, который нашёлся: без номера дороги «М-4 Дон» падало в
     // автомагистраль со скоростью 75 км/ч и занижало время
     expect(segments[0].roadClass.class).toBe("federal")
-    expect(segments[0].baseSpeedKmh).toBe(65)
-    expect(segments[0].speedSource).toBe("table")
+    expect(segments[0].roadClass.confidence).toBeGreaterThan(0.8)
+    // Фактическая скорость OSRM (60 км/ч) ниже табличной (65) — берём факт
+    expect(segments[0].baseSpeedKmh).toBe(60)
+    expect(segments[0].speedSource).toBe("osrm")
   })
 
   it("«шоссе» в названии даёт автомагистраль", () => {
@@ -51,7 +53,42 @@ describe("buildSegmentsFromSteps — класс дороги из шагов OSR
     )
 
     expect(segments[0].roadClass.class).toBe("motorway")
-    expect(segments[0].baseSpeedKmh).toBe(75)
+    expect(segments[0].baseSpeedKmh).toBe(60)
+  })
+
+  it("поле ref с номером дороги важнее названия", () => {
+    // Живой маршрут: участок М-8, проходящий через town, называется
+    // «Советская улица» — без ref это уверенно определялся бы как город
+    const segments = buildSegmentsFromSteps(
+      [step({ name: "Советская улица", ref: "М-8", distance: 2600, duration: 218 })],
+      [MOSCOW, { lat: 55.0, lng: 36.0 }],
+    )
+
+    expect(segments[0].roadClass.class).toBe("federal")
+    expect(segments[0].roadClass.reason).toContain("номер дороги")
+  })
+
+  it("код региона 78К-0043 определяет региональную дорогу", () => {
+    const segments = buildSegmentsFromSteps(
+      [step({ name: "", ref: "78К-0043", distance: 11000, duration: 943 })],
+      [MOSCOW, { lat: 55.0, lng: 36.0 }],
+    )
+
+    expect(segments[0].roadClass.class).toBe("regional")
+  })
+
+  it("таблица ограничивает скорость сверху, когда OSRM едет быстрее класса", () => {
+    // Городская улица, по которой OSRM считает 46 км/ч: таблица говорит 25 —
+    // и это верхняя граница, а не «берём что больше»
+    const segments = buildSegmentsFromSteps(
+      [step({ name: "Московский проспект", distance: 4200, duration: 329 })],
+      [MOSCOW, { lat: 55.8, lng: 37.5 }],
+    )
+
+    expect(segments[0].baseSpeedKmh).toBe(25)
+    expect(segments[0].speedSource).toBe("table_capped")
+    // И время сегмента не меньше, чем посчитал бы OSRM
+    expect(segments[0].freeFlowSec).toBeGreaterThan(segments[0].baseDurationSec)
   })
 
   it("региональный номер 46К-16 определяет региональную дорогу", () => {

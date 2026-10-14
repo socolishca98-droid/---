@@ -156,12 +156,19 @@ export function estimateTraffic(ctx: TrafficContext): TrafficEstimate {
 }
 
 function isRuHoliday(date: Date, timeZone?: string): boolean {
+  // Реальный баг, который поймал тест: Intl с форматом "en-GB" отдаёт
+  // "04/01" (день/месяц), а множество праздников хранит "мм-дд". Сравнение
+  // строк never не срабатывало, и праздничный коэффициент не применялся
+  // ВООБЩЕ — на любой дате. Собираем ключ из частей явно.
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: timeZone || process.env.ETA_TIMEZONE || "Europe/Moscow",
     month: "2-digit",
     day: "2-digit",
-  }).format(date)
-  return RU_HOLIDAYS.has(parts)
+  }).formatToParts(date)
+
+  const month = parts.find((part) => part.type === "month")?.value ?? "00"
+  const day = parts.find((part) => part.type === "day")?.value ?? "00"
+  return RU_HOLIDAYS.has(`${month}-${day}`)
 }
 
 function round(value: number): number {

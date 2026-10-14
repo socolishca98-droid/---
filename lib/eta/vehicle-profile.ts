@@ -126,7 +126,10 @@ export function buildVehicleProfile(vehicle?: VehicleInput): VehicleProfile {
   let category: VehicleCategory = TYPE_TO_CATEGORY[(vehicle.type || "").toLowerCase()] ?? "truck"
 
   if (!vehicle.type && typeof vehicle.capacity === "number") {
-    category = vehicle.capacity <= 1500 ? "van" : vehicle.capacity <= 3500 ? "truck" : "articulated"
+    // Грузоподъёмность сама по себе не делает машину автопоездом: 20-тонный
+    // грузовик — это truck, а автопоезд это тягач С прицепом (флаг trailer).
+    // Автопоездом считаем только свыше 20 т — это уже, как правило, сцепка.
+    category = vehicle.capacity <= 1500 ? "van" : vehicle.capacity <= 20000 ? "truck" : "articulated"
   }
 
   let speedFactor = CATEGORY_FACTORS[category].factor
