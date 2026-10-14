@@ -25,6 +25,8 @@ export {
 
 export {
   generateCacheKey,
+  cargoCacheKey,
+  type CacheKeyFactors,
   getFromCache,
   saveToCache,
   clearCache,

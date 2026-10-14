@@ -6,7 +6,7 @@
 // маршрутизации (OSRM), а не выдумываются. Внешняя сеть подменена, поэтому
 // в тесте видно, откуда взялось расстояние, и что «пробок» провайдер-заглушка
 // не подмешивает (у нас TRAFFIC_PROVIDER=mock — и в ответе честно стоит
-// traffic:"estimate", а не сгенерированные ДТП).
+// traffic:"historical", а не сгенерированные ДТП).
 //
 // Запуск: npm run test:isolation
 
@@ -167,15 +167,15 @@ describe("сценарии рейса (POST /api/routes/optimizer)", () => {
     expect(variant.sources.routing).toBe("osrm")
   })
 
-  it("заглушка пробок не используется: в ответе честная оценка по времени суток", async () => {
+  it("заглушка пробок не используется: в ответе исторические коэффициенты", async () => {
     const orderId = seedOrder("opt2")
     const { data } = await callOptimizer({ orderIds: [orderId] }, cookieA)
 
-    expect(data.sources.traffic).toBe("estimate")
+    expect(data.sources.traffic).toBe("historical")
     for (const variant of data.variants) {
-      expect(variant.sources.traffic).toBe("estimate")
+      expect(variant.sources.traffic).toBe("historical")
       expect(variant.sources.tolls).toBe("estimate")
-      expect(variant.sources.trafficNote).toMatch(/оценка/i)
+      expect(variant.sources.trafficNote).toMatch(/историческая оценка/i)
       // ни одного выдуманного ДТП/перекрытия в объяснениях
       expect(variant.why.join(" ")).not.toMatch(/ДТП|перекрыт/i)
     }

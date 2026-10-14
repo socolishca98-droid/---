@@ -32,6 +32,7 @@ import {
   type GeocodeSource,
 } from "@/lib/geo/geocode"
 import { calculateETA } from "@/lib/eta/service"
+import { describeCoefficients } from "@/lib/eta/coefficients"
 import { getRouteTraffic } from "@/lib/traffic/service"
 import {
   OPTIMIZER_VARIANTS,
@@ -52,7 +53,7 @@ export const maxDuration = 60
 const MAX_OPTIMIZER_ORDERS = 20
 
 type SourceRouting = "osrm" | "fallback"
-type SourceTraffic = "yandex" | "estimate"
+type SourceTraffic = "yandex" | "2gis" | "historical"
 type SourceTolls = "estimate"
 type SourceGeocoding = GeocodeSource
 
@@ -276,9 +277,15 @@ export async function POST(request: NextRequest) {
       let trafficDelayMin = Math.max(0, etaMin - baseMin)
 
       // Пробки: только реальный сервис. Демо-генератор lib/traffic (provider
-      // "mock") здесь не используется — он рисует выдуманные ДТП.
-      let traffic: SourceTraffic = "estimate"
-      let trafficNote = "Оценка по времени суток (внешний сервис пробок не настроен)"
+      // "mock") здесь не используется — он рисует выдуманные ДТП. Без внешнего
+      // сервиса время считается историческими коэффициентами lib/eta — модель
+      // по часу пика, дню недели, грузу и типу дороги, а не измерение дороги.
+      let traffic: SourceTraffic = "historical"
+      const factors = describeCoefficients(eta.coefficients, departure)
+      let trafficNote =
+        factors.length > 0
+          ? `Историческая оценка: ${factors.join(", ")}`
+          : "Историческая оценка: коэффициенты нейтральны"
 
       // Провайдеры пробок: «yandex» (Яндекс.Маршрутизация, от 120 000 ₽/год) и
       // «2gis» (2ГИС Routing API: демо-ключ бесплатно, дальше от 6 701 ₽ за
@@ -296,7 +303,7 @@ export async function POST(request: NextRequest) {
           if (trafficResult.summary) {
             trafficDelayMin = trafficResult.summary.delayMin
             etaMin = baseMin + trafficDelayMin
-            traffic = "yandex"
+            traffic = trafficProvider === "2gis" ? "2gis" : "yandex"
             trafficNote =
               trafficProvider === "2gis"
                 ? `2ГИС: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
@@ -387,7 +394,9 @@ export async function POST(request: NextRequest) {
       // а где оценка.
       sources: {
         routing: variantResults.every((v) => v.sources.routing === "osrm") ? "osrm" : "fallback",
-        traffic: variantResults.some((v) => v.sources.traffic === "yandex") ? "yandex" : "estimate",
+        traffic: variantResults.some((v) => v.sources.traffic !== "historical")
+          ? variantResults.find((v) => v.sources.traffic !== "historical")!.sources.traffic
+          : "historical",
         tolls: "estimate" as const,
         // Источник координат честный: yandex, nominatim, cache или none.
         // Раньше тут была захардкоженная метка nominatim, и интерфейс врал,

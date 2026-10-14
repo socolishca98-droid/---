@@ -2,7 +2,9 @@
 //
 // Провайдеры пробок (TRAFFIC_PROVIDER) и сколько они стоят:
 //
-//   estimate — без внешнего сервиса, время по времени суток. Бесплатно.
+//   historical (синоним estimate) — без внешнего сервиса: время по
+//              историческим коэффициентам lib/eta. Бесплатно, режим по
+//              умолчанию.
 //   2gis     — 2ГИС Routing API, реальные пробки по России. Демо-ключ бесплатно
 //              (1 000 запросов, 1 месяц), далее от 6 701 ₽ за 10 000 запросов.
 //   yandex   — Яндекс.Маршрутизация, лучшие пробки, но минимальный платёж
@@ -462,12 +464,14 @@ export async function getRouteTraffic(params: {
 
     segments = buildSegmentsFromDelay(routeId, nowMs, severityBase, delayMin)
     summary = { delayMin, ratio: Number(ratio.toFixed(3)) }
-  } else if (provider === "estimate") {
+  } else if (provider === "estimate" || provider === "historical") {
     // Внешний сервис пробок не подключён намеренно: потребители (оптимизатор,
-    // /api/traffic/batch) ловят эту ошибку и считают время по времени суток.
+    // /api/traffic/batch) ловят эту ошибку и считают время историческими
+    // коэффициентами из lib/eta (час пика, день недели, груз, тип дороги).
     // Отдельная ветка — чтобы в debug-выводе было понятно, что это не сбой.
+    // «estimate» и «historical» — синонимы одного и того же режима.
     throw new Error(
-      "Внешний сервис пробок не настроен (TRAFFIC_PROVIDER=estimate): время считаем по времени суток",
+      "Внешний сервис пробок не настроен (TRAFFIC_PROVIDER=historical): время считаем историческими коэффициентами",
     )
   } else if (provider === "2gis") {
     const waypoints = pickWaypoints(params.coordinates, 10)
