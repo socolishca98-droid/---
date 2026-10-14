@@ -28,13 +28,19 @@ export function zoneOfClass(roadClass: RoadClass): TrafficZone {
     case "regional":
       return "rural"
     case "rural":
-      return "suburban"
     case "settlement":
       return "suburban"
+    case "city":
+    case "dense_city":
     case "industrial":
       return "city"
     default:
-      return "city"
+      // Класс неизвестен — НЕ считаем это городом. Иначе участок трассы без
+      // названия получал бы коэффициенты часа пик, которых там нет: на живом
+      // маршруте из-за этого 218 км из 265 ехали с городскими поправками.
+      // Нейтральная зона — минимальные коэффициенты, без выдумывания.
+      // Проверено тестом: «city» обязан давать городскую зону, а не эту.
+      return "rural"
   }
 }
 

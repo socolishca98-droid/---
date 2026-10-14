@@ -74,7 +74,7 @@ export const ROAD_CLASS_LABELS: Record<RoadClass, string> = {
 }
 
 /**
- * Признаки класса дороги в названии.
+ * Признаки класса дороги по НОМЕРУ (поле ref) и по НАЗВАНИЮ.
  *
  * Порядок важен: номера трасс проверяются ПЕРВЫМИ. Без этого «М-4 Дон» падало
  * в «федеральную трассу» по косвенным признакам с уверенностью 0.45, а слово
@@ -82,12 +82,28 @@ export const ROAD_CLASS_LABELS: Record<RoadClass, string> = {
  * занижалось. Российские номера в ответах OSRM встречаются постоянно:
  * М-11 Нева, Р-22 Каспий, А-108, 46К-16, Е-101.
  */
+const ROAD_NUMBER_PATTERNS: Array<{ class: Exclude<RoadClass, "unknown">; re: RegExp; confidence: number }> = [
+  // Федеральные: М-4, М4 «Дон», М-11 Нева, М-8 «Холмогоры»
+  { class: "federal", re: /^(?:м|m)[-–\s]?\d/i, confidence: 0.9 },
+  // Европейские и азиатские маршруты: Е-101, Е-22, АН-4
+  { class: "federal", re: /^(?:е|e|ah|ан)[-–\s]?\d/i, confidence: 0.85 },
+  { class: "federal", re: /федеральн/i, confidence: 0.8 },
+  // Региональные и межмуниципальные: Р-22, А-108, 46К-16, 78К-0043, 22Н-13
+  { class: "regional", re: /^(?:р|p|а|a)[-–\s]?\d/i, confidence: 0.8 },
+  { class: "regional", re: /^\d{2}[а-яa-z]{1,2}[-–\s]?\d+/i, confidence: 0.8 },
+]
+
 const NAME_PATTERNS: Array<{ class: Exclude<RoadClass, "unknown">; re: RegExp; confidence: number }> = [
   // Федеральные: М-4, М4 «Дон», М-11 Нева
   { class: "federal", re: /(?:^|[\s(«"'])(?:м|m)[-–\s]?\d/i, confidence: 0.85 },
   // Европейские и азиатские маршруты: Е-101, Е-22, АН-4
   { class: "federal", re: /(?:^|[\s(«"'])(?:е|e|ah|ан)[-–\s]?\d/i, confidence: 0.8 },
   { class: "federal", re: /федеральн/i, confidence: 0.8 },
+  // Именованная трасса в кавычках-ёлочках: «Холмогоры», «Дон», «Нева».
+  // Проверено на живом маршруте Ярославль — Москва: 218 из 265 км шли именно
+  // с таким названием, и без этого правила вся федеральная трасса уходила в
+  // unknown с городскими коэффициентами пробок.
+  { class: "federal", re: /^[«"'[][^»"']+[»"']$/, confidence: 0.7 },
   // Региональные и межмуниципальные: Р-22, А-108, 46К-16, 22Н-13
   { class: "regional", re: /(?:^|[\s(«"'])(?:р|p|а|a)[-–\s]?\d/i, confidence: 0.75 },
   { class: "regional", re: /(?:^|\s)\d{2}[а-яa-z]{1,2}[-–\s]?\d+/i, confidence: 0.7 },
@@ -110,6 +126,14 @@ const MANEUVER_HINTS: Record<string, Exclude<RoadClass, "unknown">> = {
 
 export interface StepLike {
   name?: string
+  /**
+   * Номер дороги из OSM (поле ref в ответе OSRM): «М-8», «78К-0043», «А-108».
+   *
+   * Проверено живым запросом: публичный OSRM отдаёт ref, хотя и не отдаёт
+   * way_class. Это самый надёжный признак класса — надёжнее названия, потому
+   * что приходит из тега дороги, а не из строки, которую мог написать кто угодно.
+   */
+  ref?: string
   distance: number
   duration: number
   maneuver?: { type?: string; modifier?: string }
@@ -128,7 +152,23 @@ export function classifyStep(step: StepLike): RoadClassProfile {
   const speedKmh = step.duration > 0 ? (step.distance / step.duration) * 3.6 : 0
   const junctionCount = Array.isArray(step.intersections) ? step.intersections.length : 0
 
-  // 1. Название дороги — самый надёжный признак
+  // 1. Номер дороги (ref) — самый надёжный признак: тег из OSM
+  const ref = (step.ref || "").trim()
+  if (ref) {
+    for (const pattern of ROAD_NUMBER_PATTERNS) {
+      if (pattern.re.test(ref)) {
+        return {
+          class: pattern.class,
+          label: ROAD_CLASS_LABELS[pattern.class],
+          baseSpeedKmh: BASE_SPEEDS[pattern.class],
+          confidence: pattern.confidence,
+          reason: `номер дороги «${ref}»`,
+        }
+      }
+    }
+  }
+
+  // 2. Название дороги
   if (name) {
     for (const pattern of NAME_PATTERNS) {
       if (pattern.re.test(name)) {
@@ -156,13 +196,21 @@ export function classifyStep(step: StepLike): RoadClassProfile {
     }
   }
 
-  // 3. Длинный быстрый шаг без перекрёстков — скорее трасса
-  if (step.distance > 5000 && speedKmh > 60 && junctionCount <= 2) {
+  // 3. Длинный быстрый шаг с редкими перекрёстками — скорее трасса.
+  //    Сравниваем ПЛОТНОСТЬ перекрёстков, а не их число: на 51 км магистрали
+  //    два съезда — это норма, а на 1 км городской улицы два — уже город.
+  //    На живом маршруте именно из-за абсолютного числа участки трассы без
+  //    названия уходили в unknown.
+  if (step.distance > 5000 && speedKmh > 60) {
+    // Среднюю скорость выше 60 км/ч в городе на протяжении больше 5 км не
+    // поддержить: светофоры не дадут. Значит это трасса. Перекрёстки тут не
+    // критерий: OSRM считает пересечениями и съезды, и на магистрали их бывает
+    // больше одного на километр — проверено на М-8 (до 1.3 на км).
     return {
       class: "federal",
       label: ROAD_CLASS_LABELS.federal,
       baseSpeedKmh: BASE_SPEEDS.federal,
-      confidence: 0.45,
+      confidence: 0.5,
       reason: `длинный шаг ${Math.round(step.distance / 1000)} км при ${Math.round(speedKmh)} км/ч`,
     }
   }
@@ -202,17 +250,33 @@ export function classifyStep(step: StepLike): RoadClassProfile {
 /**
  * Базовая скорость сегмента.
  *
- * Если класс определён — берём таблицу (это же и верхняя граница скорости в
- * модели: у бесплатного OSRM нет ограничений). Если класс неизвестен —
- * доверяемся фактической скорости OSRM в разумных пределах.
+ * Приоритет (ТЗ §2): фактическая скорость выше таблицы. Поэтому:
+ *
+ *   - класс определён → берём МИНИМУМ из таблицы класса и фактической скорости
+ *     OSRM. Таблица — верхняя граница: на «Ярославском шоссе» с классом
+ *     автомагистрали OSRM считает 63 км/ч, и 63 честнее 75. Но и наоборот:
+ *     на улице через town, которая числится частью М-8, OSRM даёт 45 км/ч —
+ *     и брать «федеральные» 65 было бы врать.
+ *   - класс неизвестен → доверяемся фактической скорости OSRM в разумных
+ *     пределах (8..80), потому что таблицы под этот случай нет.
  */
 export function segmentBaseSpeedKmh(
   profile: RoadClassProfile,
   osrmSpeedKmh: number,
-): { speedKmh: number; source: "table" | "osrm"; limited: boolean } {
-  if (profile.class !== "unknown" && (profile.baseSpeedKmh ?? 0) > 0) {
-    const limited = osrmSpeedKmh > (profile.baseSpeedKmh ?? 0)
-    return { speedKmh: profile.baseSpeedKmh as number, source: "table", limited }
+): { speedKmh: number; source: "table" | "osrm" | "table_capped"; limited: boolean } {
+  const table = profile.baseSpeedKmh ?? 0
+
+  if (profile.class !== "unknown" && table > 0) {
+    // Фактической скорости нет (нулевой шаг) — только таблица
+    if (osrmSpeedKmh <= 0) {
+      return { speedKmh: table, source: "table", limited: false }
+    }
+    // Дорога медленнее своего класса: реальность важнее таблицы
+    if (osrmSpeedKmh < table) {
+      return { speedKmh: Math.round(osrmSpeedKmh * 10) / 10, source: "osrm", limited: false }
+    }
+    // Быстрее таблицы — таблица и есть верхняя граница
+    return { speedKmh: table, source: "table_capped", limited: true }
   }
 
   const fallback = Math.max(8, Math.min(80, osrmSpeedKmh))

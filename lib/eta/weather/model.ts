@@ -176,11 +176,19 @@ export function assessWeather(
 
   let condition = conditionFromCode(sample.weatherCode, sample)
 
-  // Видимость важнее кода: туман без кода 45 тоже туман
+  // Видимость важнее кода погоды: туман без кода 45 тоже туман.
+  // И наоборот — код 45 при видимости больше километра туманом не является:
+  // на живом маршруте Ярославль — Москва Open-Meteo вернул code 45 с
+  // видимостью 1160 м, и без этой проверки весь рейс получил бы «туман».
   if (sample.visibilityM !== undefined && sample.visibilityM < 100) {
     condition = "low_visibility"
-  } else if (sample.visibilityM !== undefined && sample.visibilityM < 500 && condition === "clear") {
-    condition = "fog"
+  } else if (sample.visibilityM !== undefined && sample.visibilityM < 500) {
+    // unknown здесь — это «кода погоды нет», а не «погода неизвестна»:
+    // видимость 200 м говорит сама за себя.
+    if (condition === "clear" || condition === "fog" || condition === "unknown") condition = "fog"
+  } else if (sample.visibilityM !== undefined && sample.visibilityM >= 1000 && condition === "fog") {
+    // Код говорит «туман», но видимость нормальная: доверяемся измерению
+    condition = "clear"
   }
 
   // Гололёд: температура около нуля и есть осадки. Подтвердить покрытие

@@ -32,8 +32,8 @@ export interface RouteSegment {
   roadClass: RoadClassProfile
   /** Базовая скорость сегмента, км/ч */
   baseSpeedKmh: number
-  /** Откуда взялась скорость: таблица классов или фактическая OSRM */
-  speedSource: "table" | "osrm"
+  /** Откуда взялась скорость: таблица классов, фактическая OSRM или таблица как ограничение */
+  speedSource: "table" | "osrm" | "table_capped"
   /** Фактическая скорость OSRM по шагу, км/ч (свободный поток) */
   osrmSpeedKmh: number
   /** Время при базовой скорости — ориентир «свободного потока» */

@@ -214,6 +214,7 @@ model Route {
   events        RouteEvent[]
   expenses      RouteExpense[]
   photos        Photo[]
+  etaForecasts  EtaForecast[]
 
   @@index([status])
   @@index([driverId])
@@ -798,6 +799,101 @@ model RouteEvent {
 }
 
 // ============================================
+// ETA: ПРОГНОЗ И ФАКТ ВРЕМЕНИ ПРИБЫТИЯ
+// ============================================
+
+/// Прогноз времени прибытия и фактический результат по нему.
+///
+/// ОДНА таблица вместо десяти (ТЗ: «не создавай десятков таблиц»): прогноз и
+/// факт по одному рейсу — это две колонки одной строки, а разделять их значило
+/// бы плодить join'ы без нужды. Исходный прогноз при создании не перезаписывается:
+/// initialArrivalAt остаётся «как посчитали в первый раз», currentArrivalAt
+/// обновляется при пересчёте в рейсе. Разница между ними — отдельная метрика:
+/// она показывает, насколько прогноз «уезжал» по ходу дела.
+///
+/// Обучение (ТЗ §12): из actualArrivalAt/actualDrivingSec/actualStopsSec и
+/// сохранённых погодных данных считаются MAE, медианная ошибка, доля попаданий
+/// в 15/30 минут и систематическое опережение/опоздание. Коэффициенты по этим
+/// метрикам НЕ переписываются автоматически — только по решению человека.
+model EtaForecast {
+  id             String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeId        String?
+  route          Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  orderId        String?
+  vehicleId      String?
+  driverId       String?
+
+  /// Версия модели (lib/eta/forecast.ts, ETA_MODEL_VERSION). Нужна, чтобы
+  /// сравнивать точность разных версий, а не сваливать всё в одну кучу.
+  modelVersion    String
+  /// Откуда взялись данные: osrm | open-meteo | history | fallback (JSON-массив)
+  sourcesJson     String?
+  /// Часовой пояс расчёта — иначе непонятно, к какому местному времени относится
+  timeZone        String   @default("Europe/Moscow")
+
+  departureAt        DateTime
+  /// Прогноз при создании — неизменяем
+  initialArrivalAt   DateTime
+  /// Прогноз после последнего пересчёта
+  currentArrivalAt   DateTime
+  /// Границы сценариев
+  optimisticArrivalAt DateTime?
+  conservativeArrivalAt DateTime?
+  /// Секунды: движение, остановки, паузы водителя, итог
+  drivingSec      Int      @default(0)
+  stopsSec        Int      @default(0)
+  restSec         Int      @default(0)
+  totalSec        Int      @default(0)
+  distanceM       Int?
+
+  /// Уверенность 0..1 и уровень (high | medium | low)
+  confidenceScore Float    @default(0)
+  confidenceLevel String   @default("low")
+  /// Причины, по которым уверенность такая (JSON-массив строк)
+  confidenceReasonsJson String?
+  /// По сегментам: класс дороги, поправки, момент прохождения (JSON)
+  segmentsJson    String?
+  /// Сводное объяснение для интерфейса (JSON)
+  explanationJson String?
+  /// Снимок погодных данных на момент расчёта (JSON) — нужен для разбора ошибок
+  weatherJson     String?
+  /// Ограничения маршрута, из-за которых прогноз недействителен (JSON)
+  violationsJson  String?
+  /// Можно ли показывать ETA (false при полном перекрытии или нарушении)
+  reliable        Boolean  @default(true)
+  reliabilityNote String?
+
+  calculatedAt    DateTime
+  /// Сколько раз прогноз пересчитывался в рейсе
+  recalcCount     Int      @default(0)
+
+  // ── ФАКТ (заполняется по завершении рейса) ──
+  actualArrivalAt DateTime?
+  actualDrivingSec Int?
+  actualStopsSec  Int?
+  /// Причины задержек (JSON-массив: погода, ДТП, погрузка дольше...)
+  delayReasonsJson String?
+  /// Ошибка прогноза, мин: положительная — прибыли позже прогноза
+  errorMinutes    Float?
+  /// Выброс (рейс оформлен с ошибкой): в метрики не идёт
+  outlier         Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([routeId])
+  @@index([orderId])
+  @@index([vehicleId])
+  @@index([calculatedAt])
+  @@index([actualArrivalAt])
+  @@index([modelVersion])
+}
+
+// ============================================
 // АВТОРИЗАЦИЯ: ПОЛЬЗОВАТЕЛИ И СЕССИИ
 // ============================================
 
@@ -844,6 +940,7 @@ model Organization {
   atiScanConfigs    AtiScanConfig[]
   auditLogs         AuditLog[]
   inviteCodes       InviteCode[]
+  etaForecasts      EtaForecast[]
 
   @@index([name])
   /// Подключение к ATI.SU (одно на организацию) и строки накопленной базы грузов
