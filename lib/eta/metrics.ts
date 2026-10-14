@@ -13,7 +13,6 @@
 // пока данных меньше, метрики носят справочный характер.
 
 import { seasonOf, type Season } from "./time"
-import type { RoadClass } from "./road-class"
 
 export const MIN_SAMPLES_FOR_RECALIBRATION = 50
 
@@ -24,13 +23,18 @@ export interface ForecastFact {
   /** Фактическое прибытие */
   actualAt: Date
   /** Фактическое время движения, сек (может отличаться от прибытия — остановки) */
-  actualDrivingSec?: number
+  actualDrivingSec?: number | null
   /** Прогноз времени движения, сек */
   predictedDrivingSec?: number
-  roadClass?: RoadClass
-  region?: string
+  /**
+   * Доминирующий класс дороги по времени сегментов. Строка, а не RoadClass:
+   * значение приходит из сохранённого JSON и теоретически может быть любым —
+   * для группировки в разбивке этого достаточно.
+   */
+  roadClass?: string | null
+  region?: string | null
   /** Какой была погода в рейсе */
-  weatherCondition?: string
+  weatherCondition?: string | null
   /** Выброс: рейс оформлен с ошибкой, в метрики не идёт */
   outlier?: boolean
 }

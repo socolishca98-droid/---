@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T19:55:40.263Z",
+  "generatedAt": "2026-10-14T18:18:56.297Z",
   "endpoints": [
     {
       "method": "GET",
@@ -290,6 +290,26 @@
       "method": "GET",
       "route": "/api/drivers/locations",
       "group": "drivers"
+    },
+    {
+      "method": "GET",
+      "route": "/api/eta/forecast",
+      "group": "eta"
+    },
+    {
+      "method": "POST",
+      "route": "/api/eta/forecast",
+      "group": "eta"
+    },
+    {
+      "method": "POST",
+      "route": "/api/eta/forecast/:id/actual",
+      "group": "eta"
+    },
+    {
+      "method": "GET",
+      "route": "/api/eta/metrics",
+      "group": "eta"
     },
     {
       "method": "DELETE",
