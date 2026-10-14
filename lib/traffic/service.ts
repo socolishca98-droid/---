@@ -177,6 +177,24 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<Res
   }
 }
 
+/**
+ * До какого момента ключ Маршрутизации считается отклонённым.
+ *
+ * Зачем: если ключ выдан не для Маршрутизации (у Яндекса ключи отдельные на
+ * каждый сервис — ключ геокодера Маршрутизацию не открывает), каждый вызов
+ * optimisation отправлял бы в Яндекс два заведомо неудачных запроса и ждал
+ * таймаута. Плюс в логах — лавина одинаковых ошибок. Поэтому первый отказ
+ * «Invalid key» запоминается на 15 минут: за это время владелец успеет
+ * заменить ключ, а система честно считает по времени суток.
+ */
+let routingKeyRejectedUntilMs = 0
+const ROUTING_KEY_COOLDOWN_MS = 15 * 60 * 1000
+
+/** Сброс кэша отказа — для тестов и после смены ключа. */
+export function resetRoutingKeyRejection(): void {
+  routingKeyRejectedUntilMs = 0
+}
+
 async function fetchYandexDurationSeconds(params: {
   waypoints: LatLng[]
   trafficDisabled?: boolean
@@ -185,6 +203,12 @@ async function fetchYandexDurationSeconds(params: {
   const apiUrlRaw = process.env.YANDEX_ROUTING_API_URL || "https://api.routing.yandex.net/v2/route"
 
   if (!apiKey) throw new Error("YANDEX_ROUTING_API_KEY is not set")
+
+  if (Date.now() < routingKeyRejectedUntilMs) {
+    throw new Error(
+      "Ключ Яндекс.Маршрутизации отклонён (проверьте, что ключ выдан для сервиса «Маршрутизация», а не для геокодера)",
+    )
+  }
 
   const tryOne = async (sep: string): Promise<number> => {
     const url = new URL(apiUrlRaw)
@@ -203,6 +227,14 @@ async function fetchYandexDurationSeconds(params: {
     const text = await res.text().catch(() => "")
 
     if (!res.ok) {
+      // Ключ выдан другому сервису — это не «сеть отвалилась», а неверная
+      // настройка: дальше пытаться бессмысленно до смены ключа.
+      if (res.status === 403 && /invalid key/i.test(text)) {
+        routingKeyRejectedUntilMs = Date.now() + ROUTING_KEY_COOLDOWN_MS
+        throw new Error(
+          "Ключ Яндекс.Маршрутизации отклонён: проверьте, что ключ выдан для сервиса «Маршрутизация»",
+        )
+      }
       throw new Error(`Yandex routing HTTP ${res.status}: ${text.slice(0, 250)}`)
     }
 

@@ -25,7 +25,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
-import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
+import {
+  geocodeAddressesWithSource,
+  summarizeGeocodeSource,
+  type Coordinates,
+  type GeocodeSource,
+} from "@/lib/geo/geocode"
 import { calculateETA } from "@/lib/eta/service"
 import { getRouteTraffic } from "@/lib/traffic/service"
 import {
@@ -49,6 +54,7 @@ const MAX_OPTIMIZER_ORDERS = 20
 type SourceRouting = "osrm" | "fallback"
 type SourceTraffic = "yandex" | "estimate"
 type SourceTolls = "estimate"
+type SourceGeocoding = GeocodeSource
 
 type OptimizerBody = {
   orderIds?: unknown
@@ -172,9 +178,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Координаты городов (Nominatim + постоянный кэш GeoCache) ──────────
+    // ── Координаты городов (Яндекс → Nominatim + кэш GeoCache) ────────────
     const cities = Array.from(new Set(usable.flatMap((order) => [order.routeFrom, order.routeTo])))
-    const coordinates = await geocodeAddresses(cities)
+    const { coords: coordinates, sources: geocodeSources } = await geocodeAddressesWithSource(cities)
+    const geocodingSource = summarizeGeocodeSource(geocodeSources)
 
     const problems: string[] = []
     const withCoords: Array<{ order: OrderRow; from: Coordinates; to: Coordinates }> = []
@@ -373,7 +380,10 @@ export async function POST(request: NextRequest) {
         routing: variantResults.every((v) => v.sources.routing === "osrm") ? "osrm" : "fallback",
         traffic: variantResults.some((v) => v.sources.traffic === "yandex") ? "yandex" : "estimate",
         tolls: "estimate" as const,
-        geocoding: "nominatim",
+        // Источник координат честный: yandex, nominatim, cache или none.
+        // Раньше тут была захардкоженная метка nominatim, и интерфейс врал,
+        // хотя ключ Яндекса работает.
+        geocoding: geocodingSource,
       },
       problems,
       skipped: usable.length - withCoords.length,
