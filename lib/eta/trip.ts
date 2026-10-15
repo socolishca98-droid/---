@@ -119,9 +119,19 @@ export interface TripEtaOptions {
   /**
    * Откуда взялись расстояния плеч: «osrm» — маршрутизатор ответил,
    * «fallback» — оценка по прямой. По умолчанию «fallback»: движок не
-   * выдумывает источник, его declares вызывающий код.
+   * выдумывает источник, его называет вызывающий код.
    */
   routingSource?: "osrm" | "fallback"
+  /**
+   * Сколько заказов рейса остались без геокодированных точек.
+   *
+   * Зачем отдельным полем: без координат заказ не даёт НИ ОДНОГО этапа —
+   * ни плеча, ни погрузки. Поэтому по числу этапов нельзя отличить «геокодер
+   * не ответил» от «рейс завершён», и предупреждение врало бы.
+   */
+  unlocatedOrders?: number
+  /** Всего заказов в рейсе — чтобы сказать «N из M» в предупреждении. */
+  totalOrders?: number
 }
 
 /** Этап с прогнозом. */
@@ -698,6 +708,11 @@ export function calculateTripEta(
 
   // ── 6. Качество данных — что именно неизвестно ────────────────────────────
   const estimatedLegs = legs.filter((leg) => leg.distanceEstimated).length
+  // Были ли в рейсе этапы движения: без этого непонятно, почему плеч ноль —
+  // рейс завершён или точки не геокодировались.
+  const hasAnyDrivingStage = prepared.some(
+    (stage) => stage.kind === "driving" || stage.kind === "return_to_base",
+  )
   const allLegsGeocoded = legs.length > 0 && legs.every((leg) => leg.distanceM != null && leg.distanceM > 0)
   const vehicleKnown = Boolean(options.vehicle && (options.vehicle.type || options.vehicle.capacity))
   const hasActuals = prepared.some((stage) => stage.actualStartAt || stage.actualEndAt)
@@ -719,7 +734,20 @@ export function calculateTripEta(
     warnings.push("погода не учтена: источник отключён или недоступен")
   }
   if (legs.length === 0) {
-    warnings.push("невозможных плеч не осталось: рейс завершён или точки не определены")
+    // Раньше текст был «невозможных плеч не осталось: рейс завершён или точки
+    // не определены» — по нему нельзя было понять, ЧТО случилось. Отказ
+    // геокодера и завершённый рейс — разные ситуации, и логист должен видеть
+    // разницу. Признак приходит от вызывающего кода: он знает, сколько
+    // адресов не совпало с координатами.
+    const unlocated = options.unlocatedOrders ?? 0
+    if (unlocated > 0) {
+      warnings.push(
+        `не определены координаты ${unlocated} заказ(а) из ${options.totalOrders ?? unlocated}: ` +
+          "без них этапы не строятся и время по рейсу не рассчитано",
+      )
+    } else {
+      warnings.push("движения в рейсе не осталось: рейс завершён или все точки совпадают")
+    }
   }
 
   const corrections: Correction[] = forecast?.segments.flatMap((s) => s.corrections) ?? []

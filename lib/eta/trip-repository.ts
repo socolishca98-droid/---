@@ -275,7 +275,7 @@ export async function ensureRouteStages(source: RouteTripSource): Promise<number
 
   const existing = new Set(loaded.stages.map(routeStageKey))
 
-  const builtKeys = new Set(built.map(routeStageKey))
+  const builtKeys = new Set(built.stages.map(routeStageKey))
 
   // Удаляем этапы, которых больше нет в модели рейса (например, после смены
   // состава заказов). ТОЛЬКО те, где нет фактических отметок: отметка
@@ -299,7 +299,7 @@ export async function ensureRouteStages(source: RouteTripSource): Promise<number
   }
 
   let created = 0
-  for (const stage of built) {
+  for (const stage of built.stages) {
     if (existing.has(routeStageKey(stage))) continue
 
     await prisma.routeStage.create({
@@ -382,7 +382,7 @@ export async function listRouteStageIds(
     byKey.set(`${row.type}:${row.orderId ?? "route"}:${row.sequence ?? 0}`, row.id)
   }
 
-  return built.map((stage) => byKey.get(routeStageKey(stage)) ?? null)
+  return built.stages.map((stage) => byKey.get(routeStageKey(stage)) ?? null)
 }
 
 /**
@@ -393,7 +393,12 @@ export async function listRouteStageIds(
  */
 async function buildStagesForRoute(loaded: LoadedRoute, source: RouteTripSource) {
   const { byOrder } = await resolvePoints(loaded)
-  return buildRouteStages(
+  // Заказы, у которых не нашлись координаты: без них не строится ни один
+  // этап, и движок должен сказать об этом прямо, а не молчать.
+  const unlocatedOrders = loaded.orders.filter(
+    (order) => !byOrder.get(order.id)?.from || !byOrder.get(order.id)?.to,
+  ).length
+  return { stages: buildRouteStages(
     loaded.orders.map((order) => ({
       id: order.id,
       routeFrom: order.routeFrom,
@@ -406,7 +411,7 @@ async function buildStagesForRoute(loaded: LoadedRoute, source: RouteTripSource)
       origin: originPoint(loaded),
       returnToBase: source.returnToBase === false ? null : originPoint(loaded),
     },
-  )
+  ), unlocatedOrders }
 }
 
 /** Точка базы организации или null, если база не задана в настройках. */
@@ -486,9 +491,10 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
 
   const actuals = actualsFromStages(loaded)
 
-  const stages: TripStageInput[] = (
-    await buildStagesForRoute(loaded, source)
-  ).map((stage) => ({
+  const built = await buildStagesForRoute(loaded, source)
+  const unlocatedOrders = built.unlocatedOrders
+  const stages: TripStageInput[] = built.stages
+    .map((stage) => ({
     ...stage,
     actualStartAt:
       actuals.get(stageKey(stage))?.startAt ?? stage.actualStartAt ?? null,
@@ -540,6 +546,8 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
     restrictions: [],
     // Источник расстояний плеч — только если маршрутизатор реально ответил
     routingSource: osrmDistances ? "osrm" : "fallback",
+    unlocatedOrders,
+    totalOrders: loaded.orders.length,
   }
 
   return calculateTripEta(stages, options)

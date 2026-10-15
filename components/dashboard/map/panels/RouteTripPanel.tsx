@@ -16,6 +16,10 @@
 
 "use client"
 
+import {
+  formatAgeSeconds,
+  GPS_ONLINE_WINDOW_MS,
+} from "@/lib/fleet/presence"
 import { useMemo } from "react"
 
 import { AlertTriangle, Clock, MapPin, Navigation, RotateCcw, Route as RouteIcon } from "lucide-react"
@@ -66,6 +70,8 @@ export interface RouteTripPayload {
   dataQuality: string[]
   reliable: boolean
   gpsKnown: boolean
+  /** Возраст последней GPS-точки в секундах; null — точки не было */
+  gpsAgeSec: number | null
   calculatedAt: string
 }
 
@@ -121,6 +127,15 @@ export function RouteTripPanel({
     [routes, selectedRouteId],
   )
   const trip = (route?.trip ?? null) as RouteTripPayload | null
+  // Точка считается устаревшей, если она старше окна «на связи» из
+  // lib/fleet/presence.ts — того же правила, что и для маркеров водителей.
+  // Раньше панель рейса не смотрела на возраст вовсе и показывала вчерашнее
+  // место как текущее.
+  const gpsStale =
+    trip != null &&
+    trip.gpsKnown &&
+    trip.gpsAgeSec != null &&
+    trip.gpsAgeSec > GPS_ONLINE_WINDOW_MS / 1000
 
   if (!route) return null
 
@@ -154,6 +169,14 @@ export function RouteTripPanel({
           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
           Нет GPS-координат водителя. Местоположение на карте не показано — подменять его
           вычисленной точкой нельзя.
+        </p>
+      ) : gpsStale ? (
+        /* Точка есть, но старая: показывать её как «водитель здесь» нельзя —
+           это место, где он был, а не где он сейчас. */
+        <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] text-warning">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          GPS-точка устарела ({formatAgeSeconds(trip.gpsAgeSec)}). Положение на карте — последнее
+          известное, а не текущее.
         </p>
       ) : null}
 

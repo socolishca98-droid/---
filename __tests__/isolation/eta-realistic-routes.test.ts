@@ -30,6 +30,7 @@ import { POST as stagePost } from "@/app/api/m/route/stage/route"
 import { POST as actualPost } from "@/app/api/eta/forecast/[id]/actual/route"
 import { GET as driverRouteGet } from "@/app/api/m/route/route"
 import { GET as dashboardRoutesGet } from "@/app/api/dashboard/routes/route"
+import { geocodeAddressesWithSource } from "@/lib/geo/geocode"
 
 // ── Подменяемая сеть ────────────────────────────────────────────────────────
 process.env.GEOCODE_PAUSE_MS = "0"
@@ -259,6 +260,18 @@ function updateRow(model: string, id: string, patch: Record<string, unknown>) {
   if (!row) throw new Error(`в тестовой базе нет записи ${model} с id ${id}`)
   Object.assign(row, patch)
   return row
+}
+
+/**
+ * Прямой вызов геокодера — чтобы проверить РАЗБОР ответа Nominatim, а не
+ * только итоговый прогноз. Заглушка сети уже стоит к этому моменту.
+ */
+async function geocodeProbe(addresses: string[]) {
+  const { coords, sources } = await geocodeAddressesWithSource(addresses)
+  // Источник каждого адреса отдаётся отдельно: «none» значит «провайдер не
+  // ответил», и интерфейс обязан об этом сказать, а не подставить соседа.
+  expect(sources.size).toBe(addresses.length)
+  return coords
 }
 
 /** База автопарка: без неё единый движок не считает возврат на базу. */
@@ -898,6 +911,251 @@ describe("OSRM: резервный расчёт и чужие километры
     // Итог по плечам: Домодедово→Тула 190 + Тула→Воронеж 420 + Воронеж→Домодедово 480
     const total = driving.reduce((sum, stage) => sum + (stage.distanceM ?? 0), 0)
     expect(total).toBe(1090000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 3. GPS: свежесть точки и согласованность водителя с логистом
+// ---------------------------------------------------------------------------
+
+describe("GPS: свежесть координат", () => {
+  /** Payload карты логиста для одного водителя. */
+  async function mapRouteFor(driverId: string) {
+    const response = await dashboardRoutesGet(
+      makeRequest("GET", "/api/dashboard/routes", { cookie: cookieStaff }),
+    )
+    const data = await jsonOf(response)
+    expect(response.status).toBe(200)
+    const routes = (data.routes ?? []) as Array<{
+      driverId: string
+      driverPos: [number, number] | null
+      trip: { gpsKnown?: boolean; gpsAgeSec?: number | null } | null
+    }>
+    return routes.find((route) => route.driverId === driverId)
+  }
+
+  /** Собирает рейс и ставит водителю GPS-точку заданного возраста. */
+  function seedRouteWithGps(slug: string, ageMs: number) {
+    const order = seedOrder(slug, "Тула", "Воронеж")
+    updateRow("order", order, {
+      routeId: world.routeA,
+      routeSequence: 1,
+      assignedDriverId: world.driverA,
+    })
+    updateRow("route", world.routeA, { driverId: world.driverA, status: "active" })
+    updateRow("driver", world.driverA, {
+      latitude: 55.5,
+      longitude: 37.6,
+      lastGpsUpdate: new Date(Date.now() - ageMs),
+    })
+  }
+
+  it("свежая точка: координаты есть, возраст мал", async () => {
+    seedRouteWithGps("gpsfresh", 60_000)
+
+    const ours = await mapRouteFor(world.driverA)
+    expect(ours).toBeTruthy()
+    expect(ours!.driverPos).toEqual([55.5, 37.6])
+    expect(ours!.trip?.gpsKnown).toBe(true)
+    // Возраст — около минуты, но не отрицательный и не «точки нет»
+    expect(ours!.trip?.gpsAgeSec).toBeGreaterThanOrEqual(0)
+    expect(ours!.trip?.gpsAgeSec as number).toBeLessThanOrEqual(120)
+  })
+
+  it("устаревшая точка: координаты остаются, но возраст показывает правду", async () => {
+    // Точка была сутки назад: окно «на связи» — 15 минут
+    seedRouteWithGps("gpsold", 24 * 60 * 60 * 1000)
+
+    const ours = await mapRouteFor(world.driverA)
+    expect(ours).toBeTruthy()
+    // Координаты не выдумываются и не скрываются — но возраст честный
+    expect(ours!.driverPos).toEqual([55.5, 37.6])
+    expect(ours!.trip?.gpsAgeSec as number).toBeGreaterThan(15 * 60)
+  })
+
+  it("часы устройства спешат: возраст не уходит в минус", async () => {
+    // Метка на 3 минуты вперёд — расхождение часов устройства
+    seedRouteWithGps("gpsfuture", -3 * 60 * 1000)
+
+    const ours = await mapRouteFor(world.driverA)
+    expect(ours!.trip?.gpsAgeSec).toBe(0)
+  })
+
+  it("битая метка времени не превращается в «точку есть»", async () => {
+    const order = seedOrder("gpsbad", "Тула", "Воронеж")
+    updateRow("order", order, {
+      routeId: world.routeA,
+      routeSequence: 1,
+      assignedDriverId: world.driverA,
+    })
+    updateRow("route", world.routeA, { driverId: world.driverA, status: "active" })
+    updateRow("driver", world.driverA, {
+      latitude: 55.5,
+      longitude: 37.6,
+      lastGpsUpdate: new Date("не дата"),
+    })
+
+    const ours = await mapRouteFor(world.driverA)
+    expect(ours).toBeTruthy()
+    // Координаты есть, но возраст неизвестен — интерфейс скажет «точки нет»
+    expect(ours!.trip?.gpsKnown).toBe(true)
+    expect(ours!.trip?.gpsAgeSec).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. Геокодирование: заглушка городов не должна скрывать ошибки Nominatim
+// ---------------------------------------------------------------------------
+
+describe("геокодирование: ошибки ответа не маскируются", () => {
+  /** Меняет поведение заглушки сети только для Nominatim. */
+  function stubNominatim(handler: (query: string) => unknown) {
+    const realFetch = fetchMock.getMockImplementation()
+    const rawImpl = realFetch
+    const base =
+      typeof rawImpl === "function" && rawImpl.prototype === undefined
+        ? (rawImpl as (input: unknown) => Promise<Response>)
+        : undefined
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url =
+        typeof input === "string" ? input : String((input as { url?: string })?.url ?? input)
+      if (url.includes("nominatim")) {
+        const query = decodeURIComponent(new URL(url).searchParams.get("q") || "")
+        return handler(query) as Response
+      }
+      if (!base) throw new Error("исходная заглушка сети не найдена")
+      return base(input)
+    })
+  }
+
+  it("Nominatim отвечает 500: координаты не выдумываются, плечо честно помечено", async () => {
+    const order = seedOrder("geo500", "Тула", "Воронеж")
+    updateRow("order", order, { routeId: world.routeA, routeSequence: 1 })
+
+    stubNominatim(() => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "internal" }),
+      text: async () => "{}",
+    }))
+
+    const response = await tripGet(
+      makeRequest("GET", "/x", { cookie: cookieStaff }),
+      routeContext({ routeId: world.routeA }),
+    )
+    const data = await jsonOf(response)
+
+    // Прогноз есть, но он не придумывает геометрию: без координат движок
+    // считает по прямой и говорит об этом
+    expect(response.status).toBe(200)
+    const warnings = (data.dataQuality.warnings as string[]).join(" ")
+    expect(warnings).toMatch(/геокод|не рассчитано|по прямой|маршрутизатор/i)
+  })
+
+  it("Nominatim отдаёт мусор вместо координат: плечо не получает фальшивые метки", async () => {
+    const order = seedOrder("geogarbage", "Тула", "Воронеж")
+    updateRow("order", order, { routeId: world.routeA, routeSequence: 1 })
+
+    // lat/lng — не числа: isCoordinates такая пару отбросит
+    stubNominatim(() => ({
+      ok: true,
+      status: 200,
+      json: async () => [{ lat: "не число", lon: null }],
+      text: async () => "[]",
+    }))
+
+    const response = await tripGet(
+      makeRequest("GET", "/x", { cookie: cookieStaff }),
+      routeContext({ routeId: world.routeA }),
+    )
+    const data = await jsonOf(response)
+
+    expect(response.status).toBe(200)
+    const driving = (data.stages as Array<{
+      kind: string
+      from?: { lat: number; lng: number }
+      to?: { lat: number; lng: number }
+      distanceM: number | null
+    }>).filter((stage) => stage.kind === "driving" || stage.kind === "return_to_base")
+
+    // Ни одно плечо не получило координаты из мусорного ответа
+    for (const stage of driving) {
+      const points = [stage.from, stage.to].filter(Boolean)
+      for (const point of points) {
+        expect(Number.isFinite(point!.lat)).toBe(true)
+        expect(Number.isFinite(point!.lng)).toBe(true)
+      }
+    }
+  })
+
+  it("город есть в заглушке в обеих формах написания", async () => {
+    // Исправление искало город только по форме «Тула, россия», поэтому адрес
+    // заказа «Тула» не находился. Обе формы должны работать, а неизвестный
+    // город — по-прежнему давать «нет результата», а не координаты соседа.
+    const bothForms = await geocodeProbe(["Тула", "Тула, Россия", "Воронеж"])
+    expect(bothForms.get("Тула")).toEqual({ lat: 54.1961, lng: 37.6182 })
+    expect(bothForms.get("Тула, Россия")).toEqual({ lat: 54.1961, lng: 37.6182 })
+    expect(bothForms.get("Воронеж")).toEqual({ lat: 51.672, lng: 39.1843 })
+
+    const unknown = await geocodeProbe(["Такогогороданет"])
+    expect(unknown.get("Такогогороданет")).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2. Итоговое расстояние = сумме плеч (явная арифметика)
+// ---------------------------------------------------------------------------
+
+describe("итоговое расстояние равно сумме плеч", () => {
+  it("оптимизатор: сумма плеч совпадает с metrics.distanceKm", async () => {
+    const first = seedOrder("sumopt1", "Тула", "Воронеж")
+    const second = seedOrder("sumopt2", "Воронеж", "Липецк")
+
+    const { data } = await callOptimizer([first, second])
+    const variant = data.variants[0]
+
+    const legSum = variant.legs.reduce(
+      (sum: number, leg: { distanceKm: number | null }) => sum + (leg.distanceKm ?? 0),
+      0,
+    )
+    // Ни одно плечо не потеряно и не посчитано дважды
+    expect(legSum).toBe(variant.metrics.distanceKm)
+    // И это ровно таблица дорог: 190 + 420 + 130 + 330
+    expect(legSum).toBe(1070)
+  })
+
+  it("прогноз рейса: сумма плеч этапов совпадает с итогом", async () => {
+    const first = seedOrder("sumtrip1", "Тула", "Воронеж")
+    const second = seedOrder("sumtrip2", "Воронеж", "Липецк")
+    for (const [index, orderId] of [first, second].entries()) {
+      updateRow("order", orderId, { routeId: world.routeA, routeSequence: index + 1 })
+    }
+
+    const response = await tripGet(
+      makeRequest("GET", "/x", { cookie: cookieStaff }),
+      routeContext({ routeId: world.routeA }),
+    )
+    const data = await jsonOf(response)
+    expect(response.status).toBe(200)
+
+    const driving = (data.stages as Array<{
+      kind: string
+      distanceM: number | null
+    }>).filter((stage) => stage.kind === "driving" || stage.kind === "return_to_base")
+
+    const sumM = driving.reduce((sum, stage) => sum + (stage.distanceM ?? 0), 0)
+    // Плеча ровно столько, сколько пар точек: 190 + 420 + 130 + 330
+    expect(driving).toHaveLength(4)
+    expect(sumM).toBe(1070000)
+
+    // Операции погрузки/выгрузки расстояния не несут — иначе итог раздуется
+    const operations = (data.stages as Array<{ kind: string; distanceM: number | null }>).filter(
+      (stage) => stage.kind === "loading" || stage.kind === "unloading",
+    )
+    expect(operations.length).toBe(4)
+    for (const stage of operations) {
+      expect(stage.distanceM ?? 0).toBe(0)
+    }
   })
 })
 

@@ -22,6 +22,7 @@ import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
 import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
 import { estimateDurationMin, getRouteGeometry } from "@/lib/geo/route-geometry"
 import { getRouteTripEta, ensureRouteStages } from "@/lib/eta/trip-repository"
+import { gpsAgeSeconds } from "@/lib/fleet/presence"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -103,6 +104,13 @@ type RouteTripPayload = {
   reliable: boolean
   /** Реальные GPS-координаты водителя есть? */
   gpsKnown: boolean
+  /**
+   * Возраст последней GPS-точки в секундах; null — точки не было.
+   * Нужен, чтобы отличить «водитель здесь» от «водитель был здесь вчера»:
+   * координаты в базе не устаревают сами, и без этого панель показывала бы
+   * старое место как текущее.
+   */
+  gpsAgeSec: number | null
   /** Расчётное время (калькулятор), если GPS нет — явно помечено */
   calculatedAt: string
 }
@@ -224,6 +232,7 @@ export async function GET(request: NextRequest) {
         latitude: true,
         longitude: true,
         vehiclePlate: true,
+        lastGpsUpdate: true,
       },
     })
 
@@ -417,6 +426,9 @@ export async function GET(request: NextRequest) {
                 // Раньше здесь было зашито `true`, и интерфейс заявлял о
                 // GeolocationAPI даже когда координат у водителя нет.
                 gpsKnown: hasDriverGps,
+                gpsAgeSec: hasDriverGps
+                  ? gpsAgeSeconds(driver!.lastGpsUpdate, new Date())
+                  : null,
                 calculatedAt: tripEta.calculatedAt.toISOString(),
               }
             }
