@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Package,
   Route,
+  Route as RouteIcon,
   TrendingUp,
   Building2,
   ChevronRight,
@@ -40,6 +41,8 @@ interface StatsOverlayProps {
   totalActiveKm: number
   showRoutes: boolean
   onToggleRoutes: () => void
+  /** Показать прогноз рейса из единого механизма */
+  onOpenRouteTrip: (() => void) | null
   onToggleDriversPanel: () => void
   showDriversPanel: boolean
   isLoading: boolean
@@ -66,6 +69,7 @@ export function StatsOverlay({
   totalActiveKm,
   showRoutes,
   onToggleRoutes,
+  onOpenRouteTrip,
   onToggleDriversPanel,
   showDriversPanel,
   isLoading,
@@ -310,6 +314,17 @@ export function StatsOverlay({
           >
             <Zap className="h-4 w-4" />
           </button>
+
+          {/* Прогноз рейса: единый механизм, тот же что в кабинете водителя */}
+          {onOpenRouteTrip && (
+            <button
+              onClick={onOpenRouteTrip}
+              title="Прогноз рейса: этап, следующая точка, оставшееся время"
+              className="p-2.5 backdrop-blur-xl border rounded-2xl shadow-xl transition-all cursor-pointer bg-[#111319]/90 border-white/[0.08] text-gray-400 hover:text-white hover:border-white/20"
+            >
+              <RouteIcon className="h-4 w-4" />
+            </button>
+          )}
 
           {/* Меню переключения стилей карты */}
           {onChangeTheme && (

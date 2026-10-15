@@ -33,6 +33,35 @@ export interface RouteData {
   routeTo: string
   cargoType: string
   color?: string // ✅ Добавлено для премиальных цветов маршрутов
+  /**
+   * Прогноз рейса из ЕДИНОГО механизма (lib/eta/trip.ts) — тот же расчёт,
+   * что в кабинете водителя. null, если рейс не собран строкой Route.
+   */
+  trip?: {
+    currentStageIndex: number | null
+    currentStageLabel: string | null
+    nextPoint: {
+      address: string
+      operation: string
+      distanceM: number | null
+      drivingSec: number
+      arrivalAt: string
+    } | null
+    remaining: {
+      drivingSec: number
+      stopsSec: number
+      restSec: number
+      totalSec: number
+      arrivalAt: string
+    }
+    returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
+    completionAt: string
+    confidence: { level: string; score: number; reasons: string[] }
+    dataQuality: string[]
+    reliable: boolean
+    gpsKnown: boolean
+    calculatedAt: string
+  } | null
 }
 
 export interface BaseData {

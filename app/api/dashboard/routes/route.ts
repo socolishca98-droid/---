@@ -21,6 +21,7 @@ import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
 import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
 import { estimateDurationMin, getRouteGeometry } from "@/lib/geo/route-geometry"
+import { getRouteTripEta, ensureRouteStages } from "@/lib/eta/trip-repository"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -45,6 +46,40 @@ type Waypoint = {
   label: string
   address: string
   position: [number, number] | null
+}
+
+/**
+ * Прогноз рейса для карты — из ЕДИНОГО механизма (lib/eta/trip.ts), того же,
+ * что использует кабинет водителя. Раньше карта считала время своей формулой
+ * (OSRM-длительность или distance/60), и цифры на карте расходились с
+ * кабинетом водителя на одном и том же рейсе.
+ */
+type RouteTripPayload = {
+  currentStageIndex: number | null
+  currentStageLabel: string | null
+  nextPoint: {
+    address: string
+    operation: string
+    distanceM: number | null
+    drivingSec: number
+    arrivalAt: string
+  } | null
+  remaining: {
+    drivingSec: number
+    stopsSec: number
+    restSec: number
+    totalSec: number
+    arrivalAt: string
+  }
+  returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
+  completionAt: string
+  confidence: { level: string; score: number; reasons: string[] }
+  dataQuality: string[]
+  reliable: boolean
+  /** Реальные GPS-координаты водителя есть? */
+  gpsKnown: boolean
+  /** Расчётное время (калькулятор), если GPS нет — явно помечено */
+  calculatedAt: string
 }
 
 type BasePayload = {
@@ -256,6 +291,73 @@ export async function GET(request: NextRequest) {
         const durationMin =
           geometry.source === "osrm" ? geometry.durationMin : estimateDurationMin(distanceKm)
 
+        // Прогноз рейса — единый механизм, но только если рейс существует
+        // строкой Route (иначе некуда цеплять этапы). Для «solo-» групп
+        // (заказы без рейса) прогноза нет, и карта об этом скажет.
+        const realRouteId = group.orders[0]?.routeId ?? null
+        let trip: RouteTripPayload | null = null
+        if (realRouteId) {
+          try {
+            await ensureRouteStages({
+              routeId: realRouteId,
+              organizationId: org.organizationId,
+            })
+            const tripEta = await getRouteTripEta({
+              routeId: realRouteId,
+              organizationId: org.organizationId,
+            })
+            if (tripEta) {
+              const currentStage =
+                tripEta.currentStageIndex == null
+                  ? null
+                  : tripEta.stages[tripEta.currentStageIndex] ?? null
+              trip = {
+                currentStageIndex: tripEta.currentStageIndex,
+                currentStageLabel: currentStage?.label ?? null,
+                nextPoint: tripEta.nextPoint
+                  ? {
+                      address: tripEta.nextPoint.address ?? "точка без адреса",
+                      operation: String(tripEta.nextPoint.operation),
+                      distanceM: tripEta.nextPoint.distanceM ?? null,
+                      drivingSec: Math.round(tripEta.nextPoint.drivingSec),
+                      arrivalAt: tripEta.nextPoint.arrivalAt.toISOString(),
+                    }
+                  : null,
+                remaining: {
+                  drivingSec: Math.round(tripEta.remaining.drivingSec),
+                  stopsSec: Math.round(tripEta.remaining.stopsSec),
+                  restSec: Math.round(tripEta.remaining.restSec),
+                  totalSec: Math.round(tripEta.remaining.totalSec),
+                  arrivalAt: tripEta.remaining.arrivalAt.toISOString(),
+                },
+                returnToBase: tripEta.returnToBase
+                  ? {
+                      address: tripEta.returnToBase.address ?? "база",
+                      drivingSec: Math.round(tripEta.returnToBase.drivingSec),
+                      arrivalAt: tripEta.returnToBase.arrivalAt.toISOString(),
+                    }
+                  : null,
+                completionAt: tripEta.completionAt.toISOString(),
+                confidence: {
+                  level: tripEta.confidence.level,
+                  score: tripEta.confidence.score,
+                  reasons: tripEta.confidence.reasons,
+                },
+                dataQuality: tripEta.dataQuality.warnings,
+                reliable: tripEta.reliable,
+                // GPS есть, если у водителя заполнены координаты: это реальная
+                // точка, а не вычисленная. Без неё карта обязана сказать честно.
+                gpsKnown: true,
+                calculatedAt: tripEta.calculatedAt.toISOString(),
+              }
+            }
+          } catch (tripError) {
+            // Прогноз не должен ломать карту: нитки, точки и водители
+            // отдаются независимо от него
+            console.error("[dashboard/routes] trip eta failed:", tripError)
+          }
+        }
+
         return {
           id: routeKey,
           driverId: group.driverId,
@@ -273,6 +375,7 @@ export async function GET(request: NextRequest) {
           duration: durationMin,
           coordinates: geometry.coordinates,
           geometrySource: geometry.source,
+          trip,
           waypoints,
           orders: ordersSorted.map((order) => ({
             id: order.id,
