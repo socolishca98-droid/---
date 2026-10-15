@@ -217,8 +217,6 @@ export async function GET(request: NextRequest) {
     const drivers = await prisma.driver.findMany({
       where: scopedWhere(org.organizationId, {
         id: { in: driverIds },
-        latitude: { not: null },
-        longitude: { not: null },
       }),
       select: {
         id: true,
@@ -251,22 +249,30 @@ export async function GET(request: NextRequest) {
     const built = await Promise.all(
       [...groups.entries()].map(async ([routeKey, group]) => {
         const driver = drivers.find((item) => item.id === group.driverId)
-        if (!driver?.latitude || !driver?.longitude) return null
+        const hasDriverGps = driver?.latitude != null && driver?.longitude != null
 
-        const driverPoint: Coordinates = { lat: driver.latitude, lng: driver.longitude }
+        // GPS может отсутствовать — тогда маршрут строится от первой точки
+        // погрузки, а водителя на карте не показываем. Раньше рейс в этом
+        // случае вообще пропадал с карты, и логист не видел ни точек, ни прогноза.
+        const driverPoint: Coordinates | null =
+          hasDriverGps && driver
+            ? { lat: driver.latitude as number, lng: driver.longitude as number }
+            : null
         const ordersSorted = [...group.orders].sort(
           (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
         )
 
-        const points: Coordinates[] = [driverPoint]
-        const waypoints: Waypoint[] = [
-          {
-            type: "driver",
-            label: "🚚",
-            address: "Текущая позиция",
-            position: [driverPoint.lat, driverPoint.lng],
-          },
-        ]
+        const points: Coordinates[] = driverPoint ? [driverPoint] : []
+        const waypoints: Waypoint[] = driverPoint
+          ? [
+              {
+                type: "driver",
+                label: "🚚",
+                address: "Текущая позиция",
+                position: [driverPoint.lat, driverPoint.lng],
+              },
+            ]
+          : []
 
         let waypointIndex = 0
         for (const order of ordersSorted) {
@@ -302,6 +308,7 @@ export async function GET(request: NextRequest) {
           position: base.coordinates,
         })
 
+        // Рейс без единой геокодируемой точки показать нечем
         if (points.length < 2) return null
 
         const geometry = await getRouteGeometry(points)
@@ -407,7 +414,9 @@ export async function GET(request: NextRequest) {
                 reliable: tripEta.reliable,
                 // GPS есть, если у водителя заполнены координаты: это реальная
                 // точка, а не вычисленная. Без неё карта обязана сказать честно.
-                gpsKnown: true,
+                // Раньше здесь было зашито `true`, и интерфейс заявлял о
+                // GeolocationAPI даже когда координат у водителя нет.
+                gpsKnown: hasDriverGps,
                 calculatedAt: tripEta.calculatedAt.toISOString(),
               }
             }
@@ -421,9 +430,9 @@ export async function GET(request: NextRequest) {
         return {
           id: routeKey,
           driverId: group.driverId,
-          driverName: driver.name,
-          vehiclePlate: driver.vehiclePlate ?? undefined,
-          driverPos: [driver.latitude, driver.longitude] as [number, number],
+          driverName: driver?.name ?? "Водитель не найден",
+          vehiclePlate: driver?.vehiclePlate ?? undefined,
+          driverPos: driverPoint ? ([driverPoint.lat, driverPoint.lng] as [number, number]) : null,
           routeFrom: ordersSorted[0].routeFrom,
           routeTo: ordersSorted[ordersSorted.length - 1].routeTo,
           status: ordersSorted.some((order) => isOrderMoving(order.status))

@@ -10,7 +10,7 @@
  * иначе человек удивится, почему его разлогинило на других устройствах.
  */
 
-import { useEffect, useState, type FormEvent } from "react"
+import { Suspense, useEffect, useState, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -28,7 +28,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password"
 
-export default function ResetPasswordPage() {
+/**
+ * useSearchParams в Next требует границы Suspense: без неё prerender падает
+ * с «useSearchParams() should be wrapped in a suspense boundary», и production-
+ * сборка не собирается вовсе (в dev-режиме prerender не выполняется, поэтому
+ * дефект был не виден). Остальные страницы с поисковыми параметрами
+ * (/register, /m/photo, /print/route/…) обёрнуты так же.
+ */
+function ResetPasswordForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = (searchParams?.get("token") || "").trim()
@@ -228,5 +235,24 @@ export default function ResetPasswordPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background p-4">
+          <Card className="w-full max-w-md">
+            <CardContent className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Проверяем ссылку...
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <ResetPasswordForm />
+    </Suspense>
   )
 }

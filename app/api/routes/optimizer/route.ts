@@ -74,6 +74,8 @@ type OrderRow = {
 }
 
 type VariantLeg = {
+  /** Вид этапа: driving — перегон, return_to_base — возврат на базу */
+  kind: "driving" | "return_to_base"
   from: string
   to: string
   distanceKm: number
@@ -457,6 +459,10 @@ export async function POST(request: NextRequest) {
         legs: tripResult.stages
           .filter((stage) => stage.kind === "driving" || stage.kind === "return_to_base")
           .map((stage) => ({
+            // Вид плеча нужен интерфейсу: возврат на базу показывается
+            // отдельно от перегона между точками, иначе непонятно, сколько
+            // пробега «по заказам», а сколько «домой».
+            kind: stage.kind === "return_to_base" ? ("return_to_base" as const) : ("driving" as const),
             from: stage.address?.split(" → ")[0] ?? "",
             to: stage.address?.split(" → ")[1] ?? stage.address ?? "",
             distanceKm: stage.distanceKm ?? 0,

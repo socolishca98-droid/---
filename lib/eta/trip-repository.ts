@@ -20,6 +20,7 @@ import "server-only"
 
 import { prisma } from "@/lib/prisma"
 import { geocodeAddressesWithSource } from "@/lib/geo/geocode"
+import { fetchOSRMRoute } from "./osrm-client"
 import {
   buildRouteStages,
   calculateTripEta,
@@ -418,6 +419,57 @@ function originPoint(loaded: LoadedRoute) {
 }
 
 /**
+ * Дорожные расстояния плеч рейса из OSRM: карта «индекс этапа → метры».
+ *
+ * Один запрос на весь рейс: начало первого плеча, конец последнего и начала
+ * всех остальных плеч как путевые точки. Плечо i начинается в точке i,
+ * поэтому в «путевые» идут начала ВСЕХ плеч, кроме первого.
+ *
+ * Ответ разбирается по плечам: если их число не совпало с числом этапов,
+ * расстояния не применяются — лучше честная оценка по прямой, чем
+ * расстояние чужого плеча.
+ *
+ * Любая ошибка (сеть, таймаут, пустой ответ) → null: вызывающий код
+ * остаётся на прежней оценке, а движок помечает плечо приблизительным.
+ */
+async function osrmLegDistances(
+  stages: readonly TripStageInput[],
+): Promise<Map<number, number> | null> {
+  const legIndexes: number[] = []
+  const legPoints: Array<{ from: Coordinates; to: Coordinates }> = []
+
+  stages.forEach((stage, index) => {
+    if (stage.kind !== "driving" && stage.kind !== "return_to_base") return
+    if (!stage.from || !stage.to) return
+    legIndexes.push(index)
+    legPoints.push({ from: stage.from, to: stage.to })
+  })
+
+  if (legPoints.length === 0) return null
+
+  try {
+    const osrm = await fetchOSRMRoute(
+      legPoints[0].from,
+      legPoints[legPoints.length - 1].to,
+      legPoints.slice(1).map((leg) => ({ lat: leg.from.lat, lng: leg.from.lng })),
+    )
+    const osrmLegs = osrm.routes[0]?.legs ?? []
+    if (osrmLegs.length !== legPoints.length) return null
+
+    const distances = new Map<number, number>()
+    legIndexes.forEach((stageIndex, legIndex) => {
+      const distance = osrmLegs[legIndex]?.distance ?? 0
+      // Нулевое расстояние не применяем: это ответ без данных по плечу
+      if (distance > 0) distances.set(stageIndex, distance)
+    })
+    return distances.size > 0 ? distances : null
+  } catch {
+    // Маршрутизатор недоступен — оценка по прямой остаётся
+    return null
+  }
+}
+
+/**
  * Прогноз по рейсу: единый механизм для кабинета водителя, карты логиста,
  * помощника сборки и оптимизатора.
  *
@@ -453,6 +505,26 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
         : null,
   }))
 
+  // ── Дорожные расстояния плеч по OSRM ──
+  //
+  // Раньше движок рейса не обращался к маршрутизатору вовсе: плечо до
+  // склада и возврат на базу считались по прямой ×1.3, а плечо
+  // «погрузка → выгрузка» подставляло Order.distance — километры, которые
+  // вносит логист вручную. Из-за этого прогноз водителя и оптимизатор
+  // расходились на одном и том же рейсе, а «дорогие» км заказа выглядели
+  // как измерение дороги.
+  //
+  // Теперь по цепочке плеч делается ОДИН запрос OSRM — тот же приём, что в
+  // оптимизаторе (app/api/routes/optimizer/route.ts). Маршрутизатор
+  // недоступен → остаётся прежняя оценка по прямой, и dataQuality честно
+  // пишет, у скольких плеч расстояние приблизительное.
+  const osrmDistances = await osrmLegDistances(stages)
+  if (osrmDistances) {
+    for (const [index, distanceM] of osrmDistances) {
+      stages[index] = { ...stages[index], distanceM }
+    }
+  }
+
   const restRules: Partial<RestRules> = {
     maxDrivingMinutes: loaded.settings.restDriveLimitMin,
     breakMinutes: loaded.settings.restMinBreakMin,
@@ -466,6 +538,8 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
     // Ограничения маршрута в проекте не хранятся структурно (см. отчёт):
     // передаём пустой список, а не выдуманные.
     restrictions: [],
+    // Источник расстояний плеч — только если маршрутизатор реально ответил
+    routingSource: osrmDistances ? "osrm" : "fallback",
   }
 
   return calculateTripEta(stages, options)

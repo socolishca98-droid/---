@@ -21,7 +21,8 @@ export interface RouteData {
   driverId: string
   driverName: string
   vehiclePlate?: string
-  driverPos: [number, number]
+  /** Последняя GPS-точка водителя; null — координат нет, панель предупредит */
+  driverPos: [number, number] | null
   orders: OrderInfo[]
   waypoints: Waypoint[]
   coordinates: [number, number][]

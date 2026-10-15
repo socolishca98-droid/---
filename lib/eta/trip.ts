@@ -116,6 +116,12 @@ export interface TripEtaOptions {
   returnToBase?: { point: Coordinates; address?: string } | null
   /** Начальная точка рейса (база), если она не совпадает с первой погрузкой */
   origin?: { point: Coordinates; address?: string } | null
+  /**
+   * Откуда взялись расстояния плеч: «osrm» — маршрутизатор ответил,
+   * «fallback» — оценка по прямой. По умолчанию «fallback»: движок не
+   * выдумывает источник, его declares вызывающий код.
+   */
+  routingSource?: "osrm" | "fallback"
 }
 
 /** Этап с прогнозом. */
@@ -758,7 +764,10 @@ export function calculateTripEta(
       warnings,
     },
     sources: {
-      routing: "fallback",
+      // Раньше здесь было зашито «fallback»: даже когда расстояния плеч
+      // пришли из OSRM, интерфейс заявлял резервный расчёт. Теперь источник
+      // называет тот, кто реально считал.
+      routing: options.routingSource ?? "fallback",
       weather: weatherAvailable ? "open-meteo" : "unavailable",
       weatherEnabled: weatherAvailable,
     },
