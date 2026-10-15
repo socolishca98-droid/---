@@ -223,6 +223,23 @@ function actualsFromStages(
   const map = new Map<string, { startAt?: Date | null; endAt?: Date | null }>()
 
   for (const stage of loaded.stages) {
+    // Движение и возврат на базу: у заказа может быть несколько плеч, поэтому
+    // в ключ входит номер этапа. Иначе отметка «начал движение» на втором
+    // плече ушла бы на первое.
+    if (stage.type === "driving" || stage.type === "return_to_base") {
+      const key = `${stage.orderId ?? "route"}:driving:${stage.sequence ?? 0}`
+      const existing = map.get(key)
+      map.set(key, {
+        startAt: existing?.startAt && stage.startedAt
+          ? new Date(Math.min(existing.startAt.getTime(), stage.startedAt.getTime()))
+          : (stage.startedAt ?? existing?.startAt ?? null),
+        endAt: existing?.endAt && stage.endedAt
+          ? new Date(Math.max(existing.endAt.getTime(), stage.endedAt.getTime()))
+          : (stage.endedAt ?? existing?.endAt ?? null),
+      })
+      continue
+    }
+
     if (!stage.orderId) continue
     const stopKind = STAGE_TYPE_TO_STOP[stage.type] ?? "other"
     const key = `${stage.orderId}:${stopKind}`
@@ -253,22 +270,32 @@ export async function ensureRouteStages(source: RouteTripSource): Promise<number
   const loaded = await loadRoute(source)
   if (!loaded) return 0
 
-  const { byOrder } = await resolvePoints(loaded)
-  const built = buildRouteStages(
-    loaded.orders.map((order) => ({
-      id: order.id,
-      routeFrom: order.routeFrom,
-      routeTo: order.routeTo,
-      from: byOrder.get(order.id)?.from,
-      to: byOrder.get(order.id)?.to,
-      routeSequence: order.routeSequence,
-    })),
-    {},
-  )
+  const built = await buildStagesForRoute(loaded, source)
 
-  const existing = new Set(
-    loaded.stages.map((stage) => `${stage.type}:${stage.orderId ?? "route"}:${stage.sequence ?? 0}`),
+  const existing = new Set(loaded.stages.map(routeStageKey))
+
+  const builtKeys = new Set(built.map(routeStageKey))
+
+  // Удаляем этапы, которых больше нет в модели рейса (например, после смены
+  // состава заказов). ТОЛЬКО те, где нет фактических отметок: отметка
+  // водителя — исторический факт, её нельзя удалять сверкой.
+  const stale = loaded.stages.filter(
+    (stage) =>
+      !builtKeys.has(routeStageKey(stage)) &&
+      stage.startedAt == null &&
+      stage.endedAt == null,
   )
+  if (stale.length > 0) {
+    await prisma.routeStage.deleteMany({
+      where: {
+        routeId: source.routeId,
+        organizationId: source.organizationId,
+        id: { in: stale.map((stage) => stage.id) },
+        startedAt: null,
+        endedAt: null,
+      },
+    })
+  }
 
   let created = 0
   for (const stage of built) {
@@ -290,6 +317,17 @@ export async function ensureRouteStages(source: RouteTripSource): Promise<number
   return created
 }
 
+/**
+ * Ключ фактических отметок этапа. Должен совпадать с тем, что пишет
+ * actualsFromStages, иначе отметка водителя не попадёт в прогноз.
+ */
+function stageKey(stage: TripStageInput): string {
+  if (stage.kind === "driving" || stage.kind === "return_to_base") {
+    return `${stage.orderId ?? "route"}:driving:${stage.sequence}`
+  }
+  return `${stage.orderId ?? "route"}:${stage.stop?.kind ?? "other"}`
+}
+
 /** Вид этапа в модели RouteStage. */
 function routeStageType(stage: TripStageInput): string {
   if (stage.kind === "driving") return "driving"
@@ -298,8 +336,21 @@ function routeStageType(stage: TripStageInput): string {
 }
 
 /** Ключ этапа: по нему этап рейса сопоставляется со строкой RouteStage. */
-function routeStageKey(stage: TripStageInput): string {
-  return `${routeStageType(stage)}:${stage.orderId ?? "route"}:${stage.sequence}`
+function routeStageKey(stage: {
+  type?: string
+  kind?: TripStageInput["kind"]
+  stop?: TripStageInput["stop"]
+  orderId?: string | null
+  sequence?: number | null
+}): string {
+  const type =
+    stage.type ??
+    (stage.kind === "driving"
+      ? "driving"
+      : stage.kind === "return_to_base"
+        ? "return_to_base"
+        : STOP_TO_STAGE_TYPE[stage.stop?.kind ?? "other"])
+  return `${type}:${stage.orderId ?? "route"}:${stage.sequence ?? 0}`
 }
 
 /**
@@ -323,8 +374,25 @@ export async function listRouteStageIds(
     orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
   })
 
+  const built = await buildStagesForRoute(loaded, source)
+
+  const byKey = new Map<string, string>()
+  for (const row of rows) {
+    byKey.set(`${row.type}:${row.orderId ?? "route"}:${row.sequence ?? 0}`, row.id)
+  }
+
+  return built.map((stage) => byKey.get(routeStageKey(stage)) ?? null)
+}
+
+/**
+ * Строит этапы рейса из заказов. ЕДИНАЯ точка для ensureRouteStages,
+ * listRouteStageIds и getRouteTripEta: раньше ensure строил без базы и без
+ * возврата на базу, поэтому этап «возвращение на базу» не имел строки
+ * RouteStage — команда водителя на нём отвечала «Этап рейса не найден».
+ */
+async function buildStagesForRoute(loaded: LoadedRoute, source: RouteTripSource) {
   const { byOrder } = await resolvePoints(loaded)
-  const built = buildRouteStages(
+  return buildRouteStages(
     loaded.orders.map((order) => ({
       id: order.id,
       routeFrom: order.routeFrom,
@@ -338,13 +406,6 @@ export async function listRouteStageIds(
       returnToBase: source.returnToBase === false ? null : originPoint(loaded),
     },
   )
-
-  const byKey = new Map<string, string>()
-  for (const row of rows) {
-    byKey.set(`${row.type}:${row.orderId ?? "route"}:${row.sequence ?? 0}`, row.id)
-  }
-
-  return built.map((stage) => byKey.get(routeStageKey(stage)) ?? null)
 }
 
 /** Точка базы организации или null, если база не задана в настройках. */
@@ -371,31 +432,23 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
     await ensureRouteStages(source)
   }
 
-  const { byOrder, origin } = await resolvePoints(loaded)
   const actuals = actualsFromStages(loaded)
 
-  const stages: TripStageInput[] = buildRouteStages(
-    loaded.orders.map((order) => ({
-      id: order.id,
-      routeFrom: order.routeFrom,
-      routeTo: order.routeTo,
-      from: byOrder.get(order.id)?.from,
-      to: byOrder.get(order.id)?.to,
-      routeSequence: order.routeSequence,
-    })),
-    {
-      origin: originPoint(loaded),
-      returnToBase: source.returnToBase === false ? null : originPoint(loaded),
-      actuals,
-      // Расстояние плеча до точки назначения — из заказа: оно посчитано
-      // системой при создании заказа и точнее прямой между координатами.
-      stopDurations: undefined,
-    },
+  const stages: TripStageInput[] = (
+    await buildStagesForRoute(loaded, source)
   ).map((stage) => ({
     ...stage,
-    // Расстояние плеча «погрузка → выгрузка» берём из заказа
+    actualStartAt:
+      actuals.get(stageKey(stage))?.startAt ?? stage.actualStartAt ?? null,
+    actualEndAt: actuals.get(stageKey(stage))?.endAt ?? stage.actualEndAt ?? null,
+  })).map((stage) => ({
+    ...stage,
+    // Расстояние берём из заказа ТОЛЬКО у плеча «погрузка → выгрузка»:
+    // поле Order.distance считает именно его. Раньше оно проставлялось
+    // каждому плечу заказа, и плечо ДО склада получало то же расстояние —
+    // длина рейса удваивалась.
     distanceM:
-      stage.kind === "driving" && stage.orderId
+      stage.kind === "driving" && stage.leg === "to_dropoff" && stage.orderId
         ? (loaded.orders.find((order) => order.id === stage.orderId)?.distance ?? 0) * 1000
         : null,
   }))

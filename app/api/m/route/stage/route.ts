@@ -95,15 +95,19 @@ export async function POST(request: NextRequest) {
     // Защита от повторной отправки: клиент присылает свой id события, и если
     // оно уже записано — возвращаем тот же результат, ничего не меняя.
     if (clientEventId) {
+      // RouteEvent.data — строка JSON со всей полезной нагрузкой, поэтому
+      // ищем вхождение id в неё. Прямое сравнение data === clientEventId
+      // не находило ничего: запись всегда содержит и другие поля.
       const duplicate = await prisma.routeEvent.findFirst({
         where: {
           organizationId: org.organizationId,
           routeId,
           driverId,
           type: "stage_command",
-          data: clientEventId,
+          data: { contains: clientEventId },
         },
         select: { id: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
       })
       if (duplicate) {
         return NextResponse.json({

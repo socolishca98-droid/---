@@ -12,8 +12,10 @@
 // отклонена: правила показа и правила проверки — один модуль
 // lib/eta/trip-actions.ts.
 //
-// Откуда берётся прогноз: GET /api/routes/:id/trip — тот же источник, что
-// у карты логиста. Своей формулы ETA в браузере нет и быть не должно.
+// Откуда берётся прогноз: GET /api/m/route → блок trip. Он считается единым
+// механизмом lib/eta/trip.ts — тем же, что у карты логиста
+// (GET /api/routes/[routeId]/trip). Своей формулы ETA в браузере нет и быть
+// не должно.
 
 "use client"
 
@@ -88,6 +90,8 @@ export interface TripStagePanelProps {
     completionAt: string
     stages: TripStage[]
     dataQuality: string[]
+    /** Признак того, что расстояние плеча оценено, а не построено */
+    sources?: string[]
     startedAt?: string | null
   } | null
   /** Перезагрузить данные рейса после команды */

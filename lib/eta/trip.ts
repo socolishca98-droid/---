@@ -76,6 +76,12 @@ export interface TripStageInput {
   address?: string
   /** Откуда едем (для driving и return_to_base) */
   from?: Coordinates
+  /**
+   * Какое это плечо заказа: до точки погрузки или до точки выгрузки.
+   * Нужно, чтобы расстояние заказа (оно считается от погрузки до выгрузки)
+   * не проставилось плечу ДО погрузки — иначе расстояние рейса удвоится.
+   */
+  leg?: "to_pickup" | "to_dropoff"
   /** Куда едем (для driving и return_to_base) */
   to?: Coordinates
   /** Где выполняется операция (для loading/unloading/...) */
@@ -294,12 +300,20 @@ export function buildRouteStages(
     // шкале раньше приезда на склад, и водителю предлагалось бы грузить
     // до того, как он туда доехал.
     if (order.from && cursor && !samePoint(cursor, order.from)) {
+      const legSequence = sequence
       push({
         kind: "driving",
         orderId: order.id,
         address: `${cursorAddress ?? "текущая точка"} → ${order.routeFrom}`,
         from: cursor,
         to: order.from,
+        leg: "to_pickup",
+        // Фактические отметки движения — из RouteStage. Ключ включает номер
+        // этапа: у заказа может быть несколько плеч, и путать их нельзя.
+        actualStartAt:
+          options.actuals?.get(`${order.id}:driving:${legSequence}`)?.startAt ?? null,
+        actualEndAt:
+          options.actuals?.get(`${order.id}:driving:${legSequence}`)?.endAt ?? null,
       })
       cursor = order.from
       cursorAddress = order.routeFrom
@@ -320,12 +334,18 @@ export function buildRouteStages(
 
     // Плечо до точки назначения
     if (order.from && order.to && !samePoint(order.from, order.to)) {
+      const legSequence = sequence
       push({
         kind: "driving",
         orderId: order.id,
         address: `${order.routeFrom} → ${order.routeTo}`,
         from: order.from,
         to: order.to,
+        leg: "to_dropoff",
+        actualStartAt:
+          options.actuals?.get(`${order.id}:driving:${legSequence}`)?.startAt ?? null,
+        actualEndAt:
+          options.actuals?.get(`${order.id}:driving:${legSequence}`)?.endAt ?? null,
       })
     }
 
@@ -348,11 +368,16 @@ export function buildRouteStages(
 
   // Возврат на базу
   if (options.returnToBase?.point && cursor && !samePoint(cursor, options.returnToBase.point)) {
+    const legSequence = sequence
     push({
       kind: "return_to_base",
       address: `${cursorAddress ?? "текущая точка"} → ${options.returnToBase.address ?? "база"}`,
       from: cursor,
       to: options.returnToBase.point,
+      actualStartAt:
+        options.actuals?.get(`route:driving:${legSequence}`)?.startAt ?? null,
+      actualEndAt:
+        options.actuals?.get(`route:driving:${legSequence}`)?.endAt ?? null,
     })
   }
 

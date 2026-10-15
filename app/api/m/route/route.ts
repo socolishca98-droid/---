@@ -238,7 +238,9 @@ export async function GET(request: NextRequest) {
               actualStartAt: stage.actualStartAt?.toISOString() ?? null,
               actualEndAt: stage.actualEndAt?.toISOString() ?? null,
             })),
-            dataQuality: trip.dataQuality,
+            // Предупреждения — массив строк: панель водителя показывает их
+            // дословно («расстояние оценено по прямой», «погода отключена»)
+            dataQuality: trip.dataQuality.warnings,
           }
         : null,
       route: route
