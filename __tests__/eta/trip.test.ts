@@ -40,6 +40,32 @@ function orders() {
 }
 
 describe("buildRouteStages — последовательность этапов", () => {
+  it("плечо до склада стоит ДО погрузки, а не после", () => {
+    // Регрессия: раньше этап «погрузка» вставлялся раньше плеча до точки
+    // погрузки, и водителю предлагалось грузить до приезда на склад.
+    const stages = buildRouteStages(
+      [
+        {
+          id: "o1",
+          routeFrom: "Ярославль",
+          routeTo: "Москва",
+          from: YAROSLAVL,
+          to: BASE,
+          routeSequence: 1,
+        },
+      ],
+      { origin: { point: KOSTROMA, address: "База" } },
+    )
+    expect(stages.map((s) => s.kind)).toEqual([
+      "driving", // База → Ярославль
+      "loading", // Ярославль
+      "driving", // Ярославль → Москва
+      "unloading", // Москва
+    ])
+    expect(stages[0].address).toContain("База")
+    expect(stages[0].address).toContain("Ярославль")
+  })
+
   it("рейс = погрузка, плечо, выгрузка на каждый заказ + возврат на базу", () => {
     const stages = buildRouteStages(orders(), {
       origin: { point: BASE, address: "Москва, база" },
