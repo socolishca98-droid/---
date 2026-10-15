@@ -18,6 +18,7 @@ import { requireStaffOrganization, notFoundInOrganization } from "@/lib/org"
 import { prisma } from "@/lib/prisma"
 import { calculateSegmentEta } from "@/lib/eta/orchestrator"
 import { saveForecast } from "@/lib/eta/repository"
+import { geocodeAddressesWithSource } from "@/lib/geo/geocode"
 import { isWeatherEnabled } from "@/lib/eta/weather/client"
 import type { StopRequest } from "@/lib/eta/stops"
 import type { RoadEvent } from "@/lib/eta/events"
@@ -27,6 +28,11 @@ interface ForecastBody {
   origin?: { lat: number; lng: number }
   destination?: { lat: number; lng: number }
   waypoints?: Array<{ lat: number; lng: number }>
+  /**
+   * Достаточно одного routeId: сервер сам возьмёт точки рейса из заказов и
+   * превратит названия городов в координаты (кэш GeoCache + геокодер).
+   * Клиенту не нужно знать координат — ему видны только названия.
+   */
   departure?: string
   /** Рейс, к которому привязать прогноз (для сравнения с фактом) */
   routeId?: string
@@ -52,13 +58,72 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ожидается JSON" }, { status: 400 })
   }
 
-  if (!body?.origin || !body?.destination) {
-    return NextResponse.json({ error: "Требуются origin и destination" }, { status: 400 })
-  }
-
   const departure = body.departure ? new Date(body.departure) : new Date()
   if (Number.isNaN(departure.getTime())) {
     return NextResponse.json({ error: "Некорректное время выезда" }, { status: 400 })
+  }
+
+  // ── Точки маршрута: либо из тела, либо из заказов рейса ──
+  let origin = body?.origin
+  let destination = body?.destination
+  let waypoints = body?.waypoints || []
+
+  // Рейс проверяется ВСЕГДА, когда передан routeId — даже если координаты
+  // пришли в теле. Иначе прогноз организации А сохранился бы со ссылкой на
+  // рейс организации Б: фильтр по организации при чтении такую строку не
+  // покажет, но в базе появилась бы межорганизационная связь.
+  let routeOrders: Array<{ routeFrom: string; routeTo: string; routeSequence: number | null; createdAt: Date }> = []
+  if (body?.routeId) {
+    const route = await prisma.route.findFirst({
+      where: { id: body.routeId, organizationId: org.organizationId },
+      // Без фильтра по routeSequence: у старых рейсов он может быть null,
+      // порядок всё равно восстанавливаем ниже
+      select: {
+        orders: { select: { routeFrom: true, routeTo: true, routeSequence: true, createdAt: true } },
+      },
+    })
+    if (!route) return notFoundInOrganization("Рейс")
+    routeOrders = route.orders
+  }
+
+  if ((!origin || !destination) && routeOrders.length > 0) {
+    const orders = [...routeOrders].sort((a, b) => {
+      const sa = a.routeSequence
+      const sb = b.routeSequence
+      if (sa != null && sb != null) return sa - sb
+      if (sa != null) return -1
+      if (sb != null) return 1
+      return a.createdAt.getTime() - b.createdAt.getTime()
+    })
+    if (orders.length > 0) {
+      const names = [
+        orders[0].routeFrom,
+        ...orders.map((order) => order.routeTo),
+      ]
+      const { coords } = await geocodeAddressesWithSource(names)
+
+      const points = names
+        .map((name) => coords.get(name.trim()))
+        .filter((point): point is { lat: number; lng: number } => Boolean(point))
+
+      if (points.length >= 2) {
+        origin = points[0]
+        destination = points[points.length - 1]
+        waypoints = points.slice(1, -1)
+      } else {
+        return NextResponse.json(
+          { error: "Не удалось определить координаты точек рейса" },
+          { status: 422 },
+        )
+      }
+    }
+  }
+
+  if (!origin || !destination) {
+    return NextResponse.json(
+      { error: "Требуются origin и destination, либо routeId с точками" },
+      { status: 400 },
+    )
   }
 
   // ── Машина: только из своей организации ──
@@ -87,19 +152,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Рейс: тоже свой ──
-  if (body.routeId) {
-    const route = await prisma.route.findFirst({
-      where: { id: body.routeId, organizationId: org.organizationId },
-      select: { id: true, driverId: true, vehicleId: true },
-    })
-    if (!route) return notFoundInOrganization("Рейс")
-  }
-
   const result = await calculateSegmentEta({
-    origin: body.origin,
-    destination: body.destination,
-    waypoints: body.waypoints || [],
+    origin,
+    destination,
+    waypoints,
     departure,
     vehicle,
     stops: body.stops,

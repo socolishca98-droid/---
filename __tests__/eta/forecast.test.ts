@@ -750,3 +750,155 @@ describe("21. Крайние значения", () => {
     expect(result.scenarios.base.drivingSec).toBeGreaterThanOrEqual(0)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 17. Обязательный отдых В ЧАСАХ рейса (регресс: перерыв прибавлялся в конце)
+//
+// Раньше план перерывов считался после цикла по сегментам и добавлялся к
+// итогу одной суммой. Сегменты после перерыва при этом считались БЕЗ него:
+// час пик, сезон и погода брались на момент, которого в реальности не
+// существовало. Здесь закреплено обратное поведение.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("17. Перерыв водителя сдвигает последующие сегменты", () => {
+  /** Несколько плеч по 100 км трассы ≈ 109 мин каждое: перерыв наступает после 3-го. */
+  function longRoute(km = 100, count = 6): RouteSegment[] {
+    return Array.from({ length: count }, (_, index) =>
+      segment("federal", km, 65, index, `плечо ${index + 1}`),
+    )
+  }
+
+  it("перерыв сдвигает прибытие во все последующие сегменты", () => {
+    // 4 плеча: лимит непрерывности (270 мин) наступает один раз,
+    // лимит смены (600 мин) — ни разу. Ровно один перерыв.
+    const result = forecast(longRoute(100, 4), { departure: at(0) })
+
+    const breaks = result.rest.breaks
+    expect(breaks).toHaveLength(1)
+    expect(breaks[0].kind).toBe("break")
+    expect(breaks[0].minutes).toBe(45)
+    expect(breaks[0].afterSegmentIndex).toBe(2)
+
+    // До перерыва: сегменты 1-3 идут без паузы
+    expect(result.segments[1].arrivalAt.getTime()).toBe(result.segments[0].departureAt.getTime())
+    // После перерыва: 4-е плечо выезжает ровно на 45 мин позже
+    expect(result.segments[3].arrivalAt.getTime()).toBe(
+      result.segments[2].departureAt.getTime() + 45 * 60_000,
+    )
+  })
+
+  it("смещение после перерыва равно именно перерыву, не «какой-то задержке»", () => {
+    const result = forecast(longRoute(100, 4), { departure: new Date(Date.UTC(2026, 9, 15, 4, 0)) })
+    const beforeBreak = result.segments[2]
+    const afterBreak = result.segments[3]
+
+    expect(afterBreak.arrivalAt.getTime() - beforeBreak.departureAt.getTime()).toBe(45 * 60_000)
+    expect(afterBreak.arrivalAt.getTime()).toBeGreaterThan(beforeBreak.departureAt.getTime())
+  })
+
+  it("несколько перерывов: каждый сдвигает часы", () => {
+    // 12 плеч по 100 км: перерыв после 3-го, 6-го и 9-го
+    const result = forecast(longRoute(100, 12), { departure: at(0) })
+
+    expect(result.rest.breaks.length).toBeGreaterThanOrEqual(3)
+    expect(result.rest.breaks.every((b) => b.minutes > 0)).toBe(true)
+
+    // Сумма пауз входит в общее время ровно один раз
+    const sumBreaks = result.rest.breaks.reduce((sum, b) => sum + b.minutes, 0) * 60
+    const sumDriving = result.segments.reduce((sum, s) => sum + s.drivingSec, 0)
+    expect(result.scenarios.base.totalSec).toBe(sumDriving + sumBreaks)
+  })
+
+  it("переход через полночь: сегменты после полуночи считаются новой датой", () => {
+    const result = forecast(longRoute(100, 4), { departure: new Date(Date.UTC(2026, 9, 15, 22, 0)) })
+
+    expect(result.segments.some((s) => s.arrivalAt.getUTCDate() === 16)).toBe(true)
+    expect(result.scenarios.base.arrivalAt.getUTCDate()).toBe(16)
+    expect(result.segments[result.segments.length - 1].departureAt.getTime()).toBe(
+      result.scenarios.base.arrivalAt.getTime(),
+    )
+  })
+
+  it("перерыв и остановка вместе: оба в часах и оба в итоге", () => {
+    const result = forecast(longRoute(100, 4), {
+      departure: at(0),
+      stops: [{ kind: "loading", afterSegmentIndex: 2, actualMinutes: 60 }],
+    })
+
+    expect(result.segments[3].arrivalAt.getTime()).toBe(
+      result.segments[2].departureAt.getTime() + 60 * 60_000 + 45 * 60_000,
+    )
+    expect(result.scenarios.base.stopsSec).toBe(60 * 60)
+    expect(result.scenarios.base.restSec).toBe(45 * 60)
+  })
+
+  it("цепочка сегментов совпадает с итоговым прибытием (нет двойного учёта)", () => {
+    const result = forecast(longRoute(100, 4), { departure: at(0) })
+
+    const last = result.segments[result.segments.length - 1]
+    expect(last.departureAt.getTime()).toBe(result.scenarios.base.arrivalAt.getTime())
+
+    const expected =
+      result.segments.reduce((sum, s) => sum + s.drivingSec, 0) +
+      result.scenarios.base.stopsSec +
+      result.scenarios.base.restSec
+    expect(result.scenarios.base.totalSec).toBe(expected)
+  })
+
+  it("одно длинное плечо: перерыв вставляется ВНУТРИ плеча, а не после точки", () => {
+    // 600 км по трассе ≈ 380 мин движения — больше лимита 270 мин.
+    // Раньше перерыв «после последней точки» прибытие не задерживал вовсе.
+    const result = forecast([segment("motorway", 600, 95, 0)], { departure: at(9) })
+
+    expect(result.rest.breaks.length).toBeGreaterThan(0)
+    expect(result.scenarios.base.restSec).toBeGreaterThan(0)
+    // Прибытие сдвинуто ровно на паузу
+    const withoutRest = result.scenarios.base.drivingSec
+    expect(result.scenarios.base.totalSec).toBe(withoutRest + result.scenarios.base.restSec)
+  })
+
+  it("оптимистичный сценарий без перерывов, но цепочка сегментов согласована", () => {
+    const result = forecast(longRoute(100, 4), { departure: at(0) })
+
+    expect(result.scenarios.optimistic.restSec).toBe(0)
+    expect(result.scenarios.optimistic.totalSec).toBeLessThan(result.scenarios.base.totalSec)
+    expect(result.segments[3].arrivalAt.getTime()).toBeGreaterThan(
+      result.segments[2].departureAt.getTime(),
+    )
+  })
+
+  it("уже отработанное до выезда время сдвигает первый перерыв", () => {
+    const fresh = forecast(longRoute(100, 4), { departure: at(0) })
+    const tired = forecast(longRoute(100, 4), { departure: at(0), priorDrivingMinutes: 240 })
+
+    expect(fresh.rest.breaks[0]?.afterSegmentIndex).toBe(2)
+    expect(tired.rest.breaks[0]?.afterSegmentIndex).toBe(0)
+    expect(tired.rest.priorDrivingUnknown).toBe(false)
+  })
+
+  it("многодневный рейс: ежедневный отдых вставляется между плечами", () => {
+    // 8 плеч по 200 км ≈ 184 мин каждое: смена (600 мин) наступает после 4-го
+    const result = forecast(longRoute(200, 8), {
+      departure: new Date(Date.UTC(2026, 9, 15, 6, 0)),
+    })
+
+    const daily = result.rest.breaks.find((b) => b.kind === "daily_rest")
+    expect(daily).toBeDefined()
+    expect(daily!.minutes).toBe(660)
+
+    const nextIndex = daily!.afterSegmentIndex + 1
+    if (nextIndex < result.segments.length) {
+      expect(result.segments[nextIndex].arrivalAt.getTime()).toBe(
+        result.segments[daily!.afterSegmentIndex].departureAt.getTime() + 660 * 60_000,
+      )
+    }
+  })
+
+  it("объяснение показывает паузы водителя с привязкой к плечу", () => {
+    const result = forecast(longRoute(100, 4), { departure: at(0) })
+
+    const restItem = result.explanation.find((item) => item.kind === "rest")
+    expect(restItem).toBeDefined()
+    expect(restItem!.detail).toContain("45 мин")
+    expect(restItem!.detail).toContain("после сегмента 3")
+  })
+})

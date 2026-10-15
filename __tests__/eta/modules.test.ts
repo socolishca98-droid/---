@@ -17,7 +17,7 @@ import {
 } from "@/lib/eta/traffic-model"
 import { assessWeather, weatherUncertainty } from "@/lib/eta/weather/model"
 import { STOP_DEFAULTS, operationStats, resolveStop, totalStopMinutes } from "@/lib/eta/stops"
-import { DEFAULT_REST_RULES, planRestBreaks } from "@/lib/eta/driver-rest"
+import { DEFAULT_REST_RULES, createRestTracker, planRestBreaks } from "@/lib/eta/driver-rest"
 import { buildVehicleProfile, checkRouteRestrictions } from "@/lib/eta/vehicle-profile"
 import { activeEvents, assessEvent, eventsForSegment, hasBlockingEvent } from "@/lib/eta/events"
 import { calculateAccuracyMetrics, breakdownBy, arrivalErrorMinutes } from "@/lib/eta/metrics"
@@ -540,5 +540,90 @@ describe("weather/client — флаг лицензии", () => {
     vi.stubEnv("ETA_WEATHER", "on")
     const { isWeatherEnabled } = await import("@/lib/eta/weather/client")
     expect(isWeatherEnabled()).toBe(true)
+  })
+})
+
+describe("createRestTracker — инкрементальный планировщик перерывов", () => {
+  it("на коротком рейсе перерывов нет", () => {
+    const tracker = createRestTracker()
+    expect(tracker.afterSegment(0, 60)).toBeNull()
+    expect(tracker.afterSegment(1, 60)).toBeNull()
+    expect(tracker.totalMinutes()).toBe(0)
+  })
+
+  it("после лимита непрерывного движения возвращает перерыв и сбрасывает счётчик", () => {
+    const tracker = createRestTracker()
+    expect(tracker.afterSegment(0, 200)).toBeNull()
+
+    const rest = tracker.afterSegment(1, 100)
+    expect(rest).not.toBeNull()
+    expect(rest!.kind).toBe("break")
+    expect(rest!.minutes).toBe(DEFAULT_REST_RULES.breakMinutes)
+    expect(rest!.afterSegmentIndex).toBe(1)
+
+    // Счётчик сброшен: следующие 100 мин перерыва не дают
+    expect(tracker.afterSegment(2, 100)).toBeNull()
+  })
+
+  it("после лимита смены возвращает ежедневный отдых", () => {
+    // Лимит смены задан явно: с дефолтными 600 мин смена наступает позже,
+    // чем обычный перерыв, и проверять её пришлось бы на 6 плечах.
+    const tracker = createRestTracker({ maxShiftDrivingMinutes: 400 })
+    tracker.afterSegment(0, 150) // 150 мин смены
+    tracker.afterSegment(1, 150) // 300 мин: сюда же обычный перерыв
+    const rest = tracker.afterSegment(2, 150) // 450 ≥ 400 → смена
+    expect(rest).not.toBeNull()
+    expect(rest!.kind).toBe("daily_rest")
+    expect(rest!.minutes).toBe(DEFAULT_REST_RULES.dailyRestMinutes)
+    expect(rest!.reason).toContain("400")
+  })
+
+  it("смена поглощает обычный перерыв и сбрасывает оба счётчика", () => {
+    const tracker = createRestTracker({ maxShiftDrivingMinutes: 400 })
+    tracker.afterSegment(0, 200)
+    tracker.afterSegment(1, 200) // 400 ≥ 400 → смена
+    // После смены оба счётчика обнулены: 100 мин не дают перерыва
+    expect(tracker.afterSegment(2, 100)).toBeNull()
+  })
+
+  it("уже отработанное до выезда время учитывается", () => {
+    const fresh = createRestTracker()
+    const tired = createRestTracker(undefined, 250)
+
+    expect(fresh.afterSegment(0, 100)).toBeNull()
+    expect(tired.afterSegment(0, 100)).not.toBeNull()
+    expect(tired.priorDrivingUnknown()).toBe(false)
+  })
+
+  it("без данных о предыдущем времени управления — предупреждение", () => {
+    const tracker = createRestTracker()
+    tracker.afterSegment(0, 60)
+    expect(tracker.priorDrivingUnknown()).toBe(true)
+  })
+
+  it("правила переопределяются, применённый набор правил доступен", () => {
+    const tracker = createRestTracker({ maxDrivingMinutes: 90, jurisdiction: "Тест" })
+    expect(tracker.rules().maxDrivingMinutes).toBe(90)
+    expect(tracker.rules().jurisdiction).toBe("Тест")
+
+    const rest = tracker.afterSegment(0, 100)
+    expect(rest).not.toBeNull()
+    expect(rest!.reason).toContain("90")
+  })
+
+  it("нулевое и отрицательное время сегмента перерыва не создают", () => {
+    const tracker = createRestTracker()
+    expect(tracker.afterSegment(0, 0)).toBeNull()
+    expect(tracker.afterSegment(1, -10)).toBeNull()
+    expect(tracker.totalMinutes()).toBe(0)
+  })
+
+  it("перерыв ставится ПОСЛЕ остановок, поэтому планировщик не сбрасывается на них", () => {
+    // Остановка не считается перерывом: 2 часа выгрузки не дают права
+    // утверждать, что водитель отдохнул согласно нормам.
+    const tracker = createRestTracker()
+    tracker.afterSegment(0, 200)
+    const rest = tracker.afterSegment(1, 100)
+    expect(rest).not.toBeNull()
   })
 })

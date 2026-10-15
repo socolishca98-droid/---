@@ -108,6 +108,30 @@ function seedVehicle(slug: string, organizationId: string, overrides: Record<str
   return id
 }
 
+const CITY_COORDS: Record<string, [number, number]> = {
+  Москва: [37.6173, 55.7558],
+  Казань: [49.1082, 55.7963],
+  Питер: [30.3141, 59.9386],
+  Псков: [28.3313, 57.8194],
+}
+
+/** Геокодер: известный город → его координаты, остальное → одна точка. */
+function stubGeocoder() {
+  fetchMock = vi.fn(async (input: unknown) => {
+    const url = typeof input === "string" ? input : String((input as { url?: string })?.url ?? input)
+    if (url.includes("/route/v1/")) return jsonResponse(osrmRoute())
+    if (url.includes("q=")) {
+      const query = decodeURIComponent(url.split("q=")[1] ?? "")
+      for (const [city, coords] of Object.entries(CITY_COORDS)) {
+        if (query.includes(city)) return jsonResponse([{ lat: String(coords[1]), lon: String(coords[0]) }])
+      }
+      return jsonResponse([{ lat: "57.6261", lon: "39.8845" }])
+    }
+    return jsonResponse({})
+  })
+  vi.stubGlobal("fetch", fetchMock)
+}
+
 async function callForecast(body: unknown, cookie: string | null) {
   const response = await forecastPost(makeRequest("POST", "/api/eta/forecast", { cookie, body }))
   return { response, data: await jsonOf(response) }
@@ -138,6 +162,12 @@ describe("POST /api/eta/forecast — расчёт и сохранение", () =
     const { response, data } = await callForecast({ origin: YAROSLAVL }, cookieA)
     expect(response.status).toBe(400)
     expect(data.error).toContain("origin")
+  })
+
+  it("без координат и без routeId — 400", async () => {
+    const { response, data } = await callForecast({ departure: new Date(Date.UTC(2026, 9, 15, 6, 0)).toISOString() }, cookieA)
+    expect(response.status).toBe(400)
+    expect(data.error).toContain("routeId")
   })
 
   it("считает по сегментам: город и трасса с разными поправками", async () => {
@@ -216,6 +246,32 @@ describe("POST /api/eta/forecast — расчёт и сохранение", () =
       cookieA,
     )
     expect(data.saved).toBe(false)
+    expect(memoryDb.rows("etaForecast")).toHaveLength(0)
+  })
+
+  it("по routeId без координат: точки берутся из заказов рейса", async () => {
+    stubGeocoder()
+
+    const { response, data } = await callForecast({ routeId: world.routeA }, cookieA)
+
+    expect(response.status).toBe(200)
+    expect(data.segments.length).toBeGreaterThan(0)
+    expect(data.saved).toBe(true)
+    expect(memoryDb.find("etaForecast", data.id)!.routeId).toBe(world.routeA)
+  })
+
+  it("по routeId без координат и без геокода — 422 с понятной ошибкой", async () => {
+    fetchMock = vi.fn(async (input: unknown) => {
+      const url = typeof input === "string" ? input : String((input as { url?: string })?.url ?? input)
+      if (url.includes("/route/v1/")) return jsonResponse(osrmRoute())
+      return jsonResponse([])
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { response, data } = await callForecast({ routeId: world.routeA }, cookieA)
+
+    expect(response.status).toBe(422)
+    expect(data.error).toContain("координаты")
     expect(memoryDb.rows("etaForecast")).toHaveLength(0)
   })
 

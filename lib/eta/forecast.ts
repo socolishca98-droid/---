@@ -21,7 +21,7 @@ import { assessWeather, weatherUncertainty, type HourlyWeather } from "./weather
 import { localHour } from "./time"
 import type { RoadClass } from "./road-class"
 import { buildVehicleProfile, checkRouteRestrictions, type RouteRestriction, type VehicleInput } from "./vehicle-profile"
-import { planRestBreaks, type RestPlan, type RestRules } from "./driver-rest"
+import { createRestTracker, type RestBreak, type RestPlan, type RestRules } from "./driver-rest"
 import { resolveStop, totalStopMinutes, type ResolvedStop, type StopRequest } from "./stops"
 import { activeEvents, assessEvent, eventsForSegment, type RoadEvent } from "./events"
 import type { RouteSegment } from "./segments"
@@ -165,6 +165,14 @@ export function forecastSegments(
     const forecastSegmentsOut: SegmentForecast[] = []
     let clock = new Date(departure.getTime())
     let drivingSec = 0
+
+    // Перерывы водителя вставляются В ЧАСЫ рейса по ходу прохода: пауза после
+    // N-го сегмента сдвигает момент прибытия во все последующие сегменты,
+    // поэтому час пик, сезон и погода для них берутся уже сдвинутые.
+    // Раньше план перерывов считался ПОСЛЕ цикла и прибавлялся к итогу одной
+    // суммой — сегменты после перерыва считались без него.
+    const restTracker = createRestTracker(options.restRules, options.priorDrivingMinutes)
+    const restBreaks: RestBreak[] = []
 
     const stopAfter = new Map<number, ResolvedStop[]>()
     for (let i = 0; i < stops.length; i += 1) {
@@ -351,17 +359,51 @@ export function forecastSegments(
         }, 0)
         clock = new Date(clock.getTime() + minutes * 60_000)
       }
+
+      // Перерыв водителя: вставляется в часы, следующие сегменты уезжают позже.
+      // Для ПОСЛЕДНЕГО плеча перерыв не «после точки», а ВНУТРИ плеча: одно
+      // плечо на 600 км движения длиннее лимита непрерывного управления, и
+      // водителю нужен перерыв ещё до конечной точки. Поэтому для последнего
+      // сегмента перерыв считается отдельно, уже после цикла.
+      const isLastSegment = segment.index >= segments.length - 1
+      if (!isLastSegment) {
+        const restBreak = restTracker.afterSegment(segment.index, drivingSecSegment / 60)
+        if (restBreak) {
+          restBreaks.push(restBreak)
+          clock = new Date(clock.getTime() + restBreak.minutes * 60_000)
+        }
+      }
     }
 
-    // ── Паузы водителя: считаем по базовому времени движения сегментов ────
-    const rest = planRestBreaks({
-      segmentDrivingMinutes: forecastSegmentsOut.map((s) => s.drivingSec / 60),
-      rules: options.restRules,
-      priorDrivingMinutes: options.priorDrivingMinutes,
-    })
+    // Перерыв внутри последнего плеча: он задерживает прибытие в конечную
+    // точку, поэтому сдвигается departureAt последнего сегмента. Без этого
+    // рейс из одного длинного плеча показывал бы прибытие без обязательной паузы.
+    const lastSegment = forecastSegmentsOut[forecastSegmentsOut.length - 1]
+    if (lastSegment) {
+      const restBreak = restTracker.afterSegment(lastSegment.index, lastSegment.drivingSec / 60)
+      if (restBreak) {
+        restBreaks.push(restBreak)
+        lastSegment.departureAt = new Date(lastSegment.departureAt.getTime() + restBreak.minutes * 60_000)
+        clock = new Date(clock.getTime() + restBreak.minutes * 60_000)
+      }
+    }
 
-    // Паузы добавляются к общему времени (в базовом сценарии — полные,
-    // в консервативном — те же, это обязательные остановки, не «запас»)
+    // План перерывов: он уже собран по ходу прохода и УЖЕ учтён в часах
+    // сегментов. В общее время он входит через drivingSec+stopsSec+restSec,
+    // поэтому arrivalAt базового сценария совпадает с моментом выхода из
+    // последнего сегмента — расхождений между цепочкой сегментов и итогом нет.
+    const rest: RestPlan = {
+      breaks: restBreaks,
+      totalMinutes: restTracker.totalMinutes(),
+      rules: restTracker.rules(),
+      priorDrivingUnknown: restTracker.priorDrivingUnknown(),
+      warning: restTracker.priorDrivingUnknown()
+        ? "Данных о времени управления до выезда нет: соответствие нормам труда и отдыха не доказано"
+        : undefined,
+    }
+
+    // Оптимистичный сценарий перерывов не включает: это обязательные паузы,
+    // а не «запас». Часы сегментов при этом тоже без них.
     const restSec = scenario === "optimistic" ? 0 : rest.totalMinutes * 60
 
     return { segments: forecastSegmentsOut, drivingSec, restSec, rest }

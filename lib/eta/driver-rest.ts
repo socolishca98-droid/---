@@ -127,3 +127,93 @@ export function planRestBreaks(input: RestPlanInput): RestPlan {
       : undefined,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Инкрементальный планировщик: перерыв вставляется В ЧАСЫ рейса
+// ---------------------------------------------------------------------------
+
+/**
+ * Состояние планирования перерывов для одного прохода по сегментам.
+ *
+ * Зачем отдельно от planRestBreaks: planRestBreaks получает готовый список
+ * минут движения и возвращает план целиком. Но время прибытия в КАЖДЫЙ
+ * следующий сегмент зависит от того, когда вставлен перерыв, — а это
+ * известно только в момент прохода. Поэтому планировщик Stateful: его
+ * дёргают после каждого сегмента, и он говорит, надо ли вставить паузу
+ * ПЕРЕД следующим сегментом.
+ *
+ * Перерыв сдвигает часы: последующие сегменты считаются на более поздний
+ * момент, поэтому час пик, сезон и погода берутся уже сдвинутые.
+ */
+export interface RestTracker {
+  /** Вызывать после каждого сегмента. null — перерыв не нужен. */
+  afterSegment(segmentIndex: number, drivingMinutes: number): RestBreak | null
+  /** Сколько минут пауз накоплено (для итога и объяснения) */
+  totalMinutes(): number
+  /** Все вставленные паузы */
+  breaks(): RestBreak[]
+  /** Применённые правила — для объяснения в интерфейсе */
+  rules(): RestRules
+  /** Неизвестно время управления до выезда — соответствие не доказано */
+  priorDrivingUnknown(): boolean
+}
+
+/**
+ * Создаёт планировщик перерывов.
+ *
+ * Остановки (погрузка, выгрузка) счётчик непрерывного движения НЕ сбрасывают:
+ * длительная выгрузка не гарантирует условий перерыва, и считать её отдыхом —
+ * это юридическое утверждение, которого мы делать не вправе. Планирование
+ * поэтому консервативное: перерыв ставится по накопленному времени движения.
+ */
+export function createRestTracker(
+  rules?: Partial<RestRules>,
+  priorDrivingMinutes?: number,
+): RestTracker {
+  const resolved: RestRules = { ...DEFAULT_REST_RULES, ...(rules || {}) }
+  const breaks: RestBreak[] = []
+
+  let continuous = priorDrivingMinutes ?? 0
+  let shiftTotal = priorDrivingMinutes ?? 0
+
+  return {
+    afterSegment(segmentIndex: number, drivingMinutes: number): RestBreak | null {
+      if (!Number.isFinite(drivingMinutes) || drivingMinutes <= 0) return null
+
+      continuous += drivingMinutes
+      shiftTotal += drivingMinutes
+
+      // Сначала проверяется смена: она длиннее и поглощает обычный перерыв
+      if (shiftTotal >= resolved.maxShiftDrivingMinutes) {
+        const rest: RestBreak = {
+          afterSegmentIndex: segmentIndex,
+          minutes: resolved.dailyRestMinutes,
+          kind: "daily_rest",
+          reason: `движение в смене ${Math.round(shiftTotal)} мин ≥ лимита ${resolved.maxShiftDrivingMinutes} мин`,
+        }
+        breaks.push(rest)
+        shiftTotal = 0
+        continuous = 0
+        return rest
+      }
+
+      if (continuous >= resolved.maxDrivingMinutes) {
+        const rest: RestBreak = {
+          afterSegmentIndex: segmentIndex,
+          minutes: resolved.breakMinutes,
+          kind: "break",
+          reason: `непрерывное движение ${Math.round(continuous)} мин ≥ лимита ${resolved.maxDrivingMinutes} мин`,
+        }
+        breaks.push(rest)
+        continuous = 0
+        return rest
+      }
+
+      return null
+    },
+    totalMinutes: () => breaks.reduce((sum, item) => sum + item.minutes, 0),
+    breaks: () => [...breaks],
+    rules: () => resolved,
+    priorDrivingUnknown: () => priorDrivingMinutes === undefined,
+  }
+}
