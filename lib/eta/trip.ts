@@ -189,6 +189,31 @@ export interface TripEtaResult {
     drivingSec: number
     arrivalAt: Date
   } | null
+  /**
+   * Обязательные перерывы водителя — когда именно они наступают.
+   *
+   * Зачем в результате: перерыв уже входит в remaining.restSec и сдвигает
+   * часы этапов, но ни водителю, ни логисту не было видно, НА КАКОМ плече он
+   * произойдёт. Без этого на многодневном рейсе пауза выглядела как «время
+   * непонятно куда пропало».
+   */
+  restPlan: {
+    breaks: Array<{
+      /** Индекс этапа-плеча, после которого вставляется пауза */
+      afterStageIndex: number
+      minutes: number
+      kind: "break" | "daily_rest"
+      reason: string
+      /** Когда пауза начинается (момент прибытия в конец плеча) */
+      startAt: Date
+      /** Когда движение продолжается */
+      endAt: Date
+    }>
+    totalMinutes: number
+    /** Данных о времени управления до выезда нет — соответствие не доказано */
+    priorDrivingUnknown: boolean
+    warning?: string
+  }
   /** Полное оставшееся время рейса включая возврат на базу */
   totalRemainingSec: number
   /** Ожидаемое время завершения рейса (с возвратом на базу) */
@@ -639,6 +664,32 @@ export function calculateTripEta(
   const completionAt = returnStage?.plannedEndAt ?? remainingArrivalAt
   const totalRemainingSec = Math.max(0, (completionAt.getTime() - now.getTime()) / 1000)
 
+  // ── 5a. План перерывов в терминах ЭТАПОВ ──────────────────────────────────
+  // Движок нумерует перерывы по сегментам (плечам), а интерфейсу нужен этап:
+  // водитель видит «погрузка/движение/выгрузка», а не индексы сегментов.
+  const restBreaks = (forecast?.rest.breaks ?? []).map((restBreak) => {
+    const stageIndex = legs[restBreak.afterSegmentIndex]?.stageIndex ?? null
+    const segment = forecast?.segments.find((item) => item.index === restBreak.afterSegmentIndex)
+    // Пауза начинается в момент прибытия в конец плеча: движок сдвигает часы
+    // уже ПОСЛЕ того, как проставил departureAt сегменту.
+    const startAt = segment?.departureAt ?? now
+    return {
+      afterStageIndex: stageIndex ?? restBreak.afterSegmentIndex,
+      minutes: restBreak.minutes,
+      kind: restBreak.kind,
+      reason: restBreak.reason,
+      startAt,
+      endAt: new Date(startAt.getTime() + restBreak.minutes * 60_000),
+    }
+  })
+
+  const restPlan: TripEtaResult["restPlan"] = {
+    breaks: restBreaks,
+    totalMinutes: forecast?.rest.totalMinutes ?? 0,
+    priorDrivingUnknown: forecast?.rest.priorDrivingUnknown ?? false,
+    warning: forecast?.rest.warning,
+  }
+
   // ── 6. Качество данных — что именно неизвестно ────────────────────────────
   const estimatedLegs = legs.filter((leg) => leg.distanceEstimated).length
   const allLegsGeocoded = legs.length > 0 && legs.every((leg) => leg.distanceM != null && leg.distanceM > 0)
@@ -683,6 +734,7 @@ export function calculateTripEta(
       arrivalAt: remainingArrivalAt,
     },
     returnToBase,
+    restPlan,
     totalRemainingSec,
     completionAt,
     scenarios: forecast?.scenarios ?? {

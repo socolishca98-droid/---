@@ -57,6 +57,17 @@ type Waypoint = {
 type RouteTripPayload = {
   currentStageIndex: number | null
   currentStageLabel: string | null
+  /**
+   * Статус показываемого этапа. "active" — этап идёт прямо сейчас, "pending" —
+   * рейс начат, но этап ещё не открывали (водитель едет или готовится).
+   * Различать обязательно: иначе панель писала бы «Рейс не начат» на рейсе,
+   * который уже в пути.
+   */
+  currentStageStatus: "active" | "pending" | null
+  /** Рейс начат (есть отметка отправления или хоть один фактический этап) */
+  tripStarted: boolean
+  /** Рейс завершён: все этапы закрыты */
+  finished: boolean
   nextPoint: {
     address: string
     operation: string
@@ -72,6 +83,20 @@ type RouteTripPayload = {
     arrivalAt: string
   }
   returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
+  /** Обязательные перерывы: когда именно наступают (сумма — в remaining.restSec) */
+  restPlan: {
+    breaks: Array<{
+      afterStageIndex: number
+      minutes: number
+      kind: string
+      reason: string
+      startAt: string
+      endAt: string
+    }>
+    totalMinutes: number
+    priorDrivingUnknown: boolean
+    warning: string | null
+  }
   completionAt: string
   confidence: { level: string; score: number; reasons: string[] }
   dataQuality: string[]
@@ -307,13 +332,35 @@ export async function GET(request: NextRequest) {
               organizationId: org.organizationId,
             })
             if (tripEta) {
+              // Текущий этап: идущий сейчас. Если рейс начат, но ни один этап
+              // не открыт (водитель едет или ещё не нажал «начать»), показываем
+              // ближайший незакрытый — тот же индекс, что видит водитель.
+              const hasActuals = tripEta.stages.some(
+                (stage) => stage.actualStartAt != null,
+              )
+              // Команда «начать рейс» открывает первый этап, поэтому наличия
+              // фактической отметки достаточно: отдельный запрос за startedAt
+              // рейса не нужен.
+              const tripStarted = hasActuals
+              const finished =
+                tripEta.stages.length > 0 &&
+                tripEta.stages.every((stage) => stage.actualEndAt != null)
+
+              const currentIndex =
+                tripEta.currentStageIndex ?? (tripStarted ? tripEta.nextStageIndex : null)
               const currentStage =
-                tripEta.currentStageIndex == null
-                  ? null
-                  : tripEta.stages[tripEta.currentStageIndex] ?? null
+                currentIndex == null ? null : tripEta.stages[currentIndex] ?? null
               trip = {
-                currentStageIndex: tripEta.currentStageIndex,
+                currentStageIndex: currentIndex,
                 currentStageLabel: currentStage?.label ?? null,
+                currentStageStatus:
+                  currentStage == null
+                    ? null
+                    : currentStage.actualStartAt && !currentStage.actualEndAt
+                      ? "active"
+                      : "pending",
+                tripStarted,
+                finished,
                 nextPoint: tripEta.nextPoint
                   ? {
                       address: tripEta.nextPoint.address ?? "точка без адреса",
@@ -337,6 +384,19 @@ export async function GET(request: NextRequest) {
                       arrivalAt: tripEta.returnToBase.arrivalAt.toISOString(),
                     }
                   : null,
+                restPlan: {
+                  breaks: tripEta.restPlan.breaks.map((rest) => ({
+                    afterStageIndex: rest.afterStageIndex,
+                    minutes: rest.minutes,
+                    kind: rest.kind,
+                    reason: rest.reason,
+                    startAt: rest.startAt.toISOString(),
+                    endAt: rest.endAt.toISOString(),
+                  })),
+                  totalMinutes: tripEta.restPlan.totalMinutes,
+                  priorDrivingUnknown: tripEta.restPlan.priorDrivingUnknown,
+                  warning: tripEta.restPlan.warning ?? null,
+                },
                 completionAt: tripEta.completionAt.toISOString(),
                 confidence: {
                   level: tripEta.confidence.level,

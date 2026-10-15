@@ -19,6 +19,7 @@ import {
   calculateTripEta,
   type TripEtaOptions,
   type TripEtaResult,
+  type TripStageInput,
 } from "@/lib/eta/trip"
 import { calculateRouteCost } from "@/lib/eta/coefficients"
 import type { Coordinates } from "@/lib/eta/types"
@@ -41,6 +42,22 @@ export interface OptimizerTripOrder {
   weight?: number | null
 }
 
+/**
+ * Плечо с расстоянием, посчитанным маршрутизатором (OSRM).
+ *
+ * Зачем отдельно: единый движок сам маршрут не строит — он получает готовые
+ * расстояния. Без этого плеча оптимизатор брал километры из поля заказа
+ * (distance), то есть показывал «111 км» там, где по дорогам 820 км.
+ */
+export interface OptimizerLeg {
+  from: Coordinates
+  to: Coordinates
+  /** Метры по дорогам */
+  distanceM: number
+  /** Секунды свободного хода — для оценки задержки */
+  freeFlowSec?: number
+}
+
 export interface OptimizerTripInput {
   /** Заказы УЖЕ в нужном порядке объезда */
   orders: OptimizerTripOrder[]
@@ -49,6 +66,11 @@ export interface OptimizerTripInput {
   vehicle?: VehicleInput | null
   departure: Date
   timeZone?: string
+  /**
+   * Расстояния плеч от маршрутизатора. Имеют приоритет над полем заказа:
+   * дорога точнее внесённого вручную числа.
+   */
+  legs?: OptimizerLeg[]
 }
 
 export interface OptimizerTripResult {
@@ -94,9 +116,19 @@ export interface OptimizerTripResult {
  * (его вносили логисты, оно точнее прямой между городами), у остальных плеч —
  * оценку движка (прямая ×1.3, честно помеченная).
  */
-export function calculateOptimizerTrip(input: OptimizerTripInput): OptimizerTripResult {
-  const { orders, base, vehicle, departure } = input
+/** Ключ точки для сопоставления плеча движка с плечом маршрутизатора. */
+function pointKey(point: Coordinates): string {
+  return `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`
+}
 
+/**
+ * Шкала этапов сценария — отдельно от расчёта, чтобы вызывающий код мог
+ * сходить в маршрутизатор за расстояниями ПЕРЕД подсчётом времени.
+ */
+export function buildOptimizerStages(input: OptimizerTripInput): TripStageInput[] {
+  const { orders, base } = input
+
+  const byId = new Map(orders.map((order) => [order.id, order]))
   const stages = buildRouteStages(
     orders.map((order) => ({
       id: order.id,
@@ -110,14 +142,41 @@ export function calculateOptimizerTrip(input: OptimizerTripInput): OptimizerTrip
       origin: base ?? null,
       returnToBase: base ?? null,
     },
-  ).map((stage) => ({
-    ...stage,
-    // Расстояние заказа — только плечу до точки выгрузки (см. lib/eta/trip.ts)
-    distanceM:
-      stage.kind === "driving" && stage.leg === "to_dropoff" && stage.orderId
-        ? ((orders.find((order) => order.id === stage.orderId)?.distance ?? 0) * 1000 || null)
-        : null,
-  }))
+  )
+
+  // Расстояния от маршрутизатора важнее поля заказа: дорога считается по
+  // реальному маршруту, а поле заказа — внесённое вручную число.
+  const legByKey = new Map<string, OptimizerLeg>()
+  for (const leg of input.legs ?? []) {
+    legByKey.set(`${pointKey(leg.from)}>${pointKey(leg.to)}`, leg)
+  }
+
+  return stages.map((stage) => {
+    const isLeg = stage.kind === "driving" || stage.kind === "return_to_base"
+    if (!isLeg || !stage.from || !stage.to) return stage
+
+    const leg = legByKey.get(`${pointKey(stage.from)}>${pointKey(stage.to)}`)
+    if (leg) {
+      return { ...stage, distanceM: leg.distanceM }
+    }
+
+    // Маршрутизатор плечо не покрыл. Для плеча до выгрузки берём расстояние
+    // заказа — оно точнее прямой между городами. Остальным движок сам
+    // поставит оценку по прямой ×1.3 и честно пометит её.
+    const order = stage.orderId ? byId.get(stage.orderId) : undefined
+    const orderDistance =
+      stage.kind === "driving" && stage.leg === "to_dropoff" && order?.distance
+        ? Math.round(order.distance * 1000)
+        : null
+
+    return orderDistance ? { ...stage, distanceM: orderDistance } : stage
+  })
+}
+
+export function calculateOptimizerTrip(input: OptimizerTripInput): OptimizerTripResult {
+  const { orders, base, vehicle, departure } = input
+
+  const stages = buildOptimizerStages(input)
 
   const options: TripEtaOptions = {
     now: departure,

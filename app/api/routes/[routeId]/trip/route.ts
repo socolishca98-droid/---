@@ -82,6 +82,22 @@ export async function GET(
       : null,
     totalRemainingSec: Math.round(trip.totalRemainingSec),
     completionAt: trip.completionAt.toISOString(),
+    // Обязательные перерывы: когда именно они наступают. Сумма уже была в
+    // remaining.restSec, но без привязки к плечу пауза выглядела как «время
+    // пропало куда-то».
+    restPlan: {
+      breaks: trip.restPlan.breaks.map((rest) => ({
+        afterStageIndex: rest.afterStageIndex,
+        minutes: rest.minutes,
+        kind: rest.kind,
+        reason: rest.reason,
+        startAt: rest.startAt.toISOString(),
+        endAt: rest.endAt.toISOString(),
+      })),
+      totalMinutes: trip.restPlan.totalMinutes,
+      priorDrivingUnknown: trip.restPlan.priorDrivingUnknown,
+      warning: trip.restPlan.warning ?? null,
+    },
     scenarios: {
       optimistic: { totalSec: Math.round(trip.scenarios.optimistic.totalSec) },
       base: { totalSec: Math.round(trip.scenarios.base.totalSec) },

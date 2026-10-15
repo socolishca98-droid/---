@@ -18,6 +18,7 @@ import { requireStaffOrganization, notFoundInOrganization } from "@/lib/org"
 import { prisma } from "@/lib/prisma"
 import { calculateSegmentEta } from "@/lib/eta/orchestrator"
 import { saveForecast } from "@/lib/eta/repository"
+import { getRouteTripEta } from "@/lib/eta/trip-repository"
 import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
 import { geocodeAddressesWithSource } from "@/lib/geo/geocode"
 import { isWeatherEnabled } from "@/lib/eta/weather/client"
@@ -181,11 +182,40 @@ export async function POST(request: NextRequest) {
   let forecastId: string | null = null
 
   if (shouldSave) {
+    // Шкала этапов рейса на момент расчёта — чтобы прогноз был связан не
+    // только с рейсом, но и с его этапами, и пересчёт был объясним
+    let tripStages: unknown = undefined
+    if (body.routeId) {
+      try {
+        const tripEta = await getRouteTripEta({
+          routeId: body.routeId,
+          organizationId: org.organizationId,
+        })
+        if (tripEta) {
+          tripStages = tripEta.stages.map((stage) => ({
+            index: stage.index,
+            kind: stage.kind,
+            label: stage.label,
+            status: stage.status,
+            address: stage.address,
+            plannedStartAt: stage.plannedStartAt?.toISOString() ?? null,
+            plannedEndAt: stage.plannedEndAt?.toISOString() ?? null,
+            actualStartAt: stage.actualStartAt?.toISOString() ?? null,
+            actualEndAt: stage.actualEndAt?.toISOString() ?? null,
+          }))
+        }
+      } catch (tripError) {
+        // Прогноз сохраняется и без шкалы: это дополнение, не условие
+        console.error("[eta/forecast] trip stages failed:", tripError)
+      }
+    }
+
     forecastId = await saveForecast({
       organizationId: org.organizationId,
       routeId: body.routeId,
       orderId: body.orderId,
       vehicleId: body.vehicleId,
+      stages: tripStages,
       forecast,
       sources: [
         result.source,
@@ -200,9 +230,46 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // История версий прогноза по рейсу: сколько пересчётов и не уезжал ли
+  // прогноз. Без этого кнопка «Пересчитать» не показывала ничего.
+  let history: {
+    recalcCount: number
+    initialArrivalAt: string | null
+    currentArrivalAt: string | null
+    versions: Array<{ id: string; calculatedAt: string; arrivalAt: string; recalcCount: number }>
+  } | null = null
+
+  if (body.routeId) {
+    const versions = await prisma.etaForecast.findMany({
+      where: { routeId: body.routeId, organizationId: org.organizationId },
+      select: {
+        id: true,
+        calculatedAt: true,
+        currentArrivalAt: true,
+        initialArrivalAt: true,
+        recalcCount: true,
+      },
+      orderBy: { createdAt: "asc" },
+    })
+    if (versions.length > 0) {
+      history = {
+        recalcCount: Math.max(...versions.map((item) => item.recalcCount)),
+        initialArrivalAt: versions[0].initialArrivalAt.toISOString(),
+        currentArrivalAt: versions[versions.length - 1].currentArrivalAt.toISOString(),
+        versions: versions.map((item) => ({
+          id: item.id,
+          calculatedAt: item.calculatedAt.toISOString(),
+          arrivalAt: item.currentArrivalAt.toISOString(),
+          recalcCount: item.recalcCount,
+        })),
+      }
+    }
+  }
+
   return NextResponse.json({
     id: forecastId,
     saved: shouldSave,
+    history,
     modelVersion: forecast.modelVersion,
     timeZone: forecast.timeZone,
     reliable: forecast.reliable,

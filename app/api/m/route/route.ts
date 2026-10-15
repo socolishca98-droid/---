@@ -229,6 +229,21 @@ export async function GET(request: NextRequest) {
                 }
               : null,
             completionAt: trip.completionAt.toISOString(),
+            // Обязательные перерывы: сумма была и раньше, но без привязки ко
+            // времени водитель не понимал, когда именно ему нужно остановиться.
+            restPlan: {
+              breaks: trip.restPlan.breaks.map((rest) => ({
+                afterStageIndex: rest.afterStageIndex,
+                minutes: rest.minutes,
+                kind: rest.kind,
+                reason: rest.reason,
+                startAt: rest.startAt.toISOString(),
+                endAt: rest.endAt.toISOString(),
+              })),
+              totalMinutes: trip.restPlan.totalMinutes,
+              priorDrivingUnknown: trip.restPlan.priorDrivingUnknown,
+              warning: trip.restPlan.warning ?? null,
+            },
             stages: trip.stages.map((stage) => ({
               index: stage.index,
               kind: stage.kind,

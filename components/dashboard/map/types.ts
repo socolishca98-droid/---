@@ -40,6 +40,12 @@ export interface RouteData {
   trip?: {
     currentStageIndex: number | null
     currentStageLabel: string | null
+    /** "active" — этап идёт сейчас, "pending" — рейс начат, этап не открыт */
+    currentStageStatus: "active" | "pending" | null
+    /** Рейс начат: есть фактическая отметка хотя бы по одному этапу */
+    tripStarted: boolean
+    /** Все этапы закрыты */
+    finished: boolean
     nextPoint: {
       address: string
       operation: string
@@ -47,6 +53,20 @@ export interface RouteData {
       drivingSec: number
       arrivalAt: string
     } | null
+    /** Обязательные перерывы: когда именно наступают */
+    restPlan: {
+      breaks: Array<{
+        afterStageIndex: number
+        minutes: number
+        kind: string
+        reason: string
+        startAt: string
+        endAt: string
+      }>
+      totalMinutes: number
+      priorDrivingUnknown: boolean
+      warning: string | null
+    }
     remaining: {
       drivingSec: number
       stopsSec: number

@@ -31,7 +31,8 @@ import {
   type Coordinates,
   type GeocodeSource,
 } from "@/lib/geo/geocode"
-import { calculateOptimizerTrip } from "@/lib/routes/optimizer-trip"
+import { buildOptimizerStages, calculateOptimizerTrip } from "@/lib/routes/optimizer-trip"
+import { fetchOSRMRoute } from "@/lib/eta/osrm-client"
 import { getRouteTraffic } from "@/lib/traffic/service"
 import {
   OPTIMIZER_VARIANTS,
@@ -259,19 +260,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const origin = points[0].coordinates
-      const destination = points[points.length - 1].coordinates
-      const waypoints = points.slice(1, -1).map((point) => ({
-        lat: point.coordinates.lat,
-        lng: point.coordinates.lng,
-        name: point.city,
-      }))
-
       // Единый движок рейса: та же шкала этапов, что в кабинете водителя и
       // на карте логиста. Учитывает порядок точек, погрузку и выгрузку,
       // обязательные перерывы, сроки заказов и возврат на базу. Раньше здесь
       // был calculateETA — одно число на весь маршрут без операций и отдыха.
-      const tripResult = calculateOptimizerTrip({
+      const tripInput = {
         orders: route.map((item) => ({
           id: item.order.id,
           routeFrom: item.order.routeFrom,
@@ -285,10 +278,47 @@ export async function POST(request: NextRequest) {
         vehicle: { type: "truck" },
         departure,
         timeZone: "Europe/Moscow",
-      })
+      }
 
-      const routing: SourceRouting =
-        tripResult.trip.sources.routing === "osrm" ? "osrm" : "fallback"
+      // Расстояния — от маршрутизатора, по тем же плечам, что строит движок:
+      // от базы через все точки и обратно на базу. Плечо без дороги движок
+      // сам оценит по прямой ×1.3 и честно пометит.
+      const legStages = buildOptimizerStages(tripInput).filter(
+        (stage) =>
+          (stage.kind === "driving" || stage.kind === "return_to_base") && stage.from && stage.to,
+      )
+      const legPoints = legStages.map((stage) => ({ from: stage.from!, to: stage.to! }))
+
+      let routing: SourceRouting = "fallback"
+      let legs: Array<{ from: Coordinates; to: Coordinates; distanceM: number; freeFlowSec: number }> = []
+
+      if (legPoints.length > 0) {
+        try {
+          // Полная цепочка точек: начало первого плеча, начало каждого
+          // следующего плеча и конец последнего. Плечо i начинается в точке i,
+          // поэтому в «путевые» точки идут начала ВСЕХ плеч, кроме первого.
+          const osrm = await fetchOSRMRoute(
+            legPoints[0].from,
+            legPoints[legPoints.length - 1].to,
+            legPoints.slice(1).map((leg) => ({ lat: leg.from.lat, lng: leg.from.lng })),
+          )
+          const osrmLegs = osrm.routes[0]?.legs ?? []
+          if (osrmLegs.length === legPoints.length) {
+            legs = legPoints.map((leg, index) => ({
+              from: leg.from,
+              to: leg.to,
+              distanceM: osrmLegs[index].distance,
+              freeFlowSec: osrmLegs[index].duration,
+            }))
+            routing = "osrm"
+          }
+        } catch (error) {
+          // Маршрутизатор недоступен — считаем по прямой, честно помечая источник
+          console.warn("[routes/optimizer] OSRM недоступен:", error)
+        }
+      }
+
+      const tripResult = calculateOptimizerTrip({ ...tripInput, legs })
       const distanceKm = Math.round(tripResult.distanceKm)
       const baseMin = tripResult.baseMin
       let etaMin = tripResult.etaMin

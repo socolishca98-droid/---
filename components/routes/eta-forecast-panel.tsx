@@ -43,9 +43,21 @@ interface SegmentRow {
   corrections: Array<{ kind: string; factor: number; reason: string }>
 }
 
+interface ForecastHistory {
+  /** Сколько раз прогноз пересчитывали (0 — первый расчёт) */
+  recalcCount: number
+  /** Время прибытия по ПЕРВОМУ расчёту — не перезаписывается */
+  initialArrivalAt: string | null
+  /** Время прибытия по последнему расчёту */
+  currentArrivalAt: string | null
+  versions: Array<{ id: string; calculatedAt: string; arrivalAt: string; recalcCount: number }>
+}
+
 interface ForecastResponse {
   id: string | null
   saved: boolean
+  /** История версий прогноза по рейсу */
+  history?: ForecastHistory | null
   modelVersion: string
   reliable: boolean
   reliabilityNote?: string
@@ -100,6 +112,16 @@ function formatDate(iso: string): string {
 
 function formatKm(meters: number): string {
   return `${(meters / 1000).toFixed(0)} км`
+}
+
+/** Насколько прогноз уехал: исходное время против актуального. */
+function driftMinutes(initialIso: string, currentIso: string): string {
+  const diffMin = Math.round(
+    (new Date(currentIso).getTime() - new Date(initialIso).getTime()) / 60_000,
+  )
+  if (diffMin === 0) return "прогноз не изменился"
+  const sign = diffMin > 0 ? "позже" : "раньше"
+  return `${sign} на ${Math.abs(diffMin)} мин`
 }
 
 export interface EtaForecastPanelProps {
@@ -275,10 +297,20 @@ export function EtaForecastPanel({
           className="h-6 px-2 text-[10px]"
           onClick={() => void load()}
           disabled={state.loading}
+          title="Пересчитать прогноз: сохранится новая версия, исходная останется"
         >
           <RefreshCw className={`mr-1 h-3 w-3 ${state.loading ? "animate-spin" : ""}`} />
           Пересчитать
         </Button>
+        {data.history && data.history.recalcCount > 0 ? (
+          <Badge
+            variant="outline"
+            className="text-[10px]"
+            title={`Пересчётов: ${data.history.recalcCount}. Исходный прогноз сохранён отдельно.`}
+          >
+            пересчётов: {data.history.recalcCount}
+          </Badge>
+        ) : null}
         {data.saved && (
           <Badge variant="outline" className="text-[10px]" title="Прогноз сохранён — по нему запишется факт">
             <Clock className="mr-1 h-3 w-3" />
@@ -286,6 +318,40 @@ export function EtaForecastPanel({
           </Badge>
         )}
       </div>
+
+      {/* ── История прогноза: уезжало ли время по ходу рейса ── */}
+      {data.history && data.history.initialArrivalAt && data.history.currentArrivalAt ? (
+        <div className="rounded-lg border border-border bg-background/40 p-2 text-[11px]">
+          <div className="mb-1 font-medium text-foreground">История прогноза</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+            <span>
+              Исходно: <span className="tabular-nums">{formatClock(data.history.initialArrivalAt)}</span>{" "}
+              {formatDate(data.history.initialArrivalAt)}
+            </span>
+            <span>
+              Сейчас:{" "}
+              <span className="tabular-nums">{formatClock(data.history.currentArrivalAt)}</span>{" "}
+              {formatDate(data.history.currentArrivalAt)}
+            </span>
+            <span className="tabular-nums">
+              {driftMinutes(data.history.initialArrivalAt, data.history.currentArrivalAt)}
+            </span>
+          </div>
+          {data.history.versions.length > 1 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {data.history.versions.map((version, index) => (
+                <span
+                  key={version.id}
+                  className="rounded bg-muted px-1 py-0.5 text-[10px] tabular-nums"
+                  title={`Версия ${index + 1}: ${formatClock(version.arrivalAt)} ${formatDate(version.arrivalAt)}`}
+                >
+                  v{index + 1}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {data.confidence.reasons.length > 0 && (
         <ul className="space-y-1 text-[11px] text-muted-foreground">

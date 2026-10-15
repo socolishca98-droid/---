@@ -68,6 +68,20 @@ interface TripData {
   }
   returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
   completionAt: string
+  /** Обязательные перерывы — когда именно остановиться */
+  restPlan: {
+    breaks: Array<{
+      afterStageIndex: number
+      minutes: number
+      kind: string
+      reason: string
+      startAt: string
+      endAt: string
+    }>
+    totalMinutes: number
+    priorDrivingUnknown: boolean
+    warning: string | null
+  }
   stages: TripStage[]
   dataQuality: string[]
 }
@@ -260,6 +274,31 @@ export function TripStagePanel({ routeId, trip: tripProp, onRefresh }: TripStage
               ? ` • ${(trip.nextPoint.distanceM / 1000).toFixed(0)} км`
               : ""}
           </p>
+        </div>
+      ) : null}
+
+      {/* ── Обязательные перерывы: когда именно остановиться ── */}
+      {trip?.restPlan && trip.restPlan.breaks.length > 0 ? (
+        <div className="rounded-xl bg-gray-800/50 px-3 py-2">
+          <p className="text-xs text-gray-500">
+            Обязательные перерывы ({trip.restPlan.breaks.length})
+          </p>
+          <ul className="mt-0.5 space-y-0.5">
+            {trip.restPlan.breaks.slice(0, 3).map((rest, index) => (
+              <li key={`${rest.afterStageIndex}-${index}`} className="flex justify-between text-xs">
+                <span className="text-gray-400">
+                  {rest.kind === "daily_rest" ? "отдых" : "перерыв"} {rest.minutes} мин
+                </span>
+                <span className="text-gray-300">{until(rest.startAt)}</span>
+              </li>
+            ))}
+            {trip.restPlan.breaks.length > 3 ? (
+              <li className="text-xs text-gray-500">…и ещё {trip.restPlan.breaks.length - 3}</li>
+            ) : null}
+          </ul>
+          {trip.restPlan.warning ? (
+            <p className="mt-1 text-xs text-orange-400">{trip.restPlan.warning}</p>
+          ) : null}
         </div>
       ) : null}
 

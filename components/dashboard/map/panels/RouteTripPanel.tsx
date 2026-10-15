@@ -26,6 +26,12 @@ import type { RouteData } from "../types"
 export interface RouteTripPayload {
   currentStageIndex: number | null
   currentStageLabel: string | null
+  /** "active" — этап идёт сейчас, "pending" — рейс начат, этап ещё не открыт */
+  currentStageStatus: "active" | "pending" | null
+  /** Рейс начат: есть хотя бы одна фактическая отметка */
+  tripStarted: boolean
+  /** Все этапы закрыты */
+  finished: boolean
   nextPoint: {
     address: string
     operation: string
@@ -41,6 +47,20 @@ export interface RouteTripPayload {
     arrivalAt: string
   }
   returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
+  /** Обязательные перерывы: когда именно наступают */
+  restPlan: {
+    breaks: Array<{
+      afterStageIndex: number
+      minutes: number
+      kind: string
+      reason: string
+      startAt: string
+      endAt: string
+    }>
+    totalMinutes: number
+    priorDrivingUnknown: boolean
+    warning: string | null
+  }
   completionAt: string
   confidence: { level: string; score: number; reasons: string[] }
   dataQuality: string[]
@@ -150,8 +170,17 @@ export function RouteTripPanel({
               Текущий этап
             </p>
             <p className="text-[13px] font-medium">
-              {trip.currentStageLabel ?? "Рейс не начат"}
+              {trip.currentStageLabel ?? (trip.tripStarted ? "Рейс завершён" : "Рейс не начат")}
             </p>
+            {/* Рейс в пути, но этап ещё не открывали — это не «рейс не начат» */}
+            {trip.tripStarted && trip.currentStageStatus === "pending" ? (
+              <p className="text-[10px] text-muted-foreground">
+                этап ещё не открыт водителем
+              </p>
+            ) : null}
+            {trip.finished ? (
+              <p className="text-[10px] text-muted-foreground">все этапы закрыты</p>
+            ) : null}
           </div>
 
           {/* ── Следующая точка ── */}
@@ -216,6 +245,41 @@ export function RouteTripPanel({
               перерывы {humanDuration(trip.remaining.restSec)}
             </span>
           </div>
+
+          {/* ── Обязательные перерывы: когда именно ── */}
+          {trip.restPlan.breaks.length > 0 ? (
+            <div className="rounded-lg border border-border px-2 py-1.5">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Обязательные перерывы ({trip.restPlan.breaks.length})
+              </p>
+              <ul className="mt-0.5 space-y-0.5 text-[11px]">
+                {trip.restPlan.breaks.slice(0, 4).map((rest, index) => (
+                  <li key={`${rest.afterStageIndex}-${index}`} className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">
+                      после этапа {rest.afterStageIndex + 1}
+                    </span>
+                    <span className="tabular-nums">
+                      {rest.kind === "daily_rest" ? "отдых" : "перерыв"} {rest.minutes} мин ·{" "}
+                      {new Date(rest.startAt).toLocaleString("ru-RU", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </li>
+                ))}
+                {trip.restPlan.breaks.length > 4 ? (
+                  <li className="text-[10px] text-muted-foreground">
+                    …и ещё {trip.restPlan.breaks.length - 4}
+                  </li>
+                ) : null}
+              </ul>
+              {trip.restPlan.warning ? (
+                <p className="mt-1 text-[10px] text-warning">{trip.restPlan.warning}</p>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* ── Уверенность и качество данных ── */}
           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">

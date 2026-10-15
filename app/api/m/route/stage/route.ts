@@ -32,6 +32,7 @@ import {
 } from "@/lib/eta/trip-actions"
 import { logRouteEvent } from "@/lib/routes/service"
 import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
+import { recordActual } from "@/lib/eta/repository"
 
 export const dynamic = "force-dynamic"
 
@@ -40,6 +41,69 @@ const START_COMMANDS: TripCommand[] = ["start_driving", "start_operation"]
 
 /** Команды, которые отмечают ОКОНЧАНИЕ этапа. */
 const END_COMMANDS: TripCommand[] = ["arrive_point", "finish_operation", "next_leg"]
+
+/**
+ * Запись фактического завершения рейса в прогноз.
+ *
+ * Зачем отдельной функцией: расчёт ошибки — это про точность модели, а не про
+ * текущую команду. Ошибка записи факта не должна ломать завершение рейса:
+ * водитель закрыл рейс, а разбираться с прогнозом будет логист.
+ *
+ * Идемпотентность: если факт по этому рейсу уже записан (повторный finish_trip
+ * после обрыва связи), возвращаем уже посчитанную ошибку, а не пересчитываем.
+ */
+/** Сумма фактических секунд по этапам одного типа (0 — отметок нет). */
+function sumStageSeconds(
+  stages: Array<{ type: string; startedAt: Date | null; endedAt: Date | null }>,
+  type: string,
+): number {
+  let total = 0
+  for (const stage of stages) {
+    if (stage.type !== type || !stage.startedAt || !stage.endedAt) continue
+    total += Math.round((stage.endedAt.getTime() - stage.startedAt.getTime()) / 1000)
+  }
+  return total
+}
+
+async function recordForecastFact(input: {
+  routeId: string
+  organizationId: string
+  completedAt: Date
+}): Promise<{ errorMinutes: number | null; forecastId: string; alreadyRecorded?: boolean } | null> {
+  try {
+    const latest = await prisma.etaForecast.findFirst({
+      where: { routeId: input.routeId, organizationId: input.organizationId },
+      select: { id: true, actualArrivalAt: true },
+      orderBy: { createdAt: "desc" },
+    })
+    if (!latest) return null
+    if (latest.actualArrivalAt) {
+      // Уже записано: повторный finish_trip не должен считать ошибку второй раз
+      return { forecastId: latest.id, errorMinutes: null, alreadyRecorded: true }
+    }
+
+    // Фактическое время берём из отметок этапов: startedAt/endedAt — те же
+    // моменты, которые водитель проставил кнопками. Движение = driving-этапы,
+    // остановки = погрузка/выгрузка/документы. Ноль секунд означает «отметок
+    // нет», тогда поле остаётся пустым, а не подменяется нулём.
+    const stages = await prisma.routeStage.findMany({
+      where: { routeId: input.routeId },
+      select: { type: true, startedAt: true, endedAt: true },
+    })
+    const drivingSec = sumStageSeconds(stages, "driving")
+    const stopsSec = sumStageSeconds(stages, "loading") + sumStageSeconds(stages, "unloading")
+    const result = await recordActual(latest.id, input.organizationId, {
+      actualArrivalAt: input.completedAt,
+      actualDrivingSec: drivingSec || undefined,
+      actualStopsSec: stopsSec || undefined,
+    })
+    if (result.ok === false) return null
+    return { forecastId: latest.id, errorMinutes: result.errorMinutes }
+  } catch (error) {
+    console.error("[m/route/stage] forecast fact failed:", error)
+    return null
+  }
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireDriver(request)
@@ -86,7 +150,7 @@ export async function POST(request: NextRequest) {
     // Рейс должен принадлежать организации водителя
     const route = await prisma.route.findFirst({
       where: scopedWhere(org.organizationId, { id: routeId, driverId }),
-      select: { id: true, status: true, startedAt: true },
+      select: { id: true, status: true, startedAt: true, completedAt: true },
     })
     if (!route) {
       return NextResponse.json({ success: false, error: "Рейс не найден" }, { status: 404 })
@@ -158,6 +222,24 @@ export async function POST(request: NextRequest) {
 
     // ── finish_trip: рейс завершён ──
     if (typedCommand === "finish_trip") {
+      // Повторный finish_trip (двойной тап, повтор запроса после обрыва связи)
+      // не должен ни двигать время завершения, ни писать второе событие, ни
+      // считать ошибку прогноза второй раз. Рейс уже completed — возвращаем
+      // то же состояние, ничего не пересчитывая.
+      if (route.completedAt) {
+        return NextResponse.json({
+          success: true,
+          finished: true,
+          completedAt: route.completedAt.toISOString(),
+          alreadyFinished: true,
+          forecastFact: await recordForecastFact({
+            routeId,
+            organizationId: org.organizationId,
+            completedAt: route.completedAt,
+          }),
+        })
+      }
+
       await prisma.route.update({
         where: { id: routeId },
         data: { completedAt: now, status: "completed" },
@@ -171,7 +253,24 @@ export async function POST(request: NextRequest) {
         at: now,
         clientEventId,
       })
-      return NextResponse.json({ success: true, finished: true, completedAt: now.toISOString() })
+      // Факт прибытия пишется в последнюю версию прогноза по рейсу. Исходный
+      // прогноз при этом НЕ перезаписывается: recordActual трогает только
+      // поля факта (actualArrivalAt, errorMinutes), а initialArrivalAt и
+      // currentArrivalAt остаются как есть — иначе оценка точности потеряла
+      // бы «с чем сравнивать».
+      const forecastFact = await recordForecastFact({
+        routeId,
+        organizationId: org.organizationId,
+        completedAt: now,
+      })
+
+      return NextResponse.json({
+        success: true,
+        finished: true,
+        completedAt: now.toISOString(),
+        // null — по рейсу не было сохранённого прогноза: тогда сравнивать нечего
+        forecastFact,
+      })
     }
 
     // ── report_problem: только история, прогноз не меняется ──

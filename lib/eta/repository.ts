@@ -29,6 +29,12 @@ export interface SaveForecastInput {
   weatherSnapshot?: unknown
   /** Источники: osrm, open-meteo, history */
   sources?: string[]
+  /**
+   * Шкала этапов рейса на момент расчёта. Прогноз связан не только с
+   * рейсом, но и с его этапами: иначе при пересчёте непонятно, на каком
+   * состоянии рейса посчитано то или иное время.
+   */
+  stages?: unknown
 }
 
 /**
@@ -41,6 +47,44 @@ export interface SaveForecastInput {
 export async function saveForecast(input: SaveForecastInput): Promise<string> {
   const { forecast } = input
 
+  // Цепочка версий: тот же рейс, тот же заказ, та же модель. У расчёта без
+  // рейса и без заказа (предпросмотр) версий не заводим — иначе каждый
+  // просмотр карточки плодил бы строки в базе.
+  const chainWhere =
+    input.routeId != null || input.orderId != null
+      ? {
+          organizationId: input.organizationId,
+          routeId: input.routeId ?? null,
+          orderId: input.orderId ?? null,
+          modelVersion: forecast.modelVersion,
+        }
+      : null
+
+  const previous = chainWhere
+    ? await prisma.etaForecast.findMany({
+        where: chainWhere,
+        select: { initialArrivalAt: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : []
+
+  // Исходный прогноз — из самой первой версии, а не из только что посчитанной
+  const initialArrivalAt =
+    previous[0]?.initialArrivalAt ?? forecast.scenarios.base.arrivalAt
+
+  // Время создания строго возрастает по версиям.
+  //
+  // Зачем: createdAt имеет точность до миллисекунды, а «Пересчитать» можно
+  // нажать дважды подряд (или рейс пересчитывается автоматически в рамках
+  // одного запроса). Раньше две версии получали одинаковый createdAt, и
+  // getForecastByRoute с orderBy createdAt desc мог отдать СТАРУЮ версию как
+  // «последнюю» — интерфейс показывал бы устаревший прогноз.
+  const lastCreatedAt = previous.length > 0 ? previous[previous.length - 1].createdAt : null
+  const createdAt =
+    lastCreatedAt && lastCreatedAt.getTime() >= Date.now()
+      ? new Date(lastCreatedAt.getTime() + 1)
+      : new Date()
+
   const row = await prisma.etaForecast.create({
     data: {
       organizationId: input.organizationId,
@@ -52,7 +96,7 @@ export async function saveForecast(input: SaveForecastInput): Promise<string> {
       sourcesJson: JSON.stringify(input.sources ?? []),
       timeZone: forecast.timeZone,
       departureAt: forecast.departureAt,
-      initialArrivalAt: forecast.scenarios.base.arrivalAt,
+      initialArrivalAt,
       currentArrivalAt: forecast.scenarios.base.arrivalAt,
       optimisticArrivalAt: forecast.scenarios.optimistic.arrivalAt,
       conservativeArrivalAt: forecast.scenarios.conservative.arrivalAt,
@@ -72,8 +116,11 @@ export async function saveForecast(input: SaveForecastInput): Promise<string> {
       violationsJson: JSON.stringify(forecast.violations),
       reliable: forecast.reliable,
       reliabilityNote: forecast.reliabilityNote ?? null,
-      calculatedAt: new Date(),
-      recalcCount: 0,
+      calculatedAt: createdAt,
+      createdAt,
+      // Сколько версий было ДО этой: кнопка «Пересчитать» теперь считает
+      recalcCount: previous.length,
+      stagesJson: input.stages ? JSON.stringify(input.stages) : null,
     },
     select: { id: true },
   })

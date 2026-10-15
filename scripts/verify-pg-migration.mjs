@@ -21,7 +21,7 @@
 // Запуск: node scripts/verify-pg-migration.mjs
 // Требует @electric-sql/pglite (devDependency).
 
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -38,10 +38,18 @@ try {
   process.exit(2)
 }
 
-const migration = readFileSync(
-  join(root, "prisma", "sql", "2026-10-14-eta-forecast.postgres.sql"),
-  "utf8",
-)
+// Миграции ETA идут по порядку дат: база + всё, что добавлено после неё.
+// Берём их все из каталога, иначе проверка тестирует не то, что уедет в прод.
+const ETA_MIGRATIONS = readdirSync(join(root, "prisma", "sql"))
+  .filter((name) => name.endsWith(".postgres.sql"))
+  .sort()
+
+const migration = ETA_MIGRATIONS
+  .map((name) => {
+    console.log(`• миграция: ${name}`)
+    return readFileSync(join(root, "prisma", "sql", name), "utf8")
+  })
+  .join("\n")
 
 const db = new PGlite()
 const failures = []
@@ -111,6 +119,7 @@ const expected = [
   ["confidenceLevel", "text", "NO", "'low'::text"],
   ["confidenceReasonsJson", "text", "YES", null],
   ["segmentsJson", "text", "YES", null],
+  ["stagesJson", "text", "YES", null],
   ["explanationJson", "text", "YES", null],
   ["weatherJson", "text", "YES", null],
   ["violationsJson", "text", "YES", null],
