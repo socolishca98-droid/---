@@ -20,7 +20,13 @@ import "server-only"
 
 import { prisma } from "@/lib/prisma"
 import { geocodeAddressesWithSource } from "@/lib/geo/geocode"
-import { buildRouteStages, calculateTripEta, type TripEtaOptions, type TripEtaResult, type TripStageInput } from "./trip"
+import {
+  buildRouteStages,
+  calculateTripEta,
+  type TripEtaOptions,
+  type TripEtaResult,
+  type TripStageInput,
+} from "./trip"
 import type { Coordinates } from "./types"
 import type { VehicleInput } from "./vehicle-profile"
 import type { RestRules } from "./driver-rest"
@@ -266,15 +272,14 @@ export async function ensureRouteStages(source: RouteTripSource): Promise<number
 
   let created = 0
   for (const stage of built) {
-    const key = `${stage.kind === "return_to_base" ? "return_to_base" : STOP_TO_STAGE_TYPE[stage.kind === "driving" ? "other" : (stage.stop?.kind ?? "other")]}:${stage.orderId ?? "route"}:${stage.sequence}`
-    if (existing.has(key)) continue
+    if (existing.has(routeStageKey(stage))) continue
 
     await prisma.routeStage.create({
       data: {
         organizationId: source.organizationId,
         routeId: source.routeId,
         orderId: stage.orderId ?? null,
-        type: stage.kind === "driving" ? "driving" : stage.kind === "return_to_base" ? "return_to_base" : STOP_TO_STAGE_TYPE[stage.stop?.kind ?? "other"],
+        type: routeStageType(stage),
         status: "planned",
         sequence: stage.sequence,
       },
@@ -283,6 +288,72 @@ export async function ensureRouteStages(source: RouteTripSource): Promise<number
   }
 
   return created
+}
+
+/** Вид этапа в модели RouteStage. */
+function routeStageType(stage: TripStageInput): string {
+  if (stage.kind === "driving") return "driving"
+  if (stage.kind === "return_to_base") return "return_to_base"
+  return STOP_TO_STAGE_TYPE[stage.stop?.kind ?? "other"]
+}
+
+/** Ключ этапа: по нему этап рейса сопоставляется со строкой RouteStage. */
+function routeStageKey(stage: TripStageInput): string {
+  return `${routeStageType(stage)}:${stage.orderId ?? "route"}:${stage.sequence}`
+}
+
+/**
+ * Гарантирует наличие строк RouteStage и возвращает их id в ТОМ ЖЕ порядке,
+ * что и этапы рейса (индекс этапа → id строки).
+ *
+ * Нужно, чтобы команда водителя («завершил погрузку») попала именно в тот
+ * этап, который показан ему на экране, а не в похожий соседний.
+ */
+export async function listRouteStageIds(
+  source: RouteTripSource,
+): Promise<Array<string | null> | null> {
+  const loaded = await loadRoute(source)
+  if (!loaded) return null
+
+  await ensureRouteStages(source)
+
+  const rows = await prisma.routeStage.findMany({
+    where: { routeId: source.routeId, organizationId: source.organizationId },
+    select: { id: true, orderId: true, type: true, sequence: true, createdAt: true },
+    orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
+  })
+
+  const { byOrder } = await resolvePoints(loaded)
+  const built = buildRouteStages(
+    loaded.orders.map((order) => ({
+      id: order.id,
+      routeFrom: order.routeFrom,
+      routeTo: order.routeTo,
+      from: byOrder.get(order.id)?.from,
+      to: byOrder.get(order.id)?.to,
+      routeSequence: order.routeSequence,
+    })),
+    {
+      origin: originPoint(loaded),
+      returnToBase: source.returnToBase === false ? null : originPoint(loaded),
+    },
+  )
+
+  const byKey = new Map<string, string>()
+  for (const row of rows) {
+    byKey.set(`${row.type}:${row.orderId ?? "route"}:${row.sequence ?? 0}`, row.id)
+  }
+
+  return built.map((stage) => byKey.get(routeStageKey(stage)) ?? null)
+}
+
+/** Точка базы организации или null, если база не задана в настройках. */
+function originPoint(loaded: LoadedRoute) {
+  if (loaded.settings.baseLat == null || loaded.settings.baseLng == null) return null
+  return {
+    point: { lat: loaded.settings.baseLat, lng: loaded.settings.baseLng },
+    address: loaded.settings.baseAddress ?? "база",
+  }
 }
 
 /**
@@ -313,11 +384,8 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
       routeSequence: order.routeSequence,
     })),
     {
-      origin: origin ? { point: origin, address: loaded.settings.baseAddress ?? "база" } : null,
-      returnToBase:
-        source.returnToBase !== false && origin
-          ? { point: origin, address: loaded.settings.baseAddress ?? "база" }
-          : null,
+      origin: originPoint(loaded),
+      returnToBase: source.returnToBase === false ? null : originPoint(loaded),
       actuals,
       // Расстояние плеча до точки назначения — из заказа: оно посчитано
       // системой при создании заказа и точнее прямой между координатами.
