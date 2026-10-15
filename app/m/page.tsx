@@ -28,6 +28,7 @@ import { ActionGrid } from "@/components/driver-mobile/action-grid"
 import { ControlPanel } from "@/components/driver-mobile/control-panel"
 import { RestCard } from "@/components/driver-mobile/rest-card"
 import { PushCard as DriverPushCard } from "@/components/driver-mobile/push-card"
+import { TripStagePanel } from "@/components/driver-mobile/trip-stage-panel"
 import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
@@ -140,6 +141,8 @@ export default function MobileHomePage() {
   const [isGoingToBase, setIsGoingToBase] = useState(false)
   const [completingRoute, setCompletingRoute] = useState(false)
   const [returnAfterRest, setReturnAfterRest] = useState(DEFAULT_RETURN_STATUS)
+  // Прогноз рейса и кнопки текущего этапа — приходят с сервера вместе с рейсом
+  const [trip, setTrip] = useState<any>(null)
   /** Связь и очередь фото: водитель видит, что чек не потерян, а ждёт сети */
   const [isOnline, setIsOnline] = useState(true)
   const [pendingPhotos, setPendingPhotos] = useState(0)
@@ -213,6 +216,7 @@ export default function MobileHomePage() {
         }))
 
         setRoutePoints(points)
+        setTrip(routeData.trip ?? null)
         setProposedLoads(
           (routeData.proposedLoads || []).map((load: any) => ({
             id: load.id,
@@ -970,6 +974,15 @@ export default function MobileHomePage() {
                 breakCounts={rest.breakCounts}
                 limitMin={rest.limitMin}
                 minBreakMin={rest.minBreakMin}
+              />
+            )}
+
+            {/* ── Активный рейс: этап, кнопки и прогноз ── */}
+            {activeOrder?.routeId && (
+              <TripStagePanel
+                routeId={activeOrder.routeId}
+                trip={trip}
+                onRefresh={fetchData}
               />
             )}
 
