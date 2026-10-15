@@ -290,6 +290,21 @@ export function buildRouteStages(
   }
 
   for (const order of ordered) {
+    // Плечо до точки погрузки — ПЕРВЫМ. Иначе этап «погрузка» стоял бы в
+    // шкале раньше приезда на склад, и водителю предлагалось бы грузить
+    // до того, как он туда доехал.
+    if (order.from && cursor && !samePoint(cursor, order.from)) {
+      push({
+        kind: "driving",
+        orderId: order.id,
+        address: `${cursorAddress ?? "текущая точка"} → ${order.routeFrom}`,
+        from: cursor,
+        to: order.from,
+      })
+      cursor = order.from
+      cursorAddress = order.routeFrom
+    }
+
     // Погрузка в точке отправления заказа
     if (order.from) {
       push({
@@ -300,17 +315,6 @@ export function buildRouteStages(
         stop: { kind: "loading", ...(options.stopDurations?.get(order.id) ?? {}) },
         actualStartAt: options.actuals?.get(`${order.id}:loading`)?.startAt ?? null,
         actualEndAt: options.actuals?.get(`${order.id}:loading`)?.endAt ?? null,
-      })
-    }
-
-    // Плечо до точки отправления (если ещё не там)
-    if (order.from && cursor && !samePoint(cursor, order.from)) {
-      push({
-        kind: "driving",
-        orderId: order.id,
-        address: `${cursorAddress ?? "текущая точка"} → ${order.routeFrom}`,
-        from: cursor,
-        to: order.from,
       })
     }
 
