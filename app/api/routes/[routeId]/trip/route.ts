@@ -24,14 +24,14 @@ import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ routeId: string }> },
 ) {
   const auth = await requireStaffAuth(request)
   if (auth.error) return auth.error
   const org = requireStaffOrganization(auth.user)
   if (!org.ok) return org.response
 
-  const { id } = await context.params
+  const { routeId } = await context.params
 
   // ensureStages=1 — привести строки RouteStage в соответствие заказам рейса.
   // Идемпотентно: существующие этапы не перезаписываются.
@@ -40,7 +40,7 @@ export async function GET(
   const returnToBase = request.nextUrl.searchParams.get("returnToBase") !== "0"
 
   const trip = await getRouteTripEta({
-    routeId: id,
+    routeId,
     organizationId: org.organizationId,
     ensureStages,
     returnToBase,
@@ -49,7 +49,7 @@ export async function GET(
   if (!trip) return notFoundInOrganization("Рейс")
 
   return NextResponse.json({
-    routeId: id,
+    routeId,
     modelVersion: trip.modelVersion,
     calculatedAt: trip.calculatedAt.toISOString(),
     now: trip.now.toISOString(),
