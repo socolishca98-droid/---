@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization } from "@/lib/org"
 import { listForecastFacts } from "@/lib/eta/repository"
+import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
 import {
   breakdownBy,
   calculateAccuracyMetrics,
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
   if (auth.error) return auth.error
   const org = requireStaffOrganization(auth.user)
   if (!org.ok) return org.response
+  const rateLimit = await checkEtaRateLimit(request, "metrics", org.organizationId)
+  if (rateLimit.response) return rateLimit.response
 
   const { searchParams } = new URL(request.url)
   const days = Number(searchParams.get("days") || "90")

@@ -25,6 +25,29 @@ const WINDOW_MS = 15 * 60 * 1000 // 15 min window
 const MAX_ATTEMPTS = 5
 const BLOCK_MS = 15 * 60 * 1000 // block for 15 min after exceeding
 
+/**
+ * Настройки лимита. Значения по умолчанию — прежние (5 попыток / 15 минут),
+ * поэтому все существующие вызовы проверки входа работают без изменений.
+ *
+ * Настраиваемый лимит нужен эндпоинтам, которые сами обращаются к внешним
+ * API (OSRM, погода): им нужен лимит «30 запросов в минуту», а не
+ * «5 попыток в 15 минут».
+ */
+export type RateLimitConfig = {
+  /** Сколько запросов разрешено в окне */
+  max: number
+  /** Длина окна, мс */
+  windowMs: number
+  /** Сколько держать блокировку после исчерпания окна, мс */
+  blockMs: number
+}
+
+export const DEFAULT_CONFIG: RateLimitConfig = {
+  max: MAX_ATTEMPTS,
+  windowMs: WINDOW_MS,
+  blockMs: BLOCK_MS,
+}
+
 type Entry = {
   count: number
   firstAttempt: number
@@ -73,7 +96,10 @@ export type RateLimitResult = {
   currentCount: number
 }
 
-export function checkRateLimit(key: string): RateLimitResult {
+export function checkRateLimit(
+  key: string,
+  config: RateLimitConfig = DEFAULT_CONFIG,
+): RateLimitResult {
   cleanupIfNeeded()
   const n = now()
   const entry = store.get(key)
@@ -81,8 +107,8 @@ export function checkRateLimit(key: string): RateLimitResult {
   if (!entry) {
     return {
       allowed: true,
-      remaining: MAX_ATTEMPTS,
-      resetAt: n + WINDOW_MS,
+      remaining: config.max,
+      resetAt: n + config.windowMs,
       currentCount: 0,
     }
   }
@@ -100,40 +126,43 @@ export function checkRateLimit(key: string): RateLimitResult {
   }
 
   // If window expired, reset
-  if (n - entry.firstAttempt > WINDOW_MS) {
+  if (n - entry.firstAttempt > config.windowMs) {
     // treat as new window
     store.delete(key)
     return {
       allowed: true,
-      remaining: MAX_ATTEMPTS,
-      resetAt: n + WINDOW_MS,
+      remaining: config.max,
+      resetAt: n + config.windowMs,
       currentCount: 0,
     }
   }
 
   // Within window
-  if (entry.count >= MAX_ATTEMPTS) {
+  if (entry.count >= config.max) {
     // Exceeded, block now
-    entry.blockedUntil = n + BLOCK_MS
+    entry.blockedUntil = n + config.blockMs
     store.set(key, entry)
     return {
       allowed: false,
       remaining: 0,
       resetAt: entry.blockedUntil,
-      retryAfter: Math.ceil(BLOCK_MS / 1000),
+      retryAfter: Math.ceil(config.blockMs / 1000),
       currentCount: entry.count,
     }
   }
 
   return {
     allowed: true,
-    remaining: Math.max(0, MAX_ATTEMPTS - entry.count),
-    resetAt: entry.firstAttempt + WINDOW_MS,
+    remaining: Math.max(0, config.max - entry.count),
+    resetAt: entry.firstAttempt + config.windowMs,
     currentCount: entry.count,
   }
 }
 
-export function recordFailure(key: string): RateLimitResult {
+export function recordFailure(
+  key: string,
+  config: RateLimitConfig = DEFAULT_CONFIG,
+): RateLimitResult {
   const n = now()
   const existing = store.get(key)
 
@@ -304,16 +333,20 @@ function toRateLimitResult(raw: unknown): RateLimitResult {
   }
 }
 
-async function upstashHit(key: string, shouldCount: boolean): Promise<RateLimitResult> {
+async function upstashHit(
+  key: string,
+  shouldCount: boolean,
+  config: RateLimitConfig = DEFAULT_CONFIG,
+): Promise<RateLimitResult> {
   const result = await upstashCommand([
     "EVAL",
     RATE_LIMIT_SCRIPT,
     "1",
     key,
     String(Date.now()),
-    String(WINDOW_MS),
-    String(BLOCK_MS),
-    String(MAX_ATTEMPTS),
+    String(config.windowMs),
+    String(config.blockMs),
+    String(config.max),
     shouldCount ? "1" : "0",
   ])
   return toRateLimitResult(result)
@@ -329,27 +362,33 @@ function logBackendFallback(action: string, error: unknown): void {
  * Проверка без засчитывания. В маршрутах вызывать перед попыткой входа.
  * С общим счётчиком — атомарно, иначе — в памяти процесса.
  */
-export async function checkRateLimitAsync(key: string): Promise<RateLimitResult> {
+export async function checkRateLimitAsync(
+  key: string,
+  config: RateLimitConfig = DEFAULT_CONFIG,
+): Promise<RateLimitResult> {
   if (rateLimitBackend() === "upstash") {
     try {
-      return await upstashHit(key, false)
+      return await upstashHit(key, false, config)
     } catch (error) {
       logBackendFallback("проверка", error)
     }
   }
-  return checkRateLimit(key)
+  return checkRateLimit(key, config)
 }
 
 /** Засчитать неудачную попытку. Блокирует, когда попыток слишком много. */
-export async function recordFailureAsync(key: string): Promise<RateLimitResult> {
+export async function recordFailureAsync(
+  key: string,
+  config: RateLimitConfig = DEFAULT_CONFIG,
+): Promise<RateLimitResult> {
   if (rateLimitBackend() === "upstash") {
     try {
-      return await upstashHit(key, true)
+      return await upstashHit(key, true, config)
     } catch (error) {
       logBackendFallback("неудачная попытка", error)
     }
   }
-  return recordFailure(key)
+  return recordFailure(key, config)
 }
 
 /** Сбросить счётчик (после успешного входа). */

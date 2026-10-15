@@ -18,6 +18,7 @@ import { requireStaffOrganization, notFoundInOrganization } from "@/lib/org"
 import { prisma } from "@/lib/prisma"
 import { calculateSegmentEta } from "@/lib/eta/orchestrator"
 import { saveForecast } from "@/lib/eta/repository"
+import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
 import { geocodeAddressesWithSource } from "@/lib/geo/geocode"
 import { isWeatherEnabled } from "@/lib/eta/weather/client"
 import type { StopRequest } from "@/lib/eta/stops"
@@ -49,7 +50,11 @@ export async function POST(request: NextRequest) {
   const auth = await requireStaffAuth(request)
   if (auth.error) return auth.error
   const org = requireStaffOrganization(auth.user)
+  // Лимит частоты: расчёт дёргает OSRM и (включённую) погоду. Без него один
+  // клиент выжимает чужие лимиты внешних API. Ключ — организация из сессии.
   if (!org.ok) return org.response
+  const rateLimit = await checkEtaRateLimit(request, "forecast", org.organizationId)
+  if (rateLimit.response) return rateLimit.response
 
   let body: ForecastBody | null = null
   try {

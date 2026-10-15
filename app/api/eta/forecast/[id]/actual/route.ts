@@ -19,6 +19,7 @@ import { requireStaffOrganization } from "@/lib/org"
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization } from "@/lib/org"
 import { recordActual } from "@/lib/eta/repository"
+import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
 import { prisma } from "@/lib/prisma"
 
 interface ActualBody {
@@ -67,6 +68,10 @@ function notFound() {
 }
 
 async function handle(forecastId: string, organizationId: string, request: NextRequest) {
+  // Лимит частоты на запись факта
+  const rateLimit = await checkEtaRateLimit(request, "actual", organizationId)
+  if (rateLimit.response) return rateLimit.response
+
   let body: ActualBody | null = null
   try {
     body = (await request.json()) as ActualBody
