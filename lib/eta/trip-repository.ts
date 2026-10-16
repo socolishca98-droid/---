@@ -394,10 +394,11 @@ export async function listRouteStageIds(
 async function buildStagesForRoute(loaded: LoadedRoute, source: RouteTripSource) {
   const { byOrder } = await resolvePoints(loaded)
   // Заказы, у которых не нашлись координаты: без них не строится ни один
-  // этап, и движок должен сказать об этом прямо, а не молчать.
-  const unlocatedOrders = loaded.orders.filter(
-    (order) => !byOrder.get(order.id)?.from || !byOrder.get(order.id)?.to,
-  ).length
+  // этап, и движок должен сказать об этом прямо, перечислив адреса, а не
+  // молча выбросить их из маршрута.
+  const unlocatedOrders = loaded.orders
+    .filter((order) => !byOrder.get(order.id)?.from || !byOrder.get(order.id)?.to)
+    .map((order) => `${order.routeFrom} → ${order.routeTo}`)
   return { stages: buildRouteStages(
     loaded.orders.map((order) => ({
       id: order.id,

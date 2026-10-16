@@ -152,3 +152,180 @@ describe("кэш", () => {
     expect(result.get("Какая-то неизвестная деревня")).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Ложные координаты: провайдер ответил 200 и валидной точкой, но это ОТКАЗ
+// ---------------------------------------------------------------------------
+
+describe("геокодер не возвращает ложные координаты", () => {
+  /** Ответ Яндекса, которым он «находит» несуществующий адрес: центр страны. */
+  function yandexCountryFallback() {
+    return {
+      ok: true,
+      json: async () => ({
+        response: {
+          GeoObjectCollection: {
+            // found !== "0": Яндекс считает, что нашёл. Узнать обман можно
+            // только по kind у самого объекта.
+            metaDataProperty: { GeocoderResponseMetaData: { found: "1" } },
+            featureMember: [
+              {
+                GeoObject: {
+                  Point: { pos: "99.505405 61.698657" },
+                  metaDataProperty: {
+                    GeocoderMetaData: {
+                      kind: "country",
+                      precision: "other",
+                      Address: { formatted: "Россия" },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      }),
+    }
+  }
+
+  /** Тот же ответ, но с настоящим совпадением (kind: "locality"). */
+  function yandexRealMatch() {
+    return {
+      ok: true,
+      json: async () => ({
+        response: {
+          GeoObjectCollection: {
+            metaDataProperty: { GeocoderResponseMetaData: { found: "1" } },
+            featureMember: [
+              {
+                GeoObject: {
+                  Point: { pos: "37.6173 54.1931" },
+                  metaDataProperty: {
+                    GeocoderMetaData: {
+                      kind: "locality",
+                      precision: "other",
+                      Address: { formatted: "Россия, Тула" },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      }),
+    }
+  }
+
+  /** Nominatim отвечает «страна» на заведомо несуществующий адрес. */
+  function nominatimCountry() {
+    return {
+      ok: true,
+      json: async () => [
+        { lat: "61.698657", lon: "99.505405", class: "place", type: "country" },
+      ],
+    }
+  }
+
+  it("Яндекс «нашёл» только страну — это отказ, координаты не отдаются", async () => {
+    process.env.YANDEX_GEOCODER_API_KEY = "ключ-геокодера"
+    // Оба провайдера отказывают: иначе Nominatim доберёт координаты и смысл
+    // проверки потеряется.
+    stubFetch((url) =>
+      url.includes("geocode-maps.yandex.ru") ? yandexCountryFallback() : nominatimCountry(),
+    )
+
+    const result = await geocodeAddresses(["Хреново-Никудаево, несуществующая область"])
+    // Точка центра страны не должна считаться найденным адресом
+    expect(result.get("Хреново-Никудаево, несуществующая область")).toBeNull()
+  })
+
+  it("Яндекс отказал, но Nominatim нашёл — fallback работает", async () => {
+    process.env.YANDEX_GEOCODER_API_KEY = "ключ-геокодера"
+    stubFetch((url) =>
+      url.includes("geocode-maps.yandex.ru")
+        ? yandexCountryFallback()
+        : nominatimResponse(54.1932, 37.6176),
+    )
+
+    const result = await geocodeAddresses(["Тула"])
+    expect(result.get("Тула")).toEqual({ lat: 54.1932, lng: 37.6176 })
+    expect(calls).toHaveLength(2)
+  })
+
+  it("Яндекс с настоящим совпадением (kind: locality) работает как прежде", async () => {
+    process.env.YANDEX_GEOCODER_API_KEY = "ключ-геокодера"
+    stubFetch((url) =>
+      url.includes("geocode-maps.yandex.ru")
+        ? yandexRealMatch()
+        : nominatimResponse(0, 0),
+    )
+
+    const result = await geocodeAddresses(["Тула"])
+    expect(result.get("Тула")).toEqual({ lat: 54.1931, lng: 37.6173 })
+  })
+
+  it("Яндекс сообщил found = 0 — это отказ, падаем на Nominatim", async () => {
+    process.env.YANDEX_GEOCODER_API_KEY = "ключ-геокодера"
+    stubFetch((url) =>
+      url.includes("geocode-maps.yandex.ru")
+        ? {
+            ok: true,
+            json: async () => ({
+              response: {
+                GeoObjectCollection: {
+                  metaDataProperty: { GeocoderResponseMetaData: { found: "0" } },
+                  featureMember: [],
+                },
+              },
+            }),
+          }
+        : nominatimResponse(54.1932, 37.6176),
+    )
+
+    const result = await geocodeAddresses(["Тула"])
+    expect(result.get("Тула")).toEqual({ lat: 54.1932, lng: 37.6176 })
+    expect(calls).toHaveLength(2)
+  })
+
+  it("Nominatim ответил «страна» — координаты не отдаются", async () => {
+    stubFetch(() => nominatimCountry())
+
+    const result = await geocodeAddresses(["Хреново-Никудаево"])
+    expect(result.get("Хреново-Никудаево")).toBeNull()
+  })
+
+  it("недостоверный результат не попадает в GeoCache", async () => {
+    process.env.YANDEX_GEOCODER_API_KEY = "ключ-геокодера"
+    stubFetch((url) =>
+      url.includes("geocode-maps.yandex.ru") ? yandexCountryFallback() : nominatimCountry(),
+    )
+
+    const result = await geocodeAddresses(["Хреново-Никудаево"])
+    expect(result.get("Хреново-Никудаево")).toBeNull()
+    // Ни один провайдер не дал пригодного ответа — значит и писать нечего
+    expect(prismaMock.geoCache.create).not.toHaveBeenCalled()
+  })
+
+  it("User-Agent для Nominatim — только ASCII (иначе fetch падает на кириллице)", async () => {
+    // Регрессия: в User-Agent была кириллица, и fetch в Node бросал
+    // TypeError «Cannot convert argument to a ByteString». Ошибка
+    // перехватывалась, и ВСЕ адреса становились «негеокодированными».
+    let seenUserAgent = ""
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL, init?: { headers?: Record<string, string> }) => {
+        const url = String(input)
+        calls.push(url)
+        if (url.includes("nominatim.openstreetmap.org")) {
+          seenUserAgent = init?.headers?.["User-Agent"] ?? ""
+        }
+        return nominatimResponse(54.1932, 37.6176)
+      },
+    )
+
+    await geocodeAddresses(["Тула"])
+
+    expect(seenUserAgent).not.toBe("")
+    expect(/^[\x20-\x7e]+$/.test(seenUserAgent)).toBe(true)
+  })
+})

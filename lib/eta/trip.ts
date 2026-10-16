@@ -123,13 +123,15 @@ export interface TripEtaOptions {
    */
   routingSource?: "osrm" | "fallback"
   /**
-   * Сколько заказов рейса остались без геокодированных точек.
+   * Адреса заказов рейса, которые не удалось геокодировать.
    *
-   * Зачем отдельным полем: без координат заказ не даёт НИ ОДНОГО этапа —
-   * ни плеча, ни погрузки. Поэтому по числу этапов нельзя отличить «геокодер
-   * не ответил» от «рейс завершён», и предупреждение врало бы.
+   * Зачем отдельным полем и списком: без координат заказ не даёт НИ ОДНОГО
+   * этапа — ни плеча, ни погрузки. Поэтому по числу этапов нельзя отличить
+   * «геокодер не ответил» от «рейс завершён», и предупреждение врало бы.
+   * Список, а не число: логисту нужно видеть, КАКИЕ адреса не разрешились,
+   * иначе он не знает, что исправлять.
    */
-  unlocatedOrders?: number
+  unlocatedOrders?: readonly string[]
   /** Всего заказов в рейсе — чтобы сказать «N из M» в предупреждении. */
   totalOrders?: number
 }
@@ -403,8 +405,14 @@ export function buildRouteStages(
       })
     }
 
-    cursor = order.to ?? cursor
-    cursorAddress = order.routeTo
+    // Курсор двигается ТОЛЬКО когда точка реально известна. Раньше адрес
+    // курсора обновлялся безусловно, и после заказа с негеокодированной
+    // выгрузкой подпись плеча утверждала «Такогогороданет → база», а
+    // координаты плеча оставались в Воронеже: подпись и точка врали друг другу.
+    if (order.to) {
+      cursor = order.to
+      cursorAddress = order.routeTo
+    }
   }
 
   // Возврат на базу
@@ -713,7 +721,15 @@ export function calculateTripEta(
   const hasAnyDrivingStage = prepared.some(
     (stage) => stage.kind === "driving" || stage.kind === "return_to_base",
   )
-  const allLegsGeocoded = legs.length > 0 && legs.every((leg) => leg.distanceM != null && leg.distanceM > 0)
+  // Две разные проверки, которые нельзя путать:
+  //   legsHaveDistance — у каждого ПОСТРОЕННОГО плеча есть расстояние;
+  //   allLegsGeocoded  — то же плюс «ни один заказ рейса не остался без
+  //                      координат». Заказ без координат не даёт этапа, поэтому
+  //                      «все построенные плеча с расстоянием» ещё не значит
+  //                      «весь рейс геокодировался».
+  const legsHaveDistance =
+    legs.length > 0 && legs.every((leg) => leg.distanceM != null && leg.distanceM > 0)
+  const allLegsGeocoded = (options.unlocatedOrders?.length ?? 0) === 0 && legsHaveDistance
   const vehicleKnown = Boolean(options.vehicle && (options.vehicle.type || options.vehicle.capacity))
   const hasActuals = prepared.some((stage) => stage.actualStartAt || stage.actualEndAt)
   const weatherAvailable = (options.weatherBySegment || []).some((sample) => sample !== null)
@@ -724,7 +740,7 @@ export function calculateTripEta(
       `у ${estimatedLegs} плеч(а) расстояние оценено по прямой ×1.3: маршрутизатор не построил геометрию, прогноз грубее`,
     )
   }
-  if (legs.length > 0 && !allLegsGeocoded) {
+  if (legs.length > 0 && !legsHaveDistance) {
     warnings.push("не у всех плеч есть расстояние: прогноз по ним грубее, чем по построенному маршруту")
   }
   if (!vehicleKnown) {
@@ -733,21 +749,28 @@ export function calculateTripEta(
   if (!weatherAvailable) {
     warnings.push("погода не учтена: источник отключён или недоступен")
   }
-  if (legs.length === 0) {
-    // Раньше текст был «невозможных плеч не осталось: рейс завершён или точки
-    // не определены» — по нему нельзя было понять, ЧТО случилось. Отказ
-    // геокодера и завершённый рейс — разные ситуации, и логист должен видеть
-    // разницу. Признак приходит от вызывающего кода: он знает, сколько
-    // адресов не совпало с координатами.
-    const unlocated = options.unlocatedOrders ?? 0
-    if (unlocated > 0) {
-      warnings.push(
-        `не определены координаты ${unlocated} заказ(а) из ${options.totalOrders ?? unlocated}: ` +
-          "без них этапы не строятся и время по рейсу не рассчитано",
-      )
-    } else {
-      warnings.push("движения в рейсе не осталось: рейс завершён или все точки совпадают")
-    }
+  // Отказ геокодера — самостоятельное предупреждение, НЕ привязанное к числу
+  // построенных плеч. Раньше оно жило внутри `legs.length === 0`, поэтому
+  // частичный отказ (один заказ из трёх) молча выпадал: оставшиеся точки
+  // складывались в более короткий и правдоподобный маршрут, а флаг
+  // allLegsGeocoded при этом показывал true.
+  const unlocatedAddresses = options.unlocatedOrders ?? []
+  if (unlocatedAddresses.length > 0) {
+    const total = options.totalOrders ?? unlocatedAddresses.length
+    // Перечисляем адреса: логисту нужно знать, ЧТО исправлять, а не сколько
+    // заказов потерялось. Обрезаем длинный список, чтобы предупреждение не
+    // превращалось в простыню.
+    const shown = unlocatedAddresses.slice(0, 5).join("; ")
+    const hidden = unlocatedAddresses.length - Math.min(unlocatedAddresses.length, 5)
+    warnings.push(
+      `не определены координаты ${unlocatedAddresses.length} заказ(а) из ${total}: ${shown}` +
+        (hidden > 0 ? ` и ещё ${hidden}` : "") +
+        ". Этапы этих заказов не строятся, поэтому время по рейсу не рассчитано полностью",
+    )
+  }
+  if (legs.length === 0 && unlocatedAddresses.length === 0) {
+    // Плеч нет и геокодер не виноват: рейс завершён или все точки совпадают.
+    warnings.push("движения в рейсе не осталось: рейс завершён или все точки совпадают")
   }
 
   const corrections: Correction[] = forecast?.segments.flatMap((s) => s.corrections) ?? []

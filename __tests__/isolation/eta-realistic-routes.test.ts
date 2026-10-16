@@ -1100,6 +1100,47 @@ describe("геокодирование: ошибки ответа не маск�
     const unknown = await geocodeProbe(["Такогогороданет"])
     expect(unknown.get("Такогогороданет")).toBeNull()
   })
+
+  it("частичный отказ геокодера: неразрешившийся адрес назван, allLegsGeocoded = false", async () => {
+    // Дефект приёмки: предупреждение о негеокодированных заказах жило внутри
+    // `legs.length === 0`. Если из трёх заказов не геокодировался один, его
+    // этапы просто не строились, оставшиеся складывались в более короткий и
+    // правдоподобный маршрут, а allLegsGeocoded показывал true — молчаливый
+    // пропуск заказа. Теперь адрес обязан быть назван.
+    const good = seedOrder("partialgood", "Тула", "Воронеж")
+    const bad = seedOrder("partialbad", "Воронеж", "Такогогороданет")
+    updateRow("order", good, { routeId: world.routeA, routeSequence: 1 })
+    updateRow("order", bad, { routeId: world.routeA, routeSequence: 2 })
+
+    const response = await tripGet(
+      makeRequest("GET", "/x", { cookie: cookieStaff }),
+      routeContext({ routeId: world.routeA }),
+    )
+    const data = await jsonOf(response)
+
+    expect(response.status).toBe(200)
+
+    // 1. Флаг качества обязан сказать правду: не все точки рейса разрешились
+    expect(data.dataQuality.allLegsGeocoded).toBe(false)
+
+    // 2. Предупреждение обязано назвать адрес, а не только посчитать заказы
+    const warnings = (data.dataQuality.warnings as string[]).join(" ")
+    expect(warnings).toMatch(/Такогогороданет/)
+    expect(warnings).toMatch(/1 заказ\(а\) из 2/)
+
+    // 3. Этапы недогеокодированного заказа не появляются
+    const addresses = (data.stages as Array<{ address?: string }>)
+      .map((stage) => stage.address ?? "")
+      .join(" ")
+    expect(addresses).not.toMatch(/Такогогороданет/)
+
+    // 4. Но прогноз по остальным заказам есть — рейс не «сломан»
+    const driving = (data.stages as Array<{ kind: string; distanceM: number | null }>).filter(
+      (stage) => stage.kind === "driving",
+    )
+    expect(driving.length).toBeGreaterThan(0)
+    expect(driving.some((stage) => (stage.distanceM ?? 0) > 0)).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------

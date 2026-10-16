@@ -895,6 +895,11 @@ model EtaForecast {
   @@index([calculatedAt])
   @@index([actualArrivalAt])
   @@index([modelVersion])
+  // Метрики по организации за период: без составного индекса такой запрос
+  // перебирает все строки организации. Индекс есть в SQL-миграции
+  // (2026-10-14-eta-forecast.postgres.sql), но его не было в схеме Prisma —
+  // и установка через `db push` оставалась без него.
+  @@index([organizationId, calculatedAt])
 }
 
 // ============================================

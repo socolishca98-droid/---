@@ -31,7 +31,7 @@ export const MAX_GEOCODES_PER_REQUEST = 12
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 const YANDEX_GEOCODE_URL = "https://geocode-maps.yandex.ru/1.x/"
-const USER_AGENT = "Loginex-TMS/1.0 (маршрутизация заказов)"
+const USER_AGENT = "Loginex-TMS/1.0 (route planning)"
 const REQUEST_TIMEOUT_MS = 4000
 /**
  * Пауза между сетевыми запросами: политика Nominatim — не чаще 1 раза в секунду.
@@ -56,6 +56,22 @@ function isCoordinates(value: unknown): value is Coordinates {
     lng >= -180 &&
     lng <= 180
   )
+}
+
+/**
+ * Признак «геокодер ничего не нашёл, но вернул точку».
+ *
+ * Яндекс на заведомо несуществующий адрес отвечает HTTP 200 и одной точкой —
+ * центром страны (в проверке: 61.698657, 99.505405, Эвенкия), с
+ * `kind: "country"` и `Address.formatted === "Россия"`. Формально это валидные
+ * координаты, поэтому проверка диапазона их не отсекает, и адрес считался
+ * успешно геокодированным. Такой ответ — отказ, а не результат.
+ */
+function isYandexNotFound(geoObject: unknown): boolean {
+  const meta = (geoObject as { metaDataProperty?: { GeocoderMetaData?: { kind?: string } } })
+    ?.metaDataProperty?.GeocoderMetaData
+  // kind: "country" — совпала только страна, ни населённый пункт, ни улица.
+  return meta?.kind === "country"
 }
 
 /**
@@ -84,8 +100,14 @@ async function geocodeYandex(address: string): Promise<Coordinates | null> {
     if (!response.ok) return null
 
     const data = await response.json()
-    const pos =
-      data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos
+    const collection = data?.response?.GeoObjectCollection
+    const geoObject = collection?.featureMember?.[0]?.GeoObject
+    // found === "0" — Яндекс прямо говорит, что совпадений нет
+    const found = collection?.metaDataProperty?.GeocoderResponseMetaData?.found
+    if (found === "0" || found === 0) return null
+    if (isYandexNotFound(geoObject)) return null
+
+    const pos = geoObject?.Point?.pos
     if (typeof pos !== "string") return null
 
     const [lng, lat] = pos.split(" ").map(Number)
@@ -117,7 +139,12 @@ async function geocodeNominatim(address: string): Promise<Coordinates | null> {
     if (!Array.isArray(data) || data.length === 0) return null
 
     const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-    return isCoordinates(coords) ? coords : null
+    if (!isCoordinates(coords)) return null
+    // Тот же случай, что и у Яндекса: Nominatim на заведомо несуществующий
+    // адрес отвечает «страна» (class: "place", type: "country") — это отказ,
+    // а не найденная точка.
+    if (data[0].class === "place" && data[0].type === "country") return null
+    return coords
   } catch (error) {
     console.error("[geocode] ошибка запроса к Nominatim:", error)
     return null
