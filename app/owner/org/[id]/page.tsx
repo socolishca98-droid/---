@@ -16,11 +16,13 @@ import {
   LogOut,
   Package,
   Route as RouteIcon,
+  Search,
   ShieldCheck,
   ShieldOff,
   Truck,
   UserCog,
   Users,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -116,6 +118,33 @@ export default function OwnerOrgPage() {
     () => accounts.data?.organizations.find((item) => item.id === orgId) ?? null,
     [accounts.data, orgId],
   )
+
+  // Поиск по учётным записям компании: в крупной компании искать сотрудника
+  // глазами в списке невозможно, а именно под конкретной записью владелец и
+  // «подключается» к организации.
+  const [accountQuery, setAccountQuery] = useState("")
+  const accountNeedle = accountQuery.trim().toLowerCase()
+  const orgUsers = group?.users ?? []
+  const orgDrivers = group?.drivers ?? []
+  const visibleUsers = useMemo(() => {
+    if (!accountNeedle) return orgUsers
+    return orgUsers.filter((person) =>
+      [person.name, person.email ?? "", ROLE_LABELS[person.role] ?? person.role].some((value) =>
+        value.toLowerCase().includes(accountNeedle),
+      ),
+    )
+  }, [orgUsers, accountNeedle])
+  const visibleDrivers = useMemo(() => {
+    if (!accountNeedle) return orgDrivers
+    return orgDrivers.filter((driver) =>
+      [driver.name, driver.phone, driver.vehiclePlate ?? ""].some((value) =>
+        value.toLowerCase().includes(accountNeedle),
+      ),
+    )
+  }, [orgDrivers, accountNeedle])
+  // Компания без единой учётной записи: войти в неё невозможно в принципе —
+  // и об этом надо сказать прямо, а не показывать два пустых списка.
+  const noAccountsAtAll = Boolean(group) && orgUsers.length === 0 && orgDrivers.length === 0
 
   const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
   const notFound = Boolean(overview.data && !org)
@@ -277,11 +306,52 @@ export default function OwnerOrgPage() {
             <Tile icon={Activity} label="Доставлено заказов" value={formatCount(org.ordersDelivered)} delay={300} />
           </div>
 
-          {/* grid-cols-1: иначе на мобильном колонка равна max-content и обрезает экран */}
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-            <div className="flex flex-col gap-4">
+          {/* Поиск по учётным записям компании */}
+          {group ? (
+            <div className="relative mt-6">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={accountQuery}
+                onChange={(event) => setAccountQuery(event.target.value)}
+                placeholder="Найти в компании: имя, почта, телефон, машина"
+                className="h-11 w-full rounded-xl border border-border bg-card pl-9 pr-9 text-[14px] text-foreground transition-colors duration-200 placeholder:text-muted-foreground/80 focus:border-primary focus:outline-none"
+              />
+              {accountQuery ? (
+                <button
+                  type="button"
+                  aria-label="Очистить поиск"
+                  onClick={() => setAccountQuery("")}
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {noAccountsAtAll ? (
+            <Panel title="Учётные записи" className="mt-4">
+              <div className="px-4 py-5">
+                <p className="text-[14px] font-medium">В этой компании пока нет учётных записей</p>
+                <p className="mt-1.5 text-[13px] text-muted-foreground">
+                  Подключиться к организации можно только под существующей учётной записью:
+                  сотрудник или водитель должны быть добавлены администратором либо
+                  зарегистрироваться сами. Как только запись появится, здесь будет кнопка
+                  «Войти» — владелец входит без пароля, сессию выдаёт сервер.
+                </p>
+              </div>
+            </Panel>
+          ) : (
+            <>
+              {/* grid-cols-1: иначе на мобильном колонка равна max-content и обрезает экран */}
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+                <div className="flex flex-col gap-4">
               {/* Сотрудники */}
-              <Panel title={`Сотрудники · ${group?.users.length ?? org.staff}`}>
+              <Panel
+                title={`Сотрудники · ${
+                  accountNeedle ? `${visibleUsers.length} из ${orgUsers.length}` : `${group?.users.length ?? org.staff}`
+                }`}
+              >
                 {accounts.loading && !group ? (
                   <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Загружаю…
@@ -297,11 +367,15 @@ export default function OwnerOrgPage() {
                       Повторить
                     </button>
                   </div>
-                ) : (group?.users ?? []).length === 0 ? (
+                ) : orgUsers.length === 0 ? (
                   <p className="px-4 py-4 text-[13px] text-muted-foreground">Сотрудников пока нет</p>
+                ) : visibleUsers.length === 0 ? (
+                  <p className="px-4 py-4 text-[13px] text-muted-foreground">
+                    Никого не нашли по запросу «{accountQuery.trim()}»
+                  </p>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {group!.users.map((person, index) => (
+                    {visibleUsers.map((person, index) => (
                       <li
                         key={person.id}
                         className="flex items-center gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/40"
@@ -350,7 +424,11 @@ export default function OwnerOrgPage() {
               </Panel>
 
               {/* Водители */}
-              <Panel title={`Водители · ${group?.drivers.length ?? org.drivers}`}>
+              <Panel
+                title={`Водители · ${
+                  accountNeedle ? `${visibleDrivers.length} из ${orgDrivers.length}` : `${group?.drivers.length ?? org.drivers}`
+                }`}
+              >
                 {accounts.loading && !group ? (
                   <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Загружаю…
@@ -366,11 +444,15 @@ export default function OwnerOrgPage() {
                       Повторить
                     </button>
                   </div>
-                ) : (group?.drivers ?? []).length === 0 ? (
+                ) : orgDrivers.length === 0 ? (
                   <p className="px-4 py-4 text-[13px] text-muted-foreground">Водителей пока нет</p>
+                ) : visibleDrivers.length === 0 ? (
+                  <p className="px-4 py-4 text-[13px] text-muted-foreground">
+                    Никого не нашли по запросу «{accountQuery.trim()}»
+                  </p>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {group!.drivers.map((driver, index) => (
+                    {visibleDrivers.map((driver, index) => (
                       <li
                         key={driver.id}
                         className="flex items-center gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/40"
@@ -453,7 +535,9 @@ export default function OwnerOrgPage() {
                 ) : null}
               </ul>
             </Panel>
-          </div>
+              </div>
+            </>
+          )}
         </>
       ) : null}
     </OwnerShell>

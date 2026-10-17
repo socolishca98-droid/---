@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
     userGroups,
     statusGroups,
     driverGroups,
+    enterCandidates,
+    driverCandidates,
     vehicleGroups,
     routeGroups,
     orderGroups,
@@ -69,6 +71,37 @@ export async function GET(request: NextRequest) {
       _count: { _all: true },
     }),
     prisma.driver.groupBy({ by: ["organizationId"], _count: { _all: true } }),
+    // Кем войти в компанию одним нажатием: подходящая учётная запись для
+    // каждой организации. Без этого «подключиться к компании» с общего
+    // экрана невозможно — надо сначала открывать компанию и искать запись.
+    prisma.user.findMany({
+      where: {
+        organizationId: { not: null },
+        role: { not: "driver" },
+        status: "active",
+        // Свой аккаунт не предлагаем: «войти как себя» — бессмысленное
+        // действие, а владельцу нужна чужая запись компании.
+        id: { not: auth.value.user.id },
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        lastLoginAt: true,
+        organizationId: true,
+      },
+      orderBy: { lastLoginAt: "desc" },
+    }),
+    prisma.driver.findMany({
+      where: { organizationId: { not: null } },
+      select: {
+        id: true,
+        name: true,
+        organizationId: true,
+        user: { select: { id: true, status: true } },
+      },
+      orderBy: { name: "asc" },
+    }),
     prisma.vehicle.groupBy({ by: ["organizationId"], _count: { _all: true } }),
     prisma.route.groupBy({ by: ["organizationId", "status"], _count: { _all: true } }),
     prisma.order.groupBy({ by: ["organizationId", "status"], _count: { _all: true } }),
@@ -178,6 +211,40 @@ export async function GET(request: NextRequest) {
     if (at) bucket(group.organizationId).lastAuditAt = at
   }
 
+  // Кем войти в компанию одним нажатием с общего экрана. Сначала сотрудник
+  // с открытым доступом (админ, затем логист — кто заходил последним), иначе
+  // водитель с открытой учётной записью. Водителю без записи сервер создаст
+  // её при входе, но пока записи нет — владелец не знает, под кем войдёт,
+  // поэтому такой вариант не предлагаем.
+  const ROLE_PRIORITY: Record<string, number> = { admin: 0, logist: 1 }
+  const priorityOf = (role: string | null | undefined) => ROLE_PRIORITY[role ?? ""] ?? 9
+  const enterAsByOrg = new Map<
+    string,
+    { kind: "staff" | "driver"; id: string; name: string; role: string | null }
+  >()
+  for (const person of enterCandidates) {
+    if (!person.organizationId) continue
+    const current = enterAsByOrg.get(person.organizationId)
+    if (current && priorityOf(current.role) <= priorityOf(person.role)) continue
+    enterAsByOrg.set(person.organizationId, {
+      kind: "staff",
+      id: person.id,
+      name: person.name,
+      role: person.role,
+    })
+  }
+  for (const driver of driverCandidates) {
+    if (!driver.organizationId) continue
+    if (enterAsByOrg.has(driver.organizationId)) continue
+    if (driver.user && driver.user.status !== "active") continue
+    enterAsByOrg.set(driver.organizationId, {
+      kind: "driver",
+      id: driver.id,
+      name: driver.name,
+      role: null,
+    })
+  }
+
   const organizations = orgs.map((org) => {
     const entry = byOrg.get(org.id) ?? empty()
     const last = [entry.lastLoginAt, entry.lastAuditAt]
@@ -200,6 +267,8 @@ export async function GET(request: NextRequest) {
       ordersInWork: entry.ordersInWork,
       ordersDelivered: entry.ordersDelivered,
       lastActivityAt: toIso(last ?? null),
+      // Учётная запись для входа одним нажатием (null — войти не из-под кого)
+      enterAs: enterAsByOrg.get(org.id) ?? null,
     }
   })
 

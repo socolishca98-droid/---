@@ -40,6 +40,7 @@ import {
   type RouteOrderLike,
 } from "@/lib/routes/model"
 import { routeOrdersOrderBy, serializeRoute } from "@/lib/routes/service"
+import { parseDateParam, routePeriodWhere } from "@/lib/routes/date-range"
 import { captureRouteError } from "@/lib/sentry"
 import {
   canChangeOrderStatus,
@@ -108,6 +109,7 @@ const MAX_PAGE_SIZE = 200
  * GET /api/routes
  *   ?status=planned,active,in_transit — фильтр по статусам рейса
  *   ?includeClosed=1                  — не отрезать завершённые/отменённые
+ *   ?dateFrom=YYYY-MM-DD&dateTo=...   — период (история рейсов)
  *   ?limit=50&offset=0                — пагинация (без неё список рос бы вечно)
  */
 export async function GET(request: NextRequest) {
@@ -147,6 +149,26 @@ export async function GET(request: NextRequest) {
     } else if (!includeClosed) {
       where.status = { notIn: ["completed", "cancelled"] }
     }
+
+    // Период для истории рейсов («что было за неделю»). Ориентируемся на дату
+    // завершения, но у отменённого рейса её может не быть — тогда берём дату
+    // создания, иначе отменённые выпадали бы из выборки по периоду совсем.
+    const fromParam = parseDateParam(searchParams.get("dateFrom"), false)
+    if (!fromParam.ok) {
+      return NextResponse.json(
+        { success: false, error: "Неверная дата начала периода — ожидается YYYY-MM-DD" },
+        { status: 400 },
+      )
+    }
+    const toParam = parseDateParam(searchParams.get("dateTo"), true)
+    if (!toParam.ok) {
+      return NextResponse.json(
+        { success: false, error: "Неверная дата окончания периода — ожидается YYYY-MM-DD" },
+        { status: 400 },
+      )
+    }
+    const periodWhere = routePeriodWhere(fromParam.value, toParam.value)
+    if (periodWhere) Object.assign(where, periodWhere)
 
     const [settings, atiLoads] = await Promise.all([
       prisma.fleetSettings.findFirst({
