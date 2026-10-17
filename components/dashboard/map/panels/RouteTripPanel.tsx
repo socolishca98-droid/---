@@ -304,6 +304,23 @@ export function RouteTripPanel({
             </div>
           ) : null}
 
+          {/* ── ETA недостоверен: говорим прямо, а не показываем число ── */}
+          {/* Поле trip.reliable есть в контракте давно, но нигде не рисовалось:
+              диспетчер видел «прибудет в 18:40» без оговорки, даже когда
+              геокодер не определил координаты части заказов и маршрут
+              построен короче реального. Теперь ограничение видно. */}
+          {!trip.reliable ? (
+            <div className="flex items-start gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-[10.5px] text-destructive">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>
+                Время прибытия недостоверно
+                {trip.dataQuality.length > 0
+                  ? `: ${trip.dataQuality.join("; ")}`
+                  : ": неполные исходные данные. Планируйте с запасом."}
+              </span>
+            </div>
+          ) : null}
+
           {/* ── Уверенность и качество данных ── */}
           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
             <Clock className="h-3 w-3" />

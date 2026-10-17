@@ -29,6 +29,14 @@ export const dynamic = "force-dynamic"
 
 type Body = { userId?: unknown; driverId?: unknown }
 
+/**
+ * Предупреждение, когда действие выполнено, но запись в журнал не сохранилась.
+ * Молча такое действие проходить не должно: иначе оно становится
+ * неконтролируемым, а про ответ никто не узнает.
+ */
+const AUDIT_WARNING =
+  "Действие выполнено, но запись в журнал не сохранилась. Проверьте журнал позже."
+
 function cookieOptions() {
   return {
     httpOnly: true,
@@ -48,6 +56,11 @@ export async function POST(request: NextRequest) {
     // Нейтральный отказ: существование «входа как» не раскрываем
     return forbidden()
   }
+
+  // Идентификатор запроса: одна и та же операция должна быть найдена в журнале
+  // по номеру, если понадобится разобрать инцидент.
+  const requestId =
+    request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? null
 
   const body = (await request.json().catch(() => null)) as Body | null
   const userId = typeof body?.userId === "string" ? body.userId : null
@@ -122,6 +135,7 @@ export async function POST(request: NextRequest) {
         email: true,
         role: true,
         status: true,
+        suspendReason: true,
         driverId: true,
         organizationId: true,
       },
@@ -133,6 +147,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "У водителя нет карточки — выберите карточку в разделе «Водители»" },
         { status: 400 },
+      )
+    }
+
+    // Закрытый доступ означает, что любая сессия этой учётной записи будет
+    // отвергнута на каждом запросе (lib/auth/session.ts проверяет статус).
+    // Выдать такую сессию «успешно» нельзя: владелец уедет в чужой кабинет и
+    // сразу получит выпад на экран входа, не понимая почему.
+    if (user.status !== "active") {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            user.status === "suspended"
+              ? `Доступ закрыт: ${user.suspendReason ?? "учётная запись заблокирована"}`
+              : "Учётная запись не активна — войти в неё нельзя",
+          code: "target_inactive",
+        },
+        { status: 409 },
       )
     }
 
@@ -160,7 +192,7 @@ export async function POST(request: NextRequest) {
     request,
   })
 
-  const response = NextResponse.json({
+  const payload: Record<string, unknown> = {
     success: true,
     impersonating: {
       name: targetName,
@@ -169,7 +201,8 @@ export async function POST(request: NextRequest) {
       kind,
     },
     redirectTo,
-  })
+  }
+  const response = NextResponse.json(payload)
 
   // Свою сессию сохраняем один раз — на время просмотра чужого аккаунта
   const ownToken = request.cookies.get(STAFF_COOKIE)?.value
@@ -187,7 +220,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set({ name: DRIVER_COOKIE, value: "", ...cookieOptions(), maxAge: 0 })
   }
 
-  await logAudit({
+  const logged = await logAudit({
     organizationId: targetOrganizationId,
     actorId: owner.id,
     actorEmail: owner.email,
@@ -195,9 +228,15 @@ export async function POST(request: NextRequest) {
     targetId: targetUserId,
     targetType: targetDriverId ? "driver" : "user",
     targetEmail: targetEmail,
-    metadata: { role: targetRole, name: targetName, driverId: targetDriverId },
+    metadata: { role: targetRole, name: targetName, driverId: targetDriverId, requestId },
     ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
   })
 
-  return response
+  // Журнал — неотъемлемая часть этого действия: без записи о том, кто кем
+  // являлся, «вход как» становится неконтролируемым. Предупреждаем явно.
+  if (!logged) {
+    payload.warning = AUDIT_WARNING
+  }
+
+  return NextResponse.json(payload, { headers: response.headers })
 }

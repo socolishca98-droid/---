@@ -1,0 +1,229 @@
+{
+  "title": "C–J/L/O — основной бизнес-процесс",
+  "summary": {
+    "VERIFIED": 25,
+    "PARTIAL": 2,
+    "BROKEN": 2,
+    "MISSING": 1,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "C",
+      "name": "создание заказа Москва, ул. Тверская, 1 → Санкт-Петербург, Невский пр., 1",
+      "status": "VERIFIED",
+      "note": "HTTP 200, id: cmvc7eo2v00026gh5a9wl7sdv",
+      "id": "cmvc7eo2v00026gh5a9wl7sdv"
+    },
+    {
+      "scenario": "C",
+      "name": "создание заказа Санкт-Петербург, Невский пр., 1 → Тверь, ул. Советская, 5",
+      "status": "VERIFIED",
+      "note": "HTTP 200, id: cmvc7eo4300056gh5fgwm63m7",
+      "id": "cmvc7eo4300056gh5fgwm63m7"
+    },
+    {
+      "scenario": "C",
+      "name": "заказы создаются",
+      "status": "VERIFIED",
+      "note": "создано: 2 из 2"
+    },
+    {
+      "scenario": "C",
+      "name": "изменение заказа",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "C",
+      "name": "отмена заказа",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "C",
+      "name": "отменённый заказ сохраняет статус",
+      "status": "VERIFIED",
+      "note": "статус: cancelled"
+    },
+    {
+      "scenario": "C",
+      "name": "отменённый заказ нельзя снова согласовать",
+      "status": 400,
+      "note": "HTTP 400 Переход «Отменён» → «Согласован» невозможен. Допустимо: никаких"
+    },
+    {
+      "scenario": "D",
+      "name": "согласование заказа Москва, ул. Тверская, 1 → Санкт-Петербург, Невский пр., 1",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "D",
+      "name": "согласование заказа Санкт-Петербург, Невский пр., 1 → Тверь, ул. Советская, 5",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "D",
+      "name": "согласование заказа undefined → undefined",
+      "status": 400,
+      "note": "HTTP 400 Переход «Отменён» → «Согласован» невозможен. Допустимо: никаких"
+    },
+    {
+      "scenario": "D",
+      "name": "создание рейса с заказами",
+      "status": 200,
+      "note": "HTTP 200",
+      "id": "cmvc7epxe000n6gh5j6tz36nf"
+    },
+    {
+      "scenario": "E",
+      "name": "водитель и машина назначены рейсу",
+      "status": "VERIFIED",
+      "note": "driver: есть, vehicle: есть"
+    },
+    {
+      "scenario": "D",
+      "name": "рейс виден в списке",
+      "status": "VERIFIED",
+      "note": "HTTP 200, рейсов: 5"
+    },
+    {
+      "scenario": "D",
+      "name": "заказы привязаны к рейсу",
+      "status": "VERIFIED",
+      "note": "заказов в рейсе: 2"
+    },
+    {
+      "scenario": "F",
+      "name": "расчёт ЕТА по рейсу",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "F",
+      "name": "оптимизатор маршрута",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "K",
+      "name": "история событий рейса",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "K",
+      "name": "документы рейса",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "K",
+      "name": "история изменений рейса",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "L",
+      "name": "сводка компании",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "L",
+      "name": "оплаты по заказам",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "L",
+      "name": "отчёты",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "L",
+      "name": "топливо",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "L",
+      "name": "расходы рейса",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "M",
+      "name": "тариф/подписка организации",
+      "status": "MISSING",
+      "note": "в ответе /api/organization нет полей тарифа, подписки, квоты или биллинга",
+      "keys": [
+        "id",
+        "name",
+        "createdAt"
+      ]
+    },
+    {
+      "scenario": "O",
+      "name": "отказ геокодера виден в прогнозе",
+      "status": 200,
+      "note": "HTTP 200, allLegsGeocoded=undefined, адрес назван: true",
+      "named": true
+    },
+    {
+      "scenario": "O",
+      "name": "оба адреса негеокодируемы — прогноз отвечает, а не падает",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "O",
+      "name": "проверка здоровья отвечает",
+      "status": 200,
+      "note": "HTTP 200",
+      "body": {
+        "status": "ok",
+        "timestamp": "2026-10-17T09:38:34.849Z",
+        "uptime": 29.179410667,
+        "version": "0.1.0",
+        "env": "development"
+      }
+    },
+    {
+      "scenario": "O",
+      "name": "пробки: признак источника, а не молчаливый отказ",
+      "status": 200,
+      "note": "HTTP 200",
+      "provider": "historical"
+    },
+    {
+      "scenario": "O",
+      "name": "уборка аудиторских записей",
+      "status": "VERIFIED",
+      "note": "осталось заказов аудита: 0"
+    }
+  ],
+  "issues": [
+    {
+      "scenario": "D",
+      "name": "согласование заказа undefined → undefined",
+      "status": "BROKEN",
+      "note": "HTTP 400 Переход «Отменён» → «Согласован» невозможен. Допустимо: никаких"
+    },
+    {
+      "scenario": "M",
+      "name": "тариф/подписка организации",
+      "status": "MISSING",
+      "note": "в ответе /api/organization нет полей тарифа, подписки, квоты или биллинга"
+    },
+    {
+      "scenario": "O",
+      "name": "отказ геокодера виден в прогнозе",
+      "status": "BROKEN",
+      "note": "HTTP 200, allLegsGeocoded=undefined, адрес назван: true"
+    }
+  ]
+}

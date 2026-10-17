@@ -822,8 +822,27 @@ export function calculateTripEta(
       weather: weatherAvailable ? "open-meteo" : "unavailable",
       weatherEnabled: weatherAvailable,
     },
-    reliable: forecast ? forecast.reliable : true,
-    reliabilityNote: forecast?.reliabilityNote,
+    // Надёжность прогноза = прогноз допустим И исходные данные полны.
+    //
+    // Было: reliable брался только из forecast.reliable (нет нарушений
+    // ограничений, маршрут построен, нет полных перекрытий). При отказе
+    // геокодера часть заказов не давала этапов, маршрут становился короче и
+    // правдоподобнее, а reliable оставался true — диспетчер принимал число за
+    // ориентир, хотя рейс рассчитан не полностью. allLegsGeocoded при этом
+    // честно показывал false: два поля противоречили друг другу.
+    //
+    // Стало: неполные исходные данные сами понижают надёжность, и причина
+    // называется словами. Если forecast нет (нечего прогнозировать — рейс
+    // завершён), надёжного ориентира тоже нет: прежнее `true` было неверным.
+    reliable: forecast ? forecast.reliable && allLegsGeocoded : false,
+    reliabilityNote:
+      !forecast
+        ? "нечего прогнозировать: рейс завершён или точек движения не осталось"
+        : !forecast.reliable
+          ? forecast.reliabilityNote
+          : !allLegsGeocoded
+            ? `прогноз неполный: не определены координаты ${unlocatedAddresses.length} заказ(а) из ${options.totalOrders ?? unlocatedAddresses.length}, эти этапы не построены — время по рейсу рассчитано не полностью`
+            : forecast.reliabilityNote,
   }
 }
 

@@ -164,7 +164,10 @@ export default function MobileProfilePage() {
       }
       toast.success("Данные сохранены")
       setEditOpen(false)
-      // Имя и телефон на экране берутся из сессии — обновляем и сразу, и с сервера
+      // Имя и телефон на экране берутся из загруженной карточки водителя, а
+      // она имеет приоритет над сессией. Обновляем и её, иначе после
+      // сохранения страница продолжит показывать старое имя до перезагрузки.
+      setDriver((prev) => (prev ? { ...prev, name, phone } : prev))
       updateDriver({ name, phone })
       await refresh()
     } catch (error) {

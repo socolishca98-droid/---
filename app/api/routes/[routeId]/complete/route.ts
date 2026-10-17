@@ -1,27 +1,18 @@
 // app/api/routes/[routeId]/complete/route.ts
-// Завершение рейса: закрывает незавершённые точки (с force), переводит Route
-// в статус completed, фиксирует время финиша и итоги, освобождает водителя
-// и машину, пишет событие в таймлайн рейса.
+// Завершение рейса диспетчером. Сама логика завершения живёт в
+// lib/routes/complete-route.ts — тем же путем идёт водительский finish_trip
+// (POST /api/m/route/stage). Здесь только доступ, разбор тела и HTTP-ответ.
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
-import { createNotification, deliverNotificationPush, type NotificationInput } from "@/lib/notifications/create"
-import { estimateFuelL, fuelAfterRoute } from "@/lib/fleet/fuel"
 
+import { deliverNotificationPush } from "@/lib/notifications/create"
 import {
   canDriverAccessRoute,
   forbidden,
   requireAnySession,
 } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
-import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
-import {
-  changeRouteStatus,
-  ensureRouteRow,
-  recalcRoute,
-  routeOrdersOrderBy,
-  serializeRoute,
-} from "@/lib/routes/service"
+import { completeRoute } from "@/lib/routes/complete-route"
 
 type RouteParams = {
   params: Promise<{ routeId: string }>
@@ -50,209 +41,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json().catch(() => ({}))
     const { force = false } = body as { force?: boolean }
 
-    let route = await prisma.route.findFirst({
-      where: scopedWhere(org.organizationId, { id: routeId }),
-      include: {
-        orders: {
-          where: scopedWhere(org.organizationId, {}),
-          orderBy: routeOrdersOrderBy,
-        },
-      },
+    const result = await completeRoute({
+      routeId,
+      organizationId: org.organizationId,
+      force,
+      actorName: auth.value.kind === "driver" ? auth.value.driver.name : auth.value.user.name,
     })
 
-    if (!route) {
-      const legacyOrders = await prisma.order.count({
-        where: scopedWhere(org.organizationId, { routeId }),
-      })
-      if (legacyOrders === 0) {
-        return NextResponse.json(
-          { success: false, error: "Маршрут не найден" },
-          { status: 404 },
-        )
-      }
-      // исторический routeId без строки Route — добираем запись
-      await ensureRouteRow(prisma, { organizationId: org.organizationId, routeId })
-      route = await prisma.route.findFirst({
-        where: scopedWhere(org.organizationId, { id: routeId }),
-        include: {
-          orders: {
-            where: scopedWhere(org.organizationId, {}),
-            orderBy: routeOrdersOrderBy,
-          },
-        },
-      })
-    }
-
-    if (!route) {
-      return NextResponse.json(
-        { success: false, error: "Маршрут не найден" },
-        { status: 404 },
-      )
-    }
-
-    const orders = route.orders
-    const assignedDriverId = route.driverId
-    const assignedVehicleId = route.vehicleId
-
-    const pendingOrders = (orders as (RouteOrderLike & { id: string })[]).filter(
-      (o) => !["delivered", "cancelled", "rejected"].includes(o.status),
-    )
-
-    if (pendingOrders.length > 0 && !force) {
+    if (!result.ok) {
       return NextResponse.json(
         {
           success: false,
-          error: "Не все точки маршрута завершены",
-          pendingOrders: pendingOrders.map((o) => ({
-            id: o.id,
-            from: o.routeFrom,
-            to: o.routeTo,
-            status: o.status,
-          })),
+          error: result.error,
+          ...(result.pendingOrders ? { pendingOrders: result.pendingOrders } : {}),
         },
-        { status: 400 },
+        { status: result.status },
       )
     }
 
-    const now = new Date()
-
-    // Интерактивная транзакция делает десяток записей (точки, статус, топливо,
-    // водитель, машина, уведомление): на медленной базе пяти секунд по умолчанию
-    // не хватает, и завершение рейса падало с «Transaction not found».
-    let completionPush: NotificationInput | undefined
-    await prisma.$transaction(async (tx) => {
-      if (force && pendingOrders.length > 0) {
-        await tx.order.updateMany({
-          where: scopedWhere(org.organizationId, { id: { in: pendingOrders.map((o) => o.id) } }),
-          data: { status: "delivered", deliveredAt: now, updatedAt: now },
-        })
-      }
-
-      // статус + время финиша + событие в таймлайн
-      const transition = await changeRouteStatus(tx, routeId, {
-        status: "completed",
-        completedAt: now,
-        reason: force && pendingOrders.length > 0 ? "Завершён принудительно" : "Рейс завершён",
-        actorName: auth.value.kind === "driver" ? auth.value.driver.name : auth.value.user.name,
-      }, org.organizationId)
-      if (!transition.ok) throw new Error(transition.error)
-
-      // пересчёт итогов рейса по заказам
-      const summary = await recalcRoute(tx, routeId, org.organizationId)
-
-      // Топливо: завершённый рейс списывает оценочный расход из бака машины.
-      // Расстояние — сумма плеч заказов, загрузка — их суммарный вес: гружёная
-      // машина ест больше (lib/fleet/fuel.ts).
-      if (assignedVehicleId) {
-        const vehicle = await tx.vehicle.findFirst({
-          where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
-          select: {
-            id: true,
-            capacity: true,
-            fuelTankL: true,
-            fuelConsumptionPer100: true,
-            fuelLevelL: true,
-          },
-        })
-        if (vehicle && vehicle.fuelLevelL !== null && vehicle.fuelConsumptionPer100 !== null) {
-          const distanceKm = orders.reduce((sum, order) => sum + (order.distance || 0), 0)
-          const loadKg = orders.reduce((sum, order) => sum + (order.weight || 0), 0)
-          const used = estimateFuelL(vehicle, distanceKm, loadKg)
-          const level = fuelAfterRoute(vehicle, used)
-          if (level !== null && level !== vehicle.fuelLevelL) {
-            await tx.vehicle.update({
-              // защита в глубину: машина уже найдена по scopedWhere, но
-              // обновление тоже не выходит за пределы организации
-              where: { id: vehicle.id, organizationId: org.organizationId },
-              data: { fuelLevelL: level },
-            })
-          }
-        }
-      }
-
-      if (assignedDriverId) {
-        const otherActiveOrders = await tx.order.count({
-          where: scopedWhere(org.organizationId, {
-            assignedDriverId,
-            routeId: { not: routeId },
-            status: { in: [...OCCUPYING_ORDER_STATUSES] },
-          }),
-        })
-
-        if (otherActiveOrders === 0) {
-          await tx.driver.updateMany({
-            where: scopedWhere(org.organizationId, { id: assignedDriverId }),
-            data: { status: "available" },
-          })
-        }
-
-        await tx.driverShift.updateMany({
-          where: scopedWhere(org.organizationId, { driverId: assignedDriverId, endedAt: null }),
-          data: { endedAt: now, status: "completed" },
-        })
-
-        completionPush = {
-          organizationId: org.organizationId,
-          userId: assignedDriverId,
-          userRole: "driver",
-          type: "route_completed",
-          title: "Рейс завершён",
-          message: `Маршрут из ${orders.length} точек успешно завершён`,
-          routeId,
-          priority: "normal",
-        }
-        await createNotification(tx, completionPush, { push: false }) // пуш — после коммита
-
-        await tx.driver.updateMany({
-          where: scopedWhere(org.organizationId, { id: assignedDriverId }),
-          data: { ordersCompleted: { increment: summary.deliveredOrders } },
-        })
-      }
-
-      if (assignedVehicleId) {
-        const otherActiveOrders = await tx.order.count({
-          where: scopedWhere(org.organizationId, {
-            assignedVehicleId,
-            routeId: { not: routeId },
-            status: { in: [...OCCUPYING_ORDER_STATUSES] },
-          }),
-        })
-
-        if (otherActiveOrders === 0) {
-          await tx.vehicle.updateMany({
-            where: scopedWhere(org.organizationId, { id: assignedVehicleId }),
-            data: { status: "available" },
-          })
-        }
-      }
-    }, { maxWait: 10_000, timeout: 30_000 })
-
     // Пуш — после коммита: внутри транзакции SQLite заблокировал бы базу
-    if (completionPush) {
-      await deliverNotificationPush(completionPush)
+    if (result.completionPush) {
+      await deliverNotificationPush(result.completionPush)
     }
-
-    const updated = await prisma.route.findFirst({
-      where: scopedWhere(org.organizationId, { id: routeId }),
-    })
-    const finalOrders = (await prisma.order.findMany({
-      where: scopedWhere(org.organizationId, { routeId }),
-      orderBy: routeOrdersOrderBy,
-    })) as (RouteOrderLike & { id: string })[]
 
     return NextResponse.json({
       success: true,
       message: "Рейс завершён",
-      route: updated ? serializeRoute(updated) : null,
-      stats: {
-        ordersCount: finalOrders.length,
-        totalDistance: finalOrders.reduce((sum, o) => sum + (o.distance || 0), 0),
-        totalWeight: finalOrders.reduce((sum, o) => sum + (o.weight || 0), 0),
-        totalRevenue: finalOrders
-          .filter((o) => o.status !== "cancelled" && o.status !== "rejected")
-          .reduce((sum, o) => sum + (o.price || 0), 0),
-        additionalLoads: finalOrders.filter((o) => o.isAdditionalLoad).length,
-      },
+      route: result.route,
+      stats: result.stats,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"

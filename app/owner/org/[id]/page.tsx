@@ -119,11 +119,21 @@ export default function OwnerOrgPage() {
 
   const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
   const notFound = Boolean(overview.data && !org)
+  // Ошибки загрузки не должны выглядеть как пустые разделы: «Сотрудников пока
+  // нет» при упавшем API — это ложное сообщение о состоянии компании.
+  const overviewError = overview.error && !forbidden ? overview.error : null
+  const accountsError = accounts.error ?? null
+  const journalError = journal.error ?? null
 
   async function enter(item: { kind: "staff" | "driver"; id: string; name: string }) {
     setBusyId(item.id)
     await enterAccount(item)
     setBusyId(null)
+  }
+
+  /** Закрытый доступ: войти в такую учётную запись нельзя — сессия не заработает. */
+  function accessClosed(status: string): boolean {
+    return status === "suspended" || status === "pending"
   }
 
   /** Закрыть/открыть доступ и «Завершить сессии» — через PATCH /api/admin/accounts/[id]. */
@@ -132,7 +142,7 @@ export default function OwnerOrgPage() {
       return
     }
     setBusyId(`${action}:${userId}`)
-    const result = await apiSend<{ message?: string }>(
+    const result = await apiSend<{ message?: string; warning?: string }>(
       `/api/admin/accounts/${encodeURIComponent(userId)}`,
       "PATCH",
       { action },
@@ -142,6 +152,9 @@ export default function OwnerOrgPage() {
       toast.error(result.error || "Не получилось. Попробуйте ещё раз.")
       return
     }
+    // Действие выполнено, но журнал не сохранился — об этом надо сказать:
+    // иначе операция над доступом проходит бесследно.
+    if (result.data?.warning) toast.warning(result.data.warning)
     toast.success(result.data?.message ?? "Готово")
     accounts.reload()
     journal.reload()
@@ -225,6 +238,19 @@ export default function OwnerOrgPage() {
         </div>
       ) : null}
 
+      {overviewError ? (
+        <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-5">
+          <p className="text-[14px] text-destructive">Не удалось загрузить компанию: {overviewError}</p>
+          <button
+            type="button"
+            onClick={() => overview.reload()}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-[13px] text-foreground transition-colors duration-200 hover:bg-secondary"
+          >
+            Повторить
+          </button>
+        </div>
+      ) : null}
+
       {org ? (
         <>
           <header
@@ -260,6 +286,17 @@ export default function OwnerOrgPage() {
                   <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Загружаю…
                   </p>
+                ) : accountsError ? (
+                  <div className="px-4 py-4">
+                    <p className="text-[13px] text-destructive">Не удалось загрузить сотрудников: {accountsError}</p>
+                    <button
+                      type="button"
+                      onClick={() => accounts.reload()}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[12.5px] transition-colors duration-200 hover:bg-secondary"
+                    >
+                      Повторить
+                    </button>
+                  </div>
                 ) : (group?.users ?? []).length === 0 ? (
                   <p className="px-4 py-4 text-[13px] text-muted-foreground">Сотрудников пока нет</p>
                 ) : (
@@ -289,12 +326,17 @@ export default function OwnerOrgPage() {
                             </div>
                             <button
                               type="button"
-                              disabled={busyId === person.id}
+                              disabled={busyId === person.id || accessClosed(person.status)}
+                              title={
+                                accessClosed(person.status)
+                                  ? "Доступ закрыт — войти в эту учётную запись нельзя"
+                                  : undefined
+                              }
                               onClick={() => enter({ kind: "staff", id: person.id, name: person.name })}
                               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
                             >
                               {busyId === person.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                              Войти
+                              {accessClosed(person.status) ? "Доступ закрыт" : "Войти"}
                             </button>
                           </div>
                           <div className="mt-2">
@@ -309,7 +351,22 @@ export default function OwnerOrgPage() {
 
               {/* Водители */}
               <Panel title={`Водители · ${group?.drivers.length ?? org.drivers}`}>
-                {(group?.drivers ?? []).length === 0 ? (
+                {accounts.loading && !group ? (
+                  <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Загружаю…
+                  </p>
+                ) : accountsError ? (
+                  <div className="px-4 py-4">
+                    <p className="text-[13px] text-destructive">Не удалось загрузить водителей: {accountsError}</p>
+                    <button
+                      type="button"
+                      onClick={() => accounts.reload()}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[12.5px] transition-colors duration-200 hover:bg-secondary"
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : (group?.drivers ?? []).length === 0 ? (
                   <p className="px-4 py-4 text-[13px] text-muted-foreground">Водителей пока нет</p>
                 ) : (
                   <ul className="divide-y divide-border">
@@ -336,12 +393,17 @@ export default function OwnerOrgPage() {
                             </div>
                             <button
                               type="button"
-                              disabled={busyId === driver.id}
+                              disabled={busyId === driver.id || accessClosed(driver.userStatus ?? "active")}
+                              title={
+                                accessClosed(driver.userStatus ?? "active")
+                                  ? "Доступ закрыт — войти в эту учётную запись нельзя"
+                                  : undefined
+                              }
                               onClick={() => enter({ kind: "driver", id: driver.id, name: driver.name })}
                               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
                             >
                               {busyId === driver.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                              Войти как водитель
+                              {accessClosed(driver.userStatus ?? "active") ? "Доступ закрыт" : "Войти как водитель"}
                             </button>
                           </div>
                           <div className="mt-2">
@@ -375,7 +437,18 @@ export default function OwnerOrgPage() {
                     </p>
                   </li>
                 ))}
-                {journal.data && journal.data.items.length === 0 ? (
+                {journalError ? (
+                  <li className="px-4 py-4">
+                    <p className="text-[13px] text-destructive">Журнал не загрузился: {journalError}</p>
+                    <button
+                      type="button"
+                      onClick={() => journal.reload()}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[12.5px] transition-colors duration-200 hover:bg-secondary"
+                    >
+                      Повторить
+                    </button>
+                  </li>
+                ) : journal.data && journal.data.items.length === 0 ? (
                   <li className="px-4 py-4 text-[13px] text-muted-foreground">Действий в этой компании пока нет</li>
                 ) : null}
               </ul>

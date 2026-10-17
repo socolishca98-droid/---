@@ -74,6 +74,12 @@ function withIdentity(
     headers.set(IDENTITY_HEADERS.role, payload.role)
     headers.set(IDENTITY_HEADERS.sessionId, payload.jti)
   }
+  // Идентификатор запроса для /api/*: один и тот же номер виден и в журнале
+  // действий, и в логах — по нему можно собрать всё, что произошло вокруг
+  // одной операции (например, «вход как»).
+  if (request.nextUrl.pathname.startsWith("/api/") && !headers.get("x-request-id")) {
+    headers.set("x-request-id", crypto.randomUUID())
+  }
   return NextResponse.next({ request: { headers } })
 }
 

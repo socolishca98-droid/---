@@ -1,0 +1,206 @@
+{
+  "title": "A/B/N — организация, доступ, изоляция",
+  "summary": {
+    "VERIFIED": 20,
+    "PARTIAL": 2,
+    "BROKEN": 3,
+    "MISSING": 0,
+    "NOT_TESTED": 1
+  },
+  "steps": [
+    {
+      "scenario": "A",
+      "name": "вход владельца компании",
+      "status": 200,
+      "note": "HTTP 200, success=true"
+    },
+    {
+      "scenario": "A",
+      "name": "просмотр своей организации",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "A",
+      "name": "список сотрудников",
+      "status": 200,
+      "note": "HTTP 200, сотрудников: 6",
+      "count": 6
+    },
+    {
+      "scenario": "A",
+      "name": "роль диспетчера (logist) используется",
+      "status": "PARTIAL",
+      "note": "пользователей с ролью logist: 0; роли в компании: driver,admin",
+      "roles": [
+        "driver",
+        "admin"
+      ],
+      "logists": 0
+    },
+    {
+      "scenario": "A",
+      "name": "создание инвайт-кода для сотрудника",
+      "status": 200,
+      "note": "HTTP 200",
+      "code": "HE75-APJG-E5ZS"
+    },
+    {
+      "scenario": "A",
+      "name": "инвайт-код видно в списке",
+      "status": "VERIFIED",
+      "note": "HTTP 200, найдено: true, кодов в списке: 3"
+    },
+    {
+      "scenario": "A",
+      "name": "найм сотрудника по инвайт-коду",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "A",
+      "name": "новый сотрудник входит и видит данные своей организации",
+      "status": "BROKEN",
+      "note": "HTTP 403, роль: undefined"
+    },
+    {
+      "scenario": "A",
+      "name": "новый сотрудник читает сводку",
+      "status": "BROKEN",
+      "note": "HTTP 401"
+    },
+    {
+      "scenario": "A",
+      "name": "уборка тестового сотрудника",
+      "status": "VERIFIED",
+      "note": "удалено записей: 1"
+    },
+    {
+      "scenario": "A",
+      "name": "отзыв инвайт-кода",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "A",
+      "name": "регистрация новой организации",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "вход владельца платформы",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "владелец платформы: обзор всех организаций",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "админ компании не попадает в /api/admin/*",
+      "status": 403,
+      "note": "HTTP 403 (ожидалось 401/403)"
+    },
+    {
+      "scenario": "B",
+      "name": "без входа данные недоступны",
+      "status": 401,
+      "note": "HTTP 401 (ожидалось 401)"
+    },
+    {
+      "scenario": "B",
+      "name": "подделанные заголовки личности не работают",
+      "status": 401,
+      "note": "HTTP 401 (ожидалось 401)"
+    },
+    {
+      "scenario": "B",
+      "name": "восстановление пароля отвечает",
+      "status": 502,
+      "note": "HTTP 502 Не удалось отправить письмо. Обратитесь к администратору — он сменит пароль вручную",
+      "error": "Не удалось отправить письмо. Обратитесь к администратору — он сменит пароль вручную",
+      "mailDriver": "resend"
+    },
+    {
+      "scenario": "B",
+      "name": "смена своего пароля",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "возврат исходного пароля",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "выход завершает сессию",
+      "status": "VERIFIED",
+      "note": "logout HTTP 200, после выхода HTTP 401",
+      "logout": 200,
+      "after": 401
+    },
+    {
+      "scenario": "N",
+      "name": "в песочнице несколько организаций",
+      "status": "VERIFIED",
+      "note": "организаций: 3",
+      "orgs": [
+        "ИП Фролов Иван Александрович",
+        "ООО С Согласием",
+        "Аудит-Орг 1792229051563"
+      ]
+    },
+    {
+      "scenario": "N",
+      "name": "чужой заказ недоступен",
+      "status": "NOT_TESTED",
+      "note": "в чужой организации нет заказов"
+    },
+    {
+      "scenario": "N",
+      "name": "список заказов без чужих",
+      "status": "VERIFIED",
+      "note": "HTTP 200, заказов: 35, чужих: 0",
+      "total": 35,
+      "foreign": 0
+    },
+    {
+      "scenario": "N",
+      "name": "вход в чужую организацию — только владелец платформы",
+      "status": 400,
+      "note": "HTTP 400 (impersonate запрещён)"
+    },
+    {
+      "scenario": "N",
+      "name": "админ компании не может войти в чужую организацию",
+      "status": 403,
+      "note": "HTTP 403 (ожидалось отказ)"
+    }
+  ],
+  "issues": [
+    {
+      "scenario": "A",
+      "name": "новый сотрудник входит и видит данные своей организации",
+      "status": "BROKEN",
+      "note": "HTTP 403, роль: undefined"
+    },
+    {
+      "scenario": "A",
+      "name": "новый сотрудник читает сводку",
+      "status": "BROKEN",
+      "note": "HTTP 401"
+    },
+    {
+      "scenario": "N",
+      "name": "вход в чужую организацию — только владелец платформы",
+      "status": "BROKEN",
+      "note": "HTTP 400 (impersonate запрещён)"
+    }
+  ]
+}

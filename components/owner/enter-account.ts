@@ -12,11 +12,19 @@ export async function enterAccount(account: {
   fallbackHref?: string
 }): Promise<void> {
   const body = account.kind === "driver" ? { driverId: account.id } : { userId: account.id }
-  const result = await apiSend<{ redirectTo?: string }>("/api/admin/impersonate", "POST", body)
+  const result = await apiSend<{ redirectTo?: string; warning?: string }>(
+    "/api/admin/impersonate",
+    "POST",
+    body,
+  )
   if (!result.ok) {
+    // Например, доступ к учётной записи закрыт: сессия всё равно не заработала
+    // бы, и владелец уехал бы в чужой кабинет чтобы сразу выпасть на вход.
     toast.error(result.error || "Не удалось войти в аккаунт")
     return
   }
+  // Вход выполнен, но запись в журнал не сохранилась — сказать об этом вслух.
+  if (result.data?.warning) toast.warning(result.data.warning)
   toast.success(`Открываю аккаунт: ${account.name}`)
   const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? account.fallbackHref ?? "/lm"
   // Полная перезагрузка: cookie сессии меняется, клиентские контексты читают её заново

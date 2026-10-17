@@ -686,12 +686,28 @@ describe("завершение рейса", () => {
     expect(stages.length).toBe(5)
     expect(stages.every((stage) => stage.endedAt)).toBe(true)
     // На каждую команду водителя — ровно одно событие stage_command.
-    // Дополнительно возможна запись о смене статуса рейса (активен →
-    // завершён), но НЕ второй finish_trip.
+    // Повторного finish_trip быть не должно: их ровно столько же, сколько команд.
     const events = memoryDb.rows("routeEvent").filter((row) => row.routeId === world.routeA)
     const stageCommands = events.filter((event) => event.type === "stage_command")
     expect(stageCommands).toHaveLength(commands.length)
-    expect(events.filter((event) => event.type === "status")).toHaveLength(1)
+
+    // Смены статуса рейса — отдельные события типа "status". Их ровно две:
+    // reйс стал активным при начале этапа и завершён при finish_trip.
+    //
+    // Раньше здесь ожидалась ровно ОДНА запись: водительский finish_trip не
+    // фиксировал смену статуса в таймлайне, потому что делал свой путь —
+    // только prisma.route.update. Теперь оба входа (диспетчер и водитель)
+    // идут через completeRoute → changeRouteStatus, который пишет событие.
+    // Проверяем именно смысл: переход в completed записан один раз и назван.
+    const statusEvents = events.filter((event) => event.type === "status")
+    const completedEvents = statusEvents.filter((event) => event.status === "completed")
+    expect(completedEvents).toHaveLength(1)
+    expect(JSON.parse(String(completedEvents[0].data))).toMatchObject({
+      from: "in_transit",
+      to: "completed",
+    })
+    // Событий о статусе не больше, чем реальных смен статуса
+    expect(statusEvents.length).toBeLessThanOrEqual(2)
 
     // Факт записан в прогноз, а исходный прогноз не перезаписан
     const forecasts = memoryDb.rows("etaForecast").filter((row) => row.routeId === world.routeA)

@@ -58,7 +58,21 @@ interface DriverItem {
   currentLocation?: string | null
   status: "available" | "busy" | "maintenance" | "offline" | string
   ordersCompleted: number
-  rating: number
+  /**
+   * Рейтинг приходит объектом из GET /api/drivers (контракт
+   * lib/drivers/rating.ts: DriverRating) либо null, если доставок ещё нет.
+   * Прежнее объявление `rating: number` расходилось с API: интерфейс выводил
+   * «[object Object]» и падал Error Boundary-ом на любой карточке водителя
+   * с доставками. Теперь тип совпадает с сервером, а рисуется score — как в
+   * components/fleet/driver-card.tsx.
+   */
+  rating?: {
+    deliveredTotal: number
+    onTime: number | null
+    docs: number | null
+    score: number
+    grade: string
+  } | null
   licenseNumber?: string | null
   vehicle?: {
     id: string
@@ -268,10 +282,14 @@ export default function DriversPage() {
   const totalCount = drivers.length
   const availableCount = drivers.filter((d: any) => d.status === "available").length
   const busyCount = drivers.filter((d: any) => d.status === "busy").length
+  // Средний рейтинг считается только по водителям, у которых он есть:
+  // rating === null означает «доставок ещё нет», а не «ноль баллов», и
+  // усреднение таких нулей вместе с оценками занижало бы результат.
+  const rated = drivers.filter((d: any) => d.rating && typeof d.rating.score === "number")
   const avgRating =
-    totalCount > 0
-      ? (drivers.reduce((sum: any, d: any) => sum + (d.rating || 5), 0) / totalCount).toFixed(1)
-      : "5.0"
+    rated.length > 0
+      ? Math.round(rated.reduce((sum: number, d: any) => sum + d.rating.score, 0) / rated.length)
+      : null
 
   return (
     <div className="min-h-screen text-foreground">
@@ -337,8 +355,14 @@ export default function DriversPage() {
             </Card>
             <Card className="bg-card/50 backdrop-blur border-border">
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-primary">{avgRating}</div>
-                <div className="text-xs text-muted-foreground mt-1">Средний рейтинг</div>
+                <div className="text-2xl font-bold text-primary">
+                  {avgRating !== null ? avgRating : "—"}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {avgRating !== null
+                    ? `Средний рейтинг · оценок: ${rated.length}`
+                    : "Средний рейтинг · оценок нет"}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -535,7 +559,7 @@ export default function DriversPage() {
                         <div className="flex items-center gap-1 text-amber-400">
                           <Star className="h-3.5 w-3.5 fill-amber-400" />
                           <span className="font-semibold text-foreground">
-                            {driver.rating || 5.0}
+                            {driver.rating ? driver.rating.score : "—"}
                           </span>
                         </div>
                         <div className="text-muted-foreground">

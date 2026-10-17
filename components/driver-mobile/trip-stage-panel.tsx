@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle,
   Clock,
   Loader2,
@@ -84,6 +85,10 @@ interface TripData {
   }
   stages: TripStage[]
   dataQuality: string[]
+  /** Надёжность прогноза: false — время прибытия нельзя использовать как ориентир */
+  reliable?: boolean
+  /** Почему прогноз ненадёжен (геокодер не справился, рейс завершён, …) */
+  reliabilityNote?: string | null
 }
 
 export interface TripStagePanelProps {
@@ -104,6 +109,13 @@ export interface TripStagePanelProps {
     completionAt: string
     stages: TripStage[]
     dataQuality: string[]
+    /**
+     * Надёжность прогноза и причина её отсутствия. false + note — водителю
+     * нельзя показывать «приеду в 00:45» как ориентир: геокодер мог не
+     * определить часть адресов, и маршрут построен короче реального.
+     */
+    reliable?: boolean
+    reliabilityNote?: string | null
     /** Признак того, что расстояние плеча оценено, а не построено */
     sources?: string[]
     startedAt?: string | null
@@ -396,6 +408,17 @@ export function TripStagePanel({ routeId, trip: tripProp, onRefresh }: TripStage
             </div>
           ))}
         </div>
+      ) : null}
+
+      {/* ── Время прибытия недостоверно: говорим прямо ── */}
+      {/* Предупреждения ниже перечисляют причины мелким шрифтом; здесь —
+          главный вердикт, чтобы число «приеду в ...» не читалось как обещание. */}
+      {trip && trip.reliable === false ? (
+        <p className="flex items-start gap-1.5 border-t border-gray-800 pt-2 text-[11px] text-red-400">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          Время прибытия недостоверно
+          {trip.reliabilityNote ? `: ${trip.reliabilityNote}` : "."}
+        </p>
       ) : null}
 
       {/* ── Честное предупреждение о качестве данных ── */}

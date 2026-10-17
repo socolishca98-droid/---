@@ -353,3 +353,40 @@ describe("calculateTripEta — прогноз по шкале этапов", () 
     expect(tripStopsSec(result.stages)).toBe(result.remaining.stopsSec)
   })
 })
+
+describe("надёжность ETA при неполных данных", () => {
+  it("недостоверный geокодинг = reliable false, даже когда нарушения нет", () => {
+    // Регрессия: reliable брался только из forecast.reliable (нет нарушений,
+    // маршрут построен). При отказе геокодера часть заказов не давала этапов,
+    // оставшиеся точки складывались в более короткий и правдоподобный
+    // маршрут, и reliable оставался true — диспетчер принимал число за
+    // ориентир, хотя рейс рассчитан не полностью. При этом dataQuality.
+    // allLegsGeocoded честно показывал false: два поля противоречили.
+    const stages = buildRouteStages(orders(), { origin: { point: BASE } })
+    const result = calculateTripEta(stages, {
+      now: NOW,
+      timeZone: TZ,
+      unlocatedOrders: ["Москва, ул. Тверская, 1"],
+      totalOrders: 3,
+    })
+
+    expect(result.dataQuality.allLegsGeocoded).toBe(false)
+    expect(result.reliable).toBe(false)
+    expect(result.reliabilityNote).toContain("не определены координаты 1 заказ")
+    expect(result.dataQuality.warnings.join(" ")).toContain("Тверская")
+  })
+
+  it("полные данные без нарушений = reliable true", () => {
+    const stages = buildRouteStages(orders(), { origin: { point: BASE } })
+    const result = calculateTripEta(stages, {
+      now: NOW,
+      timeZone: TZ,
+      unlocatedOrders: [],
+      totalOrders: 3,
+    })
+
+    expect(result.dataQuality.allLegsGeocoded).toBe(true)
+    expect(result.reliable).toBe(true)
+    expect(result.reliabilityNote).toBeUndefined()
+  })
+})

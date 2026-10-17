@@ -27,10 +27,22 @@ interface JournalItem {
   createdAt: string
   organizationId: string | null
   organizationName: string | null
+  actorId: string | null
   actorEmail: string | null
+  /** Подстановка, когда почты нет: у водителей её нет вовсе */
+  actorName: string | null
+  actorPhone: string | null
   action: string
   targetType: string
   targetEmail: string | null
+  requestId: string | null
+}
+
+/** Кто выполнил действие: почта, а если её нет — имя и телефон */
+function actorLabel(row: JournalItem): string {
+  if (row.actorEmail) return row.actorEmail
+  const parts = [row.actorName, row.actorPhone].filter(Boolean)
+  return parts.length > 0 ? parts.join(" · ") : "—"
 }
 
 interface JournalResponse {
@@ -169,7 +181,9 @@ export default function OwnerJournalPage() {
                   >
                     <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{formatDateTime(row.createdAt)}</td>
                     <td className="px-4 py-2.5">{row.organizationName ?? <span className="text-muted-foreground">вне компании</span>}</td>
-                    <td className="px-4 py-2.5 text-foreground/90">{row.actorEmail ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-foreground/90" title={row.requestId ? `Запрос ${row.requestId}` : undefined}>
+                      {actorLabel(row)}
+                    </td>
                     <td className="px-4 py-2.5">{actionLabel(row.action)}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{row.targetEmail ?? row.targetType}</td>
                   </tr>
@@ -178,11 +192,24 @@ export default function OwnerJournalPage() {
             </table>
           </div>
 
-          {!first.loading && items.length === 0 && !error ? (
+          {/* Ошибка и пустой результат — разные состояния: молчащий пустой экран
+              выглядит как «всё в порядке», хотя данные просто не загрузились. */}
+          {error ? (
+            <div className="px-4 py-6 text-center">
+              <p className="text-[13px] text-destructive">{error}</p>
+              <button
+                type="button"
+                onClick={() => first.reload()}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary"
+              >
+                Повторить
+              </button>
+            </div>
+          ) : !first.loading && items.length === 0 ? (
             <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">Записей по этим фильтрам нет</p>
           ) : null}
 
-          {items.length < total ? (
+          {!error && items.length < total ? (
             <div className="border-t border-border p-3 text-center">
               <button
                 type="button"

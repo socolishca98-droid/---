@@ -256,6 +256,13 @@ export async function GET(request: NextRequest) {
             // Предупреждения — массив строк: панель водителя показывает их
             // дословно («расстояние оценено по прямой», «погода отключена»)
             dataQuality: trip.dataQuality.warnings,
+            // Надёжность + причина: без них водитель видел «приеду в 00:45»
+            // без оговорки, даже когда часть заказов не геокодировалась и
+            // маршрут построен короче реального. Предупреждения в dataQuality
+            // панель печатает мелким шрифтом; reliable/reliabilityNote дают
+            // ей возможность сказать об ограничении прямо.
+            reliable: trip.reliable,
+            reliabilityNote: trip.reliabilityNote ?? null,
           }
         : null,
       route: route

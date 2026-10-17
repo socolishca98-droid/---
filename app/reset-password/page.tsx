@@ -26,7 +26,10 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password"
+// Минимальную длину пароля берём из lib/auth/constants — файла без node:util.
+// Импорт из lib/auth/password тянул в клиентский бандл node:util, и страница
+// падала на этапе оценки модуля, не показав форму (см. аудит, блокер Б-2).
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth/constants"
 
 /**
  * useSearchParams в Next требует границы Suspense: без неё prerender падает

@@ -1,0 +1,1645 @@
+{
+  "summary": {
+    "VERIFIED": 3,
+    "PARTIAL": 52,
+    "BROKEN": 3,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "results": [
+    {
+      "url": "/login",
+      "status": "PARTIAL",
+      "ms": 2054,
+      "finalUrl": "http://localhost:3000/login",
+      "htmlLength": 21959,
+      "textLength": 405,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/pub_login.png",
+      "sample": "Loginex система управления грузоперевозками Заказы, рейсы и водители в одном окне Живая карта: пробки, ETA и статусы машин Документы, оплаты и отчёты без Exce",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/register",
+      "status": "PARTIAL",
+      "ms": 1837,
+      "finalUrl": "http://localhost:3000/register",
+      "htmlLength": 25596,
+      "textLength": 524,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=YHJgCYC7z7ItAmEk :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=nqYP1k-cQeRiHB3h :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/pub_register.png",
+      "sample": "Loginex доступ к системе для вашей компании Регистрация Создайте организацию для своей компании или присоединитесь к существующей по коду приглашения Своя орг",
+      "note": "ошибки консоли: 2"
+    },
+    {
+      "url": "/forgot-password",
+      "status": "PARTIAL",
+      "ms": 1345,
+      "finalUrl": "http://localhost:3000/forgot-password",
+      "htmlLength": 15832,
+      "textLength": 250,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=YHJgCYC7z7ItAmEk :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=nqYP1k-cQeRiHB3h :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=8szJqCRmgzwYfm7k :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/pub_forgot-password.png",
+      "sample": "Восстановление пароля Укажите почту учётной записи Loginex — пришлём ссылку для смены пароля Email учётной записи Прислать ссылку Водители входят по номеру тел",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/reset-password",
+      "status": "PARTIAL",
+      "ms": 1716,
+      "finalUrl": "http://localhost:3000/reset-password",
+      "htmlLength": 15926,
+      "textLength": 151,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=YHJgCYC7z7ItAmEk :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=nqYP1k-cQeRiHB3h :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=8szJqCRmgzwYfm7k :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/pub_reset-password.png",
+      "sample": "Что-то сломалось Страница не открылась из-за ошибки в приложении. Данные не потеряны — попробуйте открыть страницу заново. Попробовать снова На главную",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/privacy",
+      "status": "PARTIAL",
+      "ms": 1420,
+      "finalUrl": "http://localhost:3000/privacy",
+      "htmlLength": 35673,
+      "textLength": 4000,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=YHJgCYC7z7ItAmEk :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=nqYP1k-cQeRiHB3h :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=8szJqCRmgzwYfm7k :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/pub_privacy.png",
+      "sample": "На главную ДОКУМЕНТЫ СЕРВИСА Политика в отношении персональных данных Редакция от 13 октября 2026 Документ объясняет, какие персональные данные обрабатывает с",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/terms",
+      "status": "PARTIAL",
+      "ms": 1429,
+      "finalUrl": "http://localhost:3000/terms",
+      "htmlLength": 34150,
+      "textLength": 4000,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=YHJgCYC7z7ItAmEk :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=nqYP1k-cQeRiHB3h :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=8szJqCRmgzwYfm7k :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/pub_terms.png",
+      "sample": "На главную ДОКУМЕНТЫ СЕРВИСА Условия использования сервиса Редакция от 13 октября 2026 Документ описывает, на каких условиях работает Loginex TMS: что может п",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/docs",
+      "status": "BROKEN",
+      "ms": 1836,
+      "finalUrl": "http://localhost:3000/login?next=%2Fdocs",
+      "htmlLength": 22009,
+      "textLength": 405,
+      "redirectedToLogin": true,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module evaluation (http://localhost:3000/_nex",
+        "[Sentry disabled] captureException: TypeError: The \"original\" argument must be of type Function\n    at e.promisify (http://localhost:3000/_next/static/chunks/0n6j44778-n9u.js:1:35664)\n    at module ev",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=YHJgCYC7z7ItAmEk :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=nqYP1k-cQeRiHB3h :: net::ERR_ABORTED",
+        "http://localhost:3000/login?_rsc=8szJqCRmgzwYfm7k :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/pub_docs.png",
+      "sample": "Loginex система управления грузоперевозками Заказы, рейсы и водители в одном окне Живая карта: пробки, ETA и статусы машин Документы, оплаты и отчёты без Exce",
+      "note": "ушло на http://localhost:3000/login?next=%2Fdocs вместо содержимого"
+    },
+    {
+      "url": "/login (форма)",
+      "status": "VERIFIED",
+      "note": "вошёл в кабинет"
+    },
+    {
+      "url": "/dashboard",
+      "status": "PARTIAL",
+      "ms": 1829,
+      "finalUrl": "http://localhost:3000/dashboard",
+      "htmlLength": 65463,
+      "textLength": 1318,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_dashboard.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/orders",
+      "status": "PARTIAL",
+      "ms": 1720,
+      "finalUrl": "http://localhost:3000/orders",
+      "htmlLength": 135594,
+      "textLength": 2247,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_orders.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/routes",
+      "status": "PARTIAL",
+      "ms": 1565,
+      "finalUrl": "http://localhost:3000/routes",
+      "htmlLength": 97346,
+      "textLength": 1390,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_routes.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/clients",
+      "status": "BROKEN",
+      "ms": 1644,
+      "finalUrl": "http://localhost:3000/clients",
+      "htmlLength": 55210,
+      "textLength": 1207,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": true,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_clients.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "на странице текст ошибки"
+    },
+    {
+      "url": "/drivers",
+      "status": "PARTIAL",
+      "ms": 1692,
+      "finalUrl": "http://localhost:3000/drivers",
+      "htmlLength": 16244,
+      "textLength": 151,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_drivers.png",
+      "sample": "Что-то сломалось Страница не открылась из-за ошибки в приложении. Данные не потеряны — попробуйте открыть страницу заново. Попробовать снова На главную",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/fleet",
+      "status": "PARTIAL",
+      "ms": 1713,
+      "finalUrl": "http://localhost:3000/fleet",
+      "htmlLength": 92159,
+      "textLength": 1878,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_fleet.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/users",
+      "status": "PARTIAL",
+      "ms": 1660,
+      "finalUrl": "http://localhost:3000/users",
+      "htmlLength": 43217,
+      "textLength": 483,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_users.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/organization",
+      "status": "BROKEN",
+      "ms": 1574,
+      "finalUrl": "http://localhost:3000/organization",
+      "htmlLength": 74296,
+      "textLength": 2355,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": true,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_organization.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "на странице текст ошибки"
+    },
+    {
+      "url": "/reports",
+      "status": "PARTIAL",
+      "ms": 1719,
+      "finalUrl": "http://localhost:3000/reports",
+      "htmlLength": 93880,
+      "textLength": 2855,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_reports.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/payments",
+      "status": "PARTIAL",
+      "ms": 1548,
+      "finalUrl": "http://localhost:3000/payments",
+      "htmlLength": 249387,
+      "textLength": 4000,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_payments.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/fuel",
+      "status": "PARTIAL",
+      "ms": 1585,
+      "finalUrl": "http://localhost:3000/fuel",
+      "htmlLength": 40090,
+      "textLength": 746,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_fuel.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/maintenance",
+      "status": "PARTIAL",
+      "ms": 1697,
+      "finalUrl": "http://localhost:3000/maintenance",
+      "htmlLength": 51289,
+      "textLength": 1232,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_maintenance.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/photos",
+      "status": "PARTIAL",
+      "ms": 1596,
+      "finalUrl": "http://localhost:3000/photos",
+      "htmlLength": 57158,
+      "textLength": 1031,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_photos.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/chat",
+      "status": "PARTIAL",
+      "ms": 1682,
+      "finalUrl": "http://localhost:3000/chat",
+      "htmlLength": 44881,
+      "textLength": 723,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_chat.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/search",
+      "status": "PARTIAL",
+      "ms": 1665,
+      "finalUrl": "http://localhost:3000/search",
+      "htmlLength": 50380,
+      "textLength": 777,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_search.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/settings",
+      "status": "PARTIAL",
+      "ms": 1641,
+      "finalUrl": "http://localhost:3000/settings",
+      "htmlLength": 63499,
+      "textLength": 1879,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_settings.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/audit",
+      "status": "PARTIAL",
+      "ms": 1663,
+      "finalUrl": "http://localhost:3000/audit",
+      "htmlLength": 97960,
+      "textLength": 4000,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/staff_audit.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 3"
+    },
+    {
+      "url": "/owner",
+      "status": "PARTIAL",
+      "ms": 1719,
+      "finalUrl": "http://localhost:3000/owner",
+      "htmlLength": 64880,
+      "textLength": 1318,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/owner_owner.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 4"
+    },
+    {
+      "url": "/owner/journal",
+      "status": "PARTIAL",
+      "ms": 1718,
+      "finalUrl": "http://localhost:3000/owner/journal",
+      "htmlLength": 65596,
+      "textLength": 1318,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D for the full message or use the non-mi",
+        "[Sentry disabled] captureException: Error: Minified React error #31; visit https://react.dev/errors/31?args[]=object%20with%20keys%20%7BdeliveredTotal%2C%20onTime%2C%20docs%2C%20score%2C%20grade%7D fo",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ],
+      "failedRequests": [],
+      "shot": "docs/audit-screens/owner_owner_journal.png",
+      "sample": "Loginex Дашборд Мобильная панель Заказы 3 Поиск грузов Маршруты Автопарк Топливо Обслуживание Клиенты Фото Чат 2 Оплаты Отчёты Время водителей Журнал Сотрудники",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/lm (вход)",
+      "status": "VERIFIED",
+      "note": "мобильный вход выполнен"
+    },
+    {
+      "url": "/lm/map",
+      "status": "PARTIAL",
+      "ms": 1625,
+      "finalUrl": "http://localhost:3000/lm/map",
+      "htmlLength": 23478,
+      "textLength": 105,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_map.png",
+      "sample": "Карта Где сейчас машины 4 ИА Рейсы · 22 Все Машины на карте 4 только что Главная Заказы Рейсы Карта Ещё",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/routes",
+      "status": "PARTIAL",
+      "ms": 1415,
+      "finalUrl": "http://localhost:3000/lm/routes",
+      "htmlLength": 31642,
+      "textLength": 802,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_routes.png",
+      "sample": "Рейсы 7 всего 4 ИА Помощник сборки Собрал 2 рейса — проверьте и предложите 2 Активные 4 Все 7 Завершённые 3 Домодедово → Калуга Запланирован Фёдоров Дмитри",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/orders/new",
+      "status": "PARTIAL",
+      "ms": 1463,
+      "finalUrl": "http://localhost:3000/lm/orders/new",
+      "htmlLength": 24550,
+      "textLength": 602,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_orders_new.png",
+      "sample": "Новый заказ Два поля — и заказ готов 4 ИА 1 Откуда и куда Обязательное. Города подставим из прошлых заказов. Откуда Куда 2 Груз Можно пропустить: вес и о",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/orders",
+      "status": "PARTIAL",
+      "ms": 1499,
+      "finalUrl": "http://localhost:3000/lm/orders",
+      "htmlLength": 100767,
+      "textLength": 4000,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_orders.png",
+      "sample": "Заказы 33 в работе · 4 просрочено 4 ИА 33 В работе 2 Сегодня 4 Просрочено 36 Все Потяните вниз Ищем машину 2 Договариваемся 3 В рейсе 3 Документы 1 Назначение",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/routes/assistant",
+      "status": "PARTIAL",
+      "ms": 1637,
+      "finalUrl": "http://localhost:3000/lm/routes/assistant",
+      "htmlLength": 39083,
+      "textLength": 2500,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_routes_assistant.png",
+      "sample": "Помощник сборки Готовые рейсы из согласованных заказов 4 ИА Собрал 2 рейса из 2 заказов Согласованные заказы, которые ещё не в рейсе. Проверьте состав и пре",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/users",
+      "status": "PARTIAL",
+      "ms": 1569,
+      "finalUrl": "http://localhost:3000/lm/users",
+      "htmlLength": 18256,
+      "textLength": 273,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_users.png",
+      "sample": "Сотрудники Всего 0 4 ИА Ожидают Активные Доступ закрыт Все Заявок нет Новые сотрудники появятся здесь после регистрации по коду приглашения. Заявки появляю",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/organization",
+      "status": "PARTIAL",
+      "ms": 1515,
+      "finalUrl": "http://localhost:3000/lm/organization",
+      "htmlLength": 29572,
+      "textLength": 845,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_organization.png",
+      "sample": "Организация ИП Фролов Иван Александрович 4 ИА ИП Фролов Иван Александрович Ваша роль: Администратор 1 Сотрудники 0 Ждут одобрения 5 Водители 6 Машин",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/payments",
+      "status": "PARTIAL",
+      "ms": 1582,
+      "finalUrl": "http://localhost:3000/lm/payments",
+      "htmlLength": 83916,
+      "textLength": 3863,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_payments.png",
+      "sample": "Оплаты Всего по заказам 2 053 002 ₽ 4 ИА 86 000 ₽ Получено 1 967 002 ₽ Ждём оплаты 34 заказа 0 ₽ Просрочено 0 заказов 724 000 ₽ С отсрочкой 8 заказов Кому дол",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/reports",
+      "status": "PARTIAL",
+      "ms": 1505,
+      "finalUrl": "http://localhost:3000/lm/reports",
+      "htmlLength": 26767,
+      "textLength": 1535,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_reports.png",
+      "sample": "Отчёты Последние 30 дней 4 ИА 2 053 002 ₽ Выручка 0 ₽ Расходы 2 053 002 ₽ Прибыль маржа 100% 36 Заказов доставлено 3 Что требует решения Обновить Просрочек п",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/fuel",
+      "status": "PARTIAL",
+      "ms": 1476,
+      "finalUrl": "http://localhost:3000/lm/fuel",
+      "htmlLength": 19267,
+      "textLength": 281,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_fuel.png",
+      "sample": "Топливо за 30 дней 4 ИА 7 дней 30 дней 90 дней 0 ₽ Потрачено 0 Заправок — — Средняя цена 0 Перерасход машин с расходом выше нормы По машинам Записей нет Чек",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/photos",
+      "status": "PARTIAL",
+      "ms": 1442,
+      "finalUrl": "http://localhost:3000/lm/photos",
+      "htmlLength": 18012,
+      "textLength": 176,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_photos.png",
+      "sample": "Фото от водителей 3 снимка 4 ИА Все До погрузки После погрузки Повреждения Чеки Накладные Чек 12 окт, 21:46 Чек 12 окт, 21:41 Чек 12 окт, 21:39 Главная Заказы",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/chat",
+      "status": "PARTIAL",
+      "ms": 1487,
+      "finalUrl": "http://localhost:3000/lm/chat",
+      "htmlLength": 21513,
+      "textLength": 338,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_chat.png",
+      "sample": "Чат 2 новых сообщения 4 ИА Потяните вниз ИС Иванов Сергей Петрович 13 окт 🆘 SOS: 🚨 ДТП / Авария - живая проверка пушей 2 КА Кузнецов Андрей Владимирович В р",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/notifications",
+      "status": "PARTIAL",
+      "ms": 1359,
+      "finalUrl": "http://localhost:3000/lm/notifications",
+      "htmlLength": 19719,
+      "textLength": 506,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_notifications.png",
+      "sample": "Уведомления 4 новых 4 ИА Прочитать все Очистить 🔔 🆘 SOS от водителя 13 окт Иванов Сергей Петрович (А421ВС750) отправил сигнал: 🚨 ДТП / Авария. живая провер",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/settings",
+      "status": "PARTIAL",
+      "ms": 1427,
+      "finalUrl": "http://localhost:3000/lm/settings",
+      "htmlLength": 23814,
+      "textLength": 392,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_settings.png",
+      "sample": "Настройки Автопарк, документы и нормы 4 ИА Автопарк и база Название парка Адрес базы Широта Долгота Найти координаты по адресу Нормы труда и отдыха По этим м",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/search",
+      "status": "PARTIAL",
+      "ms": 1402,
+      "finalUrl": "http://localhost:3000/lm/search",
+      "htmlLength": 19423,
+      "textLength": 229,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_search.png",
+      "sample": "Поиск грузов В базе 0 новых из 0 4 ИА Своя база (0) Живой поиск ATI ⚡ Быстрый 🚂 Обычный 🔥 Глубокий Собрать В своей базе пусто Нажмите «Собрать» — или поищ",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/clients",
+      "status": "PARTIAL",
+      "ms": 1490,
+      "finalUrl": "http://localhost:3000/lm/clients",
+      "htmlLength": 22592,
+      "textLength": 503,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_clients.png",
+      "sample": "Клиенты 4 клиента 4 ИА ООО «Ромашка» Петрова Ольга · Москва 7 заказов · последний 12 окт Не оплачено 555 000 ₽ +74951234567 ООО «ТехноСтрой» Гаврилов И",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/drivers",
+      "status": "PARTIAL",
+      "ms": 1403,
+      "finalUrl": "http://localhost:3000/lm/drivers",
+      "htmlLength": 30730,
+      "textLength": 688,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_drivers.png",
+      "sample": "Водители 5 в организации 4 ИА Все Свободные В рейсе Не на связи Фёдоров Дмитрий Николаевич Свободен · вчера 42 рейса К215СТ790 · Изотерм Московская облас",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/fleet",
+      "status": "PARTIAL",
+      "ms": 1603,
+      "finalUrl": "http://localhost:3000/lm/fleet",
+      "htmlLength": 28312,
+      "textLength": 1037,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_fleet.png",
+      "sample": "Автопарк 6 машин 4 ИА 2 Свободны 3 В рейсе 1 На обслуживании 0 Сроки подходят Топливо Настройки Машины ТО и страховка К215СТ790 ГАЗон Next C41R13 · 2023 Св",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/more",
+      "status": "PARTIAL",
+      "ms": 1422,
+      "finalUrl": "http://localhost:3000/lm/more",
+      "htmlLength": 28727,
+      "textLength": 423,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_more.png",
+      "sample": "Ещё Разделы и профиль 4 ИА Иван Админов admin@loginex.local телефон не указан Изменить данные Сменить пароль Администратор ИП Фролов Иван Александрович Р",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/lm/audit",
+      "status": "PARTIAL",
+      "ms": 1507,
+      "finalUrl": "http://localhost:3000/lm/audit",
+      "htmlLength": 37257,
+      "textLength": 4000,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/lm/orders/demo-order-5?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-1?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED",
+        "http://localhost:3000/lm/orders/demo-order-3?_rsc=3V24FikctrU_7Bj5 :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/lm_lm_audit.png",
+      "sample": "Журнал действий Кто что менял в организации 4 ИА Действие Все действия Вход Регистрация Создание Изменение Удаление Одобрение сотрудника Отклонение заявки Акт",
+      "note": "ошибки консоли: 1"
+    },
+    {
+      "url": "/m/login (форма)",
+      "status": "VERIFIED",
+      "note": "водитель вошёл"
+    },
+    {
+      "url": "/m",
+      "status": "PARTIAL",
+      "ms": 1305,
+      "finalUrl": "http://localhost:3000/m",
+      "htmlLength": 12840,
+      "textLength": 0,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m.png",
+      "sample": "",
+      "note": "ошибки консоли: 4"
+    },
+    {
+      "url": "/m/orders",
+      "status": "PARTIAL",
+      "ms": 1291,
+      "finalUrl": "http://localhost:3000/m/orders",
+      "htmlLength": 20529,
+      "textLength": 333,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_orders.png",
+      "sample": "Мои рейсы Активные2 История Продукты питания (охлаждённые) 10 окт. В пути Москва, улица Складочная, 8 Санкт-Петербург, Шушары, Московское шоссе, 70 712 км",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/chat",
+      "status": "PARTIAL",
+      "ms": 1302,
+      "finalUrl": "http://localhost:3000/m/chat",
+      "htmlLength": 16142,
+      "textLength": 215,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_chat.png",
+      "sample": "Автопарк Логинекс Телефон автопарка не указан 12 октября Иван Админов Проверка чата: заезжай на базу к 18:00 20:40 Принял, буду к 18:00 20:40 13 октября",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/profile",
+      "status": "PARTIAL",
+      "ms": 1297,
+      "finalUrl": "http://localhost:3000/m/profile",
+      "htmlLength": 24497,
+      "textLength": 445,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_profile.png",
+      "sample": "ИС Иванов Сергей Петрович +7 916 123-45-01 4.9 214 рейсов МОИ ДАННЫЕ Изменить Имя Иванов Сергей Петрович Телефон +7 916 123-45-01 Сменить пароль Автомобиль ",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/vehicle",
+      "status": "PARTIAL",
+      "ms": 1289,
+      "finalUrl": "http://localhost:3000/m/vehicle",
+      "htmlLength": 24992,
+      "textLength": 474,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_vehicle.png",
+      "sample": "Выбор машины Выберите транспортное средство А421ВС750 Текущая Volvo FH 460 • Рефрижератор 20т • Доступна В108МК799 КАМАЗ 5490 Neo • Фура 20т • Занята: Ку",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/notifications",
+      "status": "PARTIAL",
+      "ms": 1282,
+      "finalUrl": "http://localhost:3000/m/notifications",
+      "htmlLength": 18281,
+      "textLength": 579,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_notifications.png",
+      "sample": "Уведомления 5 непрочитанных Прочитать все Очистить Назначен рейс 19 мин назад Вам назначен рейс «АУДИТ-ST-MVC7JN3H рейс»: 1 точек. Назначил: Иван Админов. ",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/nearby",
+      "status": "PARTIAL",
+      "ms": 1278,
+      "finalUrl": "http://localhost:3000/m/nearby",
+      "htmlLength": 17860,
+      "textLength": 206,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Access to fetch at 'https://overpass-api.de/api/interpreter' from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'A",
+        "Failed to load resource: net::ERR_FAILED"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_nearby.png",
+      "sample": "Рядом с вами Позиция по последней отметке GPS АЗС Отдых Отели В радиусе 7 км ничего не нашлось. Попробуйте другую категорию или подъедьте ближе к трассе. Об",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/photo",
+      "status": "PARTIAL",
+      "ms": 1281,
+      "finalUrl": "http://localhost:3000/m/photo",
+      "htmlLength": 22737,
+      "textLength": 277,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Access to fetch at 'https://overpass-api.de/api/interpreter' from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'A",
+        "Failed to load resource: net::ERR_FAILED"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_photo.png",
+      "sample": "Фото отчёты Нет фото Москва, улица Складочная, 8 → Санкт-Петербург, Шушары, Московское шоссе, 70 Продукты питания (охлаждённые) ТИП ФОТО До После Чек ТТН Д",
+      "note": "ошибки консоли: 5"
+    },
+    {
+      "url": "/m/maintenance",
+      "status": "PARTIAL",
+      "ms": 1281,
+      "finalUrl": "http://localhost:3000/m/maintenance",
+      "htmlLength": 18799,
+      "textLength": 284,
+      "redirectedToLogin": false,
+      "looksEmpty": false,
+      "hasErrorText": false,
+      "hasSpinnerOnly": false,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ],
+      "allConsoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Access to fetch at 'https://overpass-api.de/api/interpreter' from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'A",
+        "Failed to load resource: net::ERR_FAILED"
+      ],
+      "failedRequests": [
+        "http://localhost:3000/login?_rsc=Y_BM5xCdloxAW_Pz :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-2?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED",
+        "http://localhost:3000/m/orders/demo-order-1?_rsc=6-DGOnfe3xlS5Oen :: net::ERR_ABORTED"
+      ],
+      "shot": "docs/audit-screens/m_m_maintenance.png",
+      "sample": "ТО / Ремонт А421ВС750 ТИП РАБОТ Замена масла Замена шин Плановое ТО Ремонт Осмотр / Диагностика Другое КТО ВЫПОЛНЯЕТ РАБОТЫ Водитель СТО ЧТО ДЕЛАЕТСЯ? * ПР",
+      "note": "ошибки консоли: 5"
+    }
+  ],
+  "screenshots": "/home/user/loginex/docs/audit-screens"
+}

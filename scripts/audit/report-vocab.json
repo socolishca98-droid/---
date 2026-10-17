@@ -1,0 +1,45 @@
+{
+  "title": "I — словарь статусов рейса",
+  "summary": {
+    "VERIFIED": 3,
+    "PARTIAL": 0,
+    "BROKEN": 1,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "I",
+      "name": "новый рейс — словарный статус",
+      "status": "VERIFIED",
+      "note": "в БД: «planned»"
+    },
+    {
+      "scenario": "I",
+      "name": "после «начать рейс» статус остаётся словарным",
+      "status": "in_progress",
+      "note": "команда HTTP 200, в БД статус «in_progress» — значения нет в словаре [\"planned\",\"active\",\"in_transit\",\"completed\",\"cancelled\"]",
+      "inVocab": false
+    },
+    {
+      "scenario": "I",
+      "name": "диспетчер видит понятный статус",
+      "status": "VERIFIED",
+      "note": "API отдаёт статус «planned» (подпись: \"in_progress\")"
+    },
+    {
+      "scenario": "O",
+      "name": "уборка",
+      "status": "VERIFIED",
+      "note": "рейс и заказ аудита удалены"
+    }
+  ],
+  "issues": [
+    {
+      "scenario": "I",
+      "name": "после «начать рейс» статус остаётся словарным",
+      "status": "BROKEN",
+      "note": "команда HTTP 200, в БД статус «in_progress» — значения нет в словаре [\"planned\",\"active\",\"in_transit\",\"completed\",\"cancelled\"]"
+    }
+  ]
+}

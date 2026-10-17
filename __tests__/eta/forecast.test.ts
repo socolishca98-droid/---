@@ -902,3 +902,28 @@ describe("17. Перерыв водителя сдвигает последую�
     expect(restItem!.detail).toContain("после сегмента 3")
   })
 })
+
+describe("надёжность при неполном геокодировании", () => {
+  it("неогеокодированные точки делают прогноз недостоверным", () => {
+    // Регрессия: reliable смотрел только на нарушения и перекрытия. Геокодер,
+    // молча отбросивший часть адресов, давал более короткий и правдоподобный
+    // маршрут с нулём нарушений — и reliable оставался true.
+    const full = forecast(cityThenHighway())
+    expect(full.reliable).toBe(true)
+    expect(full.unlocatedCount).toBe(0)
+
+    const partial = forecast(cityThenHighway(), {
+      unlocatedAddresses: ["ЗЗЗ-несуществующий-город, ул. Нету"],
+    })
+    expect(partial.reliable).toBe(false)
+    expect(partial.unlocatedCount).toBe(1)
+    expect(partial.reliabilityNote).toContain("не определены координаты 1 точек")
+    expect(partial.reliabilityNote).toContain("ЗЗЗ-несуществующий")
+  })
+
+  it("полный маршрут остаётся достоверным", () => {
+    const result = forecast(cityThenHighway(), { unlocatedAddresses: [] })
+    expect(result.reliable).toBe(true)
+    expect(result.reliabilityNote).toBeUndefined()
+  })
+})

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T18:31:24.563Z",
+  "generatedAt": "2026-10-17T16:55:20.424Z",
   "endpoints": [
     {
       "method": "GET",
@@ -388,6 +388,11 @@
     },
     {
       "method": "POST",
+      "route": "/api/logist-mobile/assistant/compare",
+      "group": "logist-mobile"
+    },
+    {
+      "method": "POST",
       "route": "/api/m/base-route",
       "group": "m"
     },
@@ -489,6 +494,11 @@
     {
       "method": "POST",
       "route": "/api/m/route/events",
+      "group": "m"
+    },
+    {
+      "method": "POST",
+      "route": "/api/m/route/stage",
       "group": "m"
     },
     {
@@ -754,6 +764,11 @@
     {
       "method": "GET",
       "route": "/api/routes/:routeId/map",
+      "group": "routes"
+    },
+    {
+      "method": "GET",
+      "route": "/api/routes/:routeId/trip",
       "group": "routes"
     },
     {

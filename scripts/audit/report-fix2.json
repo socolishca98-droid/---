@@ -1,0 +1,73 @@
+{
+  "title": "Задача 2 — статусы рейса",
+  "summary": {
+    "VERIFIED": 9,
+    "PARTIAL": 0,
+    "BROKEN": 0,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "2",
+      "name": "новый рейс — словарный статус",
+      "status": "VERIFIED",
+      "note": "в БД: «planned»"
+    },
+    {
+      "scenario": "2",
+      "name": "после «начать рейс» в БД каноническое in_transit",
+      "status": "VERIFIED",
+      "note": "команда HTTP 200, в БД «in_transit»",
+      "dbStatus": "in_transit"
+    },
+    {
+      "scenario": "2",
+      "name": "диспетчерский API отдаёт канон и русскую подпись",
+      "status": "in_transit",
+      "note": "status=«in_transit», подпись=«В пути»",
+      "label": "В пути"
+    },
+    {
+      "scenario": "2",
+      "name": "в списке рейсов статус тоже канонический",
+      "status": "in_transit",
+      "note": "status=«in_transit»"
+    },
+    {
+      "scenario": "2",
+      "name": "история рейса показывает тот же смысл",
+      "status": "in_transit",
+      "note": "HTTP 200, подпись=«in_transit»"
+    },
+    {
+      "scenario": "2",
+      "name": "старая запись in_progress не ломает диспетчера",
+      "status": "VERIFIED",
+      "note": "в БД «in_progress», API отдаёт подпись «В пути»",
+      "dbStatus": "in_progress",
+      "label": "В пути"
+    },
+    {
+      "scenario": "2",
+      "name": "старый рейс попадает в «в пути», а не «запланирован»",
+      "status": "in_transit",
+      "note": "status=«in_transit»"
+    },
+    {
+      "scenario": "2",
+      "name": "в базе нет статусов вне словаря (кроме легаси in_progress)",
+      "status": "VERIFIED",
+      "note": "рейсов всего 8, нераспознанных статусов: 0",
+      "total": 8,
+      "odd": []
+    },
+    {
+      "scenario": "2",
+      "name": "уборка",
+      "status": "VERIFIED",
+      "note": "рейс и заказ аудита удалены"
+    }
+  ],
+  "issues": []
+}

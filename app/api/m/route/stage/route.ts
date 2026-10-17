@@ -31,6 +31,7 @@ import {
   type TripCommand,
 } from "@/lib/eta/trip-actions"
 import { logRouteEvent } from "@/lib/routes/service"
+import { completeRoute } from "@/lib/routes/complete-route"
 import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
 import { recordActual } from "@/lib/eta/repository"
 
@@ -199,12 +200,19 @@ export async function POST(request: NextRequest) {
 
     const now = new Date()
     const stageIndexToUse = check.stageIndex ?? null
+    // Сколько заказов эта команда довела до «доставлен» — для ответа водителю
+    let deliveredNow = 0
 
     // ── start_trip: рейс запущен, этапы рейса создаются ──
+    // "in_transit" — каноническое значение из ROUTE_STATUSES (lib/routes/model.ts).
+    // Раньше здесь писалось "in_progress", которого в словаре нет: диспетчер
+    // видел «Запланирован» на едущем рейсе, а подпись в ряде мест оказывалась
+    // сырой английской строкой. Старые записи с "in_progress" продолжают
+    // работать — normalizeRouteStatus приводит их к "in_transit".
     if (typedCommand === "start_trip") {
       await prisma.route.update({
         where: { id: routeId },
-        data: { startedAt: now, status: "in_progress" },
+        data: { startedAt: now, status: "in_transit" },
       })
       await writeEvent({
         routeId,
@@ -240,10 +248,40 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      await prisma.route.update({
-        where: { id: routeId },
-        data: { completedAt: now, status: "completed" },
+      // Завершение идёт через ту же функцию, что и у диспетчера
+      // (POST /api/routes/[id]/complete).
+      //
+      // Раньше здесь был свой путь: только status=completed и completedAt.
+      // Последствия: заказы рейса оставались in_route и не становились
+      // доставленными, итоги рейса не пересчитывались, водитель не
+      // освобождался, смена не закрывалась, топливо не списывалось, а рейтинг
+      // водителя (считается по доставленным заказам) не рос. Диспетчер после
+      // этого видел «Завершён» с недоставленными точками, и его собственное
+      // complete отвечало 400 «Не все точки маршрута завершены».
+      //
+      // force НЕ передаётся: checkTripCommand выше уже отказал бы, если по
+      // рейсу остались незакрытые этапы («Остались незавершённые этапы»).
+      // Значит закрытие заказов здесь — фиксация факта, а не принуждение.
+      const completion = await completeRoute({
+        routeId,
+        organizationId: org.organizationId,
+        force: false,
+        actorName: auth.value.driver.name,
       })
+
+      if (!completion.ok) {
+        // Доменные отказы (например, «Не все точки маршрута завершены»)
+        // возвращаем как есть: водитель должен увидеть причину, а не 500.
+        return NextResponse.json(
+          {
+            success: false,
+            error: completion.error,
+            ...(completion.pendingOrders ? { pendingOrders: completion.pendingOrders } : {}),
+          },
+          { status: completion.status },
+        )
+      }
+
       await writeEvent({
         routeId,
         driverId,
@@ -270,6 +308,10 @@ export async function POST(request: NextRequest) {
         completedAt: now.toISOString(),
         // null — по рейсу не было сохранённого прогноза: тогда сравнивать нечего
         forecastFact,
+        // Что именно сделало завершение: водитель видит, что рейс закрыт
+        // целиком, а не только получил статус.
+        closedOrders: completion.closedOrders ?? 0,
+        stats: completion.stats,
       })
     }
 
@@ -301,22 +343,38 @@ export async function POST(request: NextRequest) {
     }
 
     const stageIds = await listRouteStageIds({ routeId, organizationId: org.organizationId })
-    const stageRowId = stageIds?.[stageIndexToUse] ?? null
+    let stageRowId = stageIds?.[stageIndexToUse] ?? null
     if (!stageRowId) {
       // Этап не заведён строкой RouteStage — заводим. Ситуация штатная:
       // рейс могли запустить до того, как этапы синхронизировались.
       await ensureStageRows(routeId, org.organizationId)
       const retry = await listRouteStageIds({ routeId, organizationId: org.organizationId })
-      const rowId = retry?.[stageIndexToUse] ?? null
-      if (!rowId) {
+      stageRowId = retry?.[stageIndexToUse] ?? null
+      if (!stageRowId) {
         return NextResponse.json(
           { success: false, error: "Этап рейса не найден" },
           { status: 404 },
         )
       }
-      await applyMark(rowId, typedCommand, now)
-    } else {
-      await applyMark(stageRowId, typedCommand, now)
+    }
+    await applyMark(stageRowId, typedCommand, now)
+
+    // Закрытая последняя точка заказа = заказ доставлен.
+    //
+    // Раньше этого не происходило никак: водитель закрывал выгрузку, а заказ
+    // оставался in_route. Дальше по цепочке ломалось всё: рейтинг водителя
+    // (считается по доставленным заказам) не рос, сводка и отчёты не видели
+    // выполнение, а finish_trip отвечал 400 «Не все точки маршрута завершены»,
+    // потому что completeRoute видел заказы не в статусе delivered.
+    //
+    // Условие намеренно строгое: доставленным заказ становится, когда закрыты
+    // ВСЕ его этапы в этом рейсе. Отменённый и отклонённый заказ не трогаем —
+    // обратные переходы из них запрещены бизнес-правилами.
+    if (END_COMMANDS.includes(typedCommand)) {
+      const closed = await markDeliveredOrders(routeId, org.organizationId, now)
+      if (closed > 0) {
+        deliveredNow += closed
+      }
     }
 
     await writeEvent({
@@ -330,7 +388,7 @@ export async function POST(request: NextRequest) {
     })
 
     const updated = await getRouteTripEta({ routeId, organizationId: org.organizationId })
-    return respond(updated, now)
+    return respond(updated, now, deliveredNow)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[RouteStage API] POST error:", message, error)
@@ -370,6 +428,63 @@ async function applyMark(stageRowId: string, command: TripCommand, at: Date) {
   await prisma.routeStage.update({ where: { id: stageRowId }, data: guarded })
 }
 
+/**
+ * Переводит в «доставлен» заказы рейса, у которых закрыты все этапы.
+ *
+ * Отменённые и отклонённые заказы не трогаются: из «отменён» обратно в
+ * «доставлен» переходить нельзя — это бизнес-правило заказов.
+ * Возвращает число заказов, переведённых этим вызовом.
+ */
+async function markDeliveredOrders(
+  routeId: string,
+  organizationId: string | null,
+  at: Date,
+): Promise<number> {
+  // Заказы рейса, которые ещё не закрыты
+  const open = await prisma.order.findMany({
+    where: scopedWhere(organizationId, {
+      routeId,
+      status: { in: ["in_route", "control", "documents", "assigned"] },
+    }),
+    select: { id: true },
+  })
+  if (open.length === 0) return 0
+
+  // Этапы этих заказов: completed или cancelled
+  const stages = await prisma.routeStage.findMany({
+    where: scopedWhere(organizationId, {
+      routeId,
+      orderId: { in: open.map((o) => o.id) },
+    }),
+    select: { orderId: true, status: true },
+  })
+
+  const closedByOrder = new Map<string, { done: number; total: number }>()
+  for (const stage of stages) {
+    if (!stage.orderId) continue
+    const bucket = closedByOrder.get(stage.orderId) ?? { done: 0, total: 0 }
+    bucket.total += 1
+    if (stage.status === "completed" || stage.status === "cancelled") bucket.done += 1
+    closedByOrder.set(stage.orderId, bucket)
+  }
+
+  // Заказ без этапов не считаем доставленным: непонятно, что по нему сделано
+  const ready = open
+    .filter((o) => {
+      const bucket = closedByOrder.get(o.id)
+      return bucket && bucket.total > 0 && bucket.done === bucket.total
+    })
+    .map((o) => o.id)
+
+  if (ready.length === 0) return 0
+
+  const result = await prisma.order.updateMany({
+    where: scopedWhere(organizationId, { id: { in: ready } }),
+    data: { status: "delivered", deliveredAt: at, updatedAt: at },
+  })
+  return result.count
+}
+
 /** Создаёт недостающие строки этапов рейса. */
 async function ensureStageRows(routeId: string, organizationId: string) {
   const { ensureRouteStages } = await import("@/lib/eta/trip-repository")
@@ -406,7 +521,12 @@ async function writeEvent(input: EventInput) {
 }
 
 /** Ответ с новым состоянием рейса — водитель сразу видит следующий шаг. */
-function respond(trip: Awaited<ReturnType<typeof getRouteTripEta>>, now: Date) {
+function respond(
+  trip: Awaited<ReturnType<typeof getRouteTripEta>>,
+  now: Date,
+  /** Заказы, доведённые до «доставлен» этой командой (0 — ни одного) */
+  deliveredOrders = 0,
+) {
   if (!trip) {
     return NextResponse.json({ success: false, error: "Рейс не найден" }, { status: 404 })
   }
@@ -414,6 +534,7 @@ function respond(trip: Awaited<ReturnType<typeof getRouteTripEta>>, now: Date) {
   return NextResponse.json({
     success: true,
     at: now.toISOString(),
+    deliveredOrders,
     actions: actions.available,
     blocked: actions.blocked,
     currentStageIndex: actions.currentStageIndex,

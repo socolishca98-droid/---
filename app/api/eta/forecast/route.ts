@@ -72,6 +72,9 @@ export async function POST(request: NextRequest) {
   // ── Точки маршрута: либо из тела, либо из заказов рейса ──
   let origin = body?.origin
   let destination = body?.destination
+  // Адреса рейса, которые не удалось геокодировать. Пустой массив = маршрут
+  // полный. Передаётся в расчёт, чтобы reliable честно стал false.
+  let unlocatedAddresses: string[] = []
   let waypoints = body?.waypoints || []
 
   // Рейс проверяется ВСЕГДА, когда передан routeId — даже если координаты
@@ -108,14 +111,26 @@ export async function POST(request: NextRequest) {
       ]
       const { coords } = await geocodeAddressesWithSource(names)
 
-      const points = names
-        .map((name) => coords.get(name.trim()))
-        .filter((point): point is { lat: number; lng: number } => Boolean(point))
+      const points: { lat: number; lng: number }[] = []
+      const unlocated: string[] = []
+      names.forEach((name, index) => {
+        const point = coords.get(name.trim())
+        if (point) {
+          points.push(point)
+        } else {
+          // Адрес без координат: раньше он молча выпадал из фильтра, и
+          // оставшиеся точки складывались в более короткий и правдоподобный
+          // маршрут — с нулём нарушений и reliable: true. Теперь недоступная
+          // точка названа, и прогноз помечен неполным.
+          unlocated.push(name.trim())
+        }
+      })
 
       if (points.length >= 2) {
         origin = points[0]
         destination = points[points.length - 1]
         waypoints = points.slice(1, -1)
+        unlocatedAddresses = unlocated
       } else {
         return NextResponse.json(
           { error: "Не удалось определить координаты точек рейса" },
@@ -166,6 +181,7 @@ export async function POST(request: NextRequest) {
     vehicle,
     stops: body.stops,
     events: body.events,
+    unlocatedAddresses,
   })
 
   if (!result.ok || !result.forecast) {
@@ -274,6 +290,7 @@ export async function POST(request: NextRequest) {
     timeZone: forecast.timeZone,
     reliable: forecast.reliable,
     reliabilityNote: forecast.reliabilityNote,
+    unlocatedCount: forecast.unlocatedCount,
     departureAt: forecast.departureAt.toISOString(),
     scenarios: {
       optimistic: {

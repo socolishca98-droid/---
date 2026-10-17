@@ -44,6 +44,19 @@ export const MAX_FAILED_LOGINS = 5
 /** На сколько блокируем учётную запись после превышения лимита попыток */
 export const LOGIN_LOCK_MINUTES = 15
 
+/**
+ * Минимальная длина пароля.
+ *
+ * Жила в lib/auth/password.ts — рядом с scrypt и node:util. Когда клиентская
+ * страница /reset-password импортировала её оттуда «заодно», в бандл попадал
+ * node:util, и страница падала ещё до отрисовки: «The "original" argument
+ * must be of type Function». Поэтому константа вынесена сюда, в файл без
+ * node-импортов, который уже безопасно импортируется клиентом и middleware.
+ * В lib/auth/password.ts осталась реэкспортная строка — серверный код менять
+ * не пришлось.
+ */
+export const MIN_PASSWORD_LENGTH = 8
+
 /** Время жизни сессии в миллисекундах (из AUTH_SESSION_TTL_HOURS) */
 export function getSessionTtlMs(): number {
   const raw = Number(process.env.AUTH_SESSION_TTL_HOURS)

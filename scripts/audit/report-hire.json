@@ -1,0 +1,123 @@
+{
+  "title": "A/B — найм, одобрение, вход водителя",
+  "summary": {
+    "VERIFIED": 17,
+    "PARTIAL": 0,
+    "BROKEN": 0,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "A",
+      "name": "инвайт-код создан",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "A",
+      "name": "сотрудник зарегистрирован",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "до одобрения вход закрыт",
+      "status": 403,
+      "note": "HTTP 403, code=pending_approval",
+      "code": "pending_approval"
+    },
+    {
+      "scenario": "A",
+      "name": "заявка видна администратору",
+      "status": "pending",
+      "note": "HTTP 200, заявок pending: 1, наш сотрудник найден: true",
+      "pendingCount": 1,
+      "found": true
+    },
+    {
+      "scenario": "A",
+      "name": "одобрение сотрудника",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "A",
+      "name": "после одобрения сотрудник входит",
+      "status": "VERIFIED",
+      "note": "HTTP 200, роль: logist",
+      "role": "logist"
+    },
+    {
+      "scenario": "A",
+      "name": "одобренный сотрудник читает сводку",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "логист не попадает в админку платформы",
+      "status": "VERIFIED",
+      "note": "HTTP 403"
+    },
+    {
+      "scenario": "B",
+      "name": "заблокированный сотрудник не входит",
+      "status": "VERIFIED",
+      "note": "блокировка HTTP 200, вход после: HTTP 403 code=suspended"
+    },
+    {
+      "scenario": "A",
+      "name": "уборка тестового сотрудника",
+      "status": "VERIFIED",
+      "note": "удалено: 1"
+    },
+    {
+      "scenario": "G",
+      "name": "водители существуют в базе",
+      "status": "VERIFIED",
+      "note": "водителей: 5; с email: 0; с телефоном: 5",
+      "count": 5,
+      "withEmail": 0,
+      "withPhone": 5
+    },
+    {
+      "scenario": "B",
+      "name": "администратор сбрасывает пароль водителя",
+      "status": 200,
+      "note": "HTTP 200, временный пароль получен: true",
+      "hasTemp": true
+    },
+    {
+      "scenario": "G",
+      "name": "водитель входит по телефону",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "G",
+      "name": "водитель видит свой профиль",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "G",
+      "name": "водитель видит свои заказы",
+      "status": "VERIFIED",
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "B",
+      "name": "водитель не читает сводку компании",
+      "status": 403,
+      "note": "HTTP 403 (ожидалось 401/403)"
+    },
+    {
+      "scenario": "B",
+      "name": "водитель не читает все заказы компании",
+      "status": 401,
+      "note": "HTTP 401 (ожидалось 401/403)"
+    }
+  ],
+  "issues": []
+}

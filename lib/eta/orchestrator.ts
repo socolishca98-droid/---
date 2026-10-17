@@ -50,6 +50,12 @@ export interface SegmentEtaRequest {
   events?: RoadEvent[]
   /** Исторические коэффициенты по сегментам (калибровка) */
   historicalBySegment?: Array<{ trafficFactor: number; source: string } | null>
+  /**
+   * Адреса, которые не удалось геокодировать. Если они есть, маршрут построен
+   * короче реального, и прогноз нельзя выдавать как достоверный: оставшиеся
+   * точки дают более короткий и правдоподобный результат с нулём нарушений.
+   */
+  unlocatedAddresses?: readonly string[]
   useSeasonalFallback?: boolean
   /** Пропустить запрос погоды (тесты, или когда погода уже есть) */
   skipWeather?: boolean
@@ -142,6 +148,7 @@ export async function calculateSegmentEta(
     events: request.events,
     historicalBySegment: request.historicalBySegment,
     useSeasonalFallback: request.useSeasonalFallback,
+    unlocatedAddresses: request.unlocatedAddresses,
   }
 
   // ── Проход 1: без погоды — узнаем, когда машина будет в каждом сегменте ──

@@ -27,6 +27,11 @@ import {
   TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+// Единый словарь статусов рейса: проверка «в пути» идёт через normalizeRouteStatus,
+// а не сравнением с литералом. Иначе компонент снова разойдётся с API, который
+// пишет каноническое "in_transit" (lib/routes/model.ts).
+import { normalizeRouteStatus } from "@/lib/routes/model"
+const isRouteInTransit = (status: unknown) => normalizeRouteStatus(status) === "in_transit"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
@@ -337,10 +342,10 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-bold">{route.vehiclePlate}</span>
                     <Badge
-                      variant={route.status === "in_progress" ? "default" : "secondary"}
-                      className={cn(route.status === "in_progress" && "bg-orange-500")}
+                      variant={isRouteInTransit(route.status) ? "default" : "secondary"}
+                      className={cn(isRouteInTransit(route.status) && "bg-orange-500")}
                     >
-                      {route.status === "in_progress" ? "В пути" : "Ожидает"}
+                      {isRouteInTransit(route.status) ? "В пути" : "Ожидает"}
                     </Badge>
                     {additionalLoads > 0 && (
                       <Badge

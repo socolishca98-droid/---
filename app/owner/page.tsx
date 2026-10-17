@@ -110,6 +110,9 @@ export default function OwnerHomePage() {
   )
 
   const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
+  // Ошибка загрузки — не пустой экран: прочерки в плитках выглядят как
+  // «данных нет», хотя на самом деле их не удалось получить.
+  const loadError = overview.error && !forbidden ? overview.error : null
   const data = overview.data
   const totals = data?.totals
 
@@ -157,6 +160,19 @@ export default function OwnerHomePage() {
       {forbidden ? (
         <div className="mt-6">
           <Forbidden message="Недостаточно прав для этого раздела." />
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <div className="mt-6 rounded-xl border border-destructive/40 bg-destructive/10 p-5">
+          <p className="text-[14px] text-destructive">Не удалось загрузить сводку: {loadError}</p>
+          <button
+            type="button"
+            onClick={() => overview.reload()}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-[13px] text-foreground transition-colors duration-200 hover:bg-secondary"
+          >
+            Повторить
+          </button>
         </div>
       ) : null}
 
@@ -327,7 +343,9 @@ export default function OwnerHomePage() {
               </p>
             </Link>
           ))}
-          {data && data.organizations.length === 0 ? (
+          {loadError ? (
+            <p className="text-[13px] text-destructive">Список компаний не загрузился.</p>
+          ) : data && data.organizations.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">Компаний пока нет.</p>
           ) : null}
         </div>
@@ -354,7 +372,9 @@ export default function OwnerHomePage() {
                 </p>
               </li>
             ))}
-            {data && data.recent.length === 0 ? (
+            {loadError ? (
+              <li className="px-4 py-4 text-[13px] text-destructive">Сводка не загрузилась</li>
+            ) : data && data.recent.length === 0 ? (
               <li className="px-4 py-4 text-[13px] text-muted-foreground">Действий пока нет</li>
             ) : null}
           </ul>

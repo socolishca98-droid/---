@@ -1,0 +1,216 @@
+{
+  "title": "G–J — выполнение рейса водителем",
+  "summary": {
+    "VERIFIED": 20,
+    "PARTIAL": 4,
+    "BROKEN": 2,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "G",
+      "name": "водитель входит в мобильный кабинет",
+      "status": 200,
+      "note": "HTTP 200",
+      "phone": "79161234501"
+    },
+    {
+      "scenario": "G",
+      "name": "водитель видит свой рейс",
+      "status": 200,
+      "note": "HTTP 200, рейс назначен: true, в ответе: \"cmvc7hzik002s6gh53fzjse4v\"",
+      "routeIdInResponse": "cmvc7hzik002s6gh53fzjse4v"
+    },
+    {
+      "scenario": "G",
+      "name": "водитель видит заказы рейса",
+      "status": 200,
+      "note": "HTTP 200, заказов: 4",
+      "count": 4
+    },
+    {
+      "scenario": "H",
+      "name": "план рейса рассчитан для водителя",
+      "status": "BROKEN",
+      "note": "этапов в плане: 0, источники: undefined",
+      "stages": 0
+    },
+    {
+      "scenario": "H",
+      "name": "водителю предложена следующая команда",
+      "status": "VERIFIED",
+      "note": "доступные действия: [\"start_trip\",\"report_problem\"]",
+      "actions": [
+        {
+          "command": "start_trip",
+          "label": "Начать рейс",
+          "primary": true
+        },
+        {
+          "command": "report_problem",
+          "label": "Сообщить о проблеме"
+        }
+      ]
+    },
+    {
+      "scenario": "G",
+      "name": "водитель принимает рейс",
+      "status": 400,
+      "note": "HTTP 400 Неизвестная команда: accept_route"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 1: «start_trip» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_trip"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 2: «start_driving» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_driving"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 3: «arrive_point» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "arrive_point"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 4: «start_operation» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_operation"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 5: «finish_operation» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "finish_operation"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 6: «start_driving» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_driving"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 7: «arrive_point» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "arrive_point"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 8: «start_operation» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_operation"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 9: «finish_operation» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "finish_operation"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 10: «start_operation» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_operation"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 11: «finish_operation» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "finish_operation"
+    },
+    {
+      "scenario": "H",
+      "name": "шаг 12: «start_driving» выполнен",
+      "status": "VERIFIED",
+      "note": "HTTP 200",
+      "command": "start_driving"
+    },
+    {
+      "scenario": "I",
+      "name": "диспетчер видит состояние рейса",
+      "status": 200,
+      "note": "HTTP 200, статус: planned",
+      "routeStatus": "planned"
+    },
+    {
+      "scenario": "I",
+      "name": "события рейса записываются",
+      "status": "VERIFIED",
+      "note": "событий: 12",
+      "count": 12
+    },
+    {
+      "scenario": "J",
+      "name": "водитель завершает рейс",
+      "status": 409,
+      "note": "HTTP 409 Остались незавершённые этапы (3). Их нельзя пропускать"
+    },
+    {
+      "scenario": "J",
+      "name": "рейс перешёл в завершённое состояние",
+      "status": "PARTIAL",
+      "note": "статус рейса: planned",
+      "routeStatus": "planned"
+    },
+    {
+      "scenario": "J",
+      "name": "факт по этапам зафиксирован",
+      "status": "VERIFIED",
+      "note": "этапов с фактом: 5 из 8",
+      "done": 5,
+      "total": 8
+    },
+    {
+      "scenario": "J",
+      "name": "заказы получили статус доставки",
+      "status": "PARTIAL",
+      "note": "доставлено заказов: 0 из 2",
+      "delivered": 0,
+      "total": 2
+    },
+    {
+      "scenario": "J",
+      "name": "повторное завершение не создаёт второй факт",
+      "status": 409,
+      "note": "HTTP 409 Остались незавершённые этапы (3). Их нельзя пропускать"
+    },
+    {
+      "scenario": "O",
+      "name": "уборка",
+      "status": "VERIFIED",
+      "note": "рейс и заказы аудита удалены"
+    }
+  ],
+  "issues": [
+    {
+      "scenario": "H",
+      "name": "план рейса рассчитан для водителя",
+      "status": "BROKEN",
+      "note": "этапов в плане: 0, источники: undefined"
+    },
+    {
+      "scenario": "J",
+      "name": "повторное завершение не создаёт второй факт",
+      "status": "BROKEN",
+      "note": "HTTP 409 Остались незавершённые этапы (3). Их нельзя пропускать"
+    }
+  ]
+}

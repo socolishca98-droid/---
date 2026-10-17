@@ -17,6 +17,17 @@ export const dynamic = "force-dynamic"
 
 const MAX_LIMIT = 200
 
+/** Метаданные записи: в базе лежат строкой JSON. */
+function parseMetadata(value: string | null): Record<string, unknown> | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
   if (!auth.ok) return auth.response
@@ -47,6 +58,7 @@ export async function GET(request: NextRequest) {
         id: true,
         createdAt: true,
         organizationId: true,
+        actorId: true,
         actorEmail: true,
         action: true,
         targetType: true,
@@ -59,22 +71,49 @@ export async function GET(request: NextRequest) {
     }),
   ])
 
+  // Исполнитель должен быть опознан даже без почты: у водителей почты нет
+  // вовсе, и без подстановки имени/телефона журнал показывает прочерк —
+  // непонятно, кто сделал действие.
+  const missingActorIds = [
+    ...new Set(rows.filter((row) => !row.actorEmail && row.actorId).map((row) => row.actorId)),
+  ]
+  const actorFallback = new Map<string, { name: string | null; phone: string | null }>()
+  if (missingActorIds.length > 0) {
+    const actors = await prisma.user.findMany({
+      where: { id: { in: missingActorIds } },
+      select: { id: true, name: true, phone: true },
+    })
+    for (const actor of actors) {
+      actorFallback.set(actor.id, { name: actor.name, phone: actor.phone })
+    }
+  }
+
   return NextResponse.json({
     total,
     limit,
     offset,
-    items: rows.map((row) => ({
-      id: row.id,
-      createdAt: row.createdAt.toISOString(),
-      organizationId: row.organizationId,
-      organizationName: row.organization?.name ?? null,
-      actorEmail: row.actorEmail,
-      action: row.action,
-      targetType: row.targetType,
-      targetId: row.targetId,
-      targetEmail: row.targetEmail,
-      metadata: row.metadata,
-      ip: row.ip,
-    })),
+    items: rows.map((row) => {
+      const meta = parseMetadata(row.metadata)
+      const fallback = row.actorEmail ? null : (actorFallback.get(row.actorId) ?? null)
+      return {
+        id: row.id,
+        createdAt: row.createdAt.toISOString(),
+        organizationId: row.organizationId,
+        organizationName: row.organization?.name ?? null,
+        actorId: row.actorId,
+        actorEmail: row.actorEmail,
+        actorName: fallback?.name ?? null,
+        actorPhone: fallback?.phone ?? null,
+        action: row.action,
+        targetType: row.targetType,
+        targetId: row.targetId,
+        targetEmail: row.targetEmail,
+        // Идентификатор запроса: если понадобится разобрать инцидент, одну и ту
+        // же операцию можно найти по номеру в логах и в журнале.
+        requestId: typeof meta?.requestId === "string" ? meta.requestId : null,
+        metadata: meta,
+        ip: row.ip,
+      }
+    }),
   })
 }

@@ -21,6 +21,8 @@ import { prisma } from "@/lib/prisma"
 import { verifyPassword } from "@/lib/auth/password"
 import { issueSession, type IssuedSession } from "@/lib/auth/session"
 import { isOwnerEmail, OWNER_SESSION_TTL_MINUTES } from "@/lib/auth/owner"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 import {
   LOGIN_LOCK_MINUTES,
   MAX_FAILED_LOGINS,
@@ -184,6 +186,27 @@ export async function authenticateWithPassword(
     where: { id: user.id },
     data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null },
   })
+
+  // Вход попадает в журнал: без этого владелец платформы не видит, кто и когда
+  // заходил в программу, а «Журнал действий» показывает только изменения.
+  // Сама выдача сессии от неудачной записи журнала не зависит — иначе сломанный
+  // журнал заблокировал бы вход людям.
+  const logged = await logAudit({
+    organizationId: user.organizationId,
+    actorId: user.id,
+    actorEmail: user.email,
+    action: "login",
+    targetId: user.id,
+    targetType: kind === "driver" ? "driver" : "user",
+    targetEmail: user.email,
+    metadata: { role: user.role, kind, byPassword: true },
+    ip: getClientIp(request),
+  })
+  if (!logged) {
+    console.error(
+      `[auth/login] вход ${user.email ?? user.phone ?? user.id} не попал в журнал действий`,
+    )
+  }
 
   return {
     ok: true,

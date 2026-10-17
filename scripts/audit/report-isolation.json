@@ -1,0 +1,198 @@
+{
+  "title": "N — изоляция организаций",
+  "summary": {
+    "VERIFIED": 21,
+    "PARTIAL": 0,
+    "BROKEN": 2,
+    "MISSING": 0,
+    "NOT_TESTED": 2
+  },
+  "steps": [
+    {
+      "scenario": "N",
+      "name": "есть вторая организация",
+      "status": "VERIFIED",
+      "note": "«ООО С Согласием»"
+    },
+    {
+      "scenario": "N",
+      "name": "создана вторая организация для проверки",
+      "status": "VERIFIED",
+      "note": "HTTP 200, организация: создана"
+    },
+    {
+      "scenario": "N",
+      "name": "чужой заказ",
+      "status": 404,
+      "note": "GET /api/orders/cmvc8tgeo0003s2p1x728yk2h → HTTP 404 Заказ не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "переписка по чужому заказу",
+      "status": 404,
+      "note": "GET /api/orders/cmvc8tgeo0003s2p1x728yk2h/negotiation → HTTP 404 Заказ не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "чужой клиент",
+      "status": 404,
+      "note": "GET /api/clients/cmvc8tgek0001s2p1tlj9dzk3 → HTTP 404 Клиент не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "чужая машина",
+      "status": 404,
+      "note": "GET /api/vehicles/cmvc8tges0005s2p117ccu5d8 → HTTP 404 Vehicle not found"
+    },
+    {
+      "scenario": "N",
+      "name": "чужой водитель",
+      "status": 404,
+      "note": "GET /api/drivers/cmvc8tgew0007s2p10gusd5dz → HTTP 404 Driver not found"
+    },
+    {
+      "scenario": "N",
+      "name": "геопозиция чужого водителя",
+      "status": 405,
+      "note": "GET /api/drivers/cmvc8tgew0007s2p10gusd5dz/location → HTTP 405"
+    },
+    {
+      "scenario": "N",
+      "name": "активный заказ чужого водителя",
+      "status": 404,
+      "note": "GET /api/drivers/cmvc8tgew0007s2p10gusd5dz/active-order → HTTP 404 Водитель не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "чужой рейс (по id заказа)",
+      "status": 404,
+      "note": "GET /api/routes/cmvc8tgeo0003s2p1x728yk2h → HTTP 404 Маршрут не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "изменение чужого заказа",
+      "status": 404,
+      "note": "PATCH /api/orders/cmvc8tgeo0003s2p1x728yk2h → HTTP 404 Заказ не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "изменение чужой машины",
+      "status": 404,
+      "note": "PATCH /api/vehicles/cmvc8tges0005s2p117ccu5d8 → HTTP 404 Vehicle not found"
+    },
+    {
+      "scenario": "N",
+      "name": "удаление чужого клиента",
+      "status": 404,
+      "note": "DELETE /api/clients/cmvc8tgek0001s2p1tlj9dzk3 → HTTP 404 Клиент не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "чужая переписка",
+      "status": 404,
+      "note": "GET /api/orders/cmvc8tgeo0003s2p1x728yk2h/negotiation → HTTP 404 Заказ не найден"
+    },
+    {
+      "scenario": "N",
+      "name": "запись в чужую переписку",
+      "status": 400,
+      "note": "POST /api/orders/cmvc8tgeo0003s2p1x728yk2h/negotiation → HTTP 400 Недопустимый тип записи. Доступно: note, price_offer, call, email, document"
+    },
+    {
+      "scenario": "N",
+      "name": "чужое фото по прямому пути",
+      "status": 403,
+      "note": "GET /api/photos/file → HTTP 403 Фото принадлежит другой организации"
+    },
+    {
+      "scenario": "N",
+      "name": "список заказов без чужих записей",
+      "status": "VERIFIED",
+      "note": "HTTP 200, записей: 36, утечка по organizationId: false, по имени: false",
+      "count": 36,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "список клиентов без чужих записей",
+      "status": "VERIFIED",
+      "note": "HTTP 200, записей: 4, утечка по organizationId: false, по имени: false",
+      "count": 4,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "список машин без чужих записей",
+      "status": "VERIFIED",
+      "note": "HTTP 200, записей: 6, утечка по organizationId: false, по имени: false",
+      "count": 6,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "список водителей без чужих записей",
+      "status": "VERIFIED",
+      "note": "HTTP 200, записей: 5, утечка по organizationId: false, по имени: false",
+      "count": 5,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "список рейсов без чужих записей",
+      "status": "VERIFIED",
+      "note": "HTTP 200, записей: 4, утечка по organizationId: false, по имени: false",
+      "count": 4,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "оплаты без чужих записей",
+      "status": "NOT_TESTED",
+      "note": "HTTP 200, записей: ?, утечка по organizationId: false, по имени: false",
+      "count": null,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "отчёты без чужих записей",
+      "status": "NOT_TESTED",
+      "note": "HTTP 200, записей: ?, утечка по organizationId: false, по имени: false",
+      "count": null,
+      "leak": false,
+      "names": false
+    },
+    {
+      "scenario": "N",
+      "name": "владелец платформы видит все организации",
+      "status": "VERIFIED",
+      "note": "HTTP 200, организаций в обзоре: 4",
+      "orgCount": 4
+    },
+    {
+      "scenario": "N",
+      "name": "уборка тестовой организации",
+      "status": "VERIFIED",
+      "note": "удалена"
+    }
+  ],
+  "issues": [
+    {
+      "scenario": "N",
+      "name": "геопозиция чужого водителя",
+      "status": "BROKEN",
+      "note": "GET /api/drivers/cmvc8tgew0007s2p10gusd5dz/location → HTTP 405"
+    },
+    {
+      "scenario": "N",
+      "name": "запись в чужую переписку",
+      "status": "BROKEN",
+      "note": "POST /api/orders/cmvc8tgeo0003s2p1x728yk2h/negotiation → HTTP 400 Недопустимый тип записи. Доступно: note, price_offer, call, email, document"
+    }
+  ]
+}

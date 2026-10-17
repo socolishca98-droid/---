@@ -29,7 +29,7 @@ export interface AuditLogInput {
   ip?: string | null
 }
 
-export async function logAudit(input: AuditLogInput): Promise<void> {
+export async function logAudit(input: AuditLogInput): Promise<boolean> {
   try {
     const metadataStr = input.metadata ? JSON.stringify(input.metadata) : null
     await prisma.auditLog.create({
@@ -45,9 +45,15 @@ export async function logAudit(input: AuditLogInput): Promise<void> {
         ip: input.ip || null,
       },
     })
+    return true
   } catch (e) {
-    // Don't fail main action if audit fails, just log
-    console.error("[Audit] Failed to log:", e)
+    // Запись журнала не удалась. Молчать нельзя: иначе критическое действие
+    // (вход в чужой аккаунт, закрытие доступа) выполнится без следа, и никто
+    // об этом не узнает. Поэтому пишем в консоль и возвращаем false —
+    // вызывающий код обязан сказать об этом в ответе, а не сделать вид,
+    // что всё прошло нормально.
+    console.error("[Audit] Failed to log:", input.action, e)
+    return false
   }
 }
 

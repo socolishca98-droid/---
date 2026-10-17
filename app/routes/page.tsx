@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { MOVING_ORDER_STATUSES, type OrderStatus } from "@/lib/orders/stages"
+import { normalizeRouteStatus } from "@/lib/routes/model"
 import { fetchJsonCached, peekCache, invalidateCache } from "@/lib/client-cache"
 import { CardsSkeleton } from "@/components/ui/skeletons"
 import { TruckLoader } from "@/components/ui/truck-loader"
@@ -137,7 +138,10 @@ interface ApiRoute {
 function toCardStatus(routeStatus: string, orders: RouteOrder[]): string {
   if (routeStatus === "cancelled") return "cancelled"
   if (routeStatus === "completed") return "completed"
-  if (routeStatus === "in_transit" || routeStatus === "active") return "in_progress"
+  // Сравнение идёт через normalizeRouteStatus: в базе могут лежать рейсы,
+  // сохранённые старым написанием "in_progress", и они тоже «в пути».
+  const status = normalizeRouteStatus(routeStatus)
+  if (status === "in_transit" || status === "active") return "in_progress"
   // «В пути» — это когда заказ действительно в дороге: канон статусов заказа
   // объявлен в lib/orders/stages.ts (MOVING_ORDER_STATUSES = control).
   // Прежний список (in_transit / loading / unloading) — статусы старой модели,

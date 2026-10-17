@@ -47,6 +47,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { EXPENSE_TYPES, EXPENSE_TYPE_LABELS } from "@/lib/trips/history"
+import { routeStatusLabel } from "@/lib/routes/model"
 
 interface RouteTripDialogProps {
   routeId: string
@@ -150,8 +151,14 @@ const PHOTO_TYPE_LABELS: Record<string, string> = {
   document: "Документ",
 }
 
+// Подписи статуса рейса берём из единого словаря lib/routes/model.ts, а не из
+// локальной копии. Локальная копия знала старое написание "in_progress" и
+// показывала бы сырое "in_transit" после того, как API начал писать канон.
+// routeStatusLabel дополнительно понимает устаревшие значения из базы.
 const ROUTE_STATUS_LABELS: Record<string, string> = {
-  pending: "Ожидает",
+  planned: "Запланирован",
+  active: "Назначен",
+  in_transit: "В рейсе",
   in_progress: "В рейсе",
   completed: "Завершён",
   cancelled: "Отменён",
@@ -379,7 +386,7 @@ export function RouteTripDialog({ routeId, open, onOpenChange, onChanged }: Rout
             Рейс {data?.route.name ? `№ ${data.route.name}` : ""}
             {data?.route.status && (
               <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                {ROUTE_STATUS_LABELS[data.route.status] ?? data.route.status}
+                {ROUTE_STATUS_LABELS[data.route.status] ?? routeStatusLabel(data.route.status)}
               </span>
             )}
           </DialogTitle>

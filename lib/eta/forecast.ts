@@ -87,12 +87,15 @@ export interface ForecastResult {
   violations: RouteRestriction[]
   /**
    * Можно ли показывать этот ETA как ориентир.
-   * false — маршрут непроходим (полное перекрытие) или маршрута нет вовсе.
+   * false — маршрут непроходим (полное перекрытие), маршрута нет вовсе или
+   * не все точки геокодировались и расчёт построен по неполному маршруту.
    * В этом случае честнее сказать «ETA неизвестен», чем умножать время.
    */
   reliable: boolean
   /** Причина, если прогноз ненадёжен */
   reliabilityNote?: string
+  /** Сколько точек не удалось геокодировать (0 = маршрут полный) */
+  unlocatedCount: number
   /** Действующие дорожные события */
   events: RoadEvent[]
   scenarios: Record<
@@ -136,6 +139,13 @@ export interface ForecastOptions {
   useSeasonalFallback?: boolean
   /** Дорожные события (ДТП, ремонт, перекрытие) */
   events?: readonly RoadEvent[]
+  /**
+   * Точки, которые не удалось геокодировать (адреса для показа человеку).
+   * Непустой список = маршрут построен короче реального: недоступные точки
+   * выпали из расчёта. Такой прогноз НЕ надёжен, сколько бы нарушений ни
+   * оказалось ноль.
+   */
+  unlocatedAddresses?: readonly string[]
 }
 
 /**
@@ -463,11 +473,23 @@ export function forecastSegments(
     stops,
     rest: base.rest,
     violations,
-    reliable: violations.length === 0 && segments.length > 0 && !hasBlocking,
+    // Надёжность = прогноз допустим И построен по ПОЛНОМУ набору точек.
+    // Было: reliable не смотрел на геокодирование. Если геокодер молча
+    // отбрасывал часть адресов, оставшиеся точки складывались в более
+    // короткий и правдоподобный маршрут с нулём нарушений — и диспетчер
+    // получал reliable: true на неполном расчёте.
+    unlocatedCount: options.unlocatedAddresses?.length ?? 0,
+    reliable:
+      violations.length === 0 &&
+      segments.length > 0 &&
+      !hasBlocking &&
+      (options.unlocatedAddresses?.length ?? 0) === 0,
     reliabilityNote:
       violations.length > 0
         ? `маршрут недопустим: ${violations.map((v) => v.message).join("; ")}`
-        : hasBlocking
+        : (options.unlocatedAddresses?.length ?? 0) > 0
+          ? `прогноз неполный: не определены координаты ${options.unlocatedAddresses!.length} точек (${options.unlocatedAddresses!.slice(0, 5).join("; ")}${options.unlocatedAddresses!.length > 5 ? ` и ещё ${options.unlocatedAddresses!.length - 5}` : ""}), они не учтены в расчёте`
+          : hasBlocking
           ? "на маршруте полное перекрытие — ETA определён только до точки перекрытия, нужен альтернативный маршрут"
           : segments.length === 0
             ? "маршрут не построен"

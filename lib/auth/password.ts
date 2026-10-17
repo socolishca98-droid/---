@@ -18,6 +18,12 @@ import {
   timingSafeEqual,
 } from "node:crypto"
 import { promisify } from "node:util"
+import { MIN_PASSWORD_LENGTH } from "./constants"
+
+// Реэкспорт: серверный код и тесты продолжают импортировать константу отсюда.
+// Сама она живёт в lib/auth/constants, чтобы клиентские страницы могли взять
+// её, не таща в бандл node:util из этого файла.
+export { MIN_PASSWORD_LENGTH } from "./constants"
 
 const scrypt = promisify(scryptCallback) as (
   password: string | Buffer,
@@ -35,7 +41,6 @@ export const SCRYPT_PARAMS = {
   maxmem: 64 * 1024 * 1024,
 } as const
 
-export const MIN_PASSWORD_LENGTH = 8
 export const MAX_PASSWORD_LENGTH = 128
 
 export interface PasswordHash {
