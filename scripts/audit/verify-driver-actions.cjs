@@ -217,21 +217,43 @@ async function main() {
     const photoRow = await prisma.photo.findFirst({
       where: { driverId },
       orderBy: { createdAt: "desc" },
-      select: { id: true, type: true, url: true, createdAt: true },
+      select: { id: true, type: true, url: true, createdAt: true, storageKey: true, bytes: true },
     });
     createdPhotoId = photoRow?.id ?? null;
 
+    const dbDriver = String(process.env.STORAGE_DRIVER || "local").toLowerCase() === "db";
     const fileOnDisk = photoRow?.url
       ? fs.existsSync(path.join(ROOT, "public", photoRow.url.replace(/^\/+/, "")))
       : false;
+    const bytesInDb = Boolean(photoRow?.bytes && photoRow.bytes.length > 0);
 
     step(
       "фото груза отправляется и сохраняется",
-      Boolean(photoRow) && fileOnDisk,
-      photoRow
-        ? `запись ${photoRow.id}, тип ${photoRow.type}, файл на диске: ${fileOnDisk ? "да" : "нет"}`
-        : "запись о фото не создана",
+      dbDriver ? bytesInDb && !fileOnDisk : Boolean(photoRow) && fileOnDisk,
+      dbDriver
+        ? `драйвер db: байты в базе: ${bytesInDb ? "да" : "нет"}, файла на диске: ${fileOnDisk ? "есть (не должно)" : "нет"}`
+        : photoRow
+          ? `запись ${photoRow.id}, тип ${photoRow.type}, файл на диске: ${fileOnDisk ? "да" : "нет"}`
+          : "запись о фото не создана",
     );
+
+    // Отдача: фото открывается через /api/photos/file после проверки сессии.
+    // Ссылка в базе не меняется от драйвера — это и проверяем.
+    if (photoRow?.url) {
+      const served = await page.evaluate(async (url) => {
+        const res = await fetch(`/api/photos/file?path=${encodeURIComponent(url)}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return { status: res.status, type: "", length: 0 };
+        const buf = new Uint8Array(await res.arrayBuffer());
+        return { status: res.status, type: res.headers.get("content-type") || "", length: buf.length };
+      }, photoRow.url);
+      step(
+        "фото открывается через приложение",
+        served.status === 200 && served.length > 0 && /image\//.test(served.type),
+        `HTTP ${served.status}, content-type ${served.type || "нет"}, байт: ${served.length}`,
+      );
+    }
 
     await page.screenshot({ path: path.join(ROOT, "docs/audit-screens/taskE-driver-photo.png") });
   } catch (error) {

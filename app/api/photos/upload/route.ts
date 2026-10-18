@@ -20,7 +20,7 @@ import { requireAnySession } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 import { ocrDataPayload, recognizeDocumentOnPhoto } from "@/lib/ocr/service"
-import { buildStorageKey, photoUrlFromKey, putPhoto } from "@/lib/storage"
+import { buildStorageKey, photoUrlFromKey, putPhoto, storageKind } from "@/lib/storage"
 
 import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
@@ -171,20 +171,42 @@ export async function POST(request: NextRequest) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer())
-    await putPhoto(storageKey, bytes, file.type)
     const url = photoUrlFromKey(storageKey)
 
-    const photo = (await prisma.photo.create({
-      data: {
-        organizationId: org.organizationId,
-        url,
-        type,
-        driverId,
-        orderId,
-        routeId: finalRouteId,
-        description,
-      },
-    })) as { id: string; url: string; type: string; createdAt: Date }
+    // Драйвер db (Vercel и другой serverless, где диск только для чтения):
+    // байты кладём прямо в запись Photo — файл на диске не появляется, но
+    // ссылка, проверка доступа и OCR остаются прежними. Отказ на середине
+    // невозможен: запись и байты создаются одним обращением.
+    const photo =
+      storageKind() === "db"
+        ? ((await prisma.photo.create({
+            data: {
+              organizationId: org.organizationId,
+              url,
+              type,
+              driverId,
+              orderId,
+              routeId: finalRouteId,
+              description,
+              storageKey,
+              mime: file.type || "image/jpeg",
+              bytes,
+            },
+          })) as { id: string; url: string; type: string; createdAt: Date })
+        : await (async () => {
+            await putPhoto(storageKey, bytes, file.type)
+            return prisma.photo.create({
+              data: {
+                organizationId: org.organizationId,
+                url,
+                type,
+                driverId,
+                orderId,
+                routeId: finalRouteId,
+                description,
+              },
+            }) as Promise<{ id: string; url: string; type: string; createdAt: Date }>
+          })()
 
     // Логисту полезно узнать о фото от водителя (особенно о повреждении):
     // раньше это делал старый JSON-эндпоинт /api/m/photos, теперь — здесь,

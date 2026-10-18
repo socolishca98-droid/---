@@ -11,6 +11,9 @@
 //
 //   local (по умолчанию) — public/uploads, как раньше. Для одного сервера,
 //   Docker и песочницы ничего настраивать не нужно.
+//   db                   — байты фото лежат в базе (Photo.bytes). Единственный
+//   драйвер, который работает там, где файловая система только для чтения:
+//   Vercel и прочий serverless. Включается STORAGE_DRIVER=db.
 //   s3                  — любой S3-совместимый объектный хранилище
 //   (Yandex Object Storage, Cloudflare R2, Supabase Storage, MinIO, AWS).
 //   Включается STORAGE_DRIVER=s3 и ключами STORAGE_S3_*.
@@ -26,11 +29,13 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 
+import { prisma } from "@/lib/prisma"
+
 /** Префикс ссылки на фото в базе и в браузере. */
 export const PHOTO_URL_PREFIX = "/uploads/"
 
-/** Какой драйвер использовать: local (по умолчанию) или s3. */
-export type StorageKind = "local" | "s3"
+/** Какой драйвер использовать: local (по умолчанию), db или s3. */
+export type StorageKind = "local" | "db" | "s3"
 
 /** Ошибки хранилища — с человеческим объяснением (показываем в интерфейсе). */
 export class StorageError extends Error {
@@ -121,7 +126,11 @@ export function organizationFromStorageKey(key: string): string | null {
 
 export function storageKind(): StorageKind {
   const raw = String(process.env.STORAGE_DRIVER ?? "").trim().toLowerCase()
-  return raw === "s3" ? "s3" : "local"
+  if (raw === "s3") return "s3"
+  // db — для serverless (Vercel): файловая система там только для чтения,
+  // поэтому байты фото живут в базе. Отдача и проверка доступа не меняются.
+  if (raw === "db") return "db"
+  return "local"
 }
 
 /** Куда складываем файлы в local-режиме (public/uploads, как раньше). */
@@ -196,6 +205,14 @@ export async function readPhoto(key: string): Promise<Buffer | null> {
   const normalized = normalizeStorageKey(key)
   if (!normalized) return null
 
+  if (storageKind() === "db") {
+    // Байты лежат в записи Photo (storageKey). Старые фото, залитые до
+    // включения db-драйвера, лежат на диске — читаем и их тоже.
+    const fromDb = await readDbPhoto(normalized)
+    if (fromDb) return fromDb
+    return readLocalPhoto(normalized)
+  }
+
   if (storageKind() === "s3") {
     const bytes = await s3Get(normalized)
     if (bytes) return bytes
@@ -219,6 +236,15 @@ export async function photoExists(key: string): Promise<boolean> {
   const normalized = normalizeStorageKey(key)
   if (!normalized) return false
 
+  if (storageKind() === "db") {
+    const row = await prisma.photo.findFirst({
+      where: { storageKey: normalized },
+      select: { bytes: true },
+    })
+    if (row?.bytes) return true
+    return localExists(normalized)
+  }
+
   if (storageKind() === "s3") {
     if (await s3Head(normalized)) return true
     return localExists(normalized)
@@ -236,8 +262,26 @@ export async function removePhoto(key: string): Promise<void> {
     await s3Delete(normalized)
   }
 
+  if (storageKind() === "db") {
+    // Запись Photo обычно удаляют целиком, и байты уходят вместе с ней.
+    // Этот путь — страховка: обнуляем байты у записи с таким ключом.
+    await prisma.photo.updateMany({
+      where: { storageKey: normalized },
+      data: { bytes: null, mime: null, storageKey: null },
+    })
+  }
+
   const absolute = localPath(normalized)
   if (absolute) await rm(absolute, { force: true })
+}
+
+/** Байты фото из базы: драйвер db. */
+async function readDbPhoto(key: string): Promise<Buffer | null> {
+  const row = await prisma.photo.findFirst({
+    where: { storageKey: key },
+    select: { bytes: true },
+  })
+  return row?.bytes ? Buffer.from(row.bytes) : null
 }
 
 async function readLocalPhoto(key: string): Promise<Buffer | null> {

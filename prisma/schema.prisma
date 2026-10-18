@@ -651,6 +651,14 @@ model Photo {
   routeId     String?
   route       Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
   description String?
+  /// Ключ файла в хранилище (lib/storage.ts). На диске/S3 файл лежит по нему же.
+  storageKey  String?
+  /// Байты фото и его content-type — заполняются, когда хранилищем выбрана
+  /// база (STORAGE_DRIVER=db): на Vercel файловая система только для чтения,
+  /// поэтому фото держится в базе. url при этом остаётся прежним, отдача идёт
+  /// через /api/photos/file.
+  bytes       Bytes?
+  mime        String?
   ocrText     String?
   ocrData     String?
   createdAt   DateTime @default(now())

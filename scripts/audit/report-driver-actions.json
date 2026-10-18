@@ -1,9 +1,9 @@
 {
  "title": "Жалобы водителя: имя, статус с таймером, фото",
  "summary": {
-  "verified": 8,
+  "verified": 9,
   "broken": 0,
-  "total": 8
+  "total": 9
  },
  "steps": [
   {
@@ -44,7 +44,12 @@
   {
    "name": "фото груза отправляется и сохраняется",
    "status": "VERIFIED",
-   "note": "запись cmvcvyucq000xdke6q2531y4l, тип cargo_before, файл на диске: да"
+   "note": "запись cmvdd71n6000efy42qf1rusq5, тип cargo_before, файл на диске: да"
+  },
+  {
+   "name": "фото открывается через приложение",
+   "status": "VERIFIED",
+   "note": "HTTP 200, content-type image/jpeg, байт: 160"
   }
  ],
  "pageErrors": []
