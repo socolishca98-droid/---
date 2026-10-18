@@ -168,13 +168,13 @@
    "scenario": "B2",
    "name": "журнал по компании A содержит только её записи",
    "status": "VERIFIED",
-   "note": "HTTP 200, записей: 200, всего: 252"
+   "note": "HTTP 200, записей: 200, всего: 261"
   },
   {
    "scenario": "B2",
    "name": "журнал по компании B содержит только её записи",
    "status": "VERIFIED",
-   "note": "HTTP 200, записей: 95, всего: 95"
+   "note": "HTTP 200, записей: 103, всего: 103"
   },
   {
    "scenario": "B2",
@@ -186,7 +186,7 @@
    "scenario": "B4",
    "name": "журнал отдаёт реальные записи",
    "status": "VERIFIED",
-   "note": "HTTP 200, записей: 200, всего: 399"
+   "note": "HTTP 200, записей: 200, всего: 419"
   },
   {
    "scenario": "B4",
@@ -198,7 +198,7 @@
    "scenario": "B4",
    "name": "субъект действия опознаётся в каждой записи",
    "status": "VERIFIED",
-   "note": "во всех записях есть исполнитель (у водителей подставляются имя и телефон: 24 записей)"
+   "note": "во всех записях есть исполнитель (у водителей подставляются имя и телефон: 20 записей)"
   },
   {
    "scenario": "B4",
@@ -216,7 +216,7 @@
    "scenario": "B4",
    "name": "в журнале есть request ID у новых действий",
    "status": "VERIFIED",
-   "note": "с request ID: 86 из 200; среди 20 последних: 13"
+   "note": "с request ID: 98 из 200; среди 20 последних: 13"
   },
   {
    "scenario": "B6",
@@ -228,7 +228,7 @@
    "scenario": "B4",
    "name": "в журнале видны разные виды действий",
    "status": "VERIFIED",
-   "note": "действия: activate, deactivate, impersonate, impersonation_end, login, profile_update, reset_password, sessions_revoked"
+   "note": "действия: activate, deactivate, impersonate, impersonation_end, login, profile_update, sessions_revoked"
   },
   {
    "scenario": "B4",

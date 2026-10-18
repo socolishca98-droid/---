@@ -20,15 +20,15 @@
   {
    "name": "новое имя видно в шапке пульта",
    "status": "VERIFIED",
-   "note": "было «Владелец Платформы» → стало «D-MVDDAREF Владелец»",
+   "note": "было «Владелец Платформы» → стало «D-MVDFLVVM Владелец»",
    "before": "Владелец Платформы",
-   "after": "D-MVDDAREF Владелец"
+   "after": "D-MVDFLVVM Владелец"
   },
   {
    "name": "имя сохранено в базе",
    "status": "VERIFIED",
-   "note": "в БД: «D-MVDDAREF Владелец»",
-   "dbName": "D-MVDDAREF Владелец"
+   "note": "в БД: «D-MVDFLVVM Владелец»",
+   "dbName": "D-MVDFLVVM Владелец"
   },
   {
    "name": "«Кабинет» называет организацию",
