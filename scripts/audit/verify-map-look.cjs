@@ -99,14 +99,20 @@ async function login(page, context) {
   const lineInfo = await page.evaluate(() => {
     const paths = [...document.querySelectorAll(".leaflet-pane path")]
     const casings = paths.filter((p) => p.getAttribute("stroke") === "#0a0a0c")
+    // Толщина цветной линии теперь адаптивная: при большом числе рейсов все
+    // линии тоньше, чтобы карта не превращалась в кашу. Проверяем обе.
     const colored = paths.filter((p) => {
       const w = Number(p.getAttribute("stroke-width") || 0)
-      return w === 3.5
+      return w === 3.5 || w === 2.5
     })
     return { casings: casings.length, colored: colored.length, total: paths.length }
   })
   check("Нить рейса рисуется с подкладкой", lineInfo.casings > 0, `подкладок: ${lineInfo.casings}`)
-  check("Нить рейса рисуется цветной линией", lineInfo.colored > 0, `цветных линий: ${lineInfo.colored}`)
+  check(
+    "Нить рейса рисуется цветной линией",
+    lineInfo.colored > 0,
+    `цветных линий: ${lineInfo.colored} из ${lineInfo.total} path`,
+  )
 
   // ── 4. Точки «Погрузка»/«Выгрузка» ──
   // Тултип Leaflet открывается только при наведении, поэтому наводимся

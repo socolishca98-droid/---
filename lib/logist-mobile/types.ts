@@ -78,6 +78,12 @@ export interface MobileRouteOrder {
   agreedPrice: number | null
   routeSequence: number | null
   isAdditionalLoad?: boolean
+  /**
+   * Состояние переговоров по заказу: new | in_progress | agreed | lost.
+   * Нужно, чтобы в карточке рейса увидеть заказы, по которым согласие так и
+   * не достигнуто, и пересобрать рейс без них.
+   */
+  negotiationStatus?: string | null
 }
 
 /**

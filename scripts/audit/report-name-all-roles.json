@@ -1,25 +1,25 @@
 {
  "steps": [
   {
-   "name": "N-MVE5R5SY Админов",
+   "name": "N-MVE9KNU6 Админов",
    "status": "VERIFIED",
    "note": "новое имя на экране: да, после перезагрузки: да, в базе: да",
    "role": "admin"
   },
   {
-   "name": "N-MVE5R5SY Логистов",
+   "name": "N-MVE9KNU6 Логистов",
    "status": "VERIFIED",
    "note": "исходное имя показано: да, новое на экране: да, после перезагрузки: да, в базе: да",
    "role": "logist"
   },
   {
-   "name": "N-MVE5R5SY Водителев",
+   "name": "N-MVE9KNU6 Водителев",
    "status": "VERIFIED",
    "note": "новое имя на экране: да, после перезагрузки: да, в базе: да",
    "role": "driver"
   },
   {
-   "name": "N-MVE5R5SY Владельцев",
+   "name": "N-MVE9KNU6 Владельцев",
    "status": "VERIFIED",
    "note": "новое имя в шапке пульта: да, после перезагрузки: да, в базе: да",
    "role": "owner"

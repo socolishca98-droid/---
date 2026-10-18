@@ -17,6 +17,9 @@ import { toast } from "sonner"
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   Package,
   Phone,
@@ -36,6 +39,7 @@ import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
   assignableDrivers,
+  buildRouteFromAnchor,
   buildRouteProposals,
   driverOfVehicle,
   pickCrew,
@@ -64,6 +68,20 @@ export default function RouteAssistantPage() {
   const [vehicleChoice, setVehicleChoice] = useState<Record<string, string>>({})
   const [driverChoice, setDriverChoice] = useState<Record<string, string>>({})
   const [open, setOpen] = useState<string | null>(null)
+  /**
+   * Опорный заказ: рейс строится вокруг него. Пусто — помощник сам раскладывает
+   * все согласованные заказы по направлениям.
+   */
+  const [anchorId, setAnchorId] = useState<string | null>(null)
+  const [anchorPanel, setAnchorPanel] = useState(false)
+  /** Радиус сборки, км. Ноль — только по направлению (общий город). */
+  const [radiusKm, setRadiusKm] = useState(0)
+
+  // Координаты городов — только когда выбран опорный заказ и радиус: без них
+  // геокодер зря не дёргается.
+  const geoState = useJsonApi<{ points: Record<string, { lat: number; lng: number } | null> }>(
+    user && anchorId && radiusKm > 0 ? "/api/orders/geo-points" : null,
+  )
 
   const orders = (ordersState.data?.orders ?? []) as AssistantOrder[]
   const vehicles = vehiclesState.data?.vehicles ?? []
@@ -72,10 +90,44 @@ export default function RouteAssistantPage() {
   const loading = ordersState.loading || vehiclesState.loading
   const error = ordersState.error || vehiclesState.error
 
-  const proposals = useMemo(() => buildRouteProposals(orders, vehicles), [orders, vehicles])
-  const visible = proposals.filter((proposal) => !hidden.includes(proposal.id))
+  // Координаты подставляем заказам: без них радиус не измерить, и помощник
+  // честно соберёт по направлению.
+  const geoPoints = geoState.data?.points ?? null
+  const ordersWithPoints = useMemo(() => {
+    if (!geoPoints) return orders
+    return orders.map((order) => ({
+      ...order,
+      fromPoint: geoPoints[shortCity(order.routeFrom)] ?? null,
+      toPoint: geoPoints[shortCity(order.routeTo)] ?? null,
+    }))
+  }, [orders, geoPoints])
+
+  const proposals = useMemo(
+    () => buildRouteProposals(ordersWithPoints, vehicles),
+    [ordersWithPoints, vehicles],
+  )
+
+  /**
+   * Сборка от опорного заказа. Возвращает предложение и список того, что
+   * осталось за бортом, — с причиной по каждому.
+   */
+  const anchorBuild = useMemo(() => {
+    if (!anchorId) return null
+    return buildRouteFromAnchor(ordersWithPoints, vehicles, {
+      anchorOrderId: anchorId,
+      radiusKm: radiusKm > 0 ? radiusKm : null,
+    })
+  }, [anchorId, radiusKm, ordersWithPoints, vehicles])
+
+  // Когда выбран опорный заказ — показываем сборку вокруг него одной карточкой:
+  // логист пришёл с конкретным грузом, ему не нужен весь список направлений.
+  // Общую сборку он всегда вернёт кнопкой «Сбросить».
+  const visible = anchorBuild
+    ? [anchorBuild.proposal]
+    : proposals.filter((proposal) => !hidden.includes(proposal.id))
   const readyCount = orders.filter((order) => !order.routeId && order.status === "agreed").length
   const summary = proposalSummary(proposals, readyCount)
+  const anchorOrder = anchorId ? orders.find((order) => order.id === anchorId) ?? null : null
 
   /**
    * Экипаж предложения: машина и водитель подставляются помощником, логист может
@@ -220,6 +272,121 @@ export default function RouteAssistantPage() {
               </button>
             </Card>
 
+            {/* Сборка от конкретного заказа.
+                Логист обычно начинает с груза («вот этот повезём»), а не с
+                направления. Здесь он выбирает опорный заказ — и помощник
+                строит рейс вокруг него, подбирая попутные по направлению
+                или в заданном радиусе. */}
+            {readyCount > 0 ? (
+              <Card className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setAnchorPanel((value) => !value)}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[14.5px] font-semibold text-foreground">
+                      Собрать вокруг заказа
+                    </span>
+                    <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
+                      {anchorOrder
+                        ? `${anchorOrder.clientName?.trim() || shortCity(anchorOrder.routeFrom)} · ${shortCity(anchorOrder.routeFrom)} → ${shortCity(anchorOrder.routeTo)}`
+                        : "Выберите груз — рейс строится от него"}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-primary">
+                    {anchorId ? "Изменить" : "Выбрать"}
+                    {anchorPanel ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </span>
+                </button>
+
+                {anchorPanel ? (
+                  <div className="mt-2.5 space-y-2.5 border-t border-border pt-3">
+                    <p className="text-[12px] text-muted-foreground">
+                      Опорный заказ ({readyCount} на выбор)
+                    </p>
+                    <div className="max-h-[220px] space-y-1.5 overflow-y-auto overscroll-contain">
+                      {orders
+                        .filter((order) => !order.routeId && order.status === "agreed")
+                        .map((order) => {
+                          const active = order.id === anchorId
+                          return (
+                            <button
+                              key={order.id}
+                              type="button"
+                              onClick={() => setAnchorId(active ? null : order.id)}
+                              className={`flex w-full items-start gap-2 rounded-xl border px-2.5 py-2 text-left active:opacity-70 ${
+                                active ? "border-primary/40 bg-primary/10" : "border-border"
+                              }`}
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[13px] text-foreground">
+                                  {order.clientName?.trim() || shortCity(order.routeFrom)}
+                                </span>
+                                <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
+                                  {shortCity(order.routeFrom)}
+                                  <ArrowRight className="h-3 w-3" />
+                                  {shortCity(order.routeTo)}
+                                  {order.weight ? <span>· {formatWeightKg(order.weight)}</span> : null}
+                                  {order.agreedPrice || order.price ? (
+                                    <span>· {formatMoney(order.agreedPrice ?? order.price)}</span>
+                                  ) : null}
+                                </span>
+                              </span>
+                              {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                            </button>
+                          )
+                        })}
+                    </div>
+
+                    {/* Радиус: сколько километров от опорного маршрута можно
+                        брать попутные грузы. Ноль — только по направлению. */}
+                    <div className="rounded-xl bg-secondary/40 px-3 py-2.5">
+                      <p className="text-[12.5px] font-medium text-foreground">
+                        Радиус сборки: {radiusKm === 0 ? "по направлению" : `${radiusKm} км`}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {[0, 50, 100, 200, 400].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setRadiusKm(value)}
+                            className={`min-h-[34px] rounded-md border px-3 text-[12.5px] ${
+                              radiusKm === value
+                                ? "border-primary/40 bg-primary/15 text-primary"
+                                : "border-border text-foreground/90"
+                            }`}
+                          >
+                            {value === 0 ? "по направлению" : `${value} км`}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
+                        {radiusKm === 0
+                          ? "Берём грузы с общим городом погрузки или выгрузки — без замера расстояний."
+                          : "Берём грузы, у которых город рядом с вашим маршрутом, плюс все с общим направлением."}
+                      </p>
+                      {radiusKm > 0 && geoState.loading ? (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Считаю расстояния…
+                        </p>
+                      ) : null}
+                      {radiusKm > 0 && geoPoints && Object.values(geoPoints).every((v) => v === null) ? (
+                        <p className="mt-1.5 text-[11.5px] text-warning">
+                          Города не распознаны — соберу по направлению.
+                        </p>
+                      ) : null}
+                    </div>
+
+                  </div>
+                ) : null}
+              </Card>
+            ) : null}
+
             {visible.length === 0 ? (
               <div className="mt-3">
                 <EmptyState
@@ -242,6 +409,27 @@ export default function RouteAssistantPage() {
               </div>
             ) : (
               <div className="mt-3 space-y-3">
+                {anchorBuild ? (
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 py-2">
+                    <p className="text-[12.5px] text-foreground/90">
+                      Собрано вокруг:{" "}
+                      <span className="font-medium">
+                        {anchorOrder?.clientName?.trim() || shortCity(anchorOrder?.routeFrom)}
+                      </span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAnchorId(null)
+                        setRadiusKm(0)
+                        setAnchorPanel(false)
+                      }}
+                      className="shrink-0 text-[12.5px] font-medium text-primary"
+                    >
+                      Сбросить
+                    </button>
+                  </div>
+                ) : null}
                 {visible.map((proposal) => {
                   const { vehicle, driver } = crewFor(proposal)
                   const expanded = open === proposal.id
@@ -306,6 +494,33 @@ export default function RouteAssistantPage() {
                           >
                             <Fuel className="h-3.5 w-3.5" /> Заполнить расход
                           </Link>
+                        </div>
+                      ) : null}
+
+                      {/* Что осталось за бортом и почему — только для сборки
+                          от опорного заказа: молча пропадать ничего не должно. */}
+                      {anchorBuild && proposal.id === anchorBuild.proposal.id && anchorBuild.excluded.length > 0 ? (
+                        <div className="mt-2.5 rounded-xl bg-secondary/40 px-3 py-2.5">
+                          <p className="text-[12.5px] font-medium text-foreground">
+                            Не взято ({anchorBuild.excluded.length}) — и почему:
+                          </p>
+                          <ul className="mt-1 space-y-1">
+                            {anchorBuild.excluded.slice(0, 5).map((entry) => (
+                              <li
+                                key={entry.order.id}
+                                className="flex items-start gap-1.5 text-[11.5px] leading-snug text-muted-foreground"
+                              >
+                                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-secondary" />
+                                {shortCity(entry.order.routeFrom)} → {shortCity(entry.order.routeTo)} —{" "}
+                                {entry.reason}
+                              </li>
+                            ))}
+                          </ul>
+                          {anchorBuild.excluded.length > 5 ? (
+                            <p className="mt-1 text-[11.5px] text-muted-foreground">
+                              и ещё {anchorBuild.excluded.length - 5}
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
 

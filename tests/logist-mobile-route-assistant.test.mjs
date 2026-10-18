@@ -29,6 +29,8 @@ const {
   assignableDrivers,
   assignableDriversForVehicle,
   pickCrew,
+  buildRouteFromAnchor,
+  haversineKm,
 } = require("../.test-build/lib/logist-mobile/route-assistant.js")
 
 const NOW = new Date("2026-10-08T10:00:00.000Z")
@@ -385,4 +387,154 @@ test("обратная загрузка: не влезает в машину —
   const main = proposals.find((item) => item.orders.some((o) => o.id === "o-there"))
   assert.ok(main.backload, "груз должен быть предложен, даже если не влезает")
   assert.equal(main.backload.fitsVehicle, false)
+})
+
+// ---------------------------------------------------------------------------
+// Сборка от опорного заказа: рейс строится вокруг конкретного груза
+// ---------------------------------------------------------------------------
+
+const ANCHOR = {
+  id: "anchor-1",
+  status: "agreed",
+  routeFrom: "Москва, улица Складочная, 8",
+  routeTo: "Тула, улица Советская, 1",
+  distance: 200,
+  weight: 5000,
+  price: 80000,
+  clientName: "ООО «Опора»",
+  routeId: null,
+  fromPoint: { lat: 55.75, lng: 37.62 },
+  toPoint: { lat: 54.19, lng: 37.62 },
+}
+
+test("опорный заказ: рейс строится вокруг него и он всегда в составе", () => {
+  const result = buildRouteFromAnchor([ANCHOR], FLEET_WITH_FUEL, {
+    anchorOrderId: "anchor-1",
+    fuelPriceRubPerL: 60,
+  })
+  assert.ok(result, "сборка должна вернуть результат")
+  assert.equal(result.proposal.orders.length, 1)
+  assert.equal(result.proposal.orders[0].id, "anchor-1")
+  assert.equal(result.proposal.weightKg, 5000)
+  assert.equal(result.proposal.revenue, 80000)
+  assert.ok(result.proposal.reasons[0].includes("Опорный заказ"))
+})
+
+test("опорный заказ: попутные берутся по направлению", () => {
+  const orders = [
+    ANCHOR,
+    // Тот же город погрузки — берём
+    { ...ANCHOR, id: "same-from", routeFrom: "Москва, другой склад", routeTo: "Орёл", distance: 350, weight: 3000, price: 60000, clientName: "Попутный" },
+    // Другое направление — не берём
+    { ...ANCHOR, id: "other", routeFrom: "Казань", routeTo: "Уфа", distance: 500, weight: 3000, price: 60000 },
+  ]
+  const result = buildRouteFromAnchor(orders, FLEET_WITH_FUEL, {
+    anchorOrderId: "anchor-1",
+    fuelPriceRubPerL: 60,
+  })
+  const ids = result.proposal.orders.map((o) => o.id)
+  assert.ok(ids.includes("anchor-1"))
+  assert.ok(ids.includes("same-from"), "попутный по направлению берётся")
+  assert.ok(!ids.includes("other"), "другое направление не берётся")
+  // И причина отказа обязана быть названа
+  const excluded = result.excluded.find((e) => e.order.id === "other")
+  assert.ok(excluded, "отказ должен быть объяснён")
+  assert.match(excluded.reason, /другое направление/)
+})
+
+test("радиус: берём грузы рядом и объясняем отказы километрами", () => {
+  const orders = [
+    ANCHOR,
+    // 25 км от Тулы — в радиусе 100 км
+    {
+      ...ANCHOR,
+      id: "near",
+      routeFrom: "Тула, Северная, 2",
+      routeTo: "Калуга",
+      distance: 180,
+      weight: 3000,
+      price: 50000,
+      fromPoint: { lat: 54.42, lng: 37.55 },
+      toPoint: { lat: 54.51, lng: 36.26 },
+    },
+    // Воронеж — около 480 км от Тулы, вне радиуса
+    {
+      ...ANCHOR,
+      id: "far",
+      routeFrom: "Воронеж",
+      routeTo: "Липецк",
+      distance: 400,
+      weight: 3000,
+      price: 50000,
+      fromPoint: { lat: 51.67, lng: 39.21 },
+      toPoint: { lat: 52.61, lng: 39.59 },
+    },
+  ]
+  const result = buildRouteFromAnchor(orders, FLEET_WITH_FUEL, {
+    anchorOrderId: "anchor-1",
+    radiusKm: 100,
+    fuelPriceRubPerL: 60,
+  })
+  const ids = result.proposal.orders.map((o) => o.id)
+  assert.ok(ids.includes("near"), "груз в радиусе берётся")
+  assert.ok(!ids.includes("far"), "груз вне радиуса не берётся")
+  assert.equal(result.basis, "radius", "основание — радиус")
+  const excluded = result.excluded.find((e) => e.order.id === "far")
+  assert.ok(excluded, "отказ объяснён")
+  assert.match(excluded.reason, /вне радиуса 100 км/)
+  assert.match(excluded.reason, /км от вашего маршрута/)
+})
+
+test("радиус без координат не выдумывает километры", () => {
+  // Ни у кого нет координат — радиус измерить нечем, поэтому основание
+  // обязано быть «по направлению», а не молчаливый ноль
+  const orders = [
+    { ...ANCHOR, fromPoint: null, toPoint: null },
+    { ...ANCHOR, id: "same", routeFrom: "Москва, иной склад", routeTo: "Тула, иная улица" },
+  ]
+  const result = buildRouteFromAnchor(orders, FLEET_WITH_FUEL, {
+    anchorOrderId: "anchor-1",
+    radiusKm: 50,
+    fuelPriceRubPerL: 60,
+  })
+  assert.equal(result.basis, "direction")
+  assert.ok(result.proposal.orders.some((o) => o.id === "same"))
+})
+
+test("опорный заказ: что не влезло — названо причиной", () => {
+  const orders = [
+    ANCHOR,
+    { ...ANCHOR, id: "heavy", routeFrom: "Москва, склад", routeTo: "Тула", weight: 9000, price: 60000 },
+  ]
+  // Машина на 10 т: 5 т якорь + 9 т не влезают
+  const result = buildRouteFromAnchor(orders, FLEET_WITH_FUEL, {
+    anchorOrderId: "anchor-1",
+    fuelPriceRubPerL: 60,
+  })
+  const ids = result.proposal.orders.map((o) => o.id)
+  assert.ok(ids.includes("anchor-1"))
+  assert.ok(!ids.includes("heavy"))
+  const excluded = result.excluded.find((e) => e.order.id === "heavy")
+  assert.ok(excluded)
+  assert.match(excluded.reason, /не влезает/)
+})
+
+test("опорный заказ: прибыль считается так же, как в обычной сборке", () => {
+  const result = buildRouteFromAnchor([ANCHOR], FLEET_WITH_FUEL, {
+    anchorOrderId: "anchor-1",
+    fuelPriceRubPerL: 60,
+  })
+  const p = result.proposal
+  assert.equal(p.fuelCostRub !== null, true)
+  assert.equal(p.profitRub, p.revenue - p.fuelCostRub)
+  assert.equal(p.unprofitable, false)
+})
+
+test("гаверсинус: расстояние между точками считается", () => {
+  const moscow = { lat: 55.75, lng: 37.62 }
+  const tula = { lat: 54.19, lng: 37.62 }
+  const km = haversineKm(moscow, tula)
+  // Москва — Тула около 170 км по прямой
+  assert.ok(km > 150 && km < 190, `ожидали ~170 км, получили ${km}`)
+  assert.equal(haversineKm(moscow, moscow), 0)
 })

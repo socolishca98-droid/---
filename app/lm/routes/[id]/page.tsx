@@ -22,6 +22,7 @@ import {
   Clock,
   Fuel,
   Loader2,
+  RefreshCw,
   MapPin,
   MessageCircle,
   Navigation,
@@ -127,6 +128,15 @@ export default function LogistRoutePage() {
     (route?.orders?.length ?? 0) - (route?.orders ?? []).filter((order) => ["delivered", "cancelled", "rejected", "expired"].includes(order.status)).length,
   )
 
+  // Заказы, по которым согласие не достигнуто: переговоры проиграны или заказ
+  // отклонён. Рейс с ними ехать не должен — рядом будет кнопка пересборки.
+  const unagreedOrders = (route?.orders ?? []).filter(
+    (order) =>
+      order.negotiationStatus === "lost" ||
+      order.status === "rejected" ||
+      order.status === "cancelled",
+  )
+
   /** Всё, что считает route-flow: шаг, маршрут, деньги, итоги. */
   const flow = useMemo(() => {
     if (!route) return null
@@ -177,6 +187,39 @@ export default function LogistRoutePage() {
    *   версия: /complete закрывает незавершённые точки, освобождает водителя
    *   и машину и пишет событие в таймлайн.
    */
+  /**
+   * Пересборка рейса без заказов, по которым согласие не достигнуто.
+   *
+   * Логист собрал рейс из нескольких грузов, развёз предложения — и по части
+   * из них клиенты не согласились. Рейс пересобирается сам: несогласованные
+   * заказы убираются из рейса и возвращаются в общий пул, остальные
+   * перенумеровываются без дыр.
+   */
+  async function rebuildWithoutUnagreed() {
+    if (!route) return
+    if (typeof window !== "undefined") {
+      const names = unagreedOrders.map((order) => order.clientName || shortCity(order.routeFrom))
+      const ok = window.confirm(
+        `Убрать из рейса заказы без согласия (${unagreedOrders.length})?\n${names.join("\n")}\n\nОни вернутся в общий список — можно будет пересобрать.`,
+      )
+      if (!ok) return
+    }
+    setBusy(true)
+    const result = await apiSend<{ removed?: unknown[]; message?: string }>(
+      `/api/routes/${route.id}/rebuild`,
+      "POST",
+      {},
+    )
+    setBusy(false)
+
+    if (!result.ok) {
+      toast.error(result.error || "Не удалось пересобрать рейс")
+      return
+    }
+    toast.success((result.data as { message?: string })?.message || "Рейс пересобран")
+    reload()
+  }
+
   async function runStep(step: RouteStep) {
     if (!route || !step.action) return
     if (typeof window !== "undefined" && !window.confirm(step.action.confirm)) return
@@ -572,6 +615,41 @@ export default function LogistRoutePage() {
                 </Link>
               )}
             </Card>
+
+            {/* ── Несогласованные заказы: рейс пересобирается без них ── */}
+            {unagreedOrders.length > 0 ? (
+              <div className="mt-6 rounded-xl border border-warning/30 bg-warning/[0.07] p-3.5">
+                <p className="flex items-center gap-1.5 text-[14px] font-semibold text-foreground">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  Без согласия: {unagreedOrders.length}
+                </p>
+                <p className="mt-1 text-[12.5px] leading-snug text-foreground/90">
+                  По этим заказам условия не согласованы. Рейс с ними ехать не должен —
+                  пересоберите без них, заказы вернутся в общий список.
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {unagreedOrders.map((order) => (
+                    <li key={order.id} className="text-[12.5px] text-foreground/90">
+                      · {order.clientName || shortCity(order.routeFrom)} —{" "}
+                      {shortCity(order.routeFrom)} → {shortCity(order.routeTo)}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void rebuildWithoutUnagreed()}
+                  className="mt-2.5 flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-warning text-[14px] font-semibold text-warning-foreground active:opacity-70 disabled:opacity-40"
+                >
+                  {busy ? (
+                    <Loader2 className="h-4.5 w-4.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4.5 w-4.5" />
+                  )}
+                  Пересобрать без несогласованных
+                </button>
+              </div>
+            ) : null}
 
             {/* ── Заказы в рейсе: в том порядке, в каком их везут ── */}
             <h2 className="mb-2.5 mt-6 text-[15px] font-semibold text-foreground">

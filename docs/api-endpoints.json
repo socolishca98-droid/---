@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T05:04:07.775Z",
+  "generatedAt": "2026-10-18T20:18:01.065Z",
   "endpoints": [
     {
       "method": "GET",
@@ -603,6 +603,11 @@
     },
     {
       "method": "GET",
+      "route": "/api/orders/geo-points",
+      "group": "orders"
+    },
+    {
+      "method": "GET",
       "route": "/api/organization",
       "group": "organization"
     },
@@ -764,6 +769,11 @@
     {
       "method": "GET",
       "route": "/api/routes/:routeId/map",
+      "group": "routes"
+    },
+    {
+      "method": "POST",
+      "route": "/api/routes/:routeId/rebuild",
       "group": "routes"
     },
     {

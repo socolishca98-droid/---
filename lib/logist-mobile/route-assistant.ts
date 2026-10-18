@@ -604,6 +604,280 @@ export function buildRouteProposals(
   })
 }
 
+// ---------------------------------------------------------------------------
+// Сборка от опорного заказа
+// ---------------------------------------------------------------------------
+
+/** Точка на карте: широта и долгота. */
+export interface Point {
+  lat: number
+  lng: number
+}
+
+/** Заказ, у которого известны координаты городов погрузки и выгрузки. */
+export interface AnchorOrder extends AssistantOrder {
+  /** Координаты города погрузки */
+  fromPoint?: Point | null
+  /** Координата города выгрузки */
+  toPoint?: Point | null
+}
+
+/**
+ * Параметры сборки рейса от опорного заказа.
+ *
+ * `radiusKm` — насколько далеко от точек опорного заказа можно брать другие
+ * грузы. Ноль означает «только по направлению»: общий город погрузки или
+ * общий город выгрузки. Это не лень: без координат радиус просто нечем
+ * измерить, и честнее собрать по направлению, чем молча ничего не сделать.
+ */
+export interface AnchorOptions {
+  /** Идентификатор опорного заказа — рейс строится вокруг него */
+  anchorOrderId: string
+  /** Радиус сборки, км. 0 или null — только по направлению */
+  radiusKm?: number | null
+  /** Цена литра топлива для оценки прибыли */
+  fuelPriceRubPerL?: number | null
+  now?: Date
+}
+
+/** Заказ, который не попал в рейс, и почему — чтобы логист видел картину целиком. */
+export interface ExcludedOrder {
+  order: AssistantOrder
+  reason: string
+}
+
+export interface AnchorBuild {
+  proposal: RouteProposal
+  /** Что осталось за бортом и почему */
+  excluded: ExcludedOrder[]
+  /** На каком основании набирали: «радиус N км» или «по направлению» */
+  basis: "radius" | "direction"
+}
+
+/**
+ * Расстояние между двумя точками по дуге, км (формула гаверсинуса).
+ *
+ * Нужна, чтобы ответить на вопрос «а далеко ли этот груз от моего маршрута».
+ * Точность на расстояниях в сотни километров — с ошибкой меньше километра,
+ * для решения «взять или нет» этого хватает.
+ */
+export function haversineKm(a: Point, b: Point): number {
+  const R = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)))
+}
+
+/**
+ * Насколько кандидат близок к опорному заказу.
+ *
+ * Считаем минимальное расстояние между любой его точкой и любой точкой ядра:
+ * груз может быть «по дороге», даже если забирают его не в том же городе.
+ * Если координат нет — возвращаем null, и тогда решает направление.
+ */
+function distanceToAnchor(anchor: AnchorOrder, candidate: AssistantOrder): number | null {
+  const anchorPoints = [anchor.fromPoint, anchor.toPoint].filter(Boolean) as Point[]
+  // Координаты кандидата — если пришли. Приходят не всегда: геокoder может
+  // не знать адрес, и тогда решает направление.
+  const candidatePoints = [
+    (candidate as AnchorOrder).fromPoint,
+    (candidate as AnchorOrder).toPoint,
+  ].filter(Boolean) as Point[]
+  if (anchorPoints.length === 0 || candidatePoints.length === 0) return null
+  let best: number | null = null
+  for (const a of anchorPoints) {
+    for (const b of candidatePoints) {
+      const km = haversineKm(a, b)
+      if (best === null || km < best) best = km
+    }
+  }
+  return best
+}
+
+/**
+ * Собрать рейс вокруг одного заказа.
+ *
+ * Зачем так: логист обычно начинает с конкретного груза («вот этот повезём»),
+ * а не с абстрактного направления. Помощник берёт этот заказ за основу и
+ * подбирает к нему попутные — по направлению или в радиусе, смотря что задано.
+ *
+ * Порядок набора — по выгодности: чем больше денег за километр, тем раньше
+ * берём. Всё, что не влезло или не подошло, попадает в `excluded` с причиной:
+ * молча пропадать ничего не должно.
+ */
+export function buildRouteFromAnchor(
+  orders: readonly AssistantOrder[],
+  vehicles: readonly AssistantVehicle[],
+  options: AnchorOptions,
+): AnchorBuild | null {
+  const now = options.now ?? new Date()
+  const radius = options.radiusKm && options.radiusKm > 0 ? options.radiusKm : null
+  const fuelPrice =
+    options.fuelPriceRubPerL === undefined
+      ? DEFAULT_FUEL_PRICE_RUB_PER_L
+      : options.fuelPriceRubPerL
+
+  const anchor = orders.find((order) => order.id === options.anchorOrderId)
+  if (!anchor) return null
+  const anchorWithPoints = anchor as AnchorOrder
+
+  const pool = orders.filter((order) => order.id !== anchor.id && isRouteableForAssistant(order))
+
+  // Основание отбора: радиус, если он задан и есть чем мерить; иначе направление
+  const scored = pool.map((order) => {
+    const km = distanceToAnchor(anchorWithPoints, order)
+    const sameFrom = cityKey(order.routeFrom) === cityKey(anchor.routeFrom)
+    const sameTo = cityKey(order.routeTo) === cityKey(anchor.routeTo)
+    return { order, km, sameFrom, sameTo }
+  })
+
+  const usingRadius = radius !== null && scored.some((item) => item.km !== null)
+  const excluded: ExcludedOrder[] = []
+
+  const fits = scored.filter((item) => {
+    if (usingRadius) {
+      // В радиусе — берём; вне радиуса, но с общим городом — тоже берём:
+      // это тот же коридор, просто координат нет или город крупный
+      if (item.km !== null && item.km <= (radius as number)) return true
+      return item.sameFrom || item.sameTo
+    }
+    return item.sameFrom || item.sameTo
+  })
+
+  for (const item of scored) {
+    if (fits.includes(item)) continue
+    excluded.push({
+      order: item.order,
+      reason:
+        usingRadius && item.km !== null
+          ? `вне радиуса ${radius} км (${item.km} км от вашего маршрута)`
+          : "другое направление",
+    })
+  }
+
+  // Сортируем по выгодности: деньги за километр, затем по сроку
+  const sorted = [...fits].sort((a, b) => {
+    const aPerKm = a.order.distance ? orderRevenue(a.order) / a.order.distance : 0
+    const bPerKm = b.order.distance ? orderRevenue(b.order) / b.order.distance : 0
+    if (bPerKm !== aPerKm) return bPerKm - aPerKm
+    const aDays = daysLeft(a.order.deadline, now) ?? 99
+    const bDays = daysLeft(b.order.deadline, now) ?? 99
+    return aDays - bDays
+  })
+
+  // Набираем, пока всё влезает в машину. Машину выбираем минимальную из тех,
+  // что вмещают набранное: меньше машина — дешевле рейс. Даже если попутных
+  // грузов не нашлось, машина под опорный заказ подбирается сразу.
+  const picked: AssistantOrder[] = []
+  let weight = Math.max(0, anchor.weight ?? 0)
+  let vehicle: AssistantVehicle | null = pickVehicle(weight, 0, vehicles as AssistantVehicle[])
+  for (const item of sorted) {
+    const addWeight = Math.max(0, item.order.weight ?? 0)
+    const candidateVehicle = pickVehicle(weight + addWeight, 0, vehicles as AssistantVehicle[])
+    if (!candidateVehicle) {
+      excluded.push({
+        order: item.order,
+        reason: `не влезает: с ним выходит ${((weight + addWeight) / 1000).toFixed(1)} т, а машины меньше нет`,
+      })
+      continue
+    }
+    weight += addWeight
+    vehicle = candidateVehicle
+    picked.push(item.order)
+  }
+
+  // Не влезло по весу — отдельно объясняем, почему именно эти заказы остались
+  for (const item of sorted) {
+    if (picked.some((order) => order.id === item.order.id)) continue
+    if (excluded.some((entry) => entry.order.id === item.order.id)) continue
+    excluded.push({ order: item.order, reason: "не влезло в выбранную машину" })
+  }
+
+  const allOrders = [anchor, ...picked]
+  const distanceKm = Math.max(
+    0,
+    ...allOrders.map((order) => order.distance ?? 0),
+  )
+
+  const reasons: string[] = [
+    `Опорный заказ: ${anchor.clientName?.trim() || shortCity(anchor.routeFrom)} — ${shortCity(anchor.routeFrom)} → ${shortCity(anchor.routeTo)}`,
+  ]
+  if (picked.length > 0) {
+    reasons.push(
+      usingRadius && radius !== null
+        ? `Взято ${picked.length} ${pluralOrders(picked.length)} в радиусе ${radius} км от вашего маршрута`
+        : `Взято ${picked.length} ${pluralOrders(picked.length)} по направлению`,
+    )
+  } else {
+    reasons.push("Попутных грузов не нашлось — рейс из одного заказа")
+  }
+
+  const fuelLiters =
+    vehicle && distanceKm > 0 ? estimateFuelL(vehicle, distanceKm, weight) : null
+  const fuelCostRub =
+    fuelLiters !== null && fuelPrice !== null && fuelPrice > 0
+      ? Math.round(fuelLiters * fuelPrice)
+      : null
+  const revenue = sumRevenue(allOrders)
+  const profitRub = fuelCostRub !== null ? revenue - fuelCostRub : null
+
+  const cities = [...new Set(allOrders.map((order) => shortCity(order.routeTo)))]
+  const proposal: RouteProposal = {
+    id: `${anchor.id}:anchor`,
+    name: `${shortCity(anchor.routeFrom)} → ${cities.join(", ")}`,
+    orders: allOrders,
+    vehicle,
+    weightKg: weight,
+    volumeM3: sumVolume(allOrders),
+    distanceKm,
+    revenue,
+    pricePerKm: distanceKm > 0 ? Math.round(revenue / distanceKm) : null,
+    capacityLeftKg: vehicle?.capacity ? Math.max(0, vehicle.capacity - weight) : null,
+    fuelLiters: fuelLiters === null ? null : Math.round(fuelLiters),
+    fuelCostRub,
+    profitRub,
+    profitPerKm: profitRub !== null && distanceKm > 0 ? Math.round(profitRub / distanceKm) : null,
+    costBasis: fuelCostRub !== null ? "estimate" : null,
+    needsFuelSetup: vehicle !== null && distanceKm > 0 && fuelCostRub === null,
+    unprofitable: profitRub !== null && profitRub < 0,
+    deadlineText: "срок не указан",
+    urgent: false,
+    backload: null,
+    reasons,
+  }
+
+  if (profitRub !== null && fuelCostRub !== null) {
+    proposal.reasons.push(
+      profitRub < 0
+        ? `Убыток: топливо ${formatMoney(fuelCostRub)} дороже выручки ${formatMoney(revenue)}`
+        : `Прибыль ≈ ${formatMoney(profitRub)} (выручка ${formatMoney(revenue)} − топливо ${formatMoney(fuelCostRub)})`,
+    )
+  }
+  if (excluded.length > 0) {
+    proposal.reasons.push(
+      `Не взято ${excluded.length}: ${excluded
+        .slice(0, 2)
+        .map((entry) => `${shortCity(entry.order.routeFrom)} → ${shortCity(entry.order.routeTo)} (${entry.reason})`)
+        .join("; ")}${excluded.length > 2 ? "…" : ""}`,
+    )
+  }
+
+  proposal.backload = findBackload(proposal, orders as AssistantOrder[])
+  if (proposal.backload) {
+    proposal.reasons.push(
+      proposal.backload.returnsHome
+        ? `Возврат с грузом: +${formatMoney(proposal.backload.revenue)} из ${proposal.backload.fromCity} — машина не поедет пустой`
+        : `На обратном плече есть груз из ${proposal.backload.fromCity} на ${formatMoney(proposal.backload.revenue)}`,
+    )
+  }
+
+  return { proposal, excluded, basis: usingRadius ? "radius" : "direction" }
+}
+
 /**
  * Обратная загрузка: чем занять машину на обратном плече.
  *
