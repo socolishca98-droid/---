@@ -44,6 +44,7 @@ import {
   type RouteProposal,
 } from "@/lib/logist-mobile/route-assistant"
 import { DRIVER_STATUS_META, type MobileDriver, type MobileOrder } from "@/lib/logist-mobile/types"
+import { ProposalEtaComparison } from "@/components/logist-mobile/proposal-eta-comparison"
 import { formatMoney, formatWeightKg, shortCity } from "@/lib/logist-mobile/format"
 
 export default function RouteAssistantPage() {
@@ -382,6 +383,12 @@ export default function RouteAssistantPage() {
                           </p>
                         ) : null}
                       </div>
+
+                      {/* Сравнение «до/после» считается сервером и ничего не пишет в базу */}
+                      <ProposalEtaComparison
+                        orderIds={proposal.orders.map((order) => order.id)}
+                        vehicleId={crewFor(proposal).vehicle?.id ?? null}
+                      />
 
                       <button
                         type="button"

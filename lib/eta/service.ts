@@ -18,7 +18,7 @@ import {
   calculateRiskFactors,
   calculateRouteCost
 } from "./coefficients";
-import { generateCacheKey, getFromCache, saveToCache } from "./cache";
+import { cargoCacheKey, generateCacheKey, getFromCache, saveToCache } from "./cache";
 
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -44,7 +44,11 @@ export async function calculateETA(
     origin.lng,
     destination.lat,
     destination.lng,
-    departure.getHours(),
+    {
+      departure,
+      weather: request.weather,
+      cargoKey: cargoCacheKey(request.cargo),
+    },
     waypointsKey
   );
 

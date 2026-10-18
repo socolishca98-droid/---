@@ -3,7 +3,11 @@ import { withSentryConfig } from "@sentry/nextjs"
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // standalone нужен для Docker: там свой сервер (node .next/standalone/server.js).
+  // На Vercel он не только не нужен, но и ломает деплой: сборщик Vercel читает
+  // .next/next-server.js.nft.json, который Next 16.3 в standalone-режиме больше
+  // не пишет (vercel/next.js#96646). Vercel при сборке выставляет VERCEL=1.
+  output: process.env.VERCEL ? undefined : 'standalone',
   typescript: {
     ignoreBuildErrors: false, // P1-1: strict - no implicit any allowed
   },

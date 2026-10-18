@@ -21,6 +21,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -55,6 +56,9 @@ function RegisterForm() {
   const [repeatPassword, setRepeatPassword] = useState("")
   const [organizationName, setOrganizationName] = useState("")
   const [inviteCode, setInviteCode] = useState(inviteFromLink)
+  // Согласие на обработку персональных данных (152-ФЗ): без него регистрация
+  // невозможна — согласие является правовым основанием обработки данных
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -81,6 +85,11 @@ function RegisterForm() {
       return
     }
 
+    if (!acceptedTerms) {
+      setError("Примите условия: согласие на обработку данных и пользовательское соглашение")
+      return
+    }
+
     setIsLoading(true)
     try {
       const res = await fetch("/api/auth/register", {
@@ -93,6 +102,7 @@ function RegisterForm() {
           ...(mode === "create"
             ? { organizationName: organizationName.trim() }
             : { inviteCode: inviteCode.trim() }),
+          acceptedTerms,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -301,7 +311,30 @@ function RegisterForm() {
                   </div>
                 )}
 
-                <Button type="submit" className="w-full h-11" disabled={isLoading}>
+                <label className="flex items-start gap-2.5 text-sm leading-relaxed cursor-pointer">
+                  <Checkbox
+                    id="acceptedTerms"
+                    checked={acceptedTerms}
+                    onCheckedChange={(value) => setAcceptedTerms(value === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-muted-foreground">
+                    Я согласен на обработку персональных данных и принимаю{" "}
+                    <Link href="/privacy" className="text-primary hover:underline">
+                      политику конфиденциальности
+                    </Link>{" "}
+                    и{" "}
+                    <Link href="/terms" className="text-primary hover:underline">
+                      условия использования
+                    </Link>
+                  </span>
+                </label>
+
+                <Button
+                  type="submit"
+                  className="w-full h-11"
+                  disabled={isLoading || !acceptedTerms}
+                >
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : mode === "create" ? (

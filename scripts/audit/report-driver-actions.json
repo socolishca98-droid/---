@@ -1,0 +1,56 @@
+{
+ "title": "Жалобы водителя: имя, статус с таймером, фото",
+ "summary": {
+  "verified": 9,
+  "broken": 0,
+  "total": 9
+ },
+ "steps": [
+  {
+   "name": "водитель входит в приложение",
+   "status": "VERIFIED",
+   "note": "адрес: http://localhost:3000/m"
+  },
+  {
+   "name": "водителю доступна смена имени",
+   "status": "VERIFIED",
+   "note": "в профиле есть кнопка «Изменить»"
+  },
+  {
+   "name": "кнопка «Погрузка» меняет статус смены",
+   "status": "VERIFIED",
+   "note": "статус в API: loading, на экране: Погрузка"
+  },
+  {
+   "name": "таймер простоя идёт",
+   "status": "VERIFIED",
+   "note": "было 00:02, стало 00:04, API statusSeconds=4"
+  },
+  {
+   "name": "время погрузки пишется в журнал смены",
+   "status": "VERIFIED",
+   "note": "последнее событие: status to=loading"
+  },
+  {
+   "name": "заказ переходит в «контроль» на погрузке",
+   "status": "VERIFIED",
+   "note": "заказ demo-order-3: control"
+  },
+  {
+   "name": "итоги смены учитывают погрузку",
+   "status": "VERIFIED",
+   "note": "погрузка в итогах: 4 с"
+  },
+  {
+   "name": "фото груза отправляется и сохраняется",
+   "status": "VERIFIED",
+   "note": "запись cmvdd71n6000efy42qf1rusq5, тип cargo_before, файл на диске: да"
+  },
+  {
+   "name": "фото открывается через приложение",
+   "status": "VERIFIED",
+   "note": "HTTP 200, content-type image/jpeg, байт: 160"
+  }
+ ],
+ "pageErrors": []
+}

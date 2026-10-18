@@ -1,0 +1,635 @@
+{
+  "title": "Задача 4 — сквозной цикл A→O",
+  "summary": {
+    "VERIFIED": 61,
+    "PARTIAL": 0,
+    "BROKEN": 0,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "4",
+      "name": "заказ создан Москва, Тверская → Зеленоград",
+      "status": "VERIFIED",
+      "note": "HTTP 200, id cmvcn06rg00lmdnbojhl86pgo",
+      "id": "cmvcn06rg00lmdnbojhl86pgo"
+    },
+    {
+      "scenario": "4",
+      "name": "заказ создан Зеленоград → Тверь",
+      "status": "VERIFIED",
+      "note": "HTTP 200, id cmvcn06s200lpdnbod3u0orxr",
+      "id": "cmvcn06s200lpdnbod3u0orxr"
+    },
+    {
+      "scenario": "4",
+      "name": "заказ создан Тверь → Ржев",
+      "status": "VERIFIED",
+      "note": "HTTP 200, id cmvcn06so00lsdnboj94gjhhw",
+      "id": "cmvcn06so00lsdnboj94gjhhw"
+    },
+    {
+      "scenario": "4",
+      "name": "A: три заказа созданы",
+      "status": "VERIFIED",
+      "note": "создано 3 из 3"
+    },
+    {
+      "scenario": "4",
+      "name": "B: согласование заказа",
+      "status": "VERIFIED",
+      "note": "HTTP 200, в БД «agreed»",
+      "id": "cmvcn06rg00lmdnbojhl86pgo",
+      "dbStatus": "agreed"
+    },
+    {
+      "scenario": "4",
+      "name": "B: согласование заказа",
+      "status": "VERIFIED",
+      "note": "HTTP 200, в БД «agreed»",
+      "id": "cmvcn06s200lpdnbod3u0orxr",
+      "dbStatus": "agreed"
+    },
+    {
+      "scenario": "4",
+      "name": "B: согласование заказа",
+      "status": "VERIFIED",
+      "note": "HTTP 200, в БД «agreed»",
+      "id": "cmvcn06so00lsdnboj94gjhhw",
+      "dbStatus": "agreed"
+    },
+    {
+      "scenario": "4",
+      "name": "B: все заказы согласованы",
+      "status": "VERIFIED",
+      "note": "согласовано 3 из 3"
+    },
+    {
+      "scenario": "4",
+      "name": "B: несогласованный заказ в рейс не попадает",
+      "status": 409,
+      "note": "HTTP 409 В рейс можно брать только согласованные заказы. Не подходят: Кострома → Иваново (Согласование)",
+      "error": "В рейс можно брать только согласованные заказы. Не подходят: Кострома → Иваново (Согласование)"
+    },
+    {
+      "scenario": "4",
+      "name": "C: рейс создан",
+      "status": "VERIFIED",
+      "note": "HTTP 200 ",
+      "id": "cmvcn06vp00m7dnbow6zdsugb"
+    },
+    {
+      "scenario": "4",
+      "name": "D: рейсу назначен водитель",
+      "status": "VERIFIED",
+      "note": "driverId в БД: demo-driver-1"
+    },
+    {
+      "scenario": "4",
+      "name": "D: рейсу назначена машина",
+      "status": "VERIFIED",
+      "note": "vehicleId в БД: demo-vehicle-1"
+    },
+    {
+      "scenario": "4",
+      "name": "D: рейс в статусе planned",
+      "status": "VERIFIED",
+      "note": "статус в БД: «planned»",
+      "dbStatus": "planned"
+    },
+    {
+      "scenario": "4",
+      "name": "D: все три заказа привязаны к рейсу",
+      "status": "VERIFIED",
+      "note": "заказов в рейсе: 3"
+    },
+    {
+      "scenario": "4",
+      "name": "D: заказы получили статус in_route",
+      "status": "VERIFIED",
+      "note": "in_route: 3 из 3",
+      "statuses": [
+        "in_route",
+        "in_route",
+        "in_route"
+      ]
+    },
+    {
+      "scenario": "4",
+      "name": "D: прогноз по рейсу сохранён диспетчером",
+      "status": 200,
+      "note": "HTTP 200, saved=true",
+      "saved": true
+    },
+    {
+      "scenario": "4",
+      "name": "E: водитель вошёл в мобильное приложение",
+      "status": 200,
+      "note": "HTTP 200 "
+    },
+    {
+      "scenario": "4",
+      "name": "E: «начать рейс» принят",
+      "status": 200,
+      "note": "HTTP 200 "
+    },
+    {
+      "scenario": "4",
+      "name": "E: рейс ушёл в in_transit, startedAt заполнен",
+      "status": "VERIFIED",
+      "note": "статус «in_transit», startedAt Sat Oct 17 2026 16:54:57 GMT+0000 (Coordinated Universal Time)",
+      "dbStatus": "in_transit",
+      "startedAt": "2026-10-17T16:54:57.990Z"
+    },
+    {
+      "scenario": "4",
+      "name": "D: этапы рейса созданы в RouteStage",
+      "status": "VERIFIED",
+      "note": "записей RouteStage: 11, заказов с этапами: 3 из 3",
+      "stages": 11,
+      "ordersWithStages": 3
+    },
+    {
+      "scenario": "4",
+      "name": "D: рейс рассчитан с возвратом на базу",
+      "status": "VERIFIED",
+      "note": "этапов return_to_base: 1",
+      "returnStages": 1,
+      "stageTypes": [
+        "driving",
+        "loading",
+        "driving",
+        "unloading",
+        "loading",
+        "driving",
+        "unloading",
+        "loading",
+        "driving",
+        "unloading",
+        "return_to_base"
+      ]
+    },
+    {
+      "scenario": "4",
+      "name": "E: повторное «начать рейс» не создаёт вторую отметку",
+      "status": "VERIFIED",
+      "note": "HTTP 409, этапов с отметкой начала: 0",
+      "repeatStatus": 409,
+      "startedStages": 0
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_driving»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 1 из 11",
+      "command": "start_driving",
+      "marked": 1,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «arrive_point»",
+      "status": "VERIFIED",
+      "note": "закрыто: 1 из 11",
+      "command": "arrive_point",
+      "marked": 1,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_operation»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 2 из 11",
+      "command": "start_operation",
+      "marked": 2,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «finish_operation»",
+      "status": "VERIFIED",
+      "note": "закрыто: 2 из 11",
+      "command": "finish_operation",
+      "marked": 2,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_driving»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 3 из 11",
+      "command": "start_driving",
+      "marked": 3,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «arrive_point»",
+      "status": "VERIFIED",
+      "note": "закрыто: 3 из 11",
+      "command": "arrive_point",
+      "marked": 3,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_operation»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 4 из 11",
+      "command": "start_operation",
+      "marked": 4,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «finish_operation»",
+      "status": "VERIFIED",
+      "note": "закрыто: 4 из 11",
+      "command": "finish_operation",
+      "marked": 4,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_operation»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 5 из 11",
+      "command": "start_operation",
+      "marked": 5,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «finish_operation»",
+      "status": "VERIFIED",
+      "note": "закрыто: 5 из 11",
+      "command": "finish_operation",
+      "marked": 5,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_driving»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 6 из 11",
+      "command": "start_driving",
+      "marked": 6,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «arrive_point»",
+      "status": "VERIFIED",
+      "note": "закрыто: 6 из 11",
+      "command": "arrive_point",
+      "marked": 6,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_operation»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 7 из 11",
+      "command": "start_operation",
+      "marked": 7,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «finish_operation»",
+      "status": "VERIFIED",
+      "note": "закрыто: 7 из 11",
+      "command": "finish_operation",
+      "marked": 7,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_operation»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 8 из 11",
+      "command": "start_operation",
+      "marked": 8,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «finish_operation»",
+      "status": "VERIFIED",
+      "note": "закрыто: 8 из 11",
+      "command": "finish_operation",
+      "marked": 8,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_driving»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 9 из 11",
+      "command": "start_driving",
+      "marked": 9,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «arrive_point»",
+      "status": "VERIFIED",
+      "note": "закрыто: 9 из 11",
+      "command": "arrive_point",
+      "marked": 9,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_operation»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 10 из 11",
+      "command": "start_operation",
+      "marked": 10,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «finish_operation»",
+      "status": "VERIFIED",
+      "note": "закрыто: 10 из 11",
+      "command": "finish_operation",
+      "marked": 10,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап начат после «start_driving»",
+      "status": "VERIFIED",
+      "note": "с отметкой начала: 11 из 11",
+      "command": "start_driving",
+      "marked": 11,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: этап закрыт после «arrive_point»",
+      "status": "VERIFIED",
+      "note": "закрыто: 11 из 11",
+      "command": "arrive_point",
+      "marked": 11,
+      "total": 11
+    },
+    {
+      "scenario": "4",
+      "name": "F: все этапы рейса закрыты фактическими отметками",
+      "status": "VERIFIED",
+      "note": "закрыто 11 из 11",
+      "closed": 11,
+      "total": 11,
+      "log": [
+        {
+          "command": "start_driving",
+          "status": 200
+        },
+        {
+          "command": "arrive_point",
+          "status": 200
+        },
+        {
+          "command": "start_operation",
+          "status": 200
+        },
+        {
+          "command": "finish_operation",
+          "status": 200
+        },
+        {
+          "command": "start_driving",
+          "status": 200
+        },
+        {
+          "command": "arrive_point",
+          "status": 200
+        },
+        {
+          "command": "start_operation",
+          "status": 200
+        },
+        {
+          "command": "finish_operation",
+          "status": 200
+        },
+        {
+          "command": "start_operation",
+          "status": 200
+        },
+        {
+          "command": "finish_operation",
+          "status": 200
+        },
+        {
+          "command": "start_driving",
+          "status": 200
+        },
+        {
+          "command": "arrive_point",
+          "status": 200
+        },
+        {
+          "command": "start_operation",
+          "status": 200
+        },
+        {
+          "command": "finish_operation",
+          "status": 200
+        },
+        {
+          "command": "start_operation",
+          "status": 200
+        },
+        {
+          "command": "finish_operation",
+          "status": 200
+        },
+        {
+          "command": "start_driving",
+          "status": 200
+        },
+        {
+          "command": "arrive_point",
+          "status": 200
+        },
+        {
+          "command": "start_operation",
+          "status": 200
+        },
+        {
+          "command": "finish_operation",
+          "status": 200
+        },
+        {
+          "command": "start_driving",
+          "status": 200
+        },
+        {
+          "command": "arrive_point",
+          "status": 200
+        },
+        {
+          "done": true
+        }
+      ]
+    },
+    {
+      "scenario": "4",
+      "name": "G: расход записан и лежит в базе",
+      "status": 200,
+      "note": "HTTP 200, записей RouteExpense в БД: 1",
+      "row": {
+        "id": "cmvcn0iws00ohdnboikle5a0y",
+        "type": "fuel",
+        "liters": 120
+      }
+    },
+    {
+      "scenario": "4",
+      "name": "G: пробег рейса сохранён из чека водителя",
+      "status": 200,
+      "note": "HTTP 200, endOdometer=312780, startOdometer=undefined",
+      "endOdometer": 312780
+    },
+    {
+      "scenario": "4",
+      "name": "H: рейс с незакрытыми этапами не завершается",
+      "status": 409,
+      "note": "HTTP 409 Остались незавершённые этапы (5). Их нельзя пропускать, статус в БД «in_transit»",
+      "dbStatus": "in_transit"
+    },
+    {
+      "scenario": "4",
+      "name": "H: рейс завершён",
+      "status": 200,
+      "note": "HTTP 200 "
+    },
+    {
+      "scenario": "4",
+      "name": "H: статус completed и completedAt заполнен",
+      "status": "VERIFIED",
+      "note": "статус «completed», completedAt Sat Oct 17 2026 16:55:13 GMT+0000 (Coordinated Universal Time)",
+      "dbStatus": "completed",
+      "completedAt": "2026-10-17T16:55:13.233Z"
+    },
+    {
+      "scenario": "4",
+      "name": "H: заказы рейса доставлены",
+      "status": "VERIFIED",
+      "note": "delivered: 3 из 3",
+      "statuses": [
+        "delivered",
+        "delivered",
+        "delivered"
+      ]
+    },
+    {
+      "scenario": "4",
+      "name": "I: история рейса наполнена (RouteEvent)",
+      "status": "VERIFIED",
+      "note": "событий: 26",
+      "events": 26,
+      "types": [
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "stage_command",
+        "expense",
+        "status",
+        "stage_command"
+      ]
+    },
+    {
+      "scenario": "4",
+      "name": "I: прогноз сохранён (EtaForecast)",
+      "status": "VERIFIED",
+      "note": "записей прогноза: 1",
+      "forecasts": 1
+    },
+    {
+      "scenario": "4",
+      "name": "I: факт прибытия записан в прогноз (с чем сравнивать)",
+      "status": "VERIFIED",
+      "note": "actualArrivalAt=Sat Oct 17 2026 16:55:13 GMT+0000 (Coordinated Universal Time), ошибка прогноза=-467.7586333333333 мин",
+      "actualArrivalAt": "2026-10-17T16:55:13.231Z",
+      "errorMinutes": -467.7586333333333
+    },
+    {
+      "scenario": "4",
+      "name": "I: исходный прогноз не перезаписан фактом",
+      "status": "VERIFIED",
+      "note": "initial=Sun Oct 18 2026 00:42:58 GMT+0000 (Coordinated Universal Time), current=Sun Oct 18 2026 00:42:58 GMT+0000 (Coordinated Universal Time)",
+      "initial": "2026-10-18T00:42:58.749Z",
+      "current": "2026-10-18T00:42:58.749Z"
+    },
+    {
+      "scenario": "4",
+      "name": "I: диспетчер видит историю рейса",
+      "status": 200,
+      "note": "HTTP 200, статус рейса в истории «completed»",
+      "routeStatus": "completed"
+    },
+    {
+      "scenario": "4",
+      "name": "I: факт по рейсу доступен диспетчеру",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "4",
+      "name": "J: водитель виден в списке с фактическим рейтингом",
+      "status": "VERIFIED",
+      "note": "rating={\"deliveredTotal\":3,\"onTime\":1,\"docs\":0,\"score\":60,\"grade\":\"удовлетворительно\"}",
+      "rating": {
+        "deliveredTotal": 3,
+        "onTime": 1,
+        "docs": 0,
+        "score": 60,
+        "grade": "удовлетворительно"
+      }
+    },
+    {
+      "scenario": "4",
+      "name": "K: после завершения рейс не оживает",
+      "status": 409,
+      "note": "HTTP 409, статус в БД «completed»",
+      "dbStatus": "completed"
+    },
+    {
+      "scenario": "4",
+      "name": "K: повторное «завершить рейс» идемпотентно",
+      "status": 200,
+      "note": "HTTP 200, completedAt не изменился: true"
+    },
+    {
+      "scenario": "4",
+      "name": "уборка: аудиторские записи удалены",
+      "status": "VERIFIED",
+      "note": "осталось заказов: 0, рейсов: 0"
+    }
+  ],
+  "issues": []
+}

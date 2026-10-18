@@ -30,6 +30,7 @@ import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { notifyDriverRouteAssigned } from "@/lib/routes/notify-driver"
+import { deliverNotificationPush, type NotificationInput } from "@/lib/notifications/create"
 import {
   ROUTE_STATUSES,
   buildRouteName,
@@ -39,6 +40,8 @@ import {
   type RouteOrderLike,
 } from "@/lib/routes/model"
 import { routeOrdersOrderBy, serializeRoute } from "@/lib/routes/service"
+import { parseDateParam, routePeriodWhere } from "@/lib/routes/date-range"
+import { captureRouteError } from "@/lib/sentry"
 import {
   canChangeOrderStatus,
   isOrderRouteable,
@@ -106,6 +109,7 @@ const MAX_PAGE_SIZE = 200
  * GET /api/routes
  *   ?status=planned,active,in_transit — фильтр по статусам рейса
  *   ?includeClosed=1                  — не отрезать завершённые/отменённые
+ *   ?dateFrom=YYYY-MM-DD&dateTo=...   — период (история рейсов)
  *   ?limit=50&offset=0                — пагинация (без неё список рос бы вечно)
  */
 export async function GET(request: NextRequest) {
@@ -145,6 +149,26 @@ export async function GET(request: NextRequest) {
     } else if (!includeClosed) {
       where.status = { notIn: ["completed", "cancelled"] }
     }
+
+    // Период для истории рейсов («что было за неделю»). Ориентируемся на дату
+    // завершения, но у отменённого рейса её может не быть — тогда берём дату
+    // создания, иначе отменённые выпадали бы из выборки по периоду совсем.
+    const fromParam = parseDateParam(searchParams.get("dateFrom"), false)
+    if (!fromParam.ok) {
+      return NextResponse.json(
+        { success: false, error: "Неверная дата начала периода — ожидается YYYY-MM-DD" },
+        { status: 400 },
+      )
+    }
+    const toParam = parseDateParam(searchParams.get("dateTo"), true)
+    if (!toParam.ok) {
+      return NextResponse.json(
+        { success: false, error: "Неверная дата окончания периода — ожидается YYYY-MM-DD" },
+        { status: 400 },
+      )
+    }
+    const periodWhere = routePeriodWhere(fromParam.value, toParam.value)
+    if (periodWhere) Object.assign(where, periodWhere)
 
     const [settings, atiLoads] = await Promise.all([
       prisma.fleetSettings.findFirst({
@@ -314,6 +338,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Route list error"
     console.error("[Routes API] GET /api/routes error:", message, error)
+    captureRouteError("api/routes", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
@@ -683,8 +708,9 @@ export async function POST(request: NextRequest) {
 
       // Рейс сразу назначен водителю — он должен увидеть его в мобильном
       // приложении без звонка логиста (задача 3, пункт 3).
+      let routePush: NotificationInput | undefined
       if (driverId) {
-        await notifyDriverRouteAssigned(tx, {
+        const assigned = await notifyDriverRouteAssigned(tx, {
           organizationId: org.organizationId,
           driverId,
           routeId: route.id,
@@ -692,6 +718,7 @@ export async function POST(request: NextRequest) {
           ordersCount: routeOrders.length,
           actorName,
         })
+        routePush = assigned.push
       }
 
       const summary = summarizeRoute(routeOrders)
@@ -707,8 +734,14 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      return { route: finalRoute, orders: routeOrders }
+      return { route: finalRoute, orders: routeOrders, routePush }
     })
+
+    // Пуш уведомления — только после коммита: внутри транзакции SQLite
+    // заблокировал бы базу, и доставка встала бы колом.
+    if (created.routePush) {
+      await deliverNotificationPush(created.routePush)
+    }
 
     return NextResponse.json({
       success: true,
@@ -720,6 +753,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Route creation error"
     console.error("[Routes API] POST /api/routes error:", message, error)
+    captureRouteError("api/routes", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

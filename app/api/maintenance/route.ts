@@ -10,8 +10,7 @@ import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { maintenanceTotals, vehicleDeadlines } from "@/lib/maintenance/schedule"
-
-const MAX_LOGS = 300
+import { paginationMeta, parsePagination } from "@/lib/pagination"
 
 // GET /api/maintenance — сроки по машинам и журнал обслуживания
 export async function GET(request: NextRequest) {
@@ -21,7 +20,18 @@ export async function GET(request: NextRequest) {
   if (!org.ok) return org.response
 
   try {
-    const [vehicleRows, logRows] = await Promise.all([
+    const { searchParams } = new URL(request.url)
+
+    // Журнал ремонтов — постранично: раньше он молча брал MAX_LOGS строк,
+    // и страница не могла показать, что записей больше.
+    const pagination = parsePagination({
+      limit: searchParams.get("limit"),
+      offset: searchParams.get("offset"),
+      page: searchParams.get("page"),
+      pageSize: searchParams.get("pageSize"),
+    })
+
+    const [vehicleRows, logRows, logsTotal] = await Promise.all([
       prisma.vehicle.findMany({
         where: scopedWhere(org.organizationId, {}),
         orderBy: { plate: "asc" },
@@ -42,12 +52,14 @@ export async function GET(request: NextRequest) {
       prisma.maintenanceLog.findMany({
         where: scopedWhere(org.organizationId, {}),
         orderBy: { startedAt: "desc" },
-        take: MAX_LOGS,
+        skip: pagination.offset,
+        take: pagination.limit,
         include: {
           vehicle: { select: { id: true, plate: true } },
           driver: { select: { id: true, name: true } },
         },
       }),
+      prisma.maintenanceLog.count({ where: scopedWhere(org.organizationId, {}) }),
     ])
 
     const now = new Date()
@@ -106,6 +118,8 @@ export async function GET(request: NextRequest) {
       },
       vehicles,
       logs,
+      // Мета пагинации журнала: «показано N из M» вместо прежней тишины
+      pagination: paginationMeta(logsTotal, pagination, logs.length),
     })
   } catch (error) {
     const status = friendlyDbErrorStatus(error)

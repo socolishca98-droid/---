@@ -25,8 +25,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
-import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
-import { calculateETA } from "@/lib/eta/service"
+import {
+  geocodeAddressesWithSource,
+  summarizeGeocodeSource,
+  type Coordinates,
+  type GeocodeSource,
+} from "@/lib/geo/geocode"
+import { buildOptimizerStages, calculateOptimizerTrip } from "@/lib/routes/optimizer-trip"
+import { fetchOSRMRoute } from "@/lib/eta/osrm-client"
 import { getRouteTraffic } from "@/lib/traffic/service"
 import {
   OPTIMIZER_VARIANTS,
@@ -47,8 +53,9 @@ export const maxDuration = 60
 const MAX_OPTIMIZER_ORDERS = 20
 
 type SourceRouting = "osrm" | "fallback"
-type SourceTraffic = "yandex" | "estimate"
+type SourceTraffic = "yandex" | "2gis" | "historical"
 type SourceTolls = "estimate"
+type SourceGeocoding = GeocodeSource
 
 type OptimizerBody = {
   orderIds?: unknown
@@ -67,6 +74,8 @@ type OrderRow = {
 }
 
 type VariantLeg = {
+  /** Вид этапа: driving — перегон, return_to_base — возврат на базу */
+  kind: "driving" | "return_to_base"
   from: string
   to: string
   distanceKm: number
@@ -84,6 +93,10 @@ type VariantResult = {
     distanceKm: number
     etaMin: number
     baseMin: number
+    /** Операции (погрузка/выгрузка), мин — из единого движка */
+    stopsMin: number
+    /** Обязательные перерывы, мин — из единого движка */
+    restMin: number
     trafficDelayMin: number
     fuelRub: number
     tollsRub: number
@@ -172,9 +185,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Координаты городов (Nominatim + постоянный кэш GeoCache) ──────────
+    // ── Координаты городов (Яндекс → Nominatim + кэш GeoCache) ────────────
     const cities = Array.from(new Set(usable.flatMap((order) => [order.routeFrom, order.routeTo])))
-    const coordinates = await geocodeAddresses(cities)
+    const { coords: coordinates, sources: geocodeSources } = await geocodeAddressesWithSource(cities)
+    const geocodingSource = summarizeGeocodeSource(geocodeSources)
 
     const problems: string[] = []
     const withCoords: Array<{ order: OrderRow; from: Coordinates; to: Coordinates }> = []
@@ -208,6 +222,17 @@ export async function POST(request: NextRequest) {
 
     const trafficProvider = (process.env.TRAFFIC_PROVIDER || "mock").toLowerCase()
 
+    // База организации: без неё единый движок не считает возврат на базу, и
+    // оптимизатор обещал бы рейс короче, чем он есть на самом деле.
+    const fleet = await prisma.fleetSettings.findFirst({
+      where: { organizationId: org.organizationId },
+      select: { baseLat: true, baseLng: true, baseAddress: true },
+    })
+    const basePoint: Coordinates | null =
+      fleet?.baseLat != null && fleet?.baseLng != null
+        ? { lat: fleet.baseLat, lng: fleet.baseLng }
+        : null
+
     const variantResults: VariantResult[] = []
 
     for (const variant of OPTIMIZER_VARIANTS) {
@@ -237,43 +262,107 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const origin = points[0].coordinates
-      const destination = points[points.length - 1].coordinates
-      const waypoints = points.slice(1, -1).map((point) => ({
-        lat: point.coordinates.lat,
-        lng: point.coordinates.lng,
-        name: point.city,
-      }))
-
-      // Реальный расчёт: OSRM по дорогам + коэффициенты времени суток.
-      const eta = await calculateETA({
-        origin,
-        destination,
-        waypoints,
-        departureTime: departure,
-        useCache: true,
+      // Единый движок рейса: та же шкала этапов, что в кабинете водителя и
+      // на карте логиста. Учитывает порядок точек, погрузку и выгрузку,
+      // обязательные перерывы, сроки заказов и возврат на базу. Раньше здесь
+      // был calculateETA — одно число на весь маршрут без операций и отдыха.
+      const tripInput = {
+        orders: route.map((item) => ({
+          id: item.order.id,
+          routeFrom: item.order.routeFrom,
+          routeTo: item.order.routeTo,
+          from: item.from,
+          to: item.to,
+          distance: item.order.distance,
+          deadline: item.order.deadline,
+        })),
+        base: basePoint ? { point: basePoint, address: fleet?.baseAddress ?? "база" } : null,
         vehicle: { type: "truck" },
-      })
-
-      if (!eta.success) {
-        return NextResponse.json(
-          { success: false, error: "Не удалось рассчитать маршрут", code: "eta_failed" },
-          { status: 502 },
-        )
+        departure,
+        timeZone: "Europe/Moscow",
       }
 
-      const routing: SourceRouting = eta.source === "osrm" ? "osrm" : "fallback"
-      const distanceKm = Math.round(eta.distance / 1000)
-      const baseMin = Math.round(eta.durationBase / 60)
-      let etaMin = Math.round(eta.durationWithTraffic / 60)
-      let trafficDelayMin = Math.max(0, etaMin - baseMin)
+      // Расстояния — от маршрутизатора, по тем же плечам, что строит движок:
+      // от базы через все точки и обратно на базу. Плечо без дороги движок
+      // сам оценит по прямой ×1.3 и честно пометит.
+      const legStages = buildOptimizerStages(tripInput).filter(
+        (stage) =>
+          (stage.kind === "driving" || stage.kind === "return_to_base") && stage.from && stage.to,
+      )
+      const legPoints = legStages.map((stage) => ({ from: stage.from!, to: stage.to! }))
+
+      let routing: SourceRouting = "fallback"
+      let legs: Array<{ from: Coordinates; to: Coordinates; distanceM: number; freeFlowSec: number }> = []
+
+      if (legPoints.length > 0) {
+        try {
+          // Полная цепочка точек: начало первого плеча, начало каждого
+          // следующего плеча и конец последнего. Плечо i начинается в точке i,
+          // поэтому в «путевые» точки идут начала ВСЕХ плеч, кроме первого.
+          const osrm = await fetchOSRMRoute(
+            legPoints[0].from,
+            legPoints[legPoints.length - 1].to,
+            legPoints.slice(1).map((leg) => ({ lat: leg.from.lat, lng: leg.from.lng })),
+          )
+          const osrmLegs = osrm.routes[0]?.legs ?? []
+          if (osrmLegs.length === legPoints.length) {
+            legs = legPoints.map((leg, index) => ({
+              from: leg.from,
+              to: leg.to,
+              distanceM: osrmLegs[index].distance,
+              freeFlowSec: osrmLegs[index].duration,
+            }))
+            routing = "osrm"
+          }
+        } catch (error) {
+          // Маршрутизатор недоступен — считаем по прямой, честно помечая источник
+          console.warn("[routes/optimizer] OSRM недоступен:", error)
+        }
+      }
+
+      const tripResult = calculateOptimizerTrip({ ...tripInput, legs })
+      const distanceKm = Math.round(tripResult.distanceKm)
+      const baseMin = tripResult.baseMin
+      let etaMin = tripResult.etaMin
+      // Задержка от часовых/погодных поправок = движение по факторам минус
+      // движение «на свободной дороге». Раньше это было etaMin - baseMin, но
+      // теперь в etaMin входят операции и перерывы, и такая разница означала
+      // бы «пробки», хотя на самом деле это погрузка и отдых.
+      let trafficDelayMin = Math.max(
+        0,
+        Math.round(
+          (tripResult.trip.stages.reduce(
+            (sum, stage) =>
+              sum +
+              (stage.segment
+                ? Math.max(0, stage.segment.drivingSec - stage.segment.freeFlowSec)
+                : 0),
+            0,
+          ) /
+            60) *
+            1,
+        ),
+      )
 
       // Пробки: только реальный сервис. Демо-генератор lib/traffic (provider
-      // "mock") здесь не используется — он рисует выдуманные ДТП.
-      let traffic: SourceTraffic = "estimate"
-      let trafficNote = "Оценка по времени суток (внешний сервис пробок не настроен)"
+      // "mock") здесь не используется — он рисует выдуманные ДТП. Без внешнего
+      // сервиса время считается историческими коэффициентами lib/eta — модель
+      // по часу пика, дню недели, грузу и типу дороги, а не измерение дороги.
+      let traffic: SourceTraffic = "historical"
+      // Поправки — объяснения единого движка: он же их и применяет, поэтому
+      // оптимизатор не может расходиться с кабинетом водителя
+      const factors = tripResult.trip.factors
+        .filter((item) => item.factor !== 1)
+        .map((item) => `${item.label} ×${item.factor.toFixed(2)}`)
+      let trafficNote =
+        factors.length > 0
+          ? `Историческая оценка: ${factors.join(", ")}`
+          : "Историческая оценка: коэффициенты нейтральны"
 
-      if (trafficProvider === "yandex") {
+      // Провайдеры пробок: «yandex» (Яндекс.Маршрутизация, от 120 000 ₽/год) и
+      // «2gis» (2ГИС Routing API: демо-ключ бесплатно, дальше от 6 701 ₽ за
+      // 10 000 запросов). Оба деградируют до оценки по времени суток.
+      if (trafficProvider === "yandex" || trafficProvider === "2gis") {
         try {
           const trafficResult = await getRouteTraffic({
             routeId: `optimizer:${variant}:${points.map((p) => `${p.coordinates.lat.toFixed(3)},${p.coordinates.lng.toFixed(3)}`).join("|")}`,
@@ -285,22 +374,31 @@ export async function POST(request: NextRequest) {
 
           if (trafficResult.summary) {
             trafficDelayMin = trafficResult.summary.delayMin
-            etaMin = baseMin + trafficDelayMin
-            traffic = "yandex"
-            trafficNote = `Яндекс.Маршрутизация: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
+            // Полное время = движение + операции + перерывы + задержка сервиса
+            etaMin = baseMin + tripResult.stopsMin + tripResult.restMin + trafficDelayMin
+            traffic = trafficProvider === "2gis" ? "2gis" : "yandex"
+            trafficNote =
+              trafficProvider === "2gis"
+                ? `2ГИС: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
+                : `Яндекс.Маршрутизация: +${trafficDelayMin} мин к пути (×${trafficResult.summary.ratio})`
           }
         } catch (error) {
-          console.error("[optimizer] Яндекс.Маршрутизация недоступна:", error)
-          trafficNote = "Яндекс.Маршрутизация недоступна — оценка по времени суток"
+          console.error(`[optimizer] ${trafficProvider} недоступен:`, error)
+          trafficNote =
+            trafficProvider === "2gis"
+              ? "2ГИС недоступен — оценка по времени суток"
+              : "Яндекс.Маршрутизация недоступна — оценка по времени суток"
         }
       }
 
       const revenueRub = route.reduce((sum, item) => sum + (item.order.price || 0), 0)
-      const fuelRub = eta.estimatedCost.fuel
-      const tollsRub = eta.estimatedCost.tolls
+      const fuelRub = tripResult.cost.fuel
+      const tollsRub = tripResult.cost.tolls
       const profitRub = revenueRub - fuelRub - tollsRub
       const profitPerKm = distanceKm > 0 ? Math.round(profitRub / distanceKm) : 0
-      const riskScore = Math.round(eta.riskFactors.delayProbability * 100)
+      // Риск задержки — из уверенности единого движка: чем меньше уверенность,
+      // тем выше шанс, что время уйдёт. Раньше это был отдельный расчёт.
+      const riskScore = Math.round((1 - tripResult.trip.confidence.score) * 100)
 
       const policy = variantPolicy(variant)
       const why: string[] = [...policy.notes]
@@ -310,6 +408,22 @@ export async function POST(request: NextRequest) {
           ? `Километры и время — по дорогам (OSRM), выезд ${departure.toLocaleString("ru-RU")}`
           : "OSRM недоступен: пробег и время посчитаны по прямой с коэффициентом 1.3",
       )
+      // Операции и отдых — то, чего прежний расчёт не видел вовсе
+      why.push(
+        `Операции ${tripResult.stopsMin} мин + обязательные перерывы ${tripResult.restMin} мин — ` +
+          `учтены в шкале этапов рейса`,
+      )
+      if (tripResult.deadlineViolations.length > 0) {
+        why.push(
+          `Срок нарушен у ${tripResult.deadlineViolations.length} заказ(ов): ` +
+            `${tripResult.deadlineViolations.map((item) => item.routeTo).join(", ")}`,
+        )
+      }
+      if (tripResult.estimatedLegs > 0) {
+        why.push(
+          `У ${tripResult.estimatedLegs} плеч(а) расстояние оценено по прямой — цифры грубее`,
+        )
+      }
       why.push(trafficNote)
       why.push(
         `Топливо: ${fuelRub.toLocaleString("ru-RU")} ₽ (32 л/100 км × 65 ₽/л от ${distanceKm} км)`,
@@ -326,8 +440,8 @@ export async function POST(request: NextRequest) {
         why.push(`Ближайший срок: ${earliestDeadline.toLocaleDateString("ru-RU")}`)
       }
 
-      if (eta.riskFactors.reasons.length > 0) {
-        why.push(`Риск: ${eta.riskFactors.reasons[0]}`)
+      if (tripResult.trip.dataQuality.warnings.length > 0) {
+        why.push(`Качество данных: ${tripResult.trip.dataQuality.warnings[0]}`)
       }
 
       variantResults.push({
@@ -340,16 +454,26 @@ export async function POST(request: NextRequest) {
           city: point.city,
           role: point.role,
         })),
-        legs: (eta.routeDetails?.legs ?? []).map((leg) => ({
-          from: leg.from,
-          to: leg.to,
-          distanceKm: Math.round(leg.distance / 1000),
-          durationMin: Math.round(leg.duration / 60),
-        })),
+        // Плечами стали этапы движения единого движка: у каждого есть адрес,
+        // расстояние и плановое время. Погрузка/выгрузка видны отдельно.
+        legs: tripResult.stages
+          .filter((stage) => stage.kind === "driving" || stage.kind === "return_to_base")
+          .map((stage) => ({
+            // Вид плеча нужен интерфейсу: возврат на базу показывается
+            // отдельно от перегона между точками, иначе непонятно, сколько
+            // пробега «по заказам», а сколько «домой».
+            kind: stage.kind === "return_to_base" ? ("return_to_base" as const) : ("driving" as const),
+            from: stage.address?.split(" → ")[0] ?? "",
+            to: stage.address?.split(" → ")[1] ?? stage.address ?? "",
+            distanceKm: stage.distanceKm ?? 0,
+            durationMin: Math.round((stage.plannedEndAt.getTime() - stage.plannedStartAt.getTime()) / 60000),
+          })),
         metrics: {
           distanceKm,
           etaMin,
           baseMin,
+          stopsMin: tripResult.stopsMin,
+          restMin: tripResult.restMin,
           trafficDelayMin,
           fuelRub,
           tollsRub,
@@ -371,9 +495,14 @@ export async function POST(request: NextRequest) {
       // а где оценка.
       sources: {
         routing: variantResults.every((v) => v.sources.routing === "osrm") ? "osrm" : "fallback",
-        traffic: variantResults.some((v) => v.sources.traffic === "yandex") ? "yandex" : "estimate",
+        traffic: variantResults.some((v) => v.sources.traffic !== "historical")
+          ? variantResults.find((v) => v.sources.traffic !== "historical")!.sources.traffic
+          : "historical",
         tolls: "estimate" as const,
-        geocoding: "nominatim",
+        // Источник координат честный: yandex, nominatim, cache или none.
+        // Раньше тут была захардкоженная метка nominatim, и интерфейс врал,
+        // хотя ключ Яндекса работает.
+        geocoding: geocodingSource,
       },
       problems,
       skipped: usable.length - withCoords.length,

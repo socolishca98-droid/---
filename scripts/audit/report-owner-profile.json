@@ -1,0 +1,139 @@
+{
+ "steps": [
+  {
+   "name": "шапка пульта",
+   "status": "VERIFIED",
+   "note": "показано: «Владелец Платформы»",
+   "headerName": "Владелец Платформы"
+  },
+  {
+   "name": "диалог «Мой профиль»",
+   "status": "VERIFIED",
+   "note": "открылся"
+  },
+  {
+   "name": "поле имени заполнено из базы",
+   "status": "VERIFIED",
+   "note": "значение: «Владелец Платформы»",
+   "prefilled": "Владелец Платформы"
+  },
+  {
+   "name": "новое имя видно в шапке пульта",
+   "status": "VERIFIED",
+   "note": "было «Владелец Платформы» → стало «D-MVDDAREF Владелец»",
+   "before": "Владелец Платформы",
+   "after": "D-MVDDAREF Владелец"
+  },
+  {
+   "name": "имя сохранено в базе",
+   "status": "VERIFIED",
+   "note": "в БД: «D-MVDDAREF Владелец»",
+   "dbName": "D-MVDDAREF Владелец"
+  },
+  {
+   "name": "«Кабинет» называет организацию",
+   "status": "VERIFIED",
+   "note": "подпись: «Кабинет: ИП Фролов Иван Александрович»",
+   "cabinetText": "Кабинет: ИП Фролов Иван Александрович",
+   "expectedOrg": "ИП Фролов Иван Александрович"
+  },
+  {
+   "name": "без своей компании кнопки «Кабинет» нет",
+   "status": "VERIFIED",
+   "note": "кнопка скрыта"
+  },
+  {
+   "name": "кнопка «Войти как …» на карточке компании",
+   "status": "VERIFIED",
+   "note": "подпись: «Войти как Иван Админов»",
+   "enterLabel": "Войти как Иван Админов"
+  },
+  {
+   "name": "вход в компанию с общего экрана",
+   "status": "VERIFIED",
+   "note": "адрес: http://localhost:3000/lm",
+   "beforeUrl": "http://localhost:3000/owner",
+   "afterUrl": "http://localhost:3000/lm"
+  },
+  {
+   "name": "баннер «Вы вошли как …»",
+   "status": "VERIFIED",
+   "note": "показан"
+  },
+  {
+   "name": "возврат к своему аккаунту",
+   "status": "VERIFIED",
+   "note": "адрес после возврата: http://localhost:3000/owner",
+   "backUrl": "http://localhost:3000/owner"
+  },
+  {
+   "name": "поиск по учётным записям компании",
+   "status": "VERIFIED",
+   "note": "поле на месте"
+  },
+  {
+   "name": "поиск фильтрует сотрудников",
+   "status": "VERIFIED",
+   "note": "«Сотрудники · 1» → «Сотрудники · 1 из 1»",
+   "before": "Сотрудники · 1",
+   "after": "Сотрудники · 1 из 1"
+  },
+  {
+   "name": "неудачный поиск честно сообщён",
+   "status": "VERIFIED",
+   "note": "показано «Никого не нашли по запросу …»"
+  },
+  {
+   "name": "очистка поиска возвращает список",
+   "status": "VERIFIED",
+   "note": "список восстановлен"
+  },
+  {
+   "name": "вкладка активных",
+   "status": "VERIFIED",
+   "note": "заголовок: «Активные маршруты»"
+  },
+  {
+   "name": "заголовок истории",
+   "status": "VERIFIED",
+   "note": "заголовок: «История рейсов»"
+  },
+  {
+   "name": "фильтры истории",
+   "status": true,
+   "note": "{\"period\":true,\"status\":true,\"driver\":true,\"vehicle\":true,\"sort\":true}",
+   "period": true,
+   "driver": true,
+   "vehicle": true,
+   "sort": true
+  },
+  {
+   "name": "карточки истории показаны",
+   "status": "VERIFIED",
+   "note": "«Рейсов за период» в сводке, карточек: 3",
+   "cardsAll": 3
+  },
+  {
+   "name": "период «7 дней» фильтрует",
+   "status": "VERIFIED",
+   "note": "карточек: 3 → 2",
+   "before": 3,
+   "after": 2
+  },
+  {
+   "name": "пустая история объяснена",
+   "status": "VERIFIED",
+   "note": "сообщение показано"
+  },
+  {
+   "name": "уборка: владелец возвращён к исходному",
+   "status": "VERIFIED",
+   "note": "имя «Владелец Платформы», organizationId=null"
+  }
+ ],
+ "pageErrors": [],
+ "summary": {
+  "verified": 22,
+  "broken": 0
+ }
+}

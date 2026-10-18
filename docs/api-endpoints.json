@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-11T21:32:20.903Z",
+  "generatedAt": "2026-10-18T05:04:07.775Z",
   "endpoints": [
     {
       "method": "GET",
@@ -133,6 +133,11 @@
     },
     {
       "method": "POST",
+      "route": "/api/auth/forgot-password",
+      "group": "auth"
+    },
+    {
+      "method": "POST",
       "route": "/api/auth/login",
       "group": "auth"
     },
@@ -142,8 +147,28 @@
       "group": "auth"
     },
     {
+      "method": "GET",
+      "route": "/api/auth/profile",
+      "group": "auth"
+    },
+    {
+      "method": "PATCH",
+      "route": "/api/auth/profile",
+      "group": "auth"
+    },
+    {
       "method": "POST",
       "route": "/api/auth/register",
+      "group": "auth"
+    },
+    {
+      "method": "GET",
+      "route": "/api/auth/reset-password",
+      "group": "auth"
+    },
+    {
+      "method": "POST",
+      "route": "/api/auth/reset-password",
       "group": "auth"
     },
     {
@@ -267,6 +292,26 @@
       "group": "drivers"
     },
     {
+      "method": "GET",
+      "route": "/api/eta/forecast",
+      "group": "eta"
+    },
+    {
+      "method": "POST",
+      "route": "/api/eta/forecast",
+      "group": "eta"
+    },
+    {
+      "method": "POST",
+      "route": "/api/eta/forecast/:id/actual",
+      "group": "eta"
+    },
+    {
+      "method": "GET",
+      "route": "/api/eta/metrics",
+      "group": "eta"
+    },
+    {
       "method": "DELETE",
       "route": "/api/expenses/:expenseId",
       "group": "expenses"
@@ -340,6 +385,11 @@
       "method": "GET",
       "route": "/api/lm/map",
       "group": "lm"
+    },
+    {
+      "method": "POST",
+      "route": "/api/logist-mobile/assistant/compare",
+      "group": "logist-mobile"
     },
     {
       "method": "POST",
@@ -444,6 +494,11 @@
     {
       "method": "POST",
       "route": "/api/m/route/events",
+      "group": "m"
+    },
+    {
+      "method": "POST",
+      "route": "/api/m/route/stage",
       "group": "m"
     },
     {
@@ -613,12 +668,32 @@
     },
     {
       "method": "GET",
+      "route": "/api/push",
+      "group": "push"
+    },
+    {
+      "method": "POST",
+      "route": "/api/push",
+      "group": "push"
+    },
+    {
+      "method": "DELETE",
+      "route": "/api/push",
+      "group": "push"
+    },
+    {
+      "method": "GET",
       "route": "/api/reports",
       "group": "reports"
     },
     {
       "method": "GET",
       "route": "/api/reports/export",
+      "group": "reports"
+    },
+    {
+      "method": "GET",
+      "route": "/api/reports/shift-time",
       "group": "reports"
     },
     {
@@ -689,6 +764,11 @@
     {
       "method": "GET",
       "route": "/api/routes/:routeId/map",
+      "group": "routes"
+    },
+    {
+      "method": "GET",
+      "route": "/api/routes/:routeId/trip",
       "group": "routes"
     },
     {

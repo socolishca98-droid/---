@@ -12,10 +12,10 @@ import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { estimateFuelL } from "@/lib/fleet/fuel"
 import { factFuelLiters } from "@/lib/fleet/fuel-audit"
 import { entryPricePerL, ledgerTotals, vehicleRollup } from "@/lib/fuel/ledger"
+import { paginationMeta, parsePagination } from "@/lib/pagination"
 
 const DEFAULT_DAYS = 30
 const MAX_DAYS = 365
-const MAX_ENTRIES = 500
 
 // GET /api/fuel?days=30 — ведомость за последние N дней
 export async function GET(request: NextRequest) {
@@ -32,34 +32,52 @@ export async function GET(request: NextRequest) {
       : DEFAULT_DAYS
     const since = new Date(Date.now() - days * 86_400_000)
 
-    const expenses = await prisma.routeExpense.findMany({
-      where: scopedWhere(org.organizationId, {
-        type: "fuel",
-        spentAt: { gte: since },
-      }),
-      orderBy: { spentAt: "desc" },
-      take: MAX_ENTRIES,
-      include: {
-        route: {
-          select: {
-            id: true,
-            name: true,
-            totalDistance: true,
-            cargoWeight: true,
-            vehicleId: true,
-            driver: { select: { id: true, name: true } },
-            vehicle: {
-              select: {
-                id: true,
-                plate: true,
-                capacity: true,
-                fuelConsumptionPer100: true,
+    // Книга чеков — постранично: прежнее «take: 500» молча обрезало
+    // ведомость, и топливо за старые месяцы просто исчезало из вида.
+    const pagination = parsePagination({
+      limit: searchParams.get("limit"),
+      offset: searchParams.get("offset"),
+      page: searchParams.get("page"),
+      pageSize: searchParams.get("pageSize"),
+    })
+
+    const [expenses, entriesTotal] = await Promise.all([
+      prisma.routeExpense.findMany({
+        where: scopedWhere(org.organizationId, {
+          type: "fuel",
+          spentAt: { gte: since },
+        }),
+        orderBy: { spentAt: "desc" },
+        skip: pagination.offset,
+        take: pagination.limit,
+        include: {
+          route: {
+            select: {
+              id: true,
+              name: true,
+              totalDistance: true,
+              cargoWeight: true,
+              vehicleId: true,
+              driver: { select: { id: true, name: true } },
+              vehicle: {
+                select: {
+                  id: true,
+                  plate: true,
+                  capacity: true,
+                  fuelConsumptionPer100: true,
+                },
               },
             },
           },
         },
-      },
-    })
+      }),
+      prisma.routeExpense.count({
+        where: scopedWhere(org.organizationId, {
+          type: "fuel",
+          spentAt: { gte: since },
+        }),
+      }),
+    ])
 
     // ── Книга чеков: строка ведомости на каждый чек ──
     const entries = expenses.map((expense: any) => ({
@@ -129,6 +147,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       period: { days, since: since.toISOString() },
+      // Мета пагинации книги чеков — «показано N из M»
+      pagination: paginationMeta(entriesTotal, pagination, expenses.length),
       totals: {
         // итоги — из сырых чеков (amount/liters), а не из строк книги
         ...ledgerTotals(expenses as any),

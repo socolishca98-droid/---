@@ -21,7 +21,8 @@ export interface RouteData {
   driverId: string
   driverName: string
   vehiclePlate?: string
-  driverPos: [number, number]
+  /** Последняя GPS-точка водителя; null — координат нет, панель предупредит */
+  driverPos: [number, number] | null
   orders: OrderInfo[]
   waypoints: Waypoint[]
   coordinates: [number, number][]
@@ -33,6 +34,55 @@ export interface RouteData {
   routeTo: string
   cargoType: string
   color?: string // ✅ Добавлено для премиальных цветов маршрутов
+  /**
+   * Прогноз рейса из ЕДИНОГО механизма (lib/eta/trip.ts) — тот же расчёт,
+   * что в кабинете водителя. null, если рейс не собран строкой Route.
+   */
+  trip?: {
+    currentStageIndex: number | null
+    currentStageLabel: string | null
+    /** "active" — этап идёт сейчас, "pending" — рейс начат, этап не открыт */
+    currentStageStatus: "active" | "pending" | null
+    /** Рейс начат: есть фактическая отметка хотя бы по одному этапу */
+    tripStarted: boolean
+    /** Все этапы закрыты */
+    finished: boolean
+    nextPoint: {
+      address: string
+      operation: string
+      distanceM: number | null
+      drivingSec: number
+      arrivalAt: string
+    } | null
+    /** Обязательные перерывы: когда именно наступают */
+    restPlan: {
+      breaks: Array<{
+        afterStageIndex: number
+        minutes: number
+        kind: string
+        reason: string
+        startAt: string
+        endAt: string
+      }>
+      totalMinutes: number
+      priorDrivingUnknown: boolean
+      warning: string | null
+    }
+    remaining: {
+      drivingSec: number
+      stopsSec: number
+      restSec: number
+      totalSec: number
+      arrivalAt: string
+    }
+    returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
+    completionAt: string
+    confidence: { level: string; score: number; reasons: string[] }
+    dataQuality: string[]
+    reliable: boolean
+    gpsKnown: boolean
+    calculatedAt: string
+  } | null
 }
 
 export interface BaseData {

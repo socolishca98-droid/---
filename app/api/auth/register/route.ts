@@ -33,14 +33,16 @@ import {
 } from "@/lib/invites"
 import {
   buildRateLimitHeaders,
-  checkRateLimit,
+  checkRateLimitAsync,
   getClientIp,
-  recordFailure,
+  recordFailureAsync,
 } from "@/lib/rate-limiter"
 import { checkOrganizationName, createOrganization } from "@/lib/organizations"
 import { registerSchema } from "@/lib/validators"
 import { prisma } from "@/lib/prisma"
 
+import { captureRouteError } from "@/lib/sentry"
+import { CONSENT_VERSION } from "@/lib/legal"
 export const dynamic = "force-dynamic"
 
 interface RegisterBody {
@@ -49,6 +51,8 @@ interface RegisterBody {
   password?: unknown
   organizationName?: unknown
   inviteCode?: unknown
+  /** Согласие на обработку персональных данных (152-ФЗ). */
+  acceptedTerms?: unknown
 }
 
 function badRequest(error: string, code?: string, status = 400, headers?: Record<string, string>) {
@@ -71,6 +75,7 @@ export async function POST(request: NextRequest) {
     password: body.password,
     organizationName: body.organizationName,
     inviteCode: body.inviteCode,
+    acceptedTerms: body.acceptedTerms,
   })
 
   if (!parsed.success) {
@@ -100,7 +105,7 @@ export async function POST(request: NextRequest) {
   const rateLimitKey = creatingOrganization
     ? `auth-register-org:${ip}`
     : `auth-register-invite:${ip}`
-  const rateLimit = checkRateLimit(rateLimitKey)
+  const rateLimit = await checkRateLimitAsync(rateLimitKey)
   if (!rateLimit.allowed) {
     return badRequest(
       "Слишком много попыток регистрации. Повторите через 15 минут",
@@ -115,7 +120,7 @@ export async function POST(request: NextRequest) {
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) {
       // Сообщение одинаковое для всех случаев: не раскрываем, есть ли такой адрес
-      if (!creatingOrganization) recordFailure(rateLimitKey)
+      if (!creatingOrganization) await recordFailureAsync(rateLimitKey)
       return badRequest(
         "Регистрация с этим email невозможна. Обратитесь к администратору вашей организации",
         "email_taken",
@@ -139,7 +144,7 @@ export async function POST(request: NextRequest) {
       })
       if (duplicateOrganization) {
         // Такая компания уже зарегистрирована — присоединяться нужно по коду
-        recordFailure(rateLimitKey)
+        await recordFailureAsync(rateLimitKey)
         return badRequest(
           `Организация «${duplicateOrganization.name}» уже зарегистрирована. Попросите у её администратора код приглашения`,
           "organization_exists",
@@ -160,6 +165,10 @@ export async function POST(request: NextRequest) {
           status: "active",
           approvedAt: new Date(),
           organizationId: organization.id,
+          // Согласие на обработку данных: когда, какая редакция, с какого адреса
+          consentAcceptedAt: new Date(),
+          consentVersion: CONSENT_VERSION,
+          consentIp: ip,
         },
         select: { id: true, email: true, name: true, role: true, status: true, organizationId: true },
       })
@@ -196,13 +205,13 @@ export async function POST(request: NextRequest) {
     // ── Сценарий B: присоединение по коду приглашения ─────────────────────
     const normalizedCode = normalizeInviteCode(rawInviteCode)
     if (!normalizedCode) {
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest("Код приглашения имеет неверный формат", "invalid_invite")
     }
 
     const invite = await findInviteByCode(normalizedCode)
     if (!invite) {
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest(
         "Приглашение не найдено. Проверьте код или запросите новый у администратора",
         "invalid_invite",
@@ -212,13 +221,13 @@ export async function POST(request: NextRequest) {
 
     const validity = evaluateInvite(invite)
     if (!validity.ok) {
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest(validity.message, `invite_${validity.reason}`, 410)
     }
 
     if (!INVITE_ROLES.includes(invite.role as InviteRole)) {
       // Код создан с ролью, которой больше нет в продукте — не угадываем
-      recordFailure(rateLimitKey)
+      await recordFailureAsync(rateLimitKey)
       return badRequest(
         "Приглашение выдано с недопустимой ролью. Попросите администратора создать новый код",
         "invalid_invite",
@@ -237,6 +246,9 @@ export async function POST(request: NextRequest) {
         status: "pending",
         organizationId: invite.organizationId,
         inviteCodeId: invite.id,
+        consentAcceptedAt: new Date(),
+        consentVersion: CONSENT_VERSION,
+        consentIp: ip,
       },
       select: {
         id: true,
@@ -281,6 +293,7 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[auth/register] error:", message)
 
+    captureRouteError("api/auth/register", error)
     // Гонка при одновременной регистрации одного email
     if (message.includes("Unique constraint")) {
       return badRequest("Регистрация с этим email невозможна", "email_taken", 409)

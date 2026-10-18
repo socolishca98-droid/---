@@ -214,6 +214,7 @@ model Route {
   events        RouteEvent[]
   expenses      RouteExpense[]
   photos        Photo[]
+  etaForecasts  EtaForecast[]
 
   @@index([status])
   @@index([driverId])
@@ -580,6 +581,28 @@ model Notification {
   @@index([organizationId])
 }
 
+// Подписка браузера/устройства на Web Push. Один пользователь может получать
+// пуши с нескольких устройств (телефон + компьютер), поэтому endpoint уникален,
+// а записей на пользователя много. Уведомления внутри приложения и так видны в
+// разделе «Уведомления» — пуши нужны, когда приложение закрыто или свёрнуто.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Адрес push-сервиса (браузера). Уникален: повторная подписка с того же
+  /// браузера не должна плодить записи.
+  endpoint  String   @unique
+  /// Публичный ключ клиента (ECDH P-256) в base64url — им шифруется payload.
+  p256dh    String
+  /// Секрет аутентификации клиента в base64url.
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
 // ============================================
 // ЧАТ / СООБЩЕНИЯ
 // ============================================
@@ -628,6 +651,14 @@ model Photo {
   routeId     String?
   route       Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
   description String?
+  /// Ключ файла в хранилище (lib/storage.ts). На диске/S3 файл лежит по нему же.
+  storageKey  String?
+  /// Байты фото и его content-type — заполняются, когда хранилищем выбрана
+  /// база (STORAGE_DRIVER=db): на Vercel файловая система только для чтения,
+  /// поэтому фото держится в базе. url при этом остаётся прежним, отдача идёт
+  /// через /api/photos/file.
+  bytes       Bytes?
+  mime        String?
   ocrText     String?
   ocrData     String?
   createdAt   DateTime @default(now())
@@ -776,6 +807,110 @@ model RouteEvent {
 }
 
 // ============================================
+// ETA: ПРОГНОЗ И ФАКТ ВРЕМЕНИ ПРИБЫТИЯ
+// ============================================
+
+/// Прогноз времени прибытия и фактический результат по нему.
+///
+/// ОДНА таблица вместо десяти (ТЗ: «не создавай десятков таблиц»): прогноз и
+/// факт по одному рейсу — это две колонки одной строки, а разделять их значило
+/// бы плодить join'ы без нужды. Исходный прогноз при создании не перезаписывается:
+/// initialArrivalAt остаётся «как посчитали в первый раз», currentArrivalAt
+/// обновляется при пересчёте в рейсе. Разница между ними — отдельная метрика:
+/// она показывает, насколько прогноз «уезжал» по ходу дела.
+///
+/// Обучение (ТЗ §12): из actualArrivalAt/actualDrivingSec/actualStopsSec и
+/// сохранённых погодных данных считаются MAE, медианная ошибка, доля попаданий
+/// в 15/30 минут и систематическое опережение/опоздание. Коэффициенты по этим
+/// метрикам НЕ переписываются автоматически — только по решению человека.
+model EtaForecast {
+  id             String   @id @default(cuid())
+  /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  routeId        String?
+  route          Route?   @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  orderId        String?
+  vehicleId      String?
+  driverId       String?
+
+  /// Версия модели (lib/eta/forecast.ts, ETA_MODEL_VERSION). Нужна, чтобы
+  /// сравнивать точность разных версий, а не сваливать всё в одну кучу.
+  modelVersion    String
+  /// Откуда взялись данные: osrm | open-meteo | history | fallback (JSON-массив)
+  sourcesJson     String?
+  /// Часовой пояс расчёта — иначе непонятно, к какому местному времени относится
+  timeZone        String   @default("Europe/Moscow")
+
+  departureAt        DateTime
+  /// Прогноз при создании — неизменяем
+  initialArrivalAt   DateTime
+  /// Прогноз после последнего пересчёта
+  currentArrivalAt   DateTime
+  /// Границы сценариев
+  optimisticArrivalAt DateTime?
+  conservativeArrivalAt DateTime?
+  /// Секунды: движение, остановки, паузы водителя, итог
+  drivingSec      Int      @default(0)
+  stopsSec        Int      @default(0)
+  restSec         Int      @default(0)
+  totalSec        Int      @default(0)
+  distanceM       Int?
+
+  /// Уверенность 0..1 и уровень (high | medium | low)
+  confidenceScore Float    @default(0)
+  confidenceLevel String   @default("low")
+  /// Причины, по которым уверенность такая (JSON-массив строк)
+  confidenceReasonsJson String?
+  /// По сегментам: класс дороги, поправки, момент прохождения (JSON)
+  segmentsJson    String?
+  /// Шкала этапов рейса на момент расчёта: прогноз связан не только с
+  /// рейсом, но и с его этапами — иначе непонятно, на каком состоянии
+  /// рейса считалось то или иное время.
+  stagesJson      String?
+  /// Сводное объяснение для интерфейса (JSON)
+  explanationJson String?
+  /// Снимок погодных данных на момент расчёта (JSON) — нужен для разбора ошибок
+  weatherJson     String?
+  /// Ограничения маршрута, из-за которых прогноз недействителен (JSON)
+  violationsJson  String?
+  /// Можно ли показывать ETA (false при полном перекрытии или нарушении)
+  reliable        Boolean  @default(true)
+  reliabilityNote String?
+
+  calculatedAt    DateTime
+  /// Сколько раз прогноз пересчитывался в рейсе
+  recalcCount     Int      @default(0)
+
+  // ── ФАКТ (заполняется по завершении рейса) ──
+  actualArrivalAt DateTime?
+  actualDrivingSec Int?
+  actualStopsSec  Int?
+  /// Причины задержек (JSON-массив: погода, ДТП, погрузка дольше...)
+  delayReasonsJson String?
+  /// Ошибка прогноза, мин: положительная — прибыли позже прогноза
+  errorMinutes    Float?
+  /// Выброс (рейс оформлен с ошибкой): в метрики не идёт
+  outlier         Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([routeId])
+  @@index([orderId])
+  @@index([vehicleId])
+  @@index([calculatedAt])
+  @@index([actualArrivalAt])
+  @@index([modelVersion])
+  // Метрики по организации за период: без составного индекса такой запрос
+  // перебирает все строки организации. Индекс есть в SQL-миграции
+  // (2026-10-14-eta-forecast.postgres.sql), но его не было в схеме Prisma —
+  // и установка через `db push` оставалась без него.
+  @@index([organizationId, calculatedAt])
+}
+
+// ============================================
 // АВТОРИЗАЦИЯ: ПОЛЬЗОВАТЕЛИ И СЕССИИ
 // ============================================
 
@@ -822,6 +957,7 @@ model Organization {
   atiScanConfigs    AtiScanConfig[]
   auditLogs         AuditLog[]
   inviteCodes       InviteCode[]
+  etaForecasts      EtaForecast[]
 
   @@index([name])
   /// Подключение к ATI.SU (одно на организацию) и строки накопленной базы грузов
@@ -944,6 +1080,13 @@ model User {
 
   mustChangePassword Boolean  @default(false)
   lastLoginAt        DateTime?
+
+  /// Согласие на обработку персональных данных (152-ФЗ): когда, какая редакция
+  /// документов была принята и с какого адреса. Хранится на учётной записи —
+  /// по нему видно, что человек согласился, и с какой версией документов.
+  consentAcceptedAt   DateTime?
+  consentVersion      String?
+  consentIp           String?
   failedLoginCount   Int      @default(0)
   lockedUntil        DateTime?
 
@@ -951,6 +1094,8 @@ model User {
   updatedAt DateTime  @updatedAt
 
   sessions  Session[]
+  passwordResetTokens PasswordResetToken[]
+  pushSubscriptions PushSubscription[]
 
   @@index([status])
   @@index([role])
@@ -958,6 +1103,37 @@ model User {
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([inviteCodeId])
+}
+
+/// Токен восстановления пароля.
+///
+/// Зачем отдельная таблица: человек, забывший пароль, должен получить ссылку
+/// на почту, а не просить администратора. Требования к токену те же, что к
+/// сессионному: одноразовый, с сроком, и хранится только его хэш — утечка базы
+/// не даёт войти под чужими аккаунтами.
+model PasswordResetToken {
+  id String @id @default(cuid())
+
+  /// Хэш токена (sha256). Сам токен знает только почтовый ящик человека.
+  tokenHash String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Организация на момент запроса — для аудита и разбора инцидентов
+  organizationId String?
+
+  expiresAt DateTime
+  /// Заполняется при использовании: повторно токен не работает
+  usedAt    DateTime?
+
+  /// Откуда просили сброс — видно в аудите попыток подбора
+  requestIp String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 /// Серверная сессия. id = jti подписанного токена в httpOnly-cookie.

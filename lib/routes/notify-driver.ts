@@ -8,14 +8,16 @@
 // учётной записи — мобильное приложение забирает его из
 // GET /api/m/notifications и показывает в разделе «Уведомления».
 
-import { prisma } from "@/lib/prisma"
+import type { PrismaClient } from "@prisma/client"
+
+import { createNotification, type NotificationInput } from "@/lib/notifications/create"
 
 /**
- * Что нужно от клиента Prisma: обе записи идут либо в транзакции, либо напрямую.
+ * Что нужно от клиента Prisma: читаем учётку водителя и пишем уведомление.
  * Тип выводим из самого клиента — так подпись не разойдётся с Prisma при
  * обновлении схемы (раньше здесь была рукописная заглушка с `unknown`).
  */
-export type NotifyTx = Pick<typeof prisma, "user" | "notification">
+export type NotifyTx = Pick<PrismaClient, "user" | "notification">
 
 export type NotifyDriverParams = {
   organizationId: string
@@ -34,12 +36,13 @@ export type NotifyDriverParams = {
  *
  * Если у водителя нет учётной записи (такой водитель не пользуется
  * приложением), уведомление не создаётся — придумывать получателя нельзя.
- * Возвращает true, если уведомление создано.
+ * Возвращает `push` — готовое уведомление для отправки пушей ПОСЛЕ коммита
+ * транзакции (внутри неё слать нельзя: SQLite заблокирует базу).
  */
 export async function notifyDriverRouteAssigned(
   tx: NotifyTx,
   params: NotifyDriverParams,
-): Promise<boolean> {
+): Promise<{ notified: boolean; push?: NotificationInput }> {
   const { organizationId, driverId, routeId, routeName, ordersCount, actorName } = params
 
   const account = await tx.user.findFirst({
@@ -47,7 +50,7 @@ export async function notifyDriverRouteAssigned(
     select: { id: true, name: true },
   })
 
-  if (!account) return false
+  if (!account) return { notified: false }
 
   const title = "Назначен рейс"
   const points = typeof ordersCount === "number" && ordersCount > 0 ? `${ordersCount} точек` : "рейс"
@@ -56,19 +59,20 @@ export async function notifyDriverRouteAssigned(
     ? `Вам назначен рейс ${name}: ${points}. Назначил: ${actorName}.`
     : `Вам назначен рейс ${name}: ${points}.`
 
-  await tx.notification.create({
-    data: {
-      organizationId,
-      userId: account.id,
-      userRole: "driver",
-      type: "route_assigned",
-      title,
-      message,
-      driverId,
-      routeId,
-      priority: "high",
-    },
-  })
+  const notification: NotificationInput = {
+    organizationId,
+    userId: account.id,
+    userRole: "driver",
+    type: "route_assigned",
+    title,
+    message,
+    driverId,
+    routeId,
+    priority: "high",
+  }
 
-  return true
+  // Внутри транзакции только запись: пуш уйдёт после коммита (см. вызывающий код)
+  await createNotification(tx, notification, { push: false })
+
+  return { notified: true, push: notification }
 }

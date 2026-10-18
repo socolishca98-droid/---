@@ -79,6 +79,14 @@ export const registerSchema = z
       .max(20, "Код приглашения слишком длинный")
       .optional()
       .or(z.literal("")),
+    // Согласие на обработку персональных данных (152-ФЗ). Без него регистрация
+    // невозможна: согласие — правовое основание обработки, а не формальность.
+    acceptedTerms: z.literal(true, {
+      errorMap: () => ({
+        message:
+          "Примите условия: согласие на обработку персональных данных и пользовательское соглашение",
+      }),
+    }),
   })
   .superRefine((value, ctx) => {
     const hasOrganization = (value.organizationName ?? "").trim().length > 0
@@ -433,3 +441,42 @@ export const createInviteSchema = z.object({
 })
 
 export type CreateInviteInput = z.infer<typeof createInviteSchema>
+
+// -------------------- Web Push --------------------
+
+/** base64url без паддинга — в таком виде браузер отдаёт ключи подписки. */
+const base64url = z
+  .string({ invalid_type_error: "Ключ подписки — строка" })
+  .regex(/^[A-Za-z0-9_-]+$/, "Ключ подписки должен быть в base64url")
+  .min(20, "Ключ подписи слишком короткий")
+  .max(200, "Ключ подписки слишком длинный")
+
+/**
+ * Подписка на Web Push из браузера (PushSubscription.toJSON()).
+ * Проверяем форму, а не принадлежность: endpoint — это адрес push-сервиса
+ * браузера, и подделать его смысла нет — доставка всё равно не пройдёт.
+ */
+export const pushSubscribeSchema = z.object({
+  endpoint: z
+    .string({ invalid_type_error: "Адрес подписки — строка" })
+    .url("Некорректный адрес push-сервиса")
+    .max(2000, "Слишком длинный адрес push-сервиса")
+    .refine((value) => /^https?:\/\//.test(value), "Адрес push-сервиса должен быть http(s)"),
+  keys: z.object({
+    p256dh: base64url,
+    auth: base64url,
+  }),
+  /** userAgent — чтобы в списке устройств было видно, какое из них отписаться. */
+  userAgent: z.string().max(300).optional(),
+})
+
+/** Отписка: браузер знает только свой endpoint. */
+export const pushUnsubscribeSchema = z.object({
+  endpoint: z
+    .string({ invalid_type_error: "Адрес подписки — строка" })
+    .url("Некорректный адрес push-сервиса")
+    .max(2000, "Слишком длинный адрес push-сервиса"),
+})
+
+export type PushSubscribeInput = z.infer<typeof pushSubscribeSchema>
+export type PushUnsubscribeInput = z.infer<typeof pushUnsubscribeSchema>

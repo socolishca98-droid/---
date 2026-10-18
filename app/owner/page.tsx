@@ -60,6 +60,8 @@ interface OverviewOrg {
   ordersInWork: number
   ordersDelivered: number
   lastActivityAt: string | null
+  /** Учётная запись для входа в компанию одним нажатием (null — входить не из-под кого) */
+  enterAs: { kind: "staff" | "driver"; id: string; name: string; role: string | null } | null
 }
 
 interface OverviewResponse {
@@ -110,6 +112,9 @@ export default function OwnerHomePage() {
   )
 
   const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
+  // Ошибка загрузки — не пустой экран: прочерки в плитках выглядят как
+  // «данных нет», хотя на самом деле их не удалось получить.
+  const loadError = overview.error && !forbidden ? overview.error : null
   const data = overview.data
   const totals = data?.totals
 
@@ -135,8 +140,8 @@ export default function OwnerHomePage() {
     ])
   }, [people.data, search])
 
-  async function enter(item: { kind: "staff" | "driver"; id: string; name: string }) {
-    setBusyId(item.id)
+  async function enter(item: { kind: "staff" | "driver"; id: string; name: string }, busyKey?: string) {
+    setBusyId(busyKey ?? item.id)
     await enterAccount(item)
     setBusyId(null)
   }
@@ -157,6 +162,19 @@ export default function OwnerHomePage() {
       {forbidden ? (
         <div className="mt-6">
           <Forbidden message="Недостаточно прав для этого раздела." />
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <div className="mt-6 rounded-xl border border-destructive/40 bg-destructive/10 p-5">
+          <p className="text-[14px] text-destructive">Не удалось загрузить сводку: {loadError}</p>
+          <button
+            type="button"
+            onClick={() => overview.reload()}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-[13px] text-foreground transition-colors duration-200 hover:bg-secondary"
+          >
+            Повторить
+          </button>
         </div>
       ) : null}
 
@@ -260,74 +278,120 @@ export default function OwnerHomePage() {
             </div>
           ) : null}
           {(data?.organizations ?? []).map((org, index) => (
-            <Link
+            <div
               key={org.id}
-              href={`/owner/org/${org.id}`}
-              className="group rounded-xl border border-border bg-card p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
+              className="group rounded-xl border border-border bg-card transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
               style={{ animation: `rise-in 520ms cubic-bezier(0.22, 1, 0.36, 1) ${120 + index * 70}ms both` }}
             >
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <Building2 className="h-[18px] w-[18px]" />
+              {/* Вся карточка — ссылка на компанию (как и была), а кнопка входа
+                  лежит отдельной строкой ниже: иначе клик по ней открывал бы
+                  страницу компании вместо входа в неё. */}
+              <Link
+                href={`/owner/org/${org.id}`}
+                className="block rounded-t-xl p-4"
+                title="Открыть компанию: сотрудники, водители и журнал"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                    <Building2 className="h-[18px] w-[18px]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-semibold">{org.name}</p>
+                    <p className="text-[12px] text-muted-foreground">
+                      с {formatDate(org.createdAt)} · активность {formatDateTime(org.lastActivityAt)}
+                    </p>
+                  </div>
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold">{org.name}</p>
-                  <p className="text-[12px] text-muted-foreground">
-                    с {formatDate(org.createdAt)} · активность {formatDateTime(org.lastActivityAt)}
+
+                <dl className="mt-4 grid grid-cols-3 gap-x-3 gap-y-3 text-[12.5px]">
+                  <div>
+                    <dt className="text-muted-foreground">Сотрудников</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums">{org.staff}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Водителей</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums">{org.drivers}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Машин</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums">{org.vehicles}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Рейсов в работе</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums text-warning">{org.activeRoutes}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Заказов в работе</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums text-success">{org.ordersInWork}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Доставлено</dt>
+                    <dd className="text-[15px] font-semibold tabular-nums">{org.ordersDelivered}</dd>
+                  </div>
+                </dl>
+
+                {org.pendingUsers > 0 || org.suspendedUsers > 0 ? (
+                  <p className="mt-3 flex flex-wrap gap-1.5 text-[12px]">
+                    {org.pendingUsers > 0 ? (
+                      <span className="rounded-md bg-warning/15 px-2 py-0.5 text-warning">
+                        {org.pendingUsers} {plural(org.pendingUsers, ["заявка ждёт", "заявки ждут", "заявок ждут"])} одобрения
+                      </span>
+                    ) : null}
+                    {org.suspendedUsers > 0 ? (
+                      <span className="rounded-md bg-destructive/15 px-2 py-0.5 text-destructive">
+                        доступ закрыт: {org.suspendedUsers}
+                      </span>
+                    ) : null}
                   </p>
-                </div>
-                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
-              </div>
-
-              <dl className="mt-4 grid grid-cols-3 gap-x-3 gap-y-3 text-[12.5px]">
-                <div>
-                  <dt className="text-muted-foreground">Сотрудников</dt>
-                  <dd className="text-[15px] font-semibold tabular-nums">{org.staff}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Водителей</dt>
-                  <dd className="text-[15px] font-semibold tabular-nums">{org.drivers}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Машин</dt>
-                  <dd className="text-[15px] font-semibold tabular-nums">{org.vehicles}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Рейсов в работе</dt>
-                  <dd className="text-[15px] font-semibold tabular-nums text-warning">{org.activeRoutes}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Заказов в работе</dt>
-                  <dd className="text-[15px] font-semibold tabular-nums text-success">{org.ordersInWork}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Доставлено</dt>
-                  <dd className="text-[15px] font-semibold tabular-nums">{org.ordersDelivered}</dd>
-                </div>
-              </dl>
-
-              {org.pendingUsers > 0 || org.suspendedUsers > 0 ? (
-                <p className="mt-3 flex flex-wrap gap-1.5 text-[12px]">
-                  {org.pendingUsers > 0 ? (
-                    <span className="rounded-md bg-warning/15 px-2 py-0.5 text-warning">
-                      {org.pendingUsers} {plural(org.pendingUsers, ["заявка ждёт", "заявки ждут", "заявок ждут"])} одобрения
-                    </span>
-                  ) : null}
-                  {org.suspendedUsers > 0 ? (
-                    <span className="rounded-md bg-destructive/15 px-2 py-0.5 text-destructive">
-                      доступ закрыт: {org.suspendedUsers}
-                    </span>
-                  ) : null}
+                ) : null}
+                <p className="mt-3 text-[12px] text-muted-foreground">
+                  {org.staff > 0
+                    ? `${org.admins} адм. · ${org.logists} лог. — ${plural(org.staff, ["сотрудник", "сотрудника", "сотрудников"])}`
+                    : "Сотрудников пока нет"}
                 </p>
-              ) : null}
-              <p className="mt-3 text-[12px] text-muted-foreground">
-                {org.staff > 0
-                  ? `${org.admins} адм. · ${org.logists} лог. — ${plural(org.staff, ["сотрудник", "сотрудника", "сотрудников"])}`
-                  : "Сотрудников пока нет"}
-              </p>
-            </Link>
+              </Link>
+
+              {/* Подключение к компании одним нажатием. Раньше с общего экрана
+                  в компанию было не попасть: карточка вела только на список
+                  учётных записей, а если записей не было — путь обрывался. */}
+              <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+                <button
+                  type="button"
+                  disabled={busyId === `org:${org.id}` || !org.enterAs}
+                  title={
+                    org.enterAs
+                      ? `Войти в компанию под учётной записью «${org.enterAs.name}»`
+                      : "В этой компании нет учётных записей с открытым доступом"
+                  }
+                  onClick={() => {
+                    if (!org.enterAs) return
+                    void enter(
+                      {
+                        kind: org.enterAs.kind,
+                        id: org.enterAs.id,
+                        name: org.enterAs.name,
+                      },
+                      `org:${org.id}`,
+                    )
+                  }}
+                  className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
+                >
+                  {busyId === `org:${org.id}` ? (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  ) : (
+                    <UserCog className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {org.enterAs ? `Войти как ${org.enterAs.name}` : "Войти не из-под кого"}
+                  </span>
+                </button>
+              </div>
+            </div>
           ))}
-          {data && data.organizations.length === 0 ? (
+          {loadError ? (
+            <p className="text-[13px] text-destructive">Список компаний не загрузился.</p>
+          ) : data && data.organizations.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">Компаний пока нет.</p>
           ) : null}
         </div>
@@ -354,7 +418,9 @@ export default function OwnerHomePage() {
                 </p>
               </li>
             ))}
-            {data && data.recent.length === 0 ? (
+            {loadError ? (
+              <li className="px-4 py-4 text-[13px] text-destructive">Сводка не загрузилась</li>
+            ) : data && data.recent.length === 0 ? (
               <li className="px-4 py-4 text-[13px] text-muted-foreground">Действий пока нет</li>
             ) : null}
           </ul>

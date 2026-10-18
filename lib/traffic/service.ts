@@ -1,4 +1,24 @@
 // lib/traffic/service.ts
+//
+// Провайдеры пробок (TRAFFIC_PROVIDER) и сколько они стоят:
+//
+//   historical (синоним estimate) — без внешнего сервиса: время по
+//              историческим коэффициентам lib/eta. Бесплатно, режим по
+//              умолчанию.
+//   2gis     — 2ГИС Routing API, реальные пробки по России. Демо-ключ бесплатно
+//              (1 000 запросов, 1 месяц), далее от 6 701 ₽ за 10 000 запросов.
+//   yandex   — Яндекс.Маршрутизация, лучшие пробки, но минимальный платёж
+//              120 000 ₽/год (матрица расстояний, 1 000 запросов/сутки);
+//              оптимизация маршрутов — 4 791 470 ₽/год. Пробный период 14 дней.
+//   mock     — демо-генератор, только для показа интерфейса.
+//
+// Почему не TomTom: в его таблице покрытия Traffic API России нет — маршрут
+// считает, а пробки не отдаёт. HERE для России после 2022 года не гарантирует
+// данные. Поэтому для реальных пробок остаются Яндекс и 2ГИС.
+//
+// Любой провайдер при ошибке деградирует до оценки по времени суток: оба
+// потребителя (оптимизатор и /api/traffic/batch) ловят исключение и честно
+// подписывают источник как «оценка», а не «измерение».
 
 import type { LatLng, TrafficSegment, TrafficIncidentType } from "@/lib/traffic/types"
 
@@ -23,6 +43,7 @@ export type TrafficRouteResult = {
 
 const DEFAULT_TTL_MS = 120_000
 const YANDEX_TIMEOUT_MS = 8_000
+const TWOGIS_TIMEOUT_MS = 10_000
 
 declare global {
   // eslint-disable-next-line no-var
@@ -177,6 +198,38 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<Res
   }
 }
 
+/**
+ * До какого момента ключ внешнего сервиса пробок считается отклонённым.
+ *
+ * Зачем: если ключ выдан не тому сервису (у Яндекса ключи отдельные на каждый
+ * сервис — ключ геокодера Маршрутизацию не открывает; у 2ГИС демо-ключ живёт
+ * месяц), каждый вызов оптимизатора отправлял бы два заведомо неудачных
+ * запроса и ждал таймаута. Плюс в логах — лавина одинаковых ошибок. Поэтому
+ * первый отказ по ключу запоминается на 15 минут: за это время владелец
+ * успеет заменить ключ, а система честно считает по времени суток.
+ */
+let routingKeyRejectedUntilMs = 0
+const ROUTING_KEY_COOLDOWN_MS = 15 * 60 * 1000
+
+/** Сброс кэша отказа — для тестов и после смены ключа. */
+export function resetRoutingKeyRejection(): void {
+  routingKeyRejectedUntilMs = 0
+}
+
+/**
+ * Признак «ключ отклонён сервисом», а не «сеть отвалилась».
+ *
+ * Форматы отказов, с которыми реально сталкивались:
+ *   Яндекс:  403 {"errors":["Invalid key"]}
+ *  2ГИС:    403 {"type":"forbidden","message":"invalid_key"}
+ */
+function isKeyRejection(status: number, body: string): boolean {
+  if (status !== 401 && status !== 403) return false
+  return /invalid[ _]?key|key[ _]?(is )?(not found|invalid|expired|blocked)|unauthorized|forbidden|access denied/i.test(
+    body,
+  )
+}
+
 async function fetchYandexDurationSeconds(params: {
   waypoints: LatLng[]
   trafficDisabled?: boolean
@@ -185,6 +238,12 @@ async function fetchYandexDurationSeconds(params: {
   const apiUrlRaw = process.env.YANDEX_ROUTING_API_URL || "https://api.routing.yandex.net/v2/route"
 
   if (!apiKey) throw new Error("YANDEX_ROUTING_API_KEY is not set")
+
+  if (Date.now() < routingKeyRejectedUntilMs) {
+    throw new Error(
+      "Ключ Яндекс.Маршрутизации отклонён (проверьте, что ключ выдан для сервиса «Маршрутизация», а не для геокодера)",
+    )
+  }
 
   const tryOne = async (sep: string): Promise<number> => {
     const url = new URL(apiUrlRaw)
@@ -203,6 +262,14 @@ async function fetchYandexDurationSeconds(params: {
     const text = await res.text().catch(() => "")
 
     if (!res.ok) {
+      // Ключ выдан другому сервису — это не «сеть отвалилась», а неверная
+      // настройка: дальше пытаться бессмысленно до смены ключа.
+      if (isKeyRejection(res.status, text)) {
+        routingKeyRejectedUntilMs = Date.now() + ROUTING_KEY_COOLDOWN_MS
+        throw new Error(
+          "Ключ Яндекс.Маршрутизации отклонён: проверьте, что ключ выдан для сервиса «Маршрутизация»",
+        )
+      }
       throw new Error(`Yandex routing HTTP ${res.status}: ${text.slice(0, 250)}`)
     }
 
@@ -225,6 +292,109 @@ async function fetchYandexDurationSeconds(params: {
     }
     throw e
   }
+}
+
+/**
+ * 2ГИС Routing API — единственная доступная альтернатива Яндексу с реальными
+ * российскими пробками.
+ *
+ * Почему не TomTom/HERE: у TomTom в таблице покрытия Traffic API России нет
+ * (расчёт маршрута есть, пробок — нет), HERE после 2022 года для России не
+ * гарантирует данные. 2ГИС считает маршрут «с учётом пробок» (traffic_mode:
+ * "jam") и умеет базовый вариант по статистике (traffic_mode: "stat").
+ *
+ * Документация: https://docs.2gis.com/en/api/navigation/routing/start
+ * Ключ: platform.2gis.ru → демо-ключ (1 000 запросов, 1 месяц, маршрут до
+ * 50 км — междугородние рейсы демо-ключом не считаются) или подписка
+ * (от 6 701 ₽ за 10 000 запросов).
+ */
+async function fetch2GisDurationSeconds(params: {
+  waypoints: LatLng[]
+  trafficDisabled?: boolean
+}): Promise<number> {
+  const apiKey = process.env.TWOGIS_API_KEY
+  const apiUrlRaw =
+    process.env.TWOGIS_ROUTING_API_URL || "https://routing.api.2gis.com/routing/7.0.0/global"
+
+  if (!apiKey) throw new Error("TWOGIS_API_KEY is not set")
+
+  if (Date.now() < routingKeyRejectedUntilMs) {
+    throw new Error(
+      "Ключ 2ГИС отклонён (проверьте TWOGIS_API_KEY: демо-ключ живёт месяц и ограничен 1 000 запросов)",
+    )
+  }
+
+  const url = new URL(apiUrlRaw)
+  url.searchParams.set("key", apiKey)
+
+  const body = {
+    points: params.waypoints.map(([lat, lng]) => ({ type: "stop", lon: lng, lat })),
+    transport: "driving",
+    route_mode: "fastest",
+    // "jam" — текущие пробки, "stat" — статистика (без live-пробок)
+    traffic_mode: params.trafficDisabled ? "stat" : "jam",
+    locale: "ru",
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TWOGIS_TIMEOUT_MS)
+
+  let res: Response
+  let text: string
+  try {
+    res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: controller.signal,
+    })
+    text = await res.text().catch(() => "")
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (!res.ok) {
+    if (isKeyRejection(res.status, text)) {
+      routingKeyRejectedUntilMs = Date.now() + ROUTING_KEY_COOLDOWN_MS
+      throw new Error(
+        "Ключ 2ГИС отклонён: проверьте, что TWOGIS_API_KEY выдан для Routing API и не истёк",
+      )
+    }
+    throw new Error(`2GIS routing HTTP ${res.status}: ${text.slice(0, 250)}`)
+  }
+
+  const data = text ? JSON.parse(text) : null
+
+  // 2ГИС отвечает либо набором маршрутов, либо объектом с ошибкой
+  if (data?.type === "error" || data?.status === "FAIL") {
+    throw new Error(`2GIS routing: ${String(data?.message || data?.status || "ошибка расчёта")}`)
+  }
+
+  const durationSec = tryExtract2GisDurationSeconds(data)
+  if (durationSec == null) {
+    throw new Error("2GIS routing: duration not found in response")
+  }
+
+  return Math.max(1, Math.round(durationSec))
+}
+
+/** Достаёт total_duration (секунды) из ответа 2ГИС Routing API. */
+function tryExtract2GisDurationSeconds(payload: any): number | null {
+  const options = payload?.result
+  if (!Array.isArray(options) || options.length === 0) return null
+
+  const pick = (obj: any): number | null => {
+    const v = obj?.total_duration
+    return typeof v === "number" && Number.isFinite(v) ? v : null
+  }
+
+  // Первый вариант — рекомендованный; ищем первый, у которого есть время
+  for (const option of options) {
+    const sec = pick(option)
+    if (sec != null) return sec
+  }
+  return null
 }
 
 function buildSegmentsFromDelay(routeId: string, nowMs: number, severityBase: number, delayMin: number): TrafficSegment[] {
@@ -282,6 +452,37 @@ export async function getRouteTraffic(params: {
 
     if (trafficRes.status !== "fulfilled") {
       // Важно: если “с пробками” не удалось — считаем, что трафика нет (пусть batch в debug покажет причину)
+      throw trafficRes.reason
+    }
+
+    const trafficSec = trafficRes.value
+    const baseSec = baseRes.status === "fulfilled" ? baseRes.value : trafficSec
+
+    const ratio = trafficSec / Math.max(1, baseSec)
+    const delayMin = Math.max(0, Math.round((trafficSec - baseSec) / 60))
+    const severityBase = clamp((ratio - 1) / 0.8, 0, 1)
+
+    segments = buildSegmentsFromDelay(routeId, nowMs, severityBase, delayMin)
+    summary = { delayMin, ratio: Number(ratio.toFixed(3)) }
+  } else if (provider === "estimate" || provider === "historical") {
+    // Внешний сервис пробок не подключён намеренно: потребители (оптимизатор,
+    // /api/traffic/batch) ловят эту ошибку и считают время историческими
+    // коэффициентами из lib/eta (час пика, день недели, груз, тип дороги).
+    // Отдельная ветка — чтобы в debug-выводе было понятно, что это не сбой.
+    // «estimate» и «historical» — синонимы одного и того же режима.
+    throw new Error(
+      "Внешний сервис пробок не настроен (TRAFFIC_PROVIDER=historical): время считаем историческими коэффициентами",
+    )
+  } else if (provider === "2gis") {
+    const waypoints = pickWaypoints(params.coordinates, 10)
+
+    // Параллельно: «с пробками» и «по статистике» — разница и есть пробки
+    const [trafficRes, baseRes] = await Promise.allSettled([
+      fetch2GisDurationSeconds({ waypoints, trafficDisabled: false }),
+      fetch2GisDurationSeconds({ waypoints, trafficDisabled: true }),
+    ])
+
+    if (trafficRes.status !== "fulfilled") {
       throw trafficRes.reason
     }
 

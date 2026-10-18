@@ -21,6 +21,8 @@ import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
 import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
 import { estimateDurationMin, getRouteGeometry } from "@/lib/geo/route-geometry"
+import { getRouteTripEta, ensureRouteStages } from "@/lib/eta/trip-repository"
+import { gpsAgeSeconds } from "@/lib/fleet/presence"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -45,6 +47,72 @@ type Waypoint = {
   label: string
   address: string
   position: [number, number] | null
+}
+
+/**
+ * Прогноз рейса для карты — из ЕДИНОГО механизма (lib/eta/trip.ts), того же,
+ * что использует кабинет водителя. Раньше карта считала время своей формулой
+ * (OSRM-длительность или distance/60), и цифры на карте расходились с
+ * кабинетом водителя на одном и том же рейсе.
+ */
+type RouteTripPayload = {
+  currentStageIndex: number | null
+  currentStageLabel: string | null
+  /**
+   * Статус показываемого этапа. "active" — этап идёт прямо сейчас, "pending" —
+   * рейс начат, но этап ещё не открывали (водитель едет или готовится).
+   * Различать обязательно: иначе панель писала бы «Рейс не начат» на рейсе,
+   * который уже в пути.
+   */
+  currentStageStatus: "active" | "pending" | null
+  /** Рейс начат (есть отметка отправления или хоть один фактический этап) */
+  tripStarted: boolean
+  /** Рейс завершён: все этапы закрыты */
+  finished: boolean
+  nextPoint: {
+    address: string
+    operation: string
+    distanceM: number | null
+    drivingSec: number
+    arrivalAt: string
+  } | null
+  remaining: {
+    drivingSec: number
+    stopsSec: number
+    restSec: number
+    totalSec: number
+    arrivalAt: string
+  }
+  returnToBase: { address: string; drivingSec: number; arrivalAt: string } | null
+  /** Обязательные перерывы: когда именно наступают (сумма — в remaining.restSec) */
+  restPlan: {
+    breaks: Array<{
+      afterStageIndex: number
+      minutes: number
+      kind: string
+      reason: string
+      startAt: string
+      endAt: string
+    }>
+    totalMinutes: number
+    priorDrivingUnknown: boolean
+    warning: string | null
+  }
+  completionAt: string
+  confidence: { level: string; score: number; reasons: string[] }
+  dataQuality: string[]
+  reliable: boolean
+  /** Реальные GPS-координаты водителя есть? */
+  gpsKnown: boolean
+  /**
+   * Возраст последней GPS-точки в секундах; null — точки не было.
+   * Нужен, чтобы отличить «водитель здесь» от «водитель был здесь вчера»:
+   * координаты в базе не устаревают сами, и без этого панель показывала бы
+   * старое место как текущее.
+   */
+  gpsAgeSec: number | null
+  /** Расчётное время (калькулятор), если GPS нет — явно помечено */
+  calculatedAt: string
 }
 
 type BasePayload = {
@@ -157,8 +225,6 @@ export async function GET(request: NextRequest) {
     const drivers = await prisma.driver.findMany({
       where: scopedWhere(org.organizationId, {
         id: { in: driverIds },
-        latitude: { not: null },
-        longitude: { not: null },
       }),
       select: {
         id: true,
@@ -166,6 +232,7 @@ export async function GET(request: NextRequest) {
         latitude: true,
         longitude: true,
         vehiclePlate: true,
+        lastGpsUpdate: true,
       },
     })
 
@@ -191,22 +258,30 @@ export async function GET(request: NextRequest) {
     const built = await Promise.all(
       [...groups.entries()].map(async ([routeKey, group]) => {
         const driver = drivers.find((item) => item.id === group.driverId)
-        if (!driver?.latitude || !driver?.longitude) return null
+        const hasDriverGps = driver?.latitude != null && driver?.longitude != null
 
-        const driverPoint: Coordinates = { lat: driver.latitude, lng: driver.longitude }
+        // GPS может отсутствовать — тогда маршрут строится от первой точки
+        // погрузки, а водителя на карте не показываем. Раньше рейс в этом
+        // случае вообще пропадал с карты, и логист не видел ни точек, ни прогноза.
+        const driverPoint: Coordinates | null =
+          hasDriverGps && driver
+            ? { lat: driver.latitude as number, lng: driver.longitude as number }
+            : null
         const ordersSorted = [...group.orders].sort(
           (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
         )
 
-        const points: Coordinates[] = [driverPoint]
-        const waypoints: Waypoint[] = [
-          {
-            type: "driver",
-            label: "🚚",
-            address: "Текущая позиция",
-            position: [driverPoint.lat, driverPoint.lng],
-          },
-        ]
+        const points: Coordinates[] = driverPoint ? [driverPoint] : []
+        const waypoints: Waypoint[] = driverPoint
+          ? [
+              {
+                type: "driver",
+                label: "🚚",
+                address: "Текущая позиция",
+                position: [driverPoint.lat, driverPoint.lng],
+              },
+            ]
+          : []
 
         let waypointIndex = 0
         for (const order of ordersSorted) {
@@ -242,6 +317,7 @@ export async function GET(request: NextRequest) {
           position: base.coordinates,
         })
 
+        // Рейс без единой геокодируемой точки показать нечем
         if (points.length < 2) return null
 
         const geometry = await getRouteGeometry(points)
@@ -256,12 +332,119 @@ export async function GET(request: NextRequest) {
         const durationMin =
           geometry.source === "osrm" ? geometry.durationMin : estimateDurationMin(distanceKm)
 
+        // Прогноз рейса — единый механизм, но только если рейс существует
+        // строкой Route (иначе некуда цеплять этапы). Для «solo-» групп
+        // (заказы без рейса) прогноза нет, и карта об этом скажет.
+        const realRouteId = group.orders[0]?.routeId ?? null
+        let trip: RouteTripPayload | null = null
+        if (realRouteId) {
+          try {
+            await ensureRouteStages({
+              routeId: realRouteId,
+              organizationId: org.organizationId,
+            })
+            const tripEta = await getRouteTripEta({
+              routeId: realRouteId,
+              organizationId: org.organizationId,
+            })
+            if (tripEta) {
+              // Текущий этап: идущий сейчас. Если рейс начат, но ни один этап
+              // не открыт (водитель едет или ещё не нажал «начать»), показываем
+              // ближайший незакрытый — тот же индекс, что видит водитель.
+              const hasActuals = tripEta.stages.some(
+                (stage) => stage.actualStartAt != null,
+              )
+              // Команда «начать рейс» открывает первый этап, поэтому наличия
+              // фактической отметки достаточно: отдельный запрос за startedAt
+              // рейса не нужен.
+              const tripStarted = hasActuals
+              const finished =
+                tripEta.stages.length > 0 &&
+                tripEta.stages.every((stage) => stage.actualEndAt != null)
+
+              const currentIndex =
+                tripEta.currentStageIndex ?? (tripStarted ? tripEta.nextStageIndex : null)
+              const currentStage =
+                currentIndex == null ? null : tripEta.stages[currentIndex] ?? null
+              trip = {
+                currentStageIndex: currentIndex,
+                currentStageLabel: currentStage?.label ?? null,
+                currentStageStatus:
+                  currentStage == null
+                    ? null
+                    : currentStage.actualStartAt && !currentStage.actualEndAt
+                      ? "active"
+                      : "pending",
+                tripStarted,
+                finished,
+                nextPoint: tripEta.nextPoint
+                  ? {
+                      address: tripEta.nextPoint.address ?? "точка без адреса",
+                      operation: String(tripEta.nextPoint.operation),
+                      distanceM: tripEta.nextPoint.distanceM ?? null,
+                      drivingSec: Math.round(tripEta.nextPoint.drivingSec),
+                      arrivalAt: tripEta.nextPoint.arrivalAt.toISOString(),
+                    }
+                  : null,
+                remaining: {
+                  drivingSec: Math.round(tripEta.remaining.drivingSec),
+                  stopsSec: Math.round(tripEta.remaining.stopsSec),
+                  restSec: Math.round(tripEta.remaining.restSec),
+                  totalSec: Math.round(tripEta.remaining.totalSec),
+                  arrivalAt: tripEta.remaining.arrivalAt.toISOString(),
+                },
+                returnToBase: tripEta.returnToBase
+                  ? {
+                      address: tripEta.returnToBase.address ?? "база",
+                      drivingSec: Math.round(tripEta.returnToBase.drivingSec),
+                      arrivalAt: tripEta.returnToBase.arrivalAt.toISOString(),
+                    }
+                  : null,
+                restPlan: {
+                  breaks: tripEta.restPlan.breaks.map((rest) => ({
+                    afterStageIndex: rest.afterStageIndex,
+                    minutes: rest.minutes,
+                    kind: rest.kind,
+                    reason: rest.reason,
+                    startAt: rest.startAt.toISOString(),
+                    endAt: rest.endAt.toISOString(),
+                  })),
+                  totalMinutes: tripEta.restPlan.totalMinutes,
+                  priorDrivingUnknown: tripEta.restPlan.priorDrivingUnknown,
+                  warning: tripEta.restPlan.warning ?? null,
+                },
+                completionAt: tripEta.completionAt.toISOString(),
+                confidence: {
+                  level: tripEta.confidence.level,
+                  score: tripEta.confidence.score,
+                  reasons: tripEta.confidence.reasons,
+                },
+                dataQuality: tripEta.dataQuality.warnings,
+                reliable: tripEta.reliable,
+                // GPS есть, если у водителя заполнены координаты: это реальная
+                // точка, а не вычисленная. Без неё карта обязана сказать честно.
+                // Раньше здесь было зашито `true`, и интерфейс заявлял о
+                // GeolocationAPI даже когда координат у водителя нет.
+                gpsKnown: hasDriverGps,
+                gpsAgeSec: hasDriverGps
+                  ? gpsAgeSeconds(driver!.lastGpsUpdate, new Date())
+                  : null,
+                calculatedAt: tripEta.calculatedAt.toISOString(),
+              }
+            }
+          } catch (tripError) {
+            // Прогноз не должен ломать карту: нитки, точки и водители
+            // отдаются независимо от него
+            console.error("[dashboard/routes] trip eta failed:", tripError)
+          }
+        }
+
         return {
           id: routeKey,
           driverId: group.driverId,
-          driverName: driver.name,
-          vehiclePlate: driver.vehiclePlate ?? undefined,
-          driverPos: [driver.latitude, driver.longitude] as [number, number],
+          driverName: driver?.name ?? "Водитель не найден",
+          vehiclePlate: driver?.vehiclePlate ?? undefined,
+          driverPos: driverPoint ? ([driverPoint.lat, driverPoint.lng] as [number, number]) : null,
           routeFrom: ordersSorted[0].routeFrom,
           routeTo: ordersSorted[ordersSorted.length - 1].routeTo,
           status: ordersSorted.some((order) => isOrderMoving(order.status))
@@ -273,6 +456,7 @@ export async function GET(request: NextRequest) {
           duration: durationMin,
           coordinates: geometry.coordinates,
           geometrySource: geometry.source,
+          trip,
           waypoints,
           orders: ordersSorted.map((order) => ({
             id: order.id,

@@ -78,7 +78,7 @@ interface OptimizerVariant {
   }
   sources: {
     routing: "osrm" | "fallback"
-    traffic: "yandex" | "estimate"
+    traffic: "yandex" | "2gis" | "historical"
     tolls: "estimate"
     trafficNote: string
   }
@@ -93,7 +93,7 @@ interface OptimizerResponse {
   skipped?: number
   sources?: {
     routing: "osrm" | "fallback"
-    traffic: "yandex" | "estimate"
+    traffic: "yandex" | "2gis" | "historical"
     tolls: "estimate"
     geocoding: string
   }
@@ -118,15 +118,27 @@ function SourceBadge({
   traffic,
 }: {
   routing: "osrm" | "fallback"
-  traffic: "yandex" | "estimate"
+  traffic: "yandex" | "2gis" | "historical"
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Badge variant={routing === "osrm" ? "outline" : "secondary"} className="text-[10px] gap-1">
         {routing === "osrm" ? "OSRM: дороги" : "OSRM недоступен: по прямой"}
       </Badge>
-      <Badge variant={traffic === "yandex" ? "outline" : "secondary"} className="text-[10px] gap-1">
-        {traffic === "yandex" ? "Пробки: Яндекс" : "Пробки: оценка по времени суток"}
+      <Badge
+        variant={traffic === "historical" ? "secondary" : "outline"}
+        className="text-[10px] gap-1"
+        title={
+          traffic === "historical"
+            ? "Время в пути — исторические коэффициенты (час пика, день недели, груз), не live-пробки"
+            : "Время в пути — с учётом текущих пробок от внешнего сервиса"
+        }
+      >
+        {traffic === "yandex"
+          ? "Пробки: Яндекс"
+          : traffic === "2gis"
+            ? "Пробки: 2ГИС"
+            : "Время: исторические коэффициенты"}
       </Badge>
       <Badge variant="secondary" className="text-[10px] gap-1">
         Платные дороги: оценка

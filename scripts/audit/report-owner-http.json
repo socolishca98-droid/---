@@ -1,0 +1,583 @@
+{
+ "title": "Пульт владельца платформы — HTTP",
+ "summary": {
+  "VERIFIED": 95,
+  "PARTIAL": 0,
+  "BROKEN": 0,
+  "MISSING": 0,
+  "NOT_TESTED": 0
+ },
+ "steps": [
+  {
+   "scenario": "B0",
+   "name": "тестовые данные найдены",
+   "status": "VERIFIED",
+   "note": "владелец socolishca98@gmail.com; компания A: Иван Админов; компания B: Тест С Согласием; водитель A: Иванов Сергей Петрович"
+  },
+  {
+   "scenario": "B1",
+   "name": "владелец входит своим паролем",
+   "status": "VERIFIED",
+   "note": "HTTP 200, cookie: loginex_csrf, loginex_staff_session"
+  },
+  {
+   "scenario": "B1",
+   "name": "владелец получает сводку платформы",
+   "status": "VERIFIED",
+   "note": "HTTP 200, компаний: 2, сотрудников: 3, водителей: 5"
+  },
+  {
+   "scenario": "B6",
+   "name": "секреты не раскрываются: GET /api/admin/overview",
+   "status": "VERIFIED",
+   "note": "шаблонов паролей/хэшей/токенов нет"
+  },
+  {
+   "scenario": "B1",
+   "name": "обычный администратор входит",
+   "status": "VERIFIED",
+   "note": "HTTP 200"
+  },
+  {
+   "scenario": "B1",
+   "name": "обычный админ не проходит в /api/admin/overview",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\",\"code\":\"forbidden\"}"
+  },
+  {
+   "scenario": "B1",
+   "name": "обычный админ не проходит в /api/admin/accounts",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\",\"code\":\"forbidden\"}"
+  },
+  {
+   "scenario": "B1",
+   "name": "обычный админ не проходит в /api/admin/journal",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\",\"code\":\"forbidden\"}"
+  },
+  {
+   "scenario": "B1",
+   "name": "обычный админ не проходит в /api/admin/impersonate",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\",\"code\":\"forbidden\"}"
+  },
+  {
+   "scenario": "B1",
+   "name": "обычный админ не проходит в /api/admin/accounts/[id]",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\",\"code\":\"forbidden\"}"
+  },
+  {
+   "scenario": "B1",
+   "name": "без сессии сводка недоступна",
+   "status": "VERIFIED",
+   "note": "HTTP 401"
+  },
+  {
+   "scenario": "B1",
+   "name": "подделанные заголовки x-loginex-* не дают доступа",
+   "status": "VERIFIED",
+   "note": "HTTP 401 — {\"success\":false,\"error\":\"Требуется авторизация\"}"
+  },
+  {
+   "scenario": "B1",
+   "name": "недействительный токен сессии не даёт доступа",
+   "status": "VERIFIED",
+   "note": "HTTP 401"
+  },
+  {
+   "scenario": "B1",
+   "name": "водитель входит в мобильный контур",
+   "status": "VERIFIED",
+   "note": "HTTP 200"
+  },
+  {
+   "scenario": "B1",
+   "name": "сессия водителя не открывает пульт владельца",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\"}"
+  },
+  {
+   "scenario": "B6",
+   "name": "неописанный метод на /api/admin/overview не выполняется",
+   "status": "VERIFIED",
+   "note": "HTTP 405 null"
+  },
+  {
+   "scenario": "B2",
+   "name": "владелец видит все компании",
+   "status": "VERIFIED",
+   "note": "в ответе 2, в базе 2: ИП Фролов Иван Александрович / ООО С Согласием"
+  },
+  {
+   "scenario": "B2",
+   "name": "цифры компании «ИП Фролов Иван Александрович» совпадают с базой",
+   "status": "VERIFIED",
+   "note": "показано staff=1 drivers=5 vehicles=6 orders=36 clients=4; в базе 1/5/6/36/4"
+  },
+  {
+   "scenario": "B2",
+   "name": "цифры компании «ООО С Согласием» совпадают с базой",
+   "status": "VERIFIED",
+   "note": "показано staff=1 drivers=0 vehicles=0 orders=0 clients=0; в базе 1/0/0/0/0"
+  },
+  {
+   "scenario": "B2",
+   "name": "список аккаунтов отдаётся владельцу",
+   "status": "VERIFIED",
+   "note": "HTTP 200, групп: 3, итого: {\"organizations\":3,\"staff\":3,\"drivers\":5}"
+  },
+  {
+   "scenario": "B6",
+   "name": "секреты не раскрываются: GET /api/admin/accounts",
+   "status": "VERIFIED",
+   "note": "шаблонов паролей/хэшей/токенов нет"
+  },
+  {
+   "scenario": "B2",
+   "name": "поиск по имени «Кузнецов» находит водителя",
+   "status": "VERIFIED",
+   "note": "HTTP 200, найдено: Кузнецов Андрей Владимирович (driver)"
+  },
+  {
+   "scenario": "B2",
+   "name": "поиск по почте находит сотрудника",
+   "status": "VERIFIED",
+   "note": "HTTP 200, найдено: Иван Админов"
+  },
+  {
+   "scenario": "B2",
+   "name": "поиск по телефону находит водителя",
+   "status": "VERIFIED",
+   "note": "HTTP 200, найдено: Кузнецов Андрей Владимирович"
+  },
+  {
+   "scenario": "B2",
+   "name": "однобуквенный поиск не вываливается ошибкой",
+   "status": "VERIFIED",
+   "note": "HTTP 200"
+  },
+  {
+   "scenario": "B2",
+   "name": "поиск без результатов отдаёт пустой список, а не ошибку",
+   "status": "VERIFIED",
+   "note": "HTTP 200, найдено: 0"
+  },
+  {
+   "scenario": "B2",
+   "name": "журнал по компании A содержит только её записи",
+   "status": "VERIFIED",
+   "note": "HTTP 200, записей: 200, всего: 252"
+  },
+  {
+   "scenario": "B2",
+   "name": "журнал по компании B содержит только её записи",
+   "status": "VERIFIED",
+   "note": "HTTP 200, записей: 95, всего: 95"
+  },
+  {
+   "scenario": "B2",
+   "name": "журнал по несуществующей компании не падает",
+   "status": "VERIFIED",
+   "note": "HTTP 200, всего: 0"
+  },
+  {
+   "scenario": "B4",
+   "name": "журнал отдаёт реальные записи",
+   "status": "VERIFIED",
+   "note": "HTTP 200, записей: 200, всего: 399"
+  },
+  {
+   "scenario": "B4",
+   "name": "в каждой записи есть время, действие и объект",
+   "status": "VERIFIED",
+   "note": "проверено записей: 200"
+  },
+  {
+   "scenario": "B4",
+   "name": "субъект действия опознаётся в каждой записи",
+   "status": "VERIFIED",
+   "note": "во всех записях есть исполнитель (у водителей подставляются имя и телефон: 24 записей)"
+  },
+  {
+   "scenario": "B4",
+   "name": "запись привязана к компании (или помечена как вне компании)",
+   "status": "VERIFIED",
+   "note": "с компаний: 200 из 200"
+  },
+  {
+   "scenario": "B4",
+   "name": "в записи есть IP (след запроса)",
+   "status": "VERIFIED",
+   "note": "с IP: 200 из 200"
+  },
+  {
+   "scenario": "B4",
+   "name": "в журнале есть request ID у новых действий",
+   "status": "VERIFIED",
+   "note": "с request ID: 86 из 200; среди 20 последних: 13"
+  },
+  {
+   "scenario": "B6",
+   "name": "секреты не раскрываются: GET /api/admin/journal",
+   "status": "VERIFIED",
+   "note": "шаблонов паролей/хэшей/токенов нет"
+  },
+  {
+   "scenario": "B4",
+   "name": "в журнале видны разные виды действий",
+   "status": "VERIFIED",
+   "note": "действия: activate, deactivate, impersonate, impersonation_end, login, profile_update, reset_password, sessions_revoked"
+  },
+  {
+   "scenario": "B4",
+   "name": "в журнале фиксируются входы",
+   "status": "VERIFIED",
+   "note": "действие login есть"
+  },
+  {
+   "scenario": "B4",
+   "name": "в журнале фиксируются подключение и завершение подключения",
+   "status": "VERIFIED",
+   "note": "действие impersonate есть"
+  },
+  {
+   "scenario": "B4",
+   "name": "фильтр журнала по действию работает",
+   "status": "VERIFIED",
+   "note": "HTTP 200, записей: 5"
+  },
+  {
+   "scenario": "B4",
+   "name": "журнал не отдаёт больше лимита за раз",
+   "status": "VERIFIED",
+   "note": "запрошено 100000, отдано 200"
+  },
+  {
+   "scenario": "B3",
+   "name": "владелец подключается к аккаунту компании B",
+   "status": "VERIFIED",
+   "note": "HTTP 200, {\"success\":true,\"impersonating\":{\"name\":\"Тест С Согласием\",\"email\":\"withconsent@a.test\",\"role\":\"admin\",\"kind\":\"staff\"},\"redirectTo\":\"/lm\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "сервер указывает, куда открыть рабочее пространство",
+   "status": "VERIFIED",
+   "note": "redirectTo: /lm"
+  },
+  {
+   "scenario": "B3",
+   "name": "своя сессия владельца сохранена в отдельной cookie",
+   "status": "VERIFIED",
+   "note": "cookie: loginex_csrf, loginex_staff_session, loginex_owner_session"
+  },
+  {
+   "scenario": "B3",
+   "name": "сессия выдана для целевого аккаунта",
+   "status": "VERIFIED",
+   "note": "cookie: loginex_csrf, loginex_staff_session, loginex_owner_session"
+  },
+  {
+   "scenario": "B3",
+   "name": "в режиме поддержки действует сессия именно компании B",
+   "status": "VERIFIED",
+   "note": "подключились к: Тест С Согласием (withconsent@a.test)"
+  },
+  {
+   "scenario": "B3",
+   "name": "подмена organizationId в теле не переносит подключение в другую компанию",
+   "status": "VERIFIED",
+   "note": "HTTP 200, подключились к: Тест С Согласием (withconsent@a.test) — сервер берёт компанию из учётной записи"
+  },
+  {
+   "scenario": "B3",
+   "name": "сессия показывает режим поддержки и владельца",
+   "status": "VERIFIED",
+   "note": "impersonation: {\"name\":\"Владелец Платформы\",\"email\":\"socolishca98@gmail.com\"}, текущий пользователь: Тест С Согласием"
+  },
+  {
+   "scenario": "B3",
+   "name": "в режиме поддержки права владельца платформы не выдаются",
+   "status": "VERIFIED",
+   "note": "isOwner: false"
+  },
+  {
+   "scenario": "B3",
+   "name": "из режима компании нельзя открыть пульт владельца",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\",\"code\":\"forbidden\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "из режима компании нельзя получить список всех аккаунтов",
+   "status": "VERIFIED",
+   "note": "HTTP 403"
+  },
+  {
+   "scenario": "B3",
+   "name": "из режима компании нельзя подключиться к другому аккаунту",
+   "status": "VERIFIED",
+   "note": "HTTP 403"
+  },
+  {
+   "scenario": "B3",
+   "name": "без cookie владельца подключение не завершается",
+   "status": "VERIFIED",
+   "note": "HTTP 401 {\"success\":false,\"error\":\"Сохранённой сессии владельца нет — войдите заново\",\"code\":\"unauthorized\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "владелец подключается к аккаунту компании A",
+   "status": "VERIFIED",
+   "note": "HTTP 200, подключились к: Иван Админов"
+  },
+  {
+   "scenario": "B3",
+   "name": "режим поддержки не ломает tenant isolation: водители только своей компании",
+   "status": "VERIFIED",
+   "note": "HTTP 200, водителей: 5 (в базе 5), чужих: 0"
+  },
+  {
+   "scenario": "B3",
+   "name": "режим поддержки не ломает tenant isolation: заказы только своей компании",
+   "status": "VERIFIED",
+   "note": "HTTP 200, заказов: 36 (в базе 36), чужих: 0"
+  },
+  {
+   "scenario": "B3",
+   "name": "режим поддержки не ломает tenant isolation: клиенты только своей компании",
+   "status": "VERIFIED",
+   "note": "HTTP 200, клиентов: 4 (в базе 4), чужих: 0"
+  },
+  {
+   "scenario": "B3",
+   "name": "режим поддержки не ломает tenant isolation: сотрудники только своей компании",
+   "status": "VERIFIED",
+   "note": "HTTP 200, сотрудников: 6, чужих: 0"
+  },
+  {
+   "scenario": "B3",
+   "name": "возврат в пульт владельца работает",
+   "status": "VERIFIED",
+   "note": "HTTP 200, redirectTo: /owner"
+  },
+  {
+   "scenario": "B3",
+   "name": "после возврата cookie поддержки очищена",
+   "status": "VERIFIED",
+   "note": "cookie после возврата: loginex_csrf, loginex_staff_session"
+  },
+  {
+   "scenario": "B3",
+   "name": "после возврата чужая сессия больше не действует",
+   "status": "VERIFIED",
+   "note": "HTTP 401, {\"success\":false,\"error\":\"Требуется авторизация\",\"code\":\"unauthorized\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "владелец вернулся к своей учётной записи",
+   "status": "VERIFIED",
+   "note": "пользователь: socolishca98@gmail.com, impersonation: null"
+  },
+  {
+   "scenario": "B3",
+   "name": "после возврата пульт владельца снова доступен",
+   "status": "VERIFIED",
+   "note": "HTTP 200"
+  },
+  {
+   "scenario": "B3",
+   "name": "возврат без сессии владельца невозможен",
+   "status": "VERIFIED",
+   "note": "HTTP 401 {\"success\":false,\"error\":\"Требуется авторизация\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "владелец подключается к водителю",
+   "status": "VERIFIED",
+   "note": "HTTP 200, {\"success\":true,\"impersonating\":{\"name\":\"Иванов Сергей Петрович\",\"email\":null,\"role\":\"driver\",\"kind\":\"driver\"},\"redirectTo\":\"/m\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "водителю выдана сессия водительского контура",
+   "status": "VERIFIED",
+   "note": "cookie: loginex_csrf, loginex_staff_session, loginex_owner_session, loginex_driver_session"
+  },
+  {
+   "scenario": "B3",
+   "name": "после подключения открывается мобильное пространство водителя",
+   "status": "VERIFIED",
+   "note": "HTTP 200"
+  },
+  {
+   "scenario": "B3",
+   "name": "из режима водителя нельзя открыть пульт владельца",
+   "status": "VERIFIED",
+   "note": "HTTP 403 {\"success\":false,\"error\":\"Недостаточно прав для этого действия\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "из режима водителя нельзя получить список аккаунтов",
+   "status": "VERIFIED",
+   "note": "HTTP 403"
+  },
+  {
+   "scenario": "B3",
+   "name": "из режима водителя нельзя подключиться к другому аккаунту",
+   "status": "VERIFIED",
+   "note": "HTTP 403"
+  },
+  {
+   "scenario": "B3",
+   "name": "возврат из режима водителя работает",
+   "status": "VERIFIED",
+   "note": "HTTP 200"
+  },
+  {
+   "scenario": "B4",
+   "name": "завершение подключения записано в журнал",
+   "status": "VERIFIED",
+   "note": "записей impersonation_end: 10, последняя: ИП Фролов Иван Александрович, цель 79161234501"
+  },
+  {
+   "scenario": "B3",
+   "name": "после возврата водительская cookie очищена",
+   "status": "VERIFIED",
+   "note": "cookie очищена"
+  },
+  {
+   "scenario": "B6",
+   "name": "владелец не может закрыть доступ самому себе",
+   "status": "VERIFIED",
+   "note": "HTTP 400 {\"success\":false,\"error\":\"Нельзя применить действие к собственному аккаунту\"}"
+  },
+  {
+   "scenario": "B6",
+   "name": "неизвестное действие отклонено",
+   "status": "VERIFIED",
+   "note": "HTTP 400 {\"success\":false,\"error\":\"Неизвестное действие. Доступно: suspend, restore, revokeSessions\"}"
+  },
+  {
+   "scenario": "B6",
+   "name": "действие без тела отклонено",
+   "status": "VERIFIED",
+   "note": "HTTP 400 {\"success\":false,\"error\":\"Неизвестное действие. Доступно: suspend, restore, revokeSessions\"}"
+  },
+  {
+   "scenario": "B6",
+   "name": "несуществующая учётная запись — 404, а не 500",
+   "status": "VERIFIED",
+   "note": "HTTP 404"
+  },
+  {
+   "scenario": "B6",
+   "name": "«Завершить сессии» работает и не закрывает доступ",
+   "status": "VERIFIED",
+   "note": "HTTP 200, статус: active, отозвано: 1"
+  },
+  {
+   "scenario": "B6",
+   "name": "завершение сессий попало в журнал",
+   "status": "VERIFIED",
+   "note": "записей: 3"
+  },
+  {
+   "scenario": "B6",
+   "name": "закрытие доступа работает",
+   "status": "VERIFIED",
+   "note": "HTTP 200, статус: suspended, сессий отозвано: 0"
+  },
+  {
+   "scenario": "B6",
+   "name": "после закрытия доступа живых сессий не осталось",
+   "status": "VERIFIED",
+   "note": "живых сессий: 0"
+  },
+  {
+   "scenario": "B6",
+   "name": "закрытие доступа попало в журнал с компанией и владельцем",
+   "status": "VERIFIED",
+   "note": "записей: 3"
+  },
+  {
+   "scenario": "B6",
+   "name": "открытие доступа работает",
+   "status": "VERIFIED",
+   "note": "HTTP 200, статус: active"
+  },
+  {
+   "scenario": "B6",
+   "name": "в базе доступ снова открыт, причина блокировки очищена",
+   "status": "VERIFIED",
+   "note": "статус: active, причина: null"
+  },
+  {
+   "scenario": "B6",
+   "name": "повторное открытие доступа не выполняется молча",
+   "status": "VERIFIED",
+   "note": "HTTP 400 {\"success\":false,\"error\":\"Доступ уже открыт\"}"
+  },
+  {
+   "scenario": "B3",
+   "name": "войти в закрытую учётную запись нельзя",
+   "status": "VERIFIED",
+   "note": "HTTP 409 {\"success\":false,\"error\":\"Доступ закрыт: АУДИТ-B проверка входа в закрытую учётку\",\"code\":\"target_inactive\"}"
+  },
+  {
+   "scenario": "B6",
+   "name": "универсального доступа к таблицам нет: GET /api/admin/tables",
+   "status": "VERIFIED",
+   "note": "HTTP 404 {\"_raw\":\"<!DOCTYPE html><html lang=\\\"ru\\\"><head><meta charSet=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" con"
+  },
+  {
+   "scenario": "B6",
+   "name": "универсального доступа к таблицам нет: GET /api/admin/db",
+   "status": "VERIFIED",
+   "note": "HTTP 404 {\"_raw\":\"<!DOCTYPE html><html lang=\\\"ru\\\"><head><meta charSet=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" con"
+  },
+  {
+   "scenario": "B6",
+   "name": "универсального доступа к таблицам нет: POST /api/admin/query",
+   "status": "VERIFIED",
+   "note": "HTTP 404 {\"_raw\":\"<!DOCTYPE html><html lang=\\\"ru\\\"><head><meta charSet=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" con"
+  },
+  {
+   "scenario": "B6",
+   "name": "универсального доступа к таблицам нет: GET /api/admin/users",
+   "status": "VERIFIED",
+   "note": "HTTP 404 {\"_raw\":\"<!DOCTYPE html><html lang=\\\"ru\\\"><head><meta charSet=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" con"
+  },
+  {
+   "scenario": "B6",
+   "name": "универсального доступа к таблицам нет: POST /api/admin/organizations",
+   "status": "VERIFIED",
+   "note": "HTTP 404 {\"_raw\":\"<!DOCTYPE html><html lang=\\\"ru\\\"><head><meta charSet=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" con"
+  },
+  {
+   "scenario": "B5",
+   "name": "запрос без тела отклоняется понятной ошибкой",
+   "status": "VERIFIED",
+   "note": "HTTP 400 {\"success\":false,\"error\":\"Укажите userId или driverId\"}"
+  },
+  {
+   "scenario": "B5",
+   "name": "подключение без цели отклоняется понятной ошибкой",
+   "status": "VERIFIED",
+   "note": "HTTP 400 {\"success\":false,\"error\":\"Укажите userId или driverId\"}"
+  },
+  {
+   "scenario": "B5",
+   "name": "подключение к несуществующему аккаунту — 404, а не 500",
+   "status": "VERIFIED",
+   "note": "HTTP 404 {\"success\":false,\"error\":\"Пользователь не найден\"}"
+  },
+  {
+   "scenario": "B0",
+   "name": "после сценария доступ тестовой учётной записи открыт",
+   "status": "VERIFIED",
+   "note": "HTTP 200 {\"success\":true,\"status\":\"active\",\"message\":\"Доступ открыт: Тест С Согласием\"}"
+  }
+ ],
+ "issues": []
+}

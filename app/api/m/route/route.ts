@@ -21,6 +21,8 @@ import {
   orderStatusLabel,
 } from "@/lib/orders/stages"
 import { buildTripSummary } from "@/lib/trips/history"
+import { getRouteTripEta, ensureRouteStages } from "@/lib/eta/trip-repository"
+import { availableTripActions } from "@/lib/eta/trip-actions"
 
 export const dynamic = "force-dynamic"
 
@@ -169,8 +171,100 @@ export async function GET(request: NextRequest) {
     const totalWeight = points.reduce((sum, point) => sum + (point.weight || 0), 0)
     const totalPrice = points.reduce((sum, point) => sum + (point.price || 0), 0)
 
+    // Прогноз рейса и доступные действия — из ЕДИНОГО механизма
+    // (lib/eta/trip.ts), тем же, что пользуется карта логиста. Раньше
+    // кабинет водителя считал ETA своей формулой (остаточное расстояние
+    // ÷ 60), и числа расходились с логистским экраном.
+    let trip: Awaited<ReturnType<typeof getRouteTripEta>> = null
+    if (route) {
+      try {
+        // Этапы рейса должны существовать как строки, иначе некуда писать
+        // фактические отметки водителя
+        await ensureRouteStages({ routeId: route.id, organizationId: org.organizationId })
+        trip = await getRouteTripEta({
+          routeId: route.id,
+          organizationId: org.organizationId,
+        })
+      } catch (tripError) {
+        // Прогноз — не критичная часть ответа: без него экран водителя
+        // обязан работать (смена, точки, догрузы)
+        console.error("[Mobile Route] trip eta failed:", tripError)
+      }
+    }
+
+    const tripActions = trip ? availableTripActions(trip, Boolean(route?.startedAt)) : null
+
     return NextResponse.json({
       success: true,
+      trip: trip && tripActions
+        ? {
+            startedAt: route?.startedAt?.toISOString() ?? null,
+            currentStageIndex: tripActions.currentStageIndex,
+            finished: tripActions.finished,
+            actions: tripActions.available,
+            blocked: tripActions.blocked,
+            nextPoint: trip.nextPoint
+              ? {
+                  address: trip.nextPoint.address,
+                  operation: trip.nextPoint.operation,
+                  orderId: trip.nextPoint.orderId,
+                  distanceM: trip.nextPoint.distanceM,
+                  drivingSec: Math.round(trip.nextPoint.drivingSec),
+                  arrivalAt: trip.nextPoint.arrivalAt.toISOString(),
+                }
+              : null,
+            remaining: {
+              drivingSec: Math.round(trip.remaining.drivingSec),
+              stopsSec: Math.round(trip.remaining.stopsSec),
+              restSec: Math.round(trip.remaining.restSec),
+              totalSec: Math.round(trip.remaining.totalSec),
+              arrivalAt: trip.remaining.arrivalAt.toISOString(),
+            },
+            returnToBase: trip.returnToBase
+              ? {
+                  address: trip.returnToBase.address,
+                  distanceM: trip.returnToBase.distanceM,
+                  drivingSec: Math.round(trip.returnToBase.drivingSec),
+                  arrivalAt: trip.returnToBase.arrivalAt.toISOString(),
+                }
+              : null,
+            completionAt: trip.completionAt.toISOString(),
+            // Обязательные перерывы: сумма была и раньше, но без привязки ко
+            // времени водитель не понимал, когда именно ему нужно остановиться.
+            restPlan: {
+              breaks: trip.restPlan.breaks.map((rest) => ({
+                afterStageIndex: rest.afterStageIndex,
+                minutes: rest.minutes,
+                kind: rest.kind,
+                reason: rest.reason,
+                startAt: rest.startAt.toISOString(),
+                endAt: rest.endAt.toISOString(),
+              })),
+              totalMinutes: trip.restPlan.totalMinutes,
+              priorDrivingUnknown: trip.restPlan.priorDrivingUnknown,
+              warning: trip.restPlan.warning ?? null,
+            },
+            stages: trip.stages.map((stage) => ({
+              index: stage.index,
+              kind: stage.kind,
+              label: stage.label,
+              status: stage.status,
+              address: stage.address,
+              actualStartAt: stage.actualStartAt?.toISOString() ?? null,
+              actualEndAt: stage.actualEndAt?.toISOString() ?? null,
+            })),
+            // Предупреждения — массив строк: панель водителя показывает их
+            // дословно («расстояние оценено по прямой», «погода отключена»)
+            dataQuality: trip.dataQuality.warnings,
+            // Надёжность + причина: без них водитель видел «приеду в 00:45»
+            // без оговорки, даже когда часть заказов не геокодировалась и
+            // маршрут построен короче реального. Предупреждения в dataQuality
+            // панель печатает мелким шрифтом; reliable/reliabilityNote дают
+            // ей возможность сказать об ограничении прямо.
+            reliable: trip.reliable,
+            reliabilityNote: trip.reliabilityNote ?? null,
+          }
+        : null,
       route: route
         ? {
             id: route.id,

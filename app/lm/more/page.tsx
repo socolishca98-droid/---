@@ -12,7 +12,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -36,6 +36,7 @@ import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { ActionButton, Card, LinkRow } from "@/components/logist-mobile/ui"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
+import { formatPhone } from "@/lib/ui/phone"
 
 /** Ответ /api/auth/session — нужен флаг владельца платформы */
 interface SessionFlags {
@@ -68,7 +69,7 @@ const COMPANY_LINKS: SectionLink[] = [
 ]
 
 export default function LogistMorePage() {
-  const { user, organization, logout, mustChangePassword } = useStaffSession()
+  const { user, organization, logout, mustChangePassword, refresh } = useStaffSession()
   // Владельцу платформы показываем вход в любой аккаунт
   const sessionFlags = useJsonApi<SessionFlags>(user ? "/api/auth/session" : null)
   const isOwner = Boolean(sessionFlags.data?.isOwner)
@@ -77,6 +78,59 @@ export default function LogistMorePage() {
   const [next, setNext] = useState("")
   const [repeat, setRepeat] = useState("")
   const [saving, setSaving] = useState(false)
+
+  // Свои данные: имя и телефон. Форма подставляется из базы, сохранение —
+  // PATCH /api/auth/profile (свой аккаунт, роль и организация недоступны).
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileName, setProfileName] = useState("")
+  const [profilePhone, setProfilePhone] = useState("")
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+
+  useEffect(() => {
+    if (!profileOpen) return
+    let alive = true
+    setProfileLoading(true)
+    fetch("/api/auth/profile", { cache: "no-store" })
+      .then((response) => response.json().catch(() => null))
+      .then((data) => {
+        if (!alive) return
+        if (data?.success && data.profile) {
+          setProfileName(String(data.profile.name ?? ""))
+          setProfilePhone(String(data.profile.phone ?? ""))
+        }
+      })
+      .catch(() => {
+        /* сеть недоступна — поля останутся пустыми */
+      })
+      .finally(() => {
+        if (alive) setProfileLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [profileOpen])
+
+  async function saveProfile() {
+    if (profileName.trim().length < 2) {
+      toast.error("Укажите имя")
+      return
+    }
+    setProfileSaving(true)
+    const result = await apiSend("/api/auth/profile", "PATCH", {
+      name: profileName,
+      phone: profilePhone,
+    })
+    setProfileSaving(false)
+
+    if (!result.ok) {
+      toast.error(result.error || "Не удалось сохранить данные")
+      return
+    }
+    toast.success("Данные сохранены")
+    setProfileOpen(false)
+    await refresh()
+  }
 
   async function changePassword() {
     if (!current || !next) {
@@ -115,14 +169,32 @@ export default function LogistMorePage() {
             <div className="min-w-0">
               <p className="truncate text-[16px] font-semibold text-foreground">{user?.name || "—"}</p>
               <p className="mt-0.5 truncate text-[13px] text-muted-foreground">{user?.email || "email не указан"}</p>
+              <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+                {user?.phone ? formatPhone(user.phone) : "телефон не указан"}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setPasswordOpen((value) => !value)}
-              className="shrink-0 rounded-xl bg-secondary px-3 py-2 text-[12.5px] font-medium text-foreground active:opacity-70"
-            >
-              {passwordOpen ? "Отмена" : "Сменить пароль"}
-            </button>
+            <div className="flex shrink-0 flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileOpen((value) => !value)
+                  setPasswordOpen(false)
+                }}
+                className="rounded-xl bg-secondary px-3 py-2 text-[12.5px] font-medium text-foreground active:opacity-70"
+              >
+                {profileOpen ? "Отмена" : "Изменить данные"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPasswordOpen((value) => !value)
+                  setProfileOpen(false)
+                }}
+                className="rounded-xl bg-secondary px-3 py-2 text-[12.5px] font-medium text-foreground active:opacity-70"
+              >
+                {passwordOpen ? "Отмена" : "Сменить пароль"}
+              </button>
+            </div>
           </div>
 
           <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
@@ -138,6 +210,40 @@ export default function LogistMorePage() {
             ) : null}
           </div>
         </Card>
+
+        {profileOpen ? (
+          <Card className="mt-3 space-y-2.5">
+            <p className="text-[13px] text-muted-foreground">
+              Имя и телефон — только свои. Роль и организацию меняет администратор.
+            </p>
+            <input
+              value={profileName}
+              onChange={(event) => setProfileName(event.target.value)}
+              placeholder="Имя"
+              autoComplete="name"
+              disabled={profileLoading || profileSaving}
+              className={inputClass}
+            />
+            <input
+              value={profilePhone}
+              onChange={(event) => setProfilePhone(event.target.value)}
+              placeholder="Телефон: +7 900 555-44-33"
+              autoComplete="tel"
+              inputMode="tel"
+              disabled={profileLoading || profileSaving}
+              className={inputClass}
+            />
+            <button
+              type="button"
+              onClick={() => void saveProfile()}
+              disabled={profileSaving || profileLoading}
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14.5px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
+            >
+              {profileSaving ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : null}
+              Сохранить данные
+            </button>
+          </Card>
+        ) : null}
 
         {isOwner ? (
           <Link

@@ -9,12 +9,8 @@ import { prisma } from "@/lib/prisma"
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 
-import {
-  calculateAllCoefficients,
-  calculateRouteCost,
-  type ETARequest,
-} from "@/lib/eta"
 import { logRouteEvent } from "@/lib/routes/service"
+import { getRouteTripEta } from "@/lib/eta/trip-repository"
 
 const COMPLETED_STATUSES = ["delivered", "cancelled", "rejected"]
 
@@ -153,78 +149,67 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * Пересчёт прогноза после события рейса.
+ *
+ * Раньше здесь была СВОЯ формула: остаточное расстояние из заказов ÷ 60 км/ч
+ * × коэффициенты из lib/eta/coefficients.ts. Она давала число, не связанное
+ * ни с посегментным прогнозом, ни с картой логиста: один рейс — три разных
+ * времени прибытия.
+ *
+ * Теперь считает единый механизм lib/eta/trip.ts: он же используется картой
+ * логиста (GET /api/routes/:id/trip), помощником сборки и карточкой рейса.
+ * Ключи ответа сохранены, чтобы не ломать мобильный интерфейс.
+ */
 async function recalcLiveEta(routeId: string, organizationId: string) {
-  // Берём все заказы по маршруту
-  const orders = await prisma.order.findMany({
-    where: scopedWhere(organizationId, { routeId }),
-    orderBy: [
-      { routeSequence: "asc" },
-      { createdAt: "asc" },
-    ],
-  })
+  const trip = await getRouteTripEta({ routeId, organizationId, ensureStages: true })
+  if (!trip) return null
 
-  if (!orders.length) {
-    return null
-  }
+  const remainingDistanceMeters = trip.stages
+    .filter((stage) => !stage.completed && (stage.kind === "driving" || stage.kind === "return_to_base"))
+    .reduce((sum, stage) => sum + (stage.distanceM ?? 0), 0)
 
-  const remainingOrders = orders.filter(
-    (o) => !COMPLETED_STATUSES.includes(o.status),
-  )
-
-  const remainingDistance =
-    remainingOrders.reduce((sum, o) => sum + (o.distance || 0), 0) || 0
-
-  const remainingWeight =
-    remainingOrders.reduce((sum, o) => sum + (o.weight || 0), 0) || 0
-
-  if (remainingDistance <= 0) {
-    const now = new Date()
-    return {
-      remainingDistanceMeters: 0,
-      durationBaseSec: 0,
-      durationWithTrafficSec: 0,
-      liveEta: now.toISOString(),
-      plannedEta: now.toISOString(),
-      cost: { fuel: 0, tolls: 0, total: 0 },
-    }
-  }
-
-  const distanceKm = remainingDistance / 1000
-  const baseSpeedKmH = 60
-  const durationBaseSec = (distanceKm / baseSpeedKmH) * 3600
-
-  const etaRequest: ETARequest = {
-    origin: { lat: 0, lng: 0 },
-    destination: { lat: 0, lng: 0 },
-    departureTime: new Date(),
-    cargo: {
-      weight: remainingWeight / 1000,
-      type: "standard",
-    },
-    vehicle: {
-      type: "truck",
-    },
-    useCache: false,
-  }
-
-  const coeffs = calculateAllCoefficients(etaRequest, distanceKm)
-  const durationWithTrafficSec = Math.round(
-    durationBaseSec * coeffs.total,
-  )
-
-  const cost = calculateRouteCost(distanceKm, etaRequest.vehicle)
-
-  const now = Date.now()
-  const plannedEta = new Date(now + durationBaseSec * 1000)
-  const liveEta = new Date(now + durationWithTrafficSec * 1000)
+  const now = trip.now
 
   return {
-    remainingDistanceMeters: remainingDistance,
-    durationBaseSec: Math.round(durationBaseSec),
-    durationWithTrafficSec,
-    plannedEta: plannedEta.toISOString(),
-    liveEta: liveEta.toISOString(),
-    cost,
-    coefficients: coeffs,
+    remainingDistanceMeters,
+    // «План» — только движение, без операций и перерывов
+    durationBaseSec: Math.round(trip.remaining.drivingSec),
+    // «С пробками» — всё оставшееся время рейса
+    durationWithTrafficSec: Math.round(trip.remaining.totalSec),
+    plannedEta: trip.remaining.arrivalAt.toISOString(),
+    liveEta: trip.completionAt.toISOString(),
+    // Полная картина рейса: следующий этап, возврат на базу, уверенность
+    nextPoint: trip.nextPoint
+      ? {
+          address: trip.nextPoint.address,
+          operation: trip.nextPoint.operation,
+          distanceM: trip.nextPoint.distanceM,
+          drivingSec: Math.round(trip.nextPoint.drivingSec),
+          arrivalAt: trip.nextPoint.arrivalAt.toISOString(),
+        }
+      : null,
+    returnToBase: trip.returnToBase
+      ? {
+          address: trip.returnToBase.address,
+          drivingSec: Math.round(trip.returnToBase.drivingSec),
+          arrivalAt: trip.returnToBase.arrivalAt.toISOString(),
+        }
+      : null,
+    confidence: trip.confidence,
+    dataQuality: trip.dataQuality,
+    modelVersion: trip.modelVersion,
+    calculatedAt: trip.calculatedAt.toISOString(),
+    // Для совместимости со старым полем coefficients: итоговый множитель
+    // времени рейса к одной минуте движения — считается, а не выдумывается.
+    coefficients: {
+      total: trip.remaining.drivingSec > 0 ? trip.remaining.totalSec / trip.remaining.drivingSec : 1,
+      traffic: 1,
+      weather: 1,
+      vehicle: 1,
+      distance: 1,
+      season: 1,
+    },
+    now: now.toISOString(),
   }
 }

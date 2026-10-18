@@ -41,9 +41,19 @@ const PUBLIC_PATHS = new Set<string>([
   "/",
   "/login",
   "/register",
+  // экраны восстановления пароля — до входа по определению
+  "/forgot-password",
+  "/reset-password",
+  // юридические документы должны открываться без входа: согласие имеет смысл
+  // только если документ можно прочитать до регистрации
+  "/privacy",
+  "/terms",
   "/m/login",
   "/api/auth/login",
   "/api/auth/register",
+  // восстановление пароля: человек пришёл без сессии — именно поэтому он тут
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
   "/api/auth/logout",
   "/api/auth/session",
   // выдача CSRF-токена нужна до входа (клиентский CsrfProvider дёргает его при старте)
@@ -93,6 +103,10 @@ const ANY_ROLE_API: { pattern: SegmentPattern; reason: string }[] = [
   {
     pattern: ["api", "auth", "change-password"],
     reason: "пароль меняет и сотрудник, и водитель (в своём профиле)",
+  },
+  {
+    pattern: ["api", "auth", "profile"],
+    reason: "имя и телефон меняет и сотрудник, и водитель — только свои, id из сессии",
   },
   {
     pattern: ["api", "photos", "upload"],

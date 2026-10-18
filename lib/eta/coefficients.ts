@@ -30,6 +30,17 @@ const CARGO_MULTIPLIERS: Record<string, number> = {
   refrigerated: 1.05
 };
 
+/**
+ * Границы итогового коэффициента.
+ *
+ * Нижняя: ночь и воскресенье не делают рейс «в два раза быстрее» — 0.8.
+ * Верхняя: план никогда не предполагает, что рейс займёт больше, чем в 2.5
+ * раза дольше свободного хода. Без потолка пять факторов, перемноженных,
+ * дают до ×7.7, и «все плохо сразу» перестаёт отличаться от «просто плохо».
+ */
+const COEFFICIENT_MIN = 0.8
+const COEFFICIENT_MAX = 2.5
+
 const DAY_MULTIPLIERS: Record<number, number> = {
   0: 0.85,
   1: 1.0,
@@ -141,12 +152,19 @@ export function calculateAllCoefficients(
   const roadType = calculateRoadTypeCoefficient(distanceKm);
   const dayOfWeek = calculateDayCoefficient(departureTime);
 
-  const total =
-    rushHour * 0.35 +
-    weather * 0.25 +
-    roadType * 0.2 +
-    cargoComplexity * 0.1 +
-    dayOfWeek * 0.1;
+  // Факторы независимы, поэтому итог — произведение: время в пути равно
+  // базовому, умноженному на каждый коэффициент. Так вечерний пик ×1.8 даёт
+  // ровно +80% к времени, а не «средний» +23%.
+  //
+  // Раньше итог считался средневзвешенной СУММОЙ (rushHour*0.35 + weather*0.25
+  // + ...). При нейтральных факторах она давала 1.0, но сильный фактор
+  // размывался: вечерний пик ×1.8 превращался в ×1.28, снег ×1.35 — в ×1.09.
+  // Коэффициенты формально были, а время почти не меняли.
+  const total = clamp(
+    rushHour * weather * roadType * cargoComplexity * dayOfWeek,
+    COEFFICIENT_MIN,
+    COEFFICIENT_MAX,
+  )
 
   return {
     rushHour,
@@ -154,9 +172,69 @@ export function calculateAllCoefficients(
     cargoComplexity,
     roadType,
     dayOfWeek,
-    total: Math.max(total, 0.85)
+    total
   };
 }
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+/**
+ * Какие факторы реально повлияли на время — для честной подписи в интерфейсе.
+ *
+ * Возвращает список вида ["вечерний пик ×1.8", "пятница после 15:00 ×1.38"].
+ * Нейтральные факторы (коэффициент 1.0) не попадают: подпись «×1.0, ×1.0»
+ * только путает. Пустой список означает, что применился только нейтральный
+ * коэффициент — и это тоже надо показать, а не прятать.
+ */
+export function describeCoefficients(
+  coefficients: TrafficCoefficients,
+  departureTime: Date,
+): string[] {
+  const parts: string[] = []
+  const factor = (value: number) => `×${Math.round(value * 100) / 100}`
+  const hour = departureTime.getHours() + departureTime.getMinutes() / 60
+  const day = departureTime.getDay()
+
+  if (coefficients.rushHour > 1.02) {
+    parts.push(`${hour < 12 ? "утренний" : "вечерний"} пик ${factor(coefficients.rushHour)}`)
+  } else if (coefficients.rushHour < 0.98) {
+    parts.push(`ночное время ${factor(coefficients.rushHour)}`)
+  }
+
+  if (coefficients.weather > 1.02) {
+    parts.push(`погода ${factor(coefficients.weather)}`)
+  }
+
+  if (coefficients.roadType > 1.02) {
+    parts.push(`короткий городской участок ${factor(coefficients.roadType)}`)
+  } else if (coefficients.roadType < 0.98) {
+    parts.push(`трасса ${factor(coefficients.roadType)}`)
+  }
+
+  if (coefficients.cargoComplexity > 1.02) {
+    parts.push(`сложный груз ${factor(coefficients.cargoComplexity)}`)
+  }
+
+  if (coefficients.dayOfWeek > 1.02) {
+    parts.push(`${DAY_NAMES[day]} ${factor(coefficients.dayOfWeek)}`)
+  } else if (coefficients.dayOfWeek < 0.98) {
+    parts.push(`${DAY_NAMES[day]} ${factor(coefficients.dayOfWeek)}`)
+  }
+
+  return parts
+}
+
+const DAY_NAMES = [
+  "воскресенье",
+  "понедельник",
+  "вторник",
+  "среда",
+  "четверг",
+  "пятница",
+  "суббота",
+] as const
 
 export function calculateRiskFactors(
   coefficients: TrafficCoefficients,

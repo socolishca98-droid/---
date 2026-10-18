@@ -5,21 +5,24 @@
 // Раньше «загрузка» была имитацией: браузер присылал blob:-ссылку на файл,
 // а тип и данные «распознавания» подбирались случайным числом. Файл никуда
 // не сохранялся, поэтому ни в истории рейса, ни в карточке клиента фото быть
-// не могло. Теперь файл приходит на сервер, кладётся в public/uploads,
-// а чек и накладная сразу распознаются локальным OCR.
+// не могло. Теперь файл приходит на сервер, кладётся в хранилище
+// (lib/storage.ts: public/uploads или S3-совместимое), а чек и накладная
+// сразу распознаются локальным OCR.
 
-import { mkdir, writeFile } from "node:fs/promises"
 import { toLocalDateKey } from "@/lib/dates"
 import path from "node:path"
 
 import { NextRequest, NextResponse } from "next/server"
 
 import { prisma } from "@/lib/prisma"
+import { notify } from "@/lib/notifications/create"
 import { requireAnySession } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { logRouteEvent } from "@/lib/routes/service"
 import { ocrDataPayload, recognizeDocumentOnPhoto } from "@/lib/ocr/service"
+import { buildStorageKey, photoUrlFromKey, putPhoto, storageKind } from "@/lib/storage"
 
+import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
 
 /** Типы фото, которые понимает система (как в POST /api/photos). */
@@ -149,72 +152,77 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Сохраняем файл: public/uploads/<организация>/<дата>/<имя>.
-    // Корень каталога — константа (папка задана статически), динамическая часть
-    // добавляется второй ступенью: иначе сборщик считает путь произвольным и
-    // тянет в образ весь проект целиком
-    const uploadsRoot = path.join(process.cwd(), "public", "uploads")
-    // Каталог <организация>/<дата> собирается во время исполнения, поэтому
-    // статически проследить его нельзя. Явно отказываем сборщику в трейсинге:
-    // иначе Turbopack включает в образ весь проект (public, исходники) и
-    // предупреждает «Dynamic filesystem access causes tracing of the whole project».
-    const relativeDir = path.join(
-      /* turbopackIgnore: true */
-      org.organizationId ?? "shared",
+    // Сохраняем файл через хранилище (lib/storage.ts): local по умолчанию,
+    // S3-совместимое — если задан STORAGE_DRIVER=s3. Ключ файла —
+    // <организация>/<дата>/<имя>, и в ссылке он выглядит так же, как раньше
+    // лежал на диске: /uploads/<организация>/<дата>/<имя>.
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(file.name || "photo")}`
+    const storageKey = buildStorageKey({
+      organizationId: org.organizationId ?? "shared",
       // папка загрузки — по местному дню, а не по UTC (lib/dates.ts)
-      toLocalDateKey(new Date()),
-    )
-    const absoluteDir = path.join(uploadsRoot, relativeDir)
-
-    // Страховка: запись строго внутри public/uploads, даже если идентификатор
-    // организации когда-нибудь окажется похож на «../../etc»
-    const normalizedRoot = path.resolve(uploadsRoot)
-    const resolvedDir = path.resolve(absoluteDir)
-    if (resolvedDir !== normalizedRoot && !resolvedDir.startsWith(normalizedRoot + path.sep)) {
+      dateKey: toLocalDateKey(new Date()),
+      fileName,
+    })
+    if (!storageKey) {
       return NextResponse.json(
-        { success: false, error: "Недопустимый каталог загрузки" },
+        { success: false, error: "Не удалось построить имя файла для хранилища" },
         { status: 400 },
       )
     }
 
-    await mkdir(resolvedDir, { recursive: true })
-
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName(file.name || "photo")}`
-    const absolutePath = path.join(resolvedDir, fileName)
     const bytes = Buffer.from(await file.arrayBuffer())
-    await writeFile(absolutePath, bytes)
+    const url = photoUrlFromKey(storageKey)
 
-    const url = `/uploads/${relativeDir.split(path.sep).join("/")}/${fileName}`
-
-    const photo = (await prisma.photo.create({
-      data: {
-        organizationId: org.organizationId,
-        url,
-        type,
-        driverId,
-        orderId,
-        routeId: finalRouteId,
-        description,
-      },
-    })) as { id: string; url: string; type: string; createdAt: Date }
+    // Драйвер db (Vercel и другой serverless, где диск только для чтения):
+    // байты кладём прямо в запись Photo — файл на диске не появляется, но
+    // ссылка, проверка доступа и OCR остаются прежними. Отказ на середине
+    // невозможен: запись и байты создаются одним обращением.
+    const photo =
+      storageKind() === "db"
+        ? ((await prisma.photo.create({
+            data: {
+              organizationId: org.organizationId,
+              url,
+              type,
+              driverId,
+              orderId,
+              routeId: finalRouteId,
+              description,
+              storageKey,
+              mime: file.type || "image/jpeg",
+              bytes,
+            },
+          })) as { id: string; url: string; type: string; createdAt: Date })
+        : await (async () => {
+            await putPhoto(storageKey, bytes, file.type)
+            return prisma.photo.create({
+              data: {
+                organizationId: org.organizationId,
+                url,
+                type,
+                driverId,
+                orderId,
+                routeId: finalRouteId,
+                description,
+              },
+            }) as Promise<{ id: string; url: string; type: string; createdAt: Date }>
+          })()
 
     // Логисту полезно узнать о фото от водителя (особенно о повреждении):
     // раньше это делал старый JSON-эндпоинт /api/m/photos, теперь — здесь,
     // потому что загрузка у водителя одна
     if (session.kind === "driver") {
-      await prisma.notification.create({
-        data: {
-          organizationId: org.organizationId,
-          userId: "logist",
-          userRole: "logist",
-          type: "new_photo",
-          title: "Новое фото от водителя",
-          message: `Водитель загрузил фото: ${type}`,
-          driverId,
-          orderId,
-          photoId: photo.id,
-          priority: type === "damage" ? "high" : "normal",
-        },
+      await notify({
+        organizationId: org.organizationId,
+        userId: "logist",
+        userRole: "logist",
+        type: "new_photo",
+        title: "Новое фото от водителя",
+        message: `Водитель загрузил фото: ${type}`,
+        driverId,
+        orderId,
+        photoId: photo.id,
+        priority: type === "damage" ? "high" : "normal",
       })
     }
 
@@ -272,6 +280,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить фото"
     console.error("[Photos Upload] error:", message)
+    captureRouteError("api/photos/upload", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

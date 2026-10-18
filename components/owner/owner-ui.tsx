@@ -18,6 +18,7 @@ export const USER_STATUS_LABELS: Record<string, string> = {
 
 export const ACTION_LABELS: Record<string, string> = {
   login: "Вход",
+  logout: "Выход",
   register: "Регистрация",
   create: "Создание",
   update: "Изменение",
@@ -29,6 +30,14 @@ export const ACTION_LABELS: Record<string, string> = {
   invite_create: "Приглашение",
   invite_revoke: "Отзыв приглашения",
   sessions_revoked: "Завершение сессий",
+  // Действия владельца платформы и профиля: без подписей журнал показывал
+  // сырые коды («impersonate», «profile_update») — по ним нельзя понять, что произошло.
+  impersonate: "Вход в чужой аккаунт",
+  impersonation_end: "Возврат к своему аккаунту",
+  profile_update: "Изменение профиля",
+  password_change: "Смена пароля",
+  reset_password: "Сброс пароля",
+  create_organization: "Создание компании",
 }
 
 export const ACTION_OPTIONS = Object.keys(ACTION_LABELS)

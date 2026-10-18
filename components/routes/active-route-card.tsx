@@ -21,11 +21,17 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  ListTree,
   Loader2,
   FileText,
   TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+// Единый словарь статусов рейса: проверка «в пути» идёт через normalizeRouteStatus,
+// а не сравнением с литералом. Иначе компонент снова разойдётся с API, который
+// пишет каноническое "in_transit" (lib/routes/model.ts).
+import { normalizeRouteStatus } from "@/lib/routes/model"
+const isRouteInTransit = (status: unknown) => normalizeRouteStatus(status) === "in_transit"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
@@ -36,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { RouteOptimizer, type RouteOptimizerOrder } from "@/components/routes/route-optimizer"
+import { EtaForecastPanel } from "@/components/routes/eta-forecast-panel"
 import { RouteCrewDialog } from "@/components/routes/route-crew-dialog"
 import { RouteDocumentsDialog } from "@/components/routes/route-documents-dialog"
 import { RouteTripDialog } from "@/components/routes/route-trip-dialog"
@@ -176,6 +183,8 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
   const [showMap, setShowMap] = useState(false)
 
   const [showOptimizer, setShowOptimizer] = useState(false)
+  /** Посегментный прогноз ETA: три сценария + объяснение поправок */
+  const [showForecast, setShowForecast] = useState(false)
   const [showCrew, setShowCrew] = useState(false)
   const [showDocuments, setShowDocuments] = useState(false)
   /** Карточка рейса: хронология, расходы, документы и итог (задача 7) */
@@ -333,10 +342,10 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-bold">{route.vehiclePlate}</span>
                     <Badge
-                      variant={route.status === "in_progress" ? "default" : "secondary"}
-                      className={cn(route.status === "in_progress" && "bg-orange-500")}
+                      variant={isRouteInTransit(route.status) ? "default" : "secondary"}
+                      className={cn(isRouteInTransit(route.status) && "bg-orange-500")}
                     >
-                      {route.status === "in_progress" ? "В пути" : "Ожидает"}
+                      {isRouteInTransit(route.status) ? "В пути" : "Ожидает"}
                     </Badge>
                     {additionalLoads > 0 && (
                       <Badge
@@ -433,6 +442,29 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
                     </div>
                     <Progress value={progress} className="h-1.5" />
                   </div>
+
+                  {/* Посегментный прогноз: три сценария и объяснение поправок */}
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1.5 px-2 text-xs"
+                      onClick={() => setShowForecast((prev) => !prev)}
+                    >
+                      <ListTree className="h-3.5 w-3.5" />
+                      {showForecast ? "Скрыть прогноз" : "Прогноз по сегментам"}
+                    </Button>
+                  </div>
+                  {showForecast && (
+                    <div className="mt-3">
+                      <EtaForecastPanel
+                        routeId={route.id}
+                        vehicleId={route.vehicleId}
+                        departure={new Date()}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -96,8 +96,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ success: false, error: blockReason }, { status: 400 })
   }
 
-  async function audit(logAction: string, metadata: Record<string, unknown>) {
-    await logAudit({
+  /** Идентификатор запроса — чтобы запись в журнале можно было найти в логах. */
+  const requestId = request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? null
+
+  /**
+   * Запись в журнал. Возвращает признак успеха: если журнал не сохранился,
+   * действие всё равно выполнено (доступ закрыть или открыть важнее), но
+   * об этом обязано быть сказано в ответе — иначе операция над доступом
+   * проходит бесследно.
+   */
+  async function audit(logAction: string, metadata: Record<string, unknown>): Promise<boolean> {
+    return logAudit({
       organizationId: target!.organizationId,
       actorId: actor.id,
       actorEmail: actor.email ?? null,
@@ -105,9 +114,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       targetId: target!.id,
       targetType: "user",
       targetEmail: target!.email ?? null,
-      metadata: { ...metadata, targetName: target!.name, byPlatformOwner: true },
+      metadata: { ...metadata, targetName: target!.name, byPlatformOwner: true, requestId },
       ip: getClientIp(request),
     })
+  }
+
+  /** Предупреждение, которое добавляем к успешному ответу. */
+  function withAuditWarning<T extends Record<string, unknown>>(logged: boolean, body: T): T {
+    return logged
+      ? body
+      : {
+          ...body,
+          warning:
+            "Действие выполнено, но запись в журнал не сохранилась. Проверьте журнал позже.",
+        }
   }
 
   if (action === "suspend") {
@@ -128,13 +148,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       },
     })
     const revoked = await revokeAllSessions(target.id, "Доступ закрыт владельцем платформы")
-    await audit("deactivate", { reason, revokedSessions: revoked })
-    return NextResponse.json({
-      success: true,
-      status: "suspended",
-      revokedSessions: revoked,
-      message: `Доступ закрыт: ${target.name}`,
-    })
+    const logged = await audit("deactivate", { reason, revokedSessions: revoked })
+    return NextResponse.json(
+      withAuditWarning(logged, {
+        success: true,
+        status: "suspended",
+        revokedSessions: revoked,
+        message: `Доступ закрыт: ${target.name}`,
+      }),
+    )
   }
 
   if (action === "restore") {
@@ -156,24 +178,28 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         lockedUntil: null,
       },
     })
-    await audit("activate", { reason })
-    return NextResponse.json({
-      success: true,
-      status: "active",
-      message: `Доступ открыт: ${target.name}`,
-    })
+    const logged = await audit("activate", { reason })
+    return NextResponse.json(
+      withAuditWarning(logged, {
+        success: true,
+        status: "active",
+        message: `Доступ открыт: ${target.name}`,
+      }),
+    )
   }
 
   // action === "revokeSessions": завершить сессии БЕЗ блокировки — статус не меняем
   const revoked = await revokeAllSessions(target.id, "Сессии завершены владельцем платформы")
-  await audit("sessions_revoked", { reason, revokedSessions: revoked })
-  return NextResponse.json({
-    success: true,
-    status: target.status,
-    revokedSessions: revoked,
-    message:
-      revoked > 0
-        ? `Завершено сессий: ${revoked}. Доступ не закрыт — вход по паролю работает.`
-        : "Активных сессий не было. Доступ не менялся.",
-  })
+  const logged = await audit("sessions_revoked", { reason, revokedSessions: revoked })
+  return NextResponse.json(
+    withAuditWarning(logged, {
+      success: true,
+      status: target.status,
+      revokedSessions: revoked,
+      message:
+        revoked > 0
+          ? `Завершено сессий: ${revoked}. Доступ не закрыт — вход по паролю работает.`
+          : "Активных сессий не было. Доступ не менялся.",
+    }),
+  )
 }

@@ -1,0 +1,113 @@
+{
+ "title": "История рейсов: период",
+ "summary": {
+  "VERIFIED": 15,
+  "PARTIAL": 0,
+  "BROKEN": 0,
+  "MISSING": 0,
+  "NOT_TESTED": 0
+ },
+ "steps": [
+  {
+   "scenario": "вход",
+   "name": "админ",
+   "status": "VERIFIED",
+   "note": "status=200 role=admin"
+  },
+  {
+   "scenario": "период",
+   "name": "без dateFrom/dateTo",
+   "status": "VERIFIED",
+   "note": "status=200 рейсов=3 (stg-route-eta, demo-route-6, demo-route-5)",
+   "expected": "demo-route-6,demo-route-5,stg-route-eta",
+   "actual": "stg-route-eta,demo-route-6,demo-route-5"
+  },
+  {
+   "scenario": "пагинация",
+   "name": "total/limit/offset в ответе",
+   "status": "VERIFIED",
+   "note": "total=3 limit=50 offset=0"
+  },
+  {
+   "scenario": "период",
+   "name": "dateFrom=2026-10-06 отсекает рейс от 04.10",
+   "status": "VERIFIED",
+   "note": "получено: stg-route-eta, demo-route-5",
+   "expected": "demo-route-5,stg-route-eta",
+   "actual": "stg-route-eta,demo-route-5"
+  },
+  {
+   "scenario": "период",
+   "name": "dateFrom=2026-10-12 оставляет один рейс",
+   "status": "VERIFIED",
+   "note": "получено: stg-route-eta",
+   "expected": "stg-route-eta",
+   "actual": "stg-route-eta"
+  },
+  {
+   "scenario": "период",
+   "name": "dateTo=2026-10-11 отсекает рейсы 11.10 и 15.10",
+   "status": "VERIFIED",
+   "note": "получено: demo-route-6",
+   "expected": "demo-route-6",
+   "actual": "demo-route-6"
+  },
+  {
+   "scenario": "период",
+   "name": "рейс 11.10 целиком внутри суток",
+   "status": "VERIFIED",
+   "note": "получено: demo-route-5",
+   "expected": "demo-route-5",
+   "actual": "demo-route-5"
+  },
+  {
+   "scenario": "период",
+   "name": "dateFrom=2026-10-20 (без времени) — будущего нет",
+   "status": "VERIFIED",
+   "note": "status=200 рейсов=0"
+  },
+  {
+   "scenario": "период",
+   "name": "dateFrom=32.01.2026 → 400",
+   "status": "VERIFIED",
+   "note": "status=400 error=Неверная дата начала периода — ожидается YYYY-MM-DD"
+  },
+  {
+   "scenario": "период",
+   "name": "dateTo=завтра → 400",
+   "status": "VERIFIED",
+   "note": "status=400 error=Неверная дата окончания периода — ожидается YYYY-MM-DD"
+  },
+  {
+   "scenario": "период",
+   "name": "dateFrom=2026 → 400 (один год — не период)",
+   "status": "VERIFIED",
+   "note": "status=400 error=Неверная дата начала периода — ожидается YYYY-MM-DD"
+  },
+  {
+   "scenario": "пагинация",
+   "name": "limit=1&offset=1 — вторая страница",
+   "status": "VERIFIED",
+   "note": "стр1=stg-route-eta стр2=demo-route-6 total=3"
+  },
+  {
+   "scenario": "статус",
+   "name": "status=cancelled — валидный фильтр",
+   "status": "VERIFIED",
+   "note": "status=200 рейсов=0"
+  },
+  {
+   "scenario": "статус",
+   "name": "выборка без отменённых не теряет завершённые",
+   "status": "VERIFIED",
+   "note": "завершённые на месте: stg-route-eta, demo-route-6, demo-route-5"
+  },
+  {
+   "scenario": "статус",
+   "name": "неизвестный статус → 400",
+   "status": "VERIFIED",
+   "note": "status=400"
+  }
+ ],
+ "issues": []
+}

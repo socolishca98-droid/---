@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { TruckLoader } from "@/components/ui/truck-loader"
+import { useAdaptivePolling } from "@/hooks/use-adaptive-polling"
 
 interface ChatMessage {
   id: string
@@ -136,16 +137,17 @@ export default function DriverChatPage() {
     }
   }, [driver?.id])
 
-  // Автообновление
-  useEffect(() => {
-    if (!driver?.id) return
-    const interval = setInterval(() => {
-      // В фоне опрос не нужен: он будит телефон и жжёт батарею
-      if (document.visibilityState !== "visible") return
-      void fetchMessages()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [driver?.id, fetchMessages])
+  // Автообновление: адаптивный опрос. Прежний setInterval проверял видимость
+  // вкладки, но всё равно крутился вхолостую, а после сбоя сети долбил
+  // сервером теми же 5 секундами. Теперь скрытая вкладка и офлайн молчат,
+  // после ошибки интервал растёт вдвое, при возврате — сразу свежие сообщения.
+  const polling = useAdaptivePolling(
+    () => {
+      if (!driver?.id) return
+      return fetchMessages()
+    },
+    { baseMs: 5000 },
+  )
 
   // Автопрокрутка: раньше она срабатывала на каждое обновление (раз в 5 секунд)
   // и выдёргивала человека из истории. Теперь — только если он и так внизу.
@@ -191,6 +193,8 @@ export default function DriverChatPage() {
       if (data.success) {
         nearBottomRef.current = true
         setMessages((prev) => [...prev, data.message])
+        // Своё сообщение видно сразу, следующий опрос не ждём
+        polling.pollNow()
       } else {
         setNewMessage(content)
         toast.error("Не удалось отправить сообщение")

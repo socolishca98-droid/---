@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { notify } from "@/lib/notifications/create"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 
@@ -159,24 +160,22 @@ export async function PATCH(request: NextRequest) {
     })
 
     // Уведомление водителю о том, что сигнал обработан
-    await prisma.notification.create({
-      data: {
-        organizationId: org.organizationId,
-        userId: existing.driverId,
-        userRole: "driver",
-        type: "sos_status",
-        title: status === "responding" ? "SOS принят в работу" : "SOS закрыт",
-        message: `${sosLabel(existing.type)}: ${
-          status === "responding"
-            ? "логист взял сигнал в обработку"
-            : status === "resolved"
-              ? "сигнал закрыт"
-              : "сигнал помечен как ложный"
-        }${resolution ? `. ${resolution}` : ""}`,
-        driverId: existing.driverId,
-        sosId: existing.id,
-        priority: status === "responding" ? "high" : "normal",
-      },
+    await notify({
+      organizationId: org.organizationId,
+      userId: existing.driverId,
+      userRole: "driver",
+      type: "sos_status",
+      title: status === "responding" ? "SOS принят в работу" : "SOS закрыт",
+      message: `${sosLabel(existing.type)}: ${
+        status === "responding"
+          ? "логист взял сигнал в обработку"
+          : status === "resolved"
+            ? "сигнал закрыт"
+            : "сигнал помечен как ложный"
+      }${resolution ? `. ${resolution}` : ""}`,
+      driverId: existing.driverId,
+      sosId: existing.id,
+      priority: status === "responding" ? "high" : "normal",
     })
 
     return NextResponse.json({ success: true, sos: updated })

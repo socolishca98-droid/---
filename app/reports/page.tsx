@@ -9,6 +9,7 @@
 //
 // Данные — из GET /api/reports (см. components/reports/reports-view.tsx).
 
+import Link from "next/link"
 import { useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -17,6 +18,7 @@ import { useSidebar } from "@/lib/sidebar-context"
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { ReportsView } from "@/components/reports/reports-view"
+import { Timer } from "lucide-react"
 import { TruckLoader } from "@/components/ui/truck-loader"
 export default function ReportsPage() {
   const { user, isLoading } = useAuth()
@@ -52,6 +54,15 @@ export default function ReportsPage() {
               Реальные числа из заказов, рейсов, чеков водителей и оплат — с разбором и выгрузкой
             </p>
           </div>
+
+          <Link
+            href="/reports/time"
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            <Timer className="h-4 w-4" />
+            Время водителей: путь, погрузка, выгрузка, простои и отдых по отметкам из
+            приложения
+          </Link>
 
           <ReportsView />
         </main>

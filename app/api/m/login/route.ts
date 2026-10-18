@@ -15,12 +15,13 @@ import { prisma } from "@/lib/prisma"
 import { authenticateWithPassword } from "@/lib/auth/login"
 import { expiredSessionCookie, sessionCookie } from "@/lib/auth/session"
 import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
+import { captureRouteError } from "@/lib/sentry"
 import {
   buildRateLimitHeaders,
-  checkRateLimit,
+  checkRateLimitAsync,
   getClientIp,
-  recordFailure,
-  resetRateLimit,
+  recordFailureAsync,
+  resetRateLimitAsync,
 } from "@/lib/rate-limiter"
 
 export const dynamic = "force-dynamic"
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   const identifier = String(body.phone ?? "")
   const rateLimitKey = `m-login:${getClientIp(request)}:${identifier.replace(/\D/g, "")}`
-  const rateLimit = checkRateLimit(rateLimitKey)
+  const rateLimit = await checkRateLimitAsync(rateLimitKey)
   if (!rateLimit.allowed) {
     return NextResponse.json(
       {
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.ok) {
-      const afterFailure = recordFailure(rateLimitKey)
+      const afterFailure = await recordFailureAsync(rateLimitKey)
       return NextResponse.json(
         { success: false, error: result.error, code: result.code },
         {
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    resetRateLimit(rateLimitKey)
+    await resetRateLimitAsync(rateLimitKey)
 
     if (!result.driverId) {
       return NextResponse.json(
@@ -127,6 +128,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[m/login] error:", message)
+    captureRouteError("api/m/login", error)
     return NextResponse.json(
       { success: false, error: "Не удалось выполнить вход. Попробуйте ещё раз" },
       { status: 500 },

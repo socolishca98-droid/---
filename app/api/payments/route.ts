@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { notify } from "@/lib/notifications/create"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { DATE_KEY_PATTERN, endOfLocalDay, parseDateValue } from "@/lib/dates"
@@ -403,19 +404,17 @@ export async function POST(request: NextRequest) {
 
       const { title, message } = overdueReminderText(row)
 
-      await prisma.notification.create({
-        data: {
-          organizationId: org.organizationId,
-          // напоминание для всех логистов и админов организации — так же,
-          // как это делает SOS от водителя
-          userId: "all_logists",
-          userRole: "logist",
-          type: REMINDER_TYPE,
-          title,
-          message,
-          orderId: row.id,
-          priority: row.overdueDays >= 7 ? "high" : "normal",
-        },
+      await notify({
+        organizationId: org.organizationId,
+        // напоминание для всех логистов и админов организации — так же,
+        // как это делает SOS от водителя
+        userId: "all_logists",
+        userRole: "logist",
+        type: REMINDER_TYPE,
+        title,
+        message,
+        orderId: row.id,
+        priority: row.overdueDays >= 7 ? "high" : "normal",
       })
 
       result.created += 1

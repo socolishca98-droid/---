@@ -22,8 +22,17 @@ import { getActiveAtiToken } from "@/lib/ati/connection"
 import { prisma } from "@/lib/prisma"
 import { loadStaffSession } from "@/lib/auth/session"
 import { getDueScanProfiles, markProfileScanned, scanParamsForProfile } from "@/lib/ati/scan-schedule"
+import { cleanupPasswordResetTokens } from "@/lib/password-reset"
 
+import { captureRouteError } from "@/lib/sentry"
 export const dynamic = "force-dynamic"
+
+/**
+ * Сколько длится вызов планировщика. Скан идёт по организациям одна за другой,
+ * и на проде (Pro) лимит по умолчанию в 60 секунд может не хватить. На Hobby
+ * значение урезается планом (10 с) — там расписание всё равно реже.
+ */
+export const maxDuration = 60
 
 const ACTIONS = ["all", "scan", "clean"] as const
 type Action = (typeof ACTIONS)[number]
@@ -168,6 +177,8 @@ async function runActions(action: Action, mode: string) {
   if (action === "clean" || action === "all") {
     console.log("[CRON] Starting cleanup...")
     results.cleanup = await cleanExpiredCache()
+    // Ссылки восстановления пароля тоже мусор: держать их после истечения незачем
+    results.passwordResetTokens = await cleanupPasswordResetTokens()
   }
 
   if (action === "scan" || action === "all") {
@@ -191,6 +202,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[CRON GET] Error:", message)
+    captureRouteError("api/ati/cron", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
@@ -212,6 +224,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[CRON POST] Error:", message)
+    captureRouteError("api/ati/cron", error)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

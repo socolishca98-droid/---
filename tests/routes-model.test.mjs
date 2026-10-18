@@ -78,8 +78,23 @@ test("проверка и нормализация статуса рейса", (
   assert.equal(normalizeRouteStatus("что-то"), null)
 })
 
+// Регресс: команда водителя start_trip писала Route.status = "in_progress",
+// которого нет в словаре. Диспетчер видел «Запланирован» на едущем рейсе.
+// Канон — "in_transit"; старое значение из базы обязано приводиться к нему,
+// иначе уже сохранённые рейсы потеряют смысловой статус.
+test("устаревшее написание in_progress приводится к in_transit", () => {
+  assert.equal(isRouteStatus("in_progress"), true, "старое значение остаётся распознаваемым")
+  assert.equal(normalizeRouteStatus("in_progress"), "in_transit")
+  assert.equal(routeStatusLabel("in_progress"), "В пути")
+  assert.equal(normalizeRouteStatus("in_transit"), "in_transit")
+  // Несуществующее значение по-прежнему не проходит
+  assert.equal(normalizeRouteStatus("in_progres"), null)
+  assert.equal(normalizeRouteStatus(""), null)
+})
+
 test("подпись статуса: известная — по-русски, неизвестная — как есть", () => {
   assert.equal(routeStatusLabel("in_transit"), "В пути")
+  assert.equal(routeStatusLabel("in_progress"), "В пути", "старое написание — русская подпись, не английская")
   assert.equal(routeStatusLabel("completed"), "Завершён")
   assert.equal(routeStatusLabel("неизвестный"), "неизвестный")
   assert.equal(routeStatusLabel(null), "")

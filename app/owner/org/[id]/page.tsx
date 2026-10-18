@@ -16,11 +16,13 @@ import {
   LogOut,
   Package,
   Route as RouteIcon,
+  Search,
   ShieldCheck,
   ShieldOff,
   Truck,
   UserCog,
   Users,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -117,13 +119,50 @@ export default function OwnerOrgPage() {
     [accounts.data, orgId],
   )
 
+  // Поиск по учётным записям компании: в крупной компании искать сотрудника
+  // глазами в списке невозможно, а именно под конкретной записью владелец и
+  // «подключается» к организации.
+  const [accountQuery, setAccountQuery] = useState("")
+  const accountNeedle = accountQuery.trim().toLowerCase()
+  const orgUsers = group?.users ?? []
+  const orgDrivers = group?.drivers ?? []
+  const visibleUsers = useMemo(() => {
+    if (!accountNeedle) return orgUsers
+    return orgUsers.filter((person) =>
+      [person.name, person.email ?? "", ROLE_LABELS[person.role] ?? person.role].some((value) =>
+        value.toLowerCase().includes(accountNeedle),
+      ),
+    )
+  }, [orgUsers, accountNeedle])
+  const visibleDrivers = useMemo(() => {
+    if (!accountNeedle) return orgDrivers
+    return orgDrivers.filter((driver) =>
+      [driver.name, driver.phone, driver.vehiclePlate ?? ""].some((value) =>
+        value.toLowerCase().includes(accountNeedle),
+      ),
+    )
+  }, [orgDrivers, accountNeedle])
+  // Компания без единой учётной записи: войти в неё невозможно в принципе —
+  // и об этом надо сказать прямо, а не показывать два пустых списка.
+  const noAccountsAtAll = Boolean(group) && orgUsers.length === 0 && orgDrivers.length === 0
+
   const forbidden = Boolean(overview.error && /недостаточно прав/i.test(overview.error))
   const notFound = Boolean(overview.data && !org)
+  // Ошибки загрузки не должны выглядеть как пустые разделы: «Сотрудников пока
+  // нет» при упавшем API — это ложное сообщение о состоянии компании.
+  const overviewError = overview.error && !forbidden ? overview.error : null
+  const accountsError = accounts.error ?? null
+  const journalError = journal.error ?? null
 
   async function enter(item: { kind: "staff" | "driver"; id: string; name: string }) {
     setBusyId(item.id)
     await enterAccount(item)
     setBusyId(null)
+  }
+
+  /** Закрытый доступ: войти в такую учётную запись нельзя — сессия не заработает. */
+  function accessClosed(status: string): boolean {
+    return status === "suspended" || status === "pending"
   }
 
   /** Закрыть/открыть доступ и «Завершить сессии» — через PATCH /api/admin/accounts/[id]. */
@@ -132,7 +171,7 @@ export default function OwnerOrgPage() {
       return
     }
     setBusyId(`${action}:${userId}`)
-    const result = await apiSend<{ message?: string }>(
+    const result = await apiSend<{ message?: string; warning?: string }>(
       `/api/admin/accounts/${encodeURIComponent(userId)}`,
       "PATCH",
       { action },
@@ -142,6 +181,9 @@ export default function OwnerOrgPage() {
       toast.error(result.error || "Не получилось. Попробуйте ещё раз.")
       return
     }
+    // Действие выполнено, но журнал не сохранился — об этом надо сказать:
+    // иначе операция над доступом проходит бесследно.
+    if (result.data?.warning) toast.warning(result.data.warning)
     toast.success(result.data?.message ?? "Готово")
     accounts.reload()
     journal.reload()
@@ -225,6 +267,19 @@ export default function OwnerOrgPage() {
         </div>
       ) : null}
 
+      {overviewError ? (
+        <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-5">
+          <p className="text-[14px] text-destructive">Не удалось загрузить компанию: {overviewError}</p>
+          <button
+            type="button"
+            onClick={() => overview.reload()}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-[13px] text-foreground transition-colors duration-200 hover:bg-secondary"
+          >
+            Повторить
+          </button>
+        </div>
+      ) : null}
+
       {org ? (
         <>
           <header
@@ -251,20 +306,76 @@ export default function OwnerOrgPage() {
             <Tile icon={Activity} label="Доставлено заказов" value={formatCount(org.ordersDelivered)} delay={300} />
           </div>
 
-          {/* grid-cols-1: иначе на мобильном колонка равна max-content и обрезает экран */}
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-            <div className="flex flex-col gap-4">
+          {/* Поиск по учётным записям компании */}
+          {group ? (
+            <div className="relative mt-6">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={accountQuery}
+                onChange={(event) => setAccountQuery(event.target.value)}
+                placeholder="Найти в компании: имя, почта, телефон, машина"
+                className="h-11 w-full rounded-xl border border-border bg-card pl-9 pr-9 text-[14px] text-foreground transition-colors duration-200 placeholder:text-muted-foreground/80 focus:border-primary focus:outline-none"
+              />
+              {accountQuery ? (
+                <button
+                  type="button"
+                  aria-label="Очистить поиск"
+                  onClick={() => setAccountQuery("")}
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {noAccountsAtAll ? (
+            <Panel title="Учётные записи" className="mt-4">
+              <div className="px-4 py-5">
+                <p className="text-[14px] font-medium">В этой компании пока нет учётных записей</p>
+                <p className="mt-1.5 text-[13px] text-muted-foreground">
+                  Подключиться к организации можно только под существующей учётной записью:
+                  сотрудник или водитель должны быть добавлены администратором либо
+                  зарегистрироваться сами. Как только запись появится, здесь будет кнопка
+                  «Войти» — владелец входит без пароля, сессию выдаёт сервер.
+                </p>
+              </div>
+            </Panel>
+          ) : (
+            <>
+              {/* grid-cols-1: иначе на мобильном колонка равна max-content и обрезает экран */}
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+                <div className="flex flex-col gap-4">
               {/* Сотрудники */}
-              <Panel title={`Сотрудники · ${group?.users.length ?? org.staff}`}>
+              <Panel
+                title={`Сотрудники · ${
+                  accountNeedle ? `${visibleUsers.length} из ${orgUsers.length}` : `${group?.users.length ?? org.staff}`
+                }`}
+              >
                 {accounts.loading && !group ? (
                   <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Загружаю…
                   </p>
-                ) : (group?.users ?? []).length === 0 ? (
+                ) : accountsError ? (
+                  <div className="px-4 py-4">
+                    <p className="text-[13px] text-destructive">Не удалось загрузить сотрудников: {accountsError}</p>
+                    <button
+                      type="button"
+                      onClick={() => accounts.reload()}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[12.5px] transition-colors duration-200 hover:bg-secondary"
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : orgUsers.length === 0 ? (
                   <p className="px-4 py-4 text-[13px] text-muted-foreground">Сотрудников пока нет</p>
+                ) : visibleUsers.length === 0 ? (
+                  <p className="px-4 py-4 text-[13px] text-muted-foreground">
+                    Никого не нашли по запросу «{accountQuery.trim()}»
+                  </p>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {group!.users.map((person, index) => (
+                    {visibleUsers.map((person, index) => (
                       <li
                         key={person.id}
                         className="flex items-center gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/40"
@@ -289,12 +400,17 @@ export default function OwnerOrgPage() {
                             </div>
                             <button
                               type="button"
-                              disabled={busyId === person.id}
+                              disabled={busyId === person.id || accessClosed(person.status)}
+                              title={
+                                accessClosed(person.status)
+                                  ? "Доступ закрыт — войти в эту учётную запись нельзя"
+                                  : undefined
+                              }
                               onClick={() => enter({ kind: "staff", id: person.id, name: person.name })}
                               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
                             >
                               {busyId === person.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                              Войти
+                              {accessClosed(person.status) ? "Доступ закрыт" : "Войти"}
                             </button>
                           </div>
                           <div className="mt-2">
@@ -308,12 +424,35 @@ export default function OwnerOrgPage() {
               </Panel>
 
               {/* Водители */}
-              <Panel title={`Водители · ${group?.drivers.length ?? org.drivers}`}>
-                {(group?.drivers ?? []).length === 0 ? (
+              <Panel
+                title={`Водители · ${
+                  accountNeedle ? `${visibleDrivers.length} из ${orgDrivers.length}` : `${group?.drivers.length ?? org.drivers}`
+                }`}
+              >
+                {accounts.loading && !group ? (
+                  <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Загружаю…
+                  </p>
+                ) : accountsError ? (
+                  <div className="px-4 py-4">
+                    <p className="text-[13px] text-destructive">Не удалось загрузить водителей: {accountsError}</p>
+                    <button
+                      type="button"
+                      onClick={() => accounts.reload()}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[12.5px] transition-colors duration-200 hover:bg-secondary"
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : orgDrivers.length === 0 ? (
                   <p className="px-4 py-4 text-[13px] text-muted-foreground">Водителей пока нет</p>
+                ) : visibleDrivers.length === 0 ? (
+                  <p className="px-4 py-4 text-[13px] text-muted-foreground">
+                    Никого не нашли по запросу «{accountQuery.trim()}»
+                  </p>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {group!.drivers.map((driver, index) => (
+                    {visibleDrivers.map((driver, index) => (
                       <li
                         key={driver.id}
                         className="flex items-center gap-3 px-4 py-3 transition-colors duration-200 hover:bg-secondary/40"
@@ -336,12 +475,17 @@ export default function OwnerOrgPage() {
                             </div>
                             <button
                               type="button"
-                              disabled={busyId === driver.id}
+                              disabled={busyId === driver.id || accessClosed(driver.userStatus ?? "active")}
+                              title={
+                                accessClosed(driver.userStatus ?? "active")
+                                  ? "Доступ закрыт — войти в эту учётную запись нельзя"
+                                  : undefined
+                              }
                               onClick={() => enter({ kind: "driver", id: driver.id, name: driver.name })}
                               className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
                             >
                               {busyId === driver.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                              Войти как водитель
+                              {accessClosed(driver.userStatus ?? "active") ? "Доступ закрыт" : "Войти как водитель"}
                             </button>
                           </div>
                           <div className="mt-2">
@@ -375,12 +519,25 @@ export default function OwnerOrgPage() {
                     </p>
                   </li>
                 ))}
-                {journal.data && journal.data.items.length === 0 ? (
+                {journalError ? (
+                  <li className="px-4 py-4">
+                    <p className="text-[13px] text-destructive">Журнал не загрузился: {journalError}</p>
+                    <button
+                      type="button"
+                      onClick={() => journal.reload()}
+                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-[12.5px] transition-colors duration-200 hover:bg-secondary"
+                    >
+                      Повторить
+                    </button>
+                  </li>
+                ) : journal.data && journal.data.items.length === 0 ? (
                   <li className="px-4 py-4 text-[13px] text-muted-foreground">Действий в этой компании пока нет</li>
                 ) : null}
               </ul>
             </Panel>
-          </div>
+              </div>
+            </>
+          )}
         </>
       ) : null}
     </OwnerShell>

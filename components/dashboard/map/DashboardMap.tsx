@@ -27,6 +27,7 @@ import { TrafficLayer, type TrafficLevelInfo } from "./layers/TrafficLayer"
 import { DriversPanel } from "./panels/DriversPanel"
 import { StatsOverlay } from "./panels/StatsOverlay"
 import { TrafficPlanningPanel } from "./panels/TrafficPlanningPanel"
+import { RouteTripPanel } from "./panels/RouteTripPanel"
 
 // Styles & Constants
 import { mapStyles } from "./styles"
@@ -41,6 +42,8 @@ export default function DashboardMap() {
   const [showDriversList, setShowDriversList] = useState(false)
   const [showRoutes, setShowRoutes] = useState(true)
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null)
+  /** Рейс, для которого показан прогноз из единого механизма */
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
 
   // Слой пробок
   const [showTraffic, setShowTraffic] = useState(true)
@@ -207,6 +210,11 @@ export default function DashboardMap() {
         totalActiveKm={totalActiveKm}
         showRoutes={showRoutes}
         onToggleRoutes={toggleRoutes}
+        onOpenRouteTrip={
+          routes.some((item) => item.trip)
+            ? () => setSelectedRouteId(routes.find((item) => item.trip)?.id ?? null)
+            : null
+        }
         onToggleDriversPanel={toggleDriversPanel}
         showDriversPanel={showDriversList}
         isLoading={isLoading}
@@ -240,6 +248,13 @@ export default function DashboardMap() {
         onRefreshTraffic={refresh}
         activeRoutesCount={routes.length}
         onFocusLocation={handleFocusLocation}
+      />
+
+      <RouteTripPanel
+        routes={routes}
+        selectedRouteId={selectedRouteId}
+        onSelectRoute={setSelectedRouteId}
+        onClose={() => setSelectedRouteId(null)}
       />
 
       <DriversPanel

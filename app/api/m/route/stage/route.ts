@@ -1,0 +1,566 @@
+// app/api/m/route/stage/route.ts
+//
+// Команда водителя по текущему этапу рейса: POST /api/m/route/stage
+//
+// body: { routeId, command, stageIndex?, clientEventId? }
+//
+// Почему команды идут через сервер, а не прямой записью статуса заказа:
+//   1. Сервер сам решает, что сейчас является текущим этапом. Водитель не
+//      может «закрыть» точку, до которой не доехал, и не может завершить
+//      рейс с незакрытыми этапами.
+//   2. Отметки времени пишутся в RouteStage (единая модель исполнения) и
+//      дублируются в RouteEvent как история — один и тот же момент времени
+//      нельзя потерять при пересчёте прогноза.
+//   3. Повторная отправка (двойной тап по кнопке, повтор запроса после
+//      обрыва связи) не должна создавать вторую отметку.
+//
+// Безопасность: рейс ищется сразу с организацией водителя из сессии.
+// Поля routeId и stageIndex приходят из тела, поэтому оба проверяются:
+// чужой routeId даст 404, а этап чужого индекса — отказ по правилам этапа.
+
+import { NextRequest, NextResponse } from "next/server"
+
+import { prisma } from "@/lib/prisma"
+import { requireDriver } from "@/lib/auth/session"
+import { requireOrganization, scopedWhere } from "@/lib/org"
+import { getRouteTripEta, listRouteStageIds } from "@/lib/eta/trip-repository"
+import {
+  TRIP_COMMANDS,
+  availableTripActions,
+  checkTripCommand,
+  type TripCommand,
+} from "@/lib/eta/trip-actions"
+import { logRouteEvent } from "@/lib/routes/service"
+import { completeRoute } from "@/lib/routes/complete-route"
+import { checkEtaRateLimit } from "@/lib/eta/rate-limit"
+import { recordActual } from "@/lib/eta/repository"
+
+export const dynamic = "force-dynamic"
+
+/** Команды, которые отмечают НАЧАЛО этапа. */
+const START_COMMANDS: TripCommand[] = ["start_driving", "start_operation"]
+
+/** Команды, которые отмечают ОКОНЧАНИЕ этапа. */
+const END_COMMANDS: TripCommand[] = ["arrive_point", "finish_operation", "next_leg"]
+
+/**
+ * Запись фактического завершения рейса в прогноз.
+ *
+ * Зачем отдельной функцией: расчёт ошибки — это про точность модели, а не про
+ * текущую команду. Ошибка записи факта не должна ломать завершение рейса:
+ * водитель закрыл рейс, а разбираться с прогнозом будет логист.
+ *
+ * Идемпотентность: если факт по этому рейсу уже записан (повторный finish_trip
+ * после обрыва связи), возвращаем уже посчитанную ошибку, а не пересчитываем.
+ */
+/** Сумма фактических секунд по этапам одного типа (0 — отметок нет). */
+function sumStageSeconds(
+  stages: Array<{ type: string; startedAt: Date | null; endedAt: Date | null }>,
+  type: string,
+): number {
+  let total = 0
+  for (const stage of stages) {
+    if (stage.type !== type || !stage.startedAt || !stage.endedAt) continue
+    total += Math.round((stage.endedAt.getTime() - stage.startedAt.getTime()) / 1000)
+  }
+  return total
+}
+
+async function recordForecastFact(input: {
+  routeId: string
+  organizationId: string
+  completedAt: Date
+}): Promise<{ errorMinutes: number | null; forecastId: string; alreadyRecorded?: boolean } | null> {
+  try {
+    const latest = await prisma.etaForecast.findFirst({
+      where: { routeId: input.routeId, organizationId: input.organizationId },
+      select: { id: true, actualArrivalAt: true },
+      orderBy: { createdAt: "desc" },
+    })
+    if (!latest) return null
+    if (latest.actualArrivalAt) {
+      // Уже записано: повторный finish_trip не должен считать ошибку второй раз
+      return { forecastId: latest.id, errorMinutes: null, alreadyRecorded: true }
+    }
+
+    // Фактическое время берём из отметок этапов: startedAt/endedAt — те же
+    // моменты, которые водитель проставил кнопками. Движение = driving-этапы,
+    // остановки = погрузка/выгрузка/документы. Ноль секунд означает «отметок
+    // нет», тогда поле остаётся пустым, а не подменяется нулём.
+    const stages = await prisma.routeStage.findMany({
+      where: { routeId: input.routeId },
+      select: { type: true, startedAt: true, endedAt: true },
+    })
+    const drivingSec = sumStageSeconds(stages, "driving")
+    const stopsSec = sumStageSeconds(stages, "loading") + sumStageSeconds(stages, "unloading")
+    const result = await recordActual(latest.id, input.organizationId, {
+      actualArrivalAt: input.completedAt,
+      actualDrivingSec: drivingSec || undefined,
+      actualStopsSec: stopsSec || undefined,
+    })
+    if (result.ok === false) return null
+    return { forecastId: latest.id, errorMinutes: result.errorMinutes }
+  } catch (error) {
+    console.error("[m/route/stage] forecast fact failed:", error)
+    return null
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireDriver(request)
+  if (!auth.ok) return auth.response
+  const org = requireOrganization(auth.value)
+  if (!org.ok) return org.response
+
+  const driverId = auth.value.driver.id
+
+  // Лимит частоты: каждая команда пересчитывает прогноз рейса (OSRM + геокодер)
+  const rateLimit = await checkEtaRateLimit(request, "actual", org.organizationId)
+  if (rateLimit.response) return rateLimit.response
+
+  let body: {
+    routeId?: string
+    command?: string
+    stageIndex?: number | null
+    clientEventId?: string | null
+    note?: string | null
+  } | null = null
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ success: false, error: "Ожидается JSON" }, { status: 400 })
+  }
+
+  const { routeId, command, stageIndex, clientEventId, note } = body ?? {}
+  if (!routeId || !command) {
+    return NextResponse.json(
+      { success: false, error: "routeId и command обязательны" },
+      { status: 400 },
+    )
+  }
+
+  if (!TRIP_COMMANDS.includes(command as TripCommand)) {
+    return NextResponse.json(
+      { success: false, error: `Неизвестная команда: ${command}` },
+      { status: 400 },
+    )
+  }
+  const typedCommand = command as TripCommand
+
+  try {
+    // Рейс должен принадлежать организации водителя
+    const route = await prisma.route.findFirst({
+      where: scopedWhere(org.organizationId, { id: routeId, driverId }),
+      select: { id: true, status: true, startedAt: true, completedAt: true },
+    })
+    if (!route) {
+      return NextResponse.json({ success: false, error: "Рейс не найден" }, { status: 404 })
+    }
+
+    // Защита от повторной отправки: клиент присылает свой id события, и если
+    // оно уже записано — возвращаем тот же результат, ничего не меняя.
+    if (clientEventId) {
+      // RouteEvent.data — строка JSON со всей полезной нагрузкой, поэтому
+      // ищем вхождение id в неё. Прямое сравнение data === clientEventId
+      // не находило ничего: запись всегда содержит и другие поля.
+      const duplicate = await prisma.routeEvent.findFirst({
+        where: {
+          organizationId: org.organizationId,
+          routeId,
+          driverId,
+          type: "stage_command",
+          data: { contains: clientEventId },
+        },
+        select: { id: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      })
+      if (duplicate) {
+        return NextResponse.json({
+          success: true,
+          duplicate: true,
+          message: "Команда уже была приняна ранее",
+        })
+      }
+    }
+
+    const trip = await getRouteTripEta({ routeId, organizationId: org.organizationId })
+    if (!trip) {
+      return NextResponse.json({ success: false, error: "Рейс не найден" }, { status: 404 })
+    }
+
+    const routeStarted = Boolean(route.startedAt)
+    const check = checkTripCommand(trip, routeStarted, typedCommand, stageIndex ?? null)
+    if (!check.ok) {
+      // Отказ с причиной: водитель видит, почему кнопка не сработала
+      return NextResponse.json(
+        { success: false, error: check.reason ?? "Команда недопустима", code: "invalid_stage" },
+        { status: 409 },
+      )
+    }
+
+    const now = new Date()
+    const stageIndexToUse = check.stageIndex ?? null
+    // Сколько заказов эта команда довела до «доставлен» — для ответа водителю
+    let deliveredNow = 0
+
+    // ── start_trip: рейс запущен, этапы рейса создаются ──
+    // "in_transit" — каноническое значение из ROUTE_STATUSES (lib/routes/model.ts).
+    // Раньше здесь писалось "in_progress", которого в словаре нет: диспетчер
+    // видел «Запланирован» на едущем рейсе, а подпись в ряде мест оказывалась
+    // сырой английской строкой. Старые записи с "in_progress" продолжают
+    // работать — normalizeRouteStatus приводит их к "in_transit".
+    if (typedCommand === "start_trip") {
+      await prisma.route.update({
+        where: { id: routeId },
+        data: { startedAt: now, status: "in_transit" },
+      })
+      await writeEvent({
+        routeId,
+        driverId,
+        organizationId: org.organizationId,
+        command: typedCommand,
+        stageIndex: null,
+        at: now,
+        clientEventId,
+      })
+
+      const updated = await getRouteTripEta({ routeId, organizationId: org.organizationId })
+      return respond(updated, now)
+    }
+
+    // ── finish_trip: рейс завершён ──
+    if (typedCommand === "finish_trip") {
+      // Повторный finish_trip (двойной тап, повтор запроса после обрыва связи)
+      // не должен ни двигать время завершения, ни писать второе событие, ни
+      // считать ошибку прогноза второй раз. Рейс уже completed — возвращаем
+      // то же состояние, ничего не пересчитывая.
+      if (route.completedAt) {
+        return NextResponse.json({
+          success: true,
+          finished: true,
+          completedAt: route.completedAt.toISOString(),
+          alreadyFinished: true,
+          forecastFact: await recordForecastFact({
+            routeId,
+            organizationId: org.organizationId,
+            completedAt: route.completedAt,
+          }),
+        })
+      }
+
+      // Завершение идёт через ту же функцию, что и у диспетчера
+      // (POST /api/routes/[id]/complete).
+      //
+      // Раньше здесь был свой путь: только status=completed и completedAt.
+      // Последствия: заказы рейса оставались in_route и не становились
+      // доставленными, итоги рейса не пересчитывались, водитель не
+      // освобождался, смена не закрывалась, топливо не списывалось, а рейтинг
+      // водителя (считается по доставленным заказам) не рос. Диспетчер после
+      // этого видел «Завершён» с недоставленными точками, и его собственное
+      // complete отвечало 400 «Не все точки маршрута завершены».
+      //
+      // force НЕ передаётся: checkTripCommand выше уже отказал бы, если по
+      // рейсу остались незакрытые этапы («Остались незавершённые этапы»).
+      // Значит закрытие заказов здесь — фиксация факта, а не принуждение.
+      const completion = await completeRoute({
+        routeId,
+        organizationId: org.organizationId,
+        force: false,
+        actorName: auth.value.driver.name,
+      })
+
+      if (!completion.ok) {
+        // Доменные отказы (например, «Не все точки маршрута завершены»)
+        // возвращаем как есть: водитель должен увидеть причину, а не 500.
+        return NextResponse.json(
+          {
+            success: false,
+            error: completion.error,
+            ...(completion.pendingOrders ? { pendingOrders: completion.pendingOrders } : {}),
+          },
+          { status: completion.status },
+        )
+      }
+
+      await writeEvent({
+        routeId,
+        driverId,
+        organizationId: org.organizationId,
+        command: typedCommand,
+        stageIndex: null,
+        at: now,
+        clientEventId,
+      })
+      // Факт прибытия пишется в последнюю версию прогноза по рейсу. Исходный
+      // прогноз при этом НЕ перезаписывается: recordActual трогает только
+      // поля факта (actualArrivalAt, errorMinutes), а initialArrivalAt и
+      // currentArrivalAt остаются как есть — иначе оценка точности потеряла
+      // бы «с чем сравнивать».
+      const forecastFact = await recordForecastFact({
+        routeId,
+        organizationId: org.organizationId,
+        completedAt: now,
+      })
+
+      return NextResponse.json({
+        success: true,
+        finished: true,
+        completedAt: now.toISOString(),
+        // null — по рейсу не было сохранённого прогноза: тогда сравнивать нечего
+        forecastFact,
+        // Что именно сделало завершение: водитель видит, что рейс закрыт
+        // целиком, а не только получил статус.
+        closedOrders: completion.closedOrders ?? 0,
+        stats: completion.stats,
+      })
+    }
+
+    // ── report_problem: только история, прогноз не меняется ──
+    if (typedCommand === "report_problem") {
+      await writeEvent({
+        routeId,
+        driverId,
+        organizationId: org.organizationId,
+        command: typedCommand,
+        stageIndex: stageIndexToUse,
+        at: now,
+        clientEventId,
+        note: typeof note === "string" ? note : null,
+      })
+      return NextResponse.json({
+        success: true,
+        message: "Проблема передана логисту",
+        at: now.toISOString(),
+      })
+    }
+
+    // ── Остальные команды: отметка времени на этапе ──
+    if (stageIndexToUse == null) {
+      return NextResponse.json(
+        { success: false, error: "Не удалось определить этап" },
+        { status: 400 },
+      )
+    }
+
+    const stageIds = await listRouteStageIds({ routeId, organizationId: org.organizationId })
+    let stageRowId = stageIds?.[stageIndexToUse] ?? null
+    if (!stageRowId) {
+      // Этап не заведён строкой RouteStage — заводим. Ситуация штатная:
+      // рейс могли запустить до того, как этапы синхронизировались.
+      await ensureStageRows(routeId, org.organizationId)
+      const retry = await listRouteStageIds({ routeId, organizationId: org.organizationId })
+      stageRowId = retry?.[stageIndexToUse] ?? null
+      if (!stageRowId) {
+        return NextResponse.json(
+          { success: false, error: "Этап рейса не найден" },
+          { status: 404 },
+        )
+      }
+    }
+    await applyMark(stageRowId, typedCommand, now)
+
+    // Закрытая последняя точка заказа = заказ доставлен.
+    //
+    // Раньше этого не происходило никак: водитель закрывал выгрузку, а заказ
+    // оставался in_route. Дальше по цепочке ломалось всё: рейтинг водителя
+    // (считается по доставленным заказам) не рос, сводка и отчёты не видели
+    // выполнение, а finish_trip отвечал 400 «Не все точки маршрута завершены»,
+    // потому что completeRoute видел заказы не в статусе delivered.
+    //
+    // Условие намеренно строгое: доставленным заказ становится, когда закрыты
+    // ВСЕ его этапы в этом рейсе. Отменённый и отклонённый заказ не трогаем —
+    // обратные переходы из них запрещены бизнес-правилами.
+    if (END_COMMANDS.includes(typedCommand)) {
+      const closed = await markDeliveredOrders(routeId, org.organizationId, now)
+      if (closed > 0) {
+        deliveredNow += closed
+      }
+    }
+
+    await writeEvent({
+      routeId,
+      driverId,
+      organizationId: org.organizationId,
+      command: typedCommand,
+      stageIndex: stageIndexToUse,
+      at: now,
+      clientEventId,
+    })
+
+    const updated = await getRouteTripEta({ routeId, organizationId: org.organizationId })
+    return respond(updated, now, deliveredNow)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    console.error("[RouteStage API] POST error:", message, error)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
+  }
+}
+
+/** Ставит отметку начала/окончания. Повторный вызов не затирает первую. */
+async function applyMark(stageRowId: string, command: TripCommand, at: Date) {
+  const isStart = START_COMMANDS.includes(command)
+  const isEnd = END_COMMANDS.includes(command)
+
+  const data: { startedAt?: Date; endedAt?: Date; status?: string } = {}
+  if (isStart) data.startedAt = at
+  if (isEnd) data.endedAt = at
+  if (isStart || isEnd) data.status = isEnd ? "completed" : "active"
+
+  // updateMany с условием: отметка ставится только если её ещё нет.
+  // Защита от повторной отправки на уровне базы, а не только клиента.
+  const existing = await prisma.routeStage.findUnique({
+    where: { id: stageRowId },
+    select: { startedAt: true, endedAt: true },
+  })
+  if (!existing) return
+
+  const guarded: { startedAt?: Date; endedAt?: Date; status?: string } = {}
+  if (isStart && !existing.startedAt) {
+    guarded.startedAt = at
+    guarded.status = "active"
+  }
+  if (isEnd && !existing.endedAt) {
+    guarded.endedAt = at
+    guarded.status = "completed"
+  }
+  if (Object.keys(guarded).length === 0) return
+
+  await prisma.routeStage.update({ where: { id: stageRowId }, data: guarded })
+}
+
+/**
+ * Переводит в «доставлен» заказы рейса, у которых закрыты все этапы.
+ *
+ * Отменённые и отклонённые заказы не трогаются: из «отменён» обратно в
+ * «доставлен» переходить нельзя — это бизнес-правило заказов.
+ * Возвращает число заказов, переведённых этим вызовом.
+ */
+async function markDeliveredOrders(
+  routeId: string,
+  organizationId: string | null,
+  at: Date,
+): Promise<number> {
+  // Заказы рейса, которые ещё не закрыты
+  const open = await prisma.order.findMany({
+    where: scopedWhere(organizationId, {
+      routeId,
+      status: { in: ["in_route", "control", "documents", "assigned"] },
+    }),
+    select: { id: true },
+  })
+  if (open.length === 0) return 0
+
+  // Этапы этих заказов: completed или cancelled
+  const stages = await prisma.routeStage.findMany({
+    where: scopedWhere(organizationId, {
+      routeId,
+      orderId: { in: open.map((o) => o.id) },
+    }),
+    select: { orderId: true, status: true },
+  })
+
+  const closedByOrder = new Map<string, { done: number; total: number }>()
+  for (const stage of stages) {
+    if (!stage.orderId) continue
+    const bucket = closedByOrder.get(stage.orderId) ?? { done: 0, total: 0 }
+    bucket.total += 1
+    if (stage.status === "completed" || stage.status === "cancelled") bucket.done += 1
+    closedByOrder.set(stage.orderId, bucket)
+  }
+
+  // Заказ без этапов не считаем доставленным: непонятно, что по нему сделано
+  const ready = open
+    .filter((o) => {
+      const bucket = closedByOrder.get(o.id)
+      return bucket && bucket.total > 0 && bucket.done === bucket.total
+    })
+    .map((o) => o.id)
+
+  if (ready.length === 0) return 0
+
+  const result = await prisma.order.updateMany({
+    where: scopedWhere(organizationId, { id: { in: ready } }),
+    data: { status: "delivered", deliveredAt: at, updatedAt: at },
+  })
+  return result.count
+}
+
+/** Создаёт недостающие строки этапов рейса. */
+async function ensureStageRows(routeId: string, organizationId: string) {
+  const { ensureRouteStages } = await import("@/lib/eta/trip-repository")
+  await ensureRouteStages({ routeId, organizationId })
+}
+
+interface EventInput {
+  routeId: string
+  driverId: string
+  organizationId: string
+  command: TripCommand
+  stageIndex: number | null
+  at: Date
+  clientEventId?: string | null
+  note?: string | null
+}
+
+/** История команд: те же данные, что и в RouteStage, но неизменяемые. */
+async function writeEvent(input: EventInput) {
+  await logRouteEvent(prisma, {
+    organizationId: input.organizationId,
+    routeId: input.routeId,
+    driverId: input.driverId,
+    type: "stage_command",
+    status: input.command,
+    data: JSON.stringify({
+      command: input.command,
+      stageIndex: input.stageIndex,
+      at: input.at.toISOString(),
+      clientEventId: input.clientEventId ?? null,
+      note: input.note ?? null,
+    }),
+  })
+}
+
+/** Ответ с новым состоянием рейса — водитель сразу видит следующий шаг. */
+function respond(
+  trip: Awaited<ReturnType<typeof getRouteTripEta>>,
+  now: Date,
+  /** Заказы, доведённые до «доставлен» этой командой (0 — ни одного) */
+  deliveredOrders = 0,
+) {
+  if (!trip) {
+    return NextResponse.json({ success: false, error: "Рейс не найден" }, { status: 404 })
+  }
+  const actions = availableTripActions(trip, true)
+  return NextResponse.json({
+    success: true,
+    at: now.toISOString(),
+    deliveredOrders,
+    actions: actions.available,
+    blocked: actions.blocked,
+    currentStageIndex: actions.currentStageIndex,
+    nextPoint: trip.nextPoint
+      ? {
+          address: trip.nextPoint.address,
+          operation: trip.nextPoint.operation,
+          arrivalAt: trip.nextPoint.arrivalAt.toISOString(),
+        }
+      : null,
+    remaining: {
+      drivingSec: Math.round(trip.remaining.drivingSec),
+      stopsSec: Math.round(trip.remaining.stopsSec),
+      restSec: Math.round(trip.remaining.restSec),
+      totalSec: Math.round(trip.remaining.totalSec),
+      arrivalAt: trip.remaining.arrivalAt.toISOString(),
+    },
+    completionAt: trip.completionAt.toISOString(),
+    stages: trip.stages.map((stage) => ({
+      index: stage.index,
+      kind: stage.kind,
+      label: stage.label,
+      status: stage.status,
+      address: stage.address,
+      actualStartAt: stage.actualStartAt?.toISOString() ?? null,
+      actualEndAt: stage.actualEndAt?.toISOString() ?? null,
+    })),
+  })
+}

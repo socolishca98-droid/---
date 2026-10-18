@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/routes/model"
+import { paginationMeta, parsePagination } from "@/lib/pagination"
 
 export async function GET(request: NextRequest) {
   const auth = await requireStaff(request)
@@ -30,7 +31,14 @@ export async function GET(request: NextRequest) {
       where.capacity = { gte: minCapacity }
     }
 
-    const [vehicles, activeOrders] = await Promise.all([
+    const pagination = parsePagination({
+      limit: searchParams.get("limit"),
+      offset: searchParams.get("offset"),
+      page: searchParams.get("page"),
+      pageSize: searchParams.get("pageSize"),
+    })
+
+    const [vehicles, total, activeOrders] = await Promise.all([
       prisma.vehicle.findMany({
         where: scopedWhere(org.organizationId, where),
         include: {
@@ -40,8 +48,10 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: [{ status: "asc" }, { capacity: "asc" }],
-        take: 100,
+        skip: pagination.offset,
+        take: pagination.limit,
       }),
+      prisma.vehicle.count({ where: scopedWhere(org.organizationId, where) }),
       prisma.order.findMany({
         where: scopedWhere(org.organizationId, {
           status: { in: [...OCCUPYING_ORDER_STATUSES] },
@@ -100,6 +110,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       vehicles: filtered,
+      // Пагинация вместо прежнего молчаливого «take: 100»
+      pagination: paginationMeta(total, pagination, vehicles.length),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fleet vehicles error"

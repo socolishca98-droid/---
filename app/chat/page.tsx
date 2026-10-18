@@ -14,6 +14,7 @@ import { ChatMessages } from "@/components/chat/chat-messages"
 import { ChatInput } from "@/components/chat/chat-input"
 import type { ChatMessage } from "@/lib/types"
 import { fetchJsonCached, invalidateCache, peekCache } from "@/lib/client-cache"
+import { useAdaptivePolling } from "@/hooks/use-adaptive-polling"
 import { FeedSkeleton } from "@/components/ui/skeletons"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -106,11 +107,12 @@ export default function ChatPage() {
     }
   }, [selectedDriverId, fetchMessages])
 
-  // Автообновление сообщений каждые 5 сек
-  useEffect(() => {
-    const interval = setInterval(fetchMessages, 5000)
-    return () => clearInterval(interval)
-  }, [fetchMessages])
+  // Автообновление переписки: адаптивный опрос вместо прежнего setInterval.
+  // Раньше чат дёргал сервер раз в 5 секунд всегда — даже в закрытой вкладке
+  // и даже когда сервер уже не отвечал. Теперь: скрытая вкладка и офлайн
+  // молчат, после ошибки интервал растёт вдвое, при возврате на вкладку
+  // сообщения подтягиваются сразу.
+  const polling = useAdaptivePolling(() => fetchMessages(), { baseMs: 5000 })
 
   // Отправка сообщения
   const handleSendMessage = async (content: string, type: "text" | "photo" | "location" | "alert" = "text") => {
@@ -137,6 +139,8 @@ export default function ChatPage() {
         // В кеше лента без только что отправленного сообщения
         invalidateCache("/api/chat")
         setMessages(prev => [...prev, data.message])
+        // Своё сообщение показываем сразу, не ждём следующего опроса
+        polling.pollNow()
       }
     } catch (error) {
       console.error('Failed to send message:', error)

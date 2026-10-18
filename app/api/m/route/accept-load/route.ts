@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { createNotification, deliverNotificationPush, type NotificationInput } from "@/lib/notifications/create"
 
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
         message: "Догруз принят",
       })
     } else {
+      let rejectionPush: NotificationInput | undefined
       await prisma.$transaction(async (tx) => {
         await tx.order.updateMany({
           where: scopedWhere(org.organizationId, { id: orderId }),
@@ -99,20 +101,24 @@ export async function POST(request: NextRequest) {
           },
         })
 
-        await tx.notification.create({
-          data: {
-            organizationId: org.organizationId,
-            userId: "logist",
-            userRole: "logist",
-            type: "load_rejected",
-            title: "Догруз отклонён",
-            message: `Водитель отклонил: ${order.routeFrom} → ${order.routeTo}. Причина: ${rejectionReason || "Не указана"}`,
-            orderId: order.id,
-            routeId: order.routeId,
-            priority: "high",
-          },
-        })
+        rejectionPush = {
+          organizationId: org.organizationId,
+          userId: "logist",
+          userRole: "logist",
+          type: "load_rejected",
+          title: "Догруз отклонён",
+          message: `Водитель отклонил: ${order.routeFrom} → ${order.routeTo}. Причина: ${rejectionReason || "Не указана"}`,
+          orderId: order.id,
+          routeId: order.routeId,
+          priority: "high",
+        }
+        await createNotification(tx, rejectionPush, { push: false }) // пуш — после коммита
       })
+
+      // Пуш — после коммита: внутри транзакции SQLite заблокировал бы базу
+      if (rejectionPush) {
+        await deliverNotificationPush(rejectionPush)
+      }
 
       // Событие "догруз отклонён"
       try {

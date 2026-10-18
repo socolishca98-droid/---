@@ -22,6 +22,20 @@ export const ROUTE_STATUS_LABELS: Record<RouteStatus, string> = {
   cancelled: "Отменён",
 }
 
+/**
+ * Устаревшее написание «в пути», которое успело попасть в базу: команда
+ * водителя start_trip писала Route.status = "in_progress", а такого значения
+ * нет в словаре выше. Интерфейс диспетчера нормализовывал его в "planned" и
+ * показывал «Запланирован» на рейсе, который уже ехал; в других местах
+ * всплывало сырое "in_progress" вместо русской подписи.
+ *
+ * Канон теперь один — "in_transit". Прежнее значение не выбрасывается, а
+ * приводится к канону, чтобы уже сохранённые рейсы продолжали работать.
+ */
+const ROUTE_STATUS_LEGACY: Record<string, RouteStatus> = {
+  in_progress: "in_transit",
+}
+
 // Статусы заказов объявлены в одном месте — lib/orders/stages.ts (канон
 // жизненного цикла заказа). Здесь они только переэкспортируются, чтобы прежние
 // импорты из этой модели рейса продолжали работать.
@@ -40,16 +54,20 @@ import {
 } from "../orders/stages"
 
 export function isRouteStatus(value: unknown): value is RouteStatus {
-  return typeof value === "string" && (ROUTE_STATUSES as readonly string[]).includes(value)
+  return normalizeRouteStatus(value) !== null
 }
 
+/** Приведение к каноническому статусу: null, если значение не распознано. */
 export function normalizeRouteStatus(value: unknown): RouteStatus | null {
-  return isRouteStatus(value) ? value : null
+  if (typeof value !== "string") return null
+  if ((ROUTE_STATUSES as readonly string[]).includes(value)) return value as RouteStatus
+  return ROUTE_STATUS_LEGACY[value] ?? null
 }
 
 /** Русская подпись статуса рейса (для неизвестного значения возвращает его как есть). */
 export function routeStatusLabel(value: unknown): string {
-  return isRouteStatus(value) ? ROUTE_STATUS_LABELS[value] : String(value ?? "")
+  const status = normalizeRouteStatus(value)
+  return status ? ROUTE_STATUS_LABELS[status] : String(value ?? "")
 }
 
 const ROUTE_TRANSITIONS: Record<RouteStatus, readonly RouteStatus[]> = {

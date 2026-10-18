@@ -1,0 +1,91 @@
+{
+  "title": "O — отказ геокодера в прогнозе рейса",
+  "summary": {
+    "VERIFIED": 7,
+    "PARTIAL": 1,
+    "BROKEN": 0,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "O",
+      "name": "прогноз отвечает на битый адрес",
+      "status": 200,
+      "note": "HTTP 200"
+    },
+    {
+      "scenario": "O",
+      "name": "признак «не все адреса размечены» виден диспетчеру",
+      "status": "VERIFIED",
+      "note": "dataQuality.allLegsGeocoded = false",
+      "allLegsGeocoded": false
+    },
+    {
+      "scenario": "O",
+      "name": "негеокодированный адрес назван в ответе",
+      "status": "VERIFIED",
+      "note": "в dataQuality/warnings упомянут адрес: true",
+      "dataQuality": {
+        "allLegsGeocoded": false,
+        "estimatedLegs": 0,
+        "vehicleKnown": false,
+        "hasActuals": false,
+        "weatherAvailable": false,
+        "warnings": [
+          "нет данных о транспортном средстве: время по категории по умолчанию",
+          "погода не учтена: источник отключён или недоступен",
+          "не определены координаты 1 заказ(а) из 1: Москва, ул. Тверская, 1 → ЗЗЗ-несуществующий-адрес-777. Этапы этих заказов не строятся, поэтому время по рейсу не рассчитано полностью"
+        ]
+      }
+    },
+    {
+      "scenario": "O",
+      "name": "источник расстояния честно указан",
+      "status": "VERIFIED",
+      "note": "sources = {\"routing\":\"osrm\",\"weather\":\"unavailable\",\"weatherEnabled\":false}",
+      "sources": {
+        "routing": "osrm",
+        "weather": "unavailable",
+        "weatherEnabled": false
+      }
+    },
+    {
+      "scenario": "O",
+      "name": "надёжность прогноза понижена",
+      "status": "VERIFIED",
+      "note": "reliable=true, confidence={\"level\":\"low\",\"score\":0.09,\"reasons\":[\"класс дороги определён неточно (уверенность 0.3)\",\"прогноз погоды недоступен — погодные поправки не применены\",\"данные о транспортном средстве неполные\",\"время операций взято из диапазонов по умолчанию, не из истории\"]}",
+      "reliable": true,
+      "confidence": {
+        "level": "low",
+        "score": 0.09,
+        "reasons": [
+          "класс дороги определён неточно (уверенность 0.3)",
+          "прогноз погоды недоступен — погодные поправки не применены",
+          "данные о транспортном средстве неполные",
+          "время операций взято из диапазонов по умолчанию, не из истории"
+        ]
+      }
+    },
+    {
+      "scenario": "O",
+      "name": "этап с битым адресом присутствует в плане",
+      "status": "PARTIAL",
+      "note": "этапа с таким адресом в ответе нет"
+    },
+    {
+      "scenario": "O",
+      "name": "контроль: хороший адрес даёт размеченное плечо",
+      "status": "VERIFIED",
+      "note": "allLegsGeocoded=true, estimatedLegs=0",
+      "allLegsGeocoded": true
+    },
+    {
+      "scenario": "O",
+      "name": "уборка",
+      "status": "VERIFIED",
+      "note": "заказы и рейсы аудита удалены"
+    }
+  ],
+  "issues": []
+}

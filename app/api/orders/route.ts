@@ -6,6 +6,7 @@ import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { createOrderSchema, zodErrorResponse } from "@/lib/validators"
 import { linkOrderToClientByName } from "@/lib/clients/service"
 
+import { captureRouteError } from "@/lib/sentry"
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireStaffAuth(request)
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("[Orders API] GET Error:", error)
+    captureRouteError("api/orders", error)
     return NextResponse.json({ success: false, error: error.message, orders: [] }, { status: 500 })
   }
 }
@@ -234,6 +236,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, order })
   } catch (error: any) {
     console.error("[Orders API] POST Error:", error)
+    captureRouteError("api/orders", error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

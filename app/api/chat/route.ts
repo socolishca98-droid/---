@@ -5,6 +5,7 @@ import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { chatMessageSchema, zodErrorResponse } from "@/lib/validators"
+import { captureRouteError } from "@/lib/sentry"
 import { z } from "zod"
 
 const IMPORTANT_KEYWORDS = [
@@ -72,6 +73,8 @@ export async function GET(request: NextRequest) {
     })
     return NextResponse.json({ success: true, messages })
   } catch (error: any) {
+    console.error('[chat] error:', error)
+    captureRouteError('api/chat', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }
@@ -172,6 +175,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, message })
   } catch (error: any) {
+    console.error('[chat] error:', error)
+    captureRouteError('api/chat', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }
@@ -231,6 +236,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
+    console.error('[chat] error:', error)
+    captureRouteError('api/chat', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

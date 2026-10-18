@@ -1,0 +1,129 @@
+{
+  "title": "Задача A — редактирование имени",
+  "summary": {
+    "VERIFIED": 17,
+    "PARTIAL": 0,
+    "BROKEN": 0,
+    "MISSING": 0,
+    "NOT_TESTED": 0
+  },
+  "steps": [
+    {
+      "scenario": "A",
+      "name": "Иван Админов",
+      "status": "VERIFIED",
+      "note": "HTTP 200, имя «Иван Админов», роль «admin»",
+      "role": "admin"
+    },
+    {
+      "scenario": "A",
+      "name": "AUDIT-NAME-MVCRSJ46 Тестовое Имя",
+      "status": 200,
+      "note": "HTTP 200 "
+    },
+    {
+      "scenario": "A",
+      "name": "новое имя сохранено в БД",
+      "status": "VERIFIED",
+      "note": "в БД: «AUDIT-NAME-MVCRSJ46 Тестовое Имя»",
+      "dbName": "AUDIT-NAME-MVCRSJ46 Тестовое Имя"
+    },
+    {
+      "scenario": "A",
+      "name": "повторное чтение отдаёт новое имя",
+      "status": "VERIFIED",
+      "note": "имя «AUDIT-NAME-MVCRSJ46 Тестовое Имя»"
+    },
+    {
+      "scenario": "A",
+      "name": "сессия отдаёт актуальное имя",
+      "status": "VERIFIED",
+      "note": "имя в сессии: «undefined»"
+    },
+    {
+      "scenario": "A",
+      "name": "имя из одних пробелов отклонено",
+      "status": 400,
+      "note": "HTTP 400 Укажите имя",
+      "error": "Укажите имя"
+    },
+    {
+      "scenario": "A",
+      "name": "пустое имя отклонено",
+      "status": 400,
+      "note": "HTTP 400 Укажите имя",
+      "error": "Укажите имя"
+    },
+    {
+      "scenario": "A",
+      "name": "слишком длинное имя отклонено",
+      "status": 400,
+      "note": "HTTP 400 Имя: не длиннее 80 символов",
+      "error": "Имя: не длиннее 80 символов"
+    },
+    {
+      "scenario": "A",
+      "name": "слишком короткое имя отклонено",
+      "status": 400,
+      "note": "HTTP 400 Имя: не короче 2 символов",
+      "error": "Имя: не короче 2 символов"
+    },
+    {
+      "scenario": "A",
+      "name": "невалидные имена не изменили запись",
+      "status": "VERIFIED",
+      "note": "в БД по-прежнему «AUDIT-NAME-MVCRSJ46 Тестовое Имя»"
+    },
+    {
+      "scenario": "A",
+      "name": "роль, tenant, статус и email профилем не меняются",
+      "status": "VERIFIED",
+      "note": "роль «admin» (была «admin»), org своя, email «admin@loginex.local»",
+      "role": "admin",
+      "orgChanged": false,
+      "email": "admin@loginex.local"
+    },
+    {
+      "scenario": "A",
+      "name": "чужая запись не изменяется подменой id в теле",
+      "status": "VERIFIED",
+      "note": "HTTP 200, имя чужой записи «Иванов Сергей Петрович»",
+      "hackStatus": 200,
+      "unchanged": true
+    },
+    {
+      "scenario": "A",
+      "name": "без сессии профиль не меняется",
+      "status": 401,
+      "note": "HTTP 401"
+    },
+    {
+      "scenario": "A",
+      "name": "исходное имя возвращено",
+      "status": "VERIFIED",
+      "note": "в БД: «Иван Админов»"
+    },
+    {
+      "scenario": "A",
+      "name": "водитель: имя в учётке и карточке меняется вместе",
+      "status": 200,
+      "note": "HTTP 200, учётка «AUDIT-NAME-MVCRSJ46 Водитель», карточка «AUDIT-NAME-MVCRSJ46 Водитель»",
+      "userName": "AUDIT-NAME-MVCRSJ46 Водитель",
+      "driverName": "AUDIT-NAME-MVCRSJ46 Водитель"
+    },
+    {
+      "scenario": "A",
+      "name": "водитель: исходное имя возвращено в обе записи",
+      "status": "VERIFIED",
+      "note": "карточка «Иванов Сергей Петрович», учётка «Иванов Сергей Петрович»"
+    },
+    {
+      "scenario": "A",
+      "name": "изменение профиля попало в журнал",
+      "status": "VERIFIED",
+      "note": "записей profile_update за 10 минут: 3",
+      "count": 3
+    }
+  ],
+  "issues": []
+}

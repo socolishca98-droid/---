@@ -23,6 +23,22 @@ test("публичные пути доступны без сессии", () => {
   }
 })
 
+test("экраны восстановления пароля публичны — человек пришёл без сессии", () => {
+  for (const pathname of ["/forgot-password", "/reset-password"]) {
+    const access = classifyRoute(pathname)
+    assert.equal(access.area, "public", `${pathname} должен быть публичным`)
+    assert.equal(access.isApi, false, `${pathname} — страница, не API`)
+  }
+})
+
+test("юридические документы публичны — их читают до регистрации", () => {
+  for (const pathname of ["/privacy", "/terms"]) {
+    const access = classifyRoute(pathname)
+    assert.equal(access.area, "public", `${pathname} должен быть публичным`)
+    assert.equal(access.isApi, false, `${pathname} — страница, не API`)
+  }
+})
+
 test("публичные эндпоинты авторизации", () => {
   for (const pathname of [
     "/api/auth/login",
@@ -30,6 +46,9 @@ test("публичные эндпоинты авторизации", () => {
     "/api/auth/logout",
     "/api/auth/session",
     "/api/health",
+    // восстановление пароля: запрос ссылки и смена пароля по токену из письма
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
   ]) {
     const access = classifyRoute(pathname)
     assert.equal(access.area, "public", `${pathname} должен быть публичным`)
