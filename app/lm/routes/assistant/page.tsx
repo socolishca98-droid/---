@@ -19,10 +19,13 @@ import {
   ArrowRight,
   Loader2,
   Package,
+  Phone,
   RefreshCw,
   Route as RouteIcon,
+  Fuel,
   Sparkles,
   Truck,
+  Undo2,
   User,
   X,
 } from "lucide-react"
@@ -45,7 +48,7 @@ import {
 } from "@/lib/logist-mobile/route-assistant"
 import { DRIVER_STATUS_META, type MobileDriver, type MobileOrder } from "@/lib/logist-mobile/types"
 import { ProposalEtaComparison } from "@/components/logist-mobile/proposal-eta-comparison"
-import { formatMoney, formatWeightKg, shortCity } from "@/lib/logist-mobile/format"
+import { formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
 
 export default function RouteAssistantPage() {
   const router = useRouter()
@@ -163,6 +166,25 @@ export default function RouteAssistantPage() {
                     ? "Нет согласованных заказов без рейса. Заказ попадает сюда, когда вы согласовали условия в карточке заказа."
                     : "Все согласованные заказы уже разобраны по рейсам."}
               </p>
+
+              {/* Порядок работы тремя шагами. Логисту не нужно разбираться,
+                  куда нажимать: шаги видны до того, как он тронет экран. */}
+              {summary.routes > 0 ? (
+                <ol className="mt-2.5 space-y-1.5">
+                  {[
+                    "Проверьте состав рейса и прибыль — помощник уже посчитал",
+                    "Позвоните клиентам кнопкой «Позвонить» и согласуйте, что именно везём",
+                    "Нажмите «Предложить рейс» — водителю уйдёт уведомление",
+                  ].map((step, index) => (
+                    <li key={step} className="flex items-start gap-2 text-[12.5px] leading-snug text-foreground/90">
+                      <span className="mt-px flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10.5px] font-semibold text-primary">
+                        {index + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
               {summary.routes > 0 ? (
                 <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
                   <span>
@@ -171,6 +193,14 @@ export default function RouteAssistantPage() {
                   <span>
                     Выручка: <span className="text-foreground">{formatMoney(summary.revenue)}</span>
                   </span>
+                  {summary.profitRub !== null ? (
+                    <span>
+                      Прибыль ≈{" "}
+                      <span className={summary.profitRub < 0 ? "text-destructive" : "text-success"}>
+                        {formatMoney(summary.profitRub)}
+                      </span>
+                    </span>
+                  ) : null}
                   {summary.unplaced > 0 ? (
                     <span className="text-warning">Не разобрано: {summary.unplaced}</span>
                   ) : null}
@@ -241,6 +271,117 @@ export default function RouteAssistantPage() {
                         </p>
                       ) : null}
 
+                      {/* Деньги рейса: выручка, топливо, прибыль.
+                          Логист решает «взять или отказаться» по этой строке,
+                          поэтому она идёт сразу после названия, а не внизу. */}
+                      {proposal.profitRub !== null && proposal.fuelCostRub !== null ? (
+                        <div
+                          className={`mt-2.5 rounded-xl px-3 py-2 ${
+                            proposal.unprofitable ? "bg-destructive/10" : "bg-success/10"
+                          }`}
+                        >
+                          <p className="text-[14px] font-semibold text-foreground">
+                            {proposal.unprofitable ? "Убыток " : "Прибыль ≈ "}
+                            <span className={proposal.unprofitable ? "text-destructive" : "text-success"}>
+                              {formatMoney(Math.abs(proposal.profitRub))}
+                            </span>
+                          </p>
+                          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+                            Выручка {formatMoney(proposal.revenue)} − топливо{" "}
+                            {formatMoney(proposal.fuelCostRub)}
+                            {proposal.fuelLiters !== null ? ` (${proposal.fuelLiters} л` : ""}
+                            {proposal.distanceKm > 0 ? ` на ${proposal.distanceKm} км)` : ")"}
+                            {proposal.profitPerKm !== null ? ` · ${proposal.profitPerKm} ₽/км` : ""}
+                          </p>
+                        </div>
+                      ) : proposal.needsFuelSetup ? (
+                        <div className="mt-2.5 rounded-xl bg-secondary/50 px-3 py-2">
+                          <p className="text-[12px] leading-snug text-muted-foreground">
+                            Прибыль не считаем: у машины {crewFor(proposal).vehicle?.plate ?? ""} не заполнен
+                            расход топлива.
+                          </p>
+                          <Link
+                            href="/lm/fleet"
+                            className="mt-1.5 inline-flex min-h-[34px] items-center gap-1.5 rounded-lg bg-secondary px-2.5 text-[12.5px] font-medium text-primary active:opacity-70"
+                          >
+                            <Fuel className="h-3.5 w-3.5" /> Заполнить расход
+                          </Link>
+                        </div>
+                      ) : null}
+
+                      {/* Обратная загрузка: чем занять машину на обратном плече.
+                          Без неё машина возвращается пустой — это чистый убыток. */}
+                      {proposal.backload ? (
+                        <div className="mt-2.5 rounded-xl border border-success/25 bg-success/[0.07] px-3 py-2.5">
+                          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+                            <Undo2 className="h-3.5 w-3.5 text-success" />
+                            {proposal.backload.returnsHome
+                              ? "Возврат с грузом — машина приедет домой загруженной"
+                              : "На обратном плече есть груз"}
+                          </p>
+                          <p className="mt-1 text-[12.5px] leading-snug text-foreground/90">
+                            {proposal.backload.orders.length}{" "}
+                            {plural(proposal.backload.orders.length, ["заказ", "заказа", "заказов"])} из{" "}
+                            {proposal.backload.fromCity} → {proposal.backload.toCity} на{" "}
+                            {formatMoney(proposal.backload.revenue)}
+                            {proposal.backload.weightKg > 0
+                              ? ` · ${formatWeightKg(proposal.backload.weightKg)}`
+                              : ""}
+                          </p>
+                          {!proposal.backload.fitsVehicle ? (
+                            <p className="mt-1 text-[12px] text-warning">
+                              Вместе с основным грузом в эту машину уже не влезает — нужна вторая машина
+                              или часть заказов в другой рейс.
+                            </p>
+                          ) : null}
+                          <div className="mt-1.5 space-y-1">
+                            {proposal.backload.orders.map((order) => {
+                              const tel = telHref(order.clientPhone ?? order.clientContact ?? null)
+                              return (
+                                <div
+                                  key={order.id}
+                                  className="flex items-center gap-2 rounded-lg bg-card shadow-sm px-2.5 py-2"
+                                >
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-[12.5px] text-foreground">
+                                      {order.clientName?.trim() || shortCity(order.routeFrom)}
+                                    </span>
+                                    <span className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
+                                      {shortCity(order.routeFrom)}
+                                      <ArrowRight className="h-3 w-3" />
+                                      {shortCity(order.routeTo)}
+                                      {order.weight ? <span>· {formatWeightKg(order.weight)}</span> : null}
+                                      {order.agreedPrice || order.price ? (
+                                        <span>· {formatMoney(order.agreedPrice ?? order.price)}</span>
+                                      ) : null}
+                                    </span>
+                                  </span>
+                                  {tel ? (
+                                    <a
+                                      href={tel}
+                                      className="flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-xl bg-success/15 px-3 text-[12.5px] font-medium text-success active:opacity-70"
+                                    >
+                                      <Phone className="h-3.5 w-3.5" /> Позвонить
+                                    </a>
+                                  ) : (
+                                    <Link
+                                      href={`/lm/orders/${order.id}`}
+                                      className="flex min-h-[38px] shrink-0 items-center rounded-xl bg-secondary px-3 text-[12.5px] text-foreground/90 active:opacity-70"
+                                    >
+                                      Открыть
+                                    </Link>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
+                            Позвоните клиентам и согласуйте груз на обратную дорогу — потом добавьте заказы
+                            в рейс из его карточки.
+                          </p>
+                        </div>
+                      ) : null}
+
                       {/* Почему собрали именно так */}
                       <ul className="mt-2.5 space-y-1">
                         {proposal.reasons.map((reason) => (
@@ -261,29 +402,42 @@ export default function RouteAssistantPage() {
                       </button>
 
                       <div className="mt-1 space-y-1.5">
-                        {(expanded ? proposal.orders : proposal.orders.slice(0, 3)).map((order) => (
-                          <Link
-                            key={order.id}
-                            href={`/lm/orders/${order.id}`}
-                            className="flex items-start gap-2 rounded-xl bg-card shadow-sm px-2.5 py-2 active:opacity-70"
-                          >
-                            <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] text-foreground">
-                                {order.clientName?.trim() || shortCity(order.routeFrom)}
-                              </span>
-                              <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
-                                {shortCity(order.routeFrom)}
-                                <ArrowRight className="h-3 w-3" />
-                                {shortCity(order.routeTo)}
-                                {order.weight ? <span>· {formatWeightKg(order.weight)}</span> : null}
-                                {order.agreedPrice || order.price ? (
-                                  <span>· {formatMoney(order.agreedPrice ?? order.price)}</span>
-                                ) : null}
-                              </span>
-                            </span>
-                          </Link>
-                        ))}
+                        {(expanded ? proposal.orders : proposal.orders.slice(0, 3)).map((order) => {
+                          const tel = telHref(order.clientPhone ?? order.clientContact ?? null)
+                          return (
+                            <div
+                              key={order.id}
+                              className="flex items-center gap-2 rounded-xl bg-card shadow-sm px-2.5 py-2"
+                            >
+                              <Link href={`/lm/orders/${order.id}`} className="flex min-w-0 flex-1 items-start gap-2 active:opacity-70">
+                                <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-[13px] text-foreground">
+                                    {order.clientName?.trim() || shortCity(order.routeFrom)}
+                                  </span>
+                                  <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
+                                    {shortCity(order.routeFrom)}
+                                    <ArrowRight className="h-3 w-3" />
+                                    {shortCity(order.routeTo)}
+                                    {order.weight ? <span>· {formatWeightKg(order.weight)}</span> : null}
+                                    {order.agreedPrice || order.price ? (
+                                      <span>· {formatMoney(order.agreedPrice ?? order.price)}</span>
+                                    ) : null}
+                                  </span>
+                                </span>
+                              </Link>
+                              {tel ? (
+                                <a
+                                  href={tel}
+                                  aria-label={`Позвонить: ${order.clientName || shortCity(order.routeFrom)}`}
+                                  className="flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-xl bg-success/15 px-3 text-[12.5px] font-medium text-success active:opacity-70"
+                                >
+                                  <Phone className="h-3.5 w-3.5" /> Позвонить
+                                </a>
+                              ) : null}
+                            </div>
+                          )
+                        })}
                         {!expanded && proposal.orders.length > 3 ? (
                           <p className="px-1 text-[12px] text-muted-foreground">
                             и ещё {proposal.orders.length - 3} {plural(proposal.orders.length - 3, ["заказ", "заказа", "заказов"])}

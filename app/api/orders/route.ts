@@ -40,13 +40,23 @@ export async function GET(request: NextRequest) {
         orderBy: [{ routeSequence: "asc" }, { createdAt: "desc" }],
         take: limit,
         skip: offset,
+        // Телефон клиента нужен кнопке «позвонить и согласовать груз»: без него
+        // логист ищет контакт в другом экране. Это один join, данных мало.
+        include: { client: { select: { id: true, name: true, phone: true } } },
       }),
       prisma.order.count({ where: scopedWhere(org.organizationId, where) }),
     ])
 
+    // Приводим к плоской форме, которую уже ждут экраны: телефон клиента —
+    // отдельное поле, чтобы не разбирать вложенность в каждом месте.
+    const flatOrders = orders.map((order) => {
+      const { client, ...rest } = order
+      return { ...rest, clientPhone: client?.phone ?? null }
+    })
+
     return NextResponse.json({
       success: true,
-      orders,
+      orders: flatOrders,
       total,
       limit,
       offset,

@@ -55,6 +55,7 @@ export interface MapDriver {
 
 export interface MapRouteLine {
   id: string
+  driverId: string | null
   driverName: string | null
   vehiclePlate: string | null
   routeFrom: string
@@ -84,8 +85,22 @@ const LEGEND_ITEMS: Array<{ color: string; label: string }> = [
   { color: STATUS_COLORS.offline, label: "Не на связи" },
 ]
 
-/** Цвета ниток: рейсы должны отличаться друг от друга, иначе каша. */
+/** Цвета нитей: рейсы должны отличаться друг от друга, иначе каша. */
 const ROUTE_COLORS = ["#fb923c", "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#facc15", "#22d3ee"]
+
+/**
+ * Стабильный цвет рейса. Раньше цвет брался по номеру в списке: когда рейсов
+ * становилось больше или меньше, у одного и того же рейса цвет «прыгал», и
+ * глаз терял нить при обновлении карты. Теперь цвет привязан к идентификатору
+ * рейса и не меняется между обновлениями.
+ */
+function colorForRoute(id: string): string {
+  let hash = 0
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash * 31 + id.charCodeAt(index)) % 100000
+  }
+  return ROUTE_COLORS[hash % ROUTE_COLORS.length]
+}
 
 /**
  * Ключ CARTO из .env. Без ключа CDN отдаёт тайлы с водяным знаком, поэтому
@@ -96,6 +111,14 @@ const CARTO_DARK = CARTO_API_KEY
   ? `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`
   : null
 const ESRI_DARK = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+/**
+ * Слой подписей к той же тёмной подложке: названия городов, улиц и дорог.
+ * Без него карта — серая пелена без опорных точек, и глаз не понимает,
+ * где именно едет машина. Слой бесплатный и без ключа, поэтому включаем
+ * его всегда, когда нет своего ключа CARTO.
+ */
+const ESRI_DARK_LABELS =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
 const ESRI_SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 
 /** Тема подложки выбирается в настройках (полная версия хранит её там же). */
@@ -119,7 +142,9 @@ export function DriversMap() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const driverMarkers = useRef<Map<string, L.CircleMarker>>(new Map())
-  const routeLines = useRef<Map<string, L.Polyline>>(new Map())
+  const routeLines = useRef<Map<string, { casing: L.Polyline; main: L.Polyline }>>(new Map())
+  /** Кольца «откуда»/«куда» на концах нитей рейсов — чтобы видеть точки маршрута. */
+  const routeEndpoints = useRef<Map<string, L.CircleMarker>>(new Map())
   const baseMarker = useRef<L.CircleMarker | null>(null)
   const fitDone = useRef(false)
 
@@ -136,6 +161,8 @@ export function DriversMap() {
   const [legendOpen, setLegendOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [locating, setLocating] = useState(false)
+  /** Плашка «пробки не учитываются»: показываем, пока человек её не закрыл. */
+  const [trafficNotice, setTrafficNotice] = useState(true)
   const myMarker = useRef<L.CircleMarker | null>(null)
 
   // --- данные ---------------------------------------------------------------
@@ -152,6 +179,7 @@ export function DriversMap() {
         Array.isArray(data.routes)
           ? (data.routes as Array<Record<string, unknown>>).map((route) => ({
               id: String(route.id),
+              driverId: (route.driverId as string) ?? null,
               driverName: (route.driverName as string) ?? null,
               vehiclePlate: (route.vehiclePlate as string) ?? null,
               routeFrom: String(route.routeFrom ?? ""),
@@ -186,7 +214,9 @@ export function DriversMap() {
     const map = L.map(element, {
       zoomControl: false, // свои крупные кнопки — они не уезжают за экран
       attributionControl: false,
-      preferCanvas: true,
+      // Линии рисуем в SVG, а не в canvas: на телефоне с плотным экраном
+      // SVG-линия резче, а нитей на карте единицы — производительности хватает
+      preferCanvas: false,
       center: [55.75, 37.62],
       zoom: 8,
     })
@@ -201,6 +231,31 @@ export function DriversMap() {
     tiles.on("load", () => setTilesReady(true))
     tiles.addTo(map)
 
+    // Слой подписей — поверх подложки, но под нитями рейсов. Он же скрывает
+    // «серую пелену»: город, улица, дорога — по ним глаз понимает, где едет
+    // машина. Ставим отдельным pane, чтобы подписи не перекрывали маршруты.
+    if (!map.getPane("labelsPane")) {
+      map.createPane("labelsPane")
+      map.getPane("labelsPane")!.style.zIndex = "350"
+      map.getPane("labelsPane")!.style.pointerEvents = "none"
+    }
+    if (!map.getPane("casingPane")) {
+      map.createPane("casingPane")
+      map.getPane("casingPane")!.style.zIndex = "400"
+    }
+    if (!map.getPane("routePane")) {
+      map.createPane("routePane")
+      map.getPane("routePane")!.style.zIndex = "450"
+    }
+    if (!CARTO_API_KEY) {
+      L.tileLayer(ESRI_DARK_LABELS, {
+        maxZoom: 18,
+        minZoom: 3,
+        crossOrigin: true,
+        pane: "labelsPane",
+      }).addTo(map)
+    }
+
     // Карта должна знать о смене размера: панель браузера на телефоне
     // прячется/показывается, высота контейнера меняется — без этого
     // Leaflet рисует серые полосы
@@ -210,7 +265,13 @@ export function DriversMap() {
     return () => {
       observer.disconnect()
       driverMarkers.current.clear()
+      for (const line of routeLines.current.values()) {
+        map.removeLayer(line.casing)
+        map.removeLayer(line.main)
+      }
       routeLines.current.clear()
+      for (const marker of routeEndpoints.current.values()) map.removeLayer(marker)
+      routeEndpoints.current.clear()
       baseMarker.current = null
       myMarker.current = null
       fitDone.current = false
@@ -285,33 +346,129 @@ export function DriversMap() {
       driverMarkers.current.delete(id)
     }
 
-    // Нитки рейсов
+    // Нитки рейсов.
+    //
+    // Каждая нить рисуется двумя линиями: тёмная широкая «подкладка» под
+    // цветной узкой. Без подкладки цветная линия сливается с дорогами и
+    // городской застройкой — выглядит грязно. С подкладкой нить читается
+    // на любом фоне, как в навигаторах.
+    //
+    // Когда рейсов много, все они одной толщины превращаются в кашу. Поэтому:
+    //   — выбранный рейс рисуем толще и ярче;
+    //   — остальные приглушаем, если что-то выбрано;
+    //   — при большом числе рейсов все линии становятся тоньше.
     const aliveRoutes = new Set<string>()
-    routes.forEach((route, index) => {
+    const crowded = routes.length > 6
+    routes.forEach((route) => {
       aliveRoutes.add(route.id)
-      const color = ROUTE_COLORS[index % ROUTE_COLORS.length]
-      const style: L.PolylineOptions = { color, weight: 3.5, opacity: 0.9 }
+      const color = colorForRoute(route.id)
+      const isActive = selected !== null && route.driverId === selected
+      const dimmed = selected !== null && !isActive
+      const weight = crowded ? 2.5 : 3.5
+      const opacity = dimmed ? 0.35 : 1
+      const shared: L.PolylineOptions = {
+        // Скруглые концы и стыки: без этого линия выглядит как «рваная
+        // лесенка» из прямых отрезков
+        lineCap: "round",
+        lineJoin: "round",
+        // Лёгкое сглаживание: сервер прореживает длинную нить до 200 точек,
+        // и без него на поворотах видны углы
+        smoothFactor: 1.5,
+      }
       const existing = routeLines.current.get(route.id)
       if (existing) {
-        existing.setLatLngs(route.coordinates)
-        existing.setStyle({ color })
+        existing.main.setLatLngs(route.coordinates)
+        existing.main.setStyle({ color, weight, opacity })
+        existing.casing.setLatLngs(route.coordinates)
+        existing.casing.setStyle({ weight: weight + 3, opacity: dimmed ? 0.4 : 0.85 })
       } else {
-        routeLines.current.set(route.id, L.polyline(route.coordinates, style).addTo(map))
+        const casing = L.polyline(route.coordinates, {
+          ...shared,
+          color: "#0a0a0c",
+          weight: weight + 3,
+          opacity: dimmed ? 0.4 : 0.85,
+          pane: "casingPane",
+        }).addTo(map)
+        const main = L.polyline(route.coordinates, {
+          ...shared,
+          color,
+          weight,
+          opacity,
+          pane: "routePane",
+        }).addTo(map)
+        routeLines.current.set(route.id, { casing, main })
       }
       for (const point of route.coordinates) points.push(point)
+
+      // Точки «откуда» и «куда» — кольца в цвете нити с белой обводкой.
+      // Раньше нить просто начиналась и заканчивалась ничем, и было не
+      // понять, где погрузка, а где выгрузка.
+      const endpoints = [
+        { point: route.coordinates[0], label: route.routeFrom, kind: "Погрузка" },
+        { point: route.coordinates[route.coordinates.length - 1], label: route.routeTo, kind: "Выгрузка" },
+      ]
+      const aliveEndpoints = new Set<string>()
+      for (const endpoint of endpoints) {
+        if (!endpoint.point) continue
+        const key = `${route.id}:${endpoint.kind}`
+        aliveEndpoints.add(key)
+        const existing = routeEndpoints.current.get(key)
+        if (existing) {
+          existing.setLatLng(endpoint.point)
+          existing.setStyle({ color })
+        } else {
+          const marker = L.circleMarker(endpoint.point, {
+            radius: 6,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 1,
+            pane: "routePane",
+          })
+            .bindTooltip(`${endpoint.kind}: ${endpoint.label || "—"}`, { direction: "top" })
+            .addTo(map)
+          marker.on("click", () => {
+            setSelected(route.driverId ?? null)
+            setSheetOpen(true)
+          })
+          routeEndpoints.current.set(key, marker)
+        }
+      }
+      for (const [key, marker] of routeEndpoints.current) {
+        if (key.startsWith(`${route.id}:`) && !aliveEndpoints.has(key)) {
+          map.removeLayer(marker)
+          routeEndpoints.current.delete(key)
+        }
+      }
     })
     for (const [id, line] of routeLines.current) {
       if (aliveRoutes.has(id)) continue
-      map.removeLayer(line)
+      map.removeLayer(line.casing)
+      map.removeLayer(line.main)
       routeLines.current.delete(id)
+      for (const [key, marker] of routeEndpoints.current) {
+        if (key.startsWith(`${id}:`)) {
+          map.removeLayer(marker)
+          routeEndpoints.current.delete(key)
+        }
+      }
     }
 
     // Показываем рейсы или прячем — без пересоздания слоёв
     for (const line of routeLines.current.values()) {
       if (showRoutes) {
-        if (!map.hasLayer(line)) line.addTo(map)
-      } else if (map.hasLayer(line)) {
-        map.removeLayer(line)
+        if (!map.hasLayer(line.casing)) line.casing.addTo(map)
+        if (!map.hasLayer(line.main)) line.main.addTo(map)
+      } else {
+        if (map.hasLayer(line.casing)) map.removeLayer(line.casing)
+        if (map.hasLayer(line.main)) map.removeLayer(line.main)
+      }
+    }
+    for (const [key, marker] of routeEndpoints.current) {
+      if (showRoutes) {
+        if (!map.hasLayer(marker)) marker.addTo(map)
+      } else if (map.hasLayer(marker)) {
+        map.removeLayer(marker)
       }
     }
 
@@ -524,7 +681,7 @@ export function DriversMap() {
         // иначе кнопки «На карте» и «Позвонить» прячутся под неё
         <div className="pointer-events-none absolute inset-x-0 bottom-16 z-[3]">
           <div className="mx-auto max-w-md px-3">
-            <div className="pointer-events-auto rounded-xl border border-border bg-card shadow-sm/95 p-3.5 backdrop-blur">
+            <div className="pointer-events-auto rounded-xl border border-border bg-card shadow-xl p-3.5 backdrop-blur">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-[14.5px] font-medium text-foreground">{selectedDriver.name}</p>
@@ -571,6 +728,28 @@ export function DriversMap() {
       <div className="absolute inset-x-0 bottom-0 z-[4]">
         <div className="mx-auto max-w-md">
           <div className="rounded-t-3xl border border-b-0 border-border surface-glass backdrop-blur">
+            {/*
+              Честная плашка про пробки. Время в программе считается по пробегу
+              и историческим коэффициентам, живых пробок у нас нет — как в
+              навигаторах без подключённого источника. Молчать об этом нельзя:
+              логист принимает решения по этим цифрам.
+            */}
+            {trafficNotice ? (
+              <div className="flex items-start gap-2 border-b border-border/60 px-4 py-2.5">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <p className="flex-1 text-[12px] leading-snug text-muted-foreground">
+                  Пробки в расчёте времени не учитываются — время считаем по километрам и опыту прошлых рейсов.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTrafficNotice(false)}
+                  aria-label="Скрыть сообщение о пробках"
+                  className="shrink-0 text-muted-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => setSheetOpen((value) => !value)}

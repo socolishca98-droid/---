@@ -23,16 +23,33 @@ test("vercel.json есть и это корректный JSON", () => {
   assert.ok(config, "vercel.json не должен быть пустым")
 })
 
-test("в vercel.json объявлен планировщик для /api/ati/cron", () => {
+test("в vercel.json нет расписания чаще одного раза в день", () => {
   const config = JSON.parse(readFileSync(path.join(root, "vercel.json"), "utf8"))
 
-  assert.ok(Array.isArray(config.crons), "нужен массив crons")
-  const cron = config.crons.find((entry) => entry.path === "/api/ati/cron")
-  assert.ok(cron, "среди crons должен быть /api/ati/cron")
+  // Планировщик ATI убран из выката осознанно: на тарифе Hobby Vercel
+  // отклоняет деплой с расписанием чаще одного запуска в день
+  // (ошибка cron_jobs_limits_reached) — а именно так было раньше.
+  // Тест теперь охраняет обратное: если расписание когда-нибудь вернут,
+  // оно обязано быть не чаще раза в день, иначе прод снова не выкатится.
+  const crons = Array.isArray(config.crons) ? config.crons : []
+  for (const cron of crons) {
+    assert.equal(typeof cron.schedule, "string", `у cron «${cron.path}» нет расписания`)
+    const [minutes] = cron.schedule.trim().split(/\s+/)
+    const tooOften =
+      minutes === "*" ||
+      minutes.startsWith("*/") ||
+      minutes.includes(",") ||
+      minutes.includes("-")
+    assert.ok(!tooOften, `расписание «${cron.schedule}» для ${cron.path} чаще раза в день — Hobby отклонит деплой`)
+  }
+})
 
-  // 5 полей: минуты часы дни месяцы дни-недели
-  assert.equal(cron.schedule.split(/\s+/).length, 5, `расписание «${cron.schedule}» не cron-выражение`)
-  assert.equal(cron.schedule.split(/\s+/)[0], "*/15", "скан ATI должен идти каждые 15 минут")
+test("если планировщик ATI включён, роут объявляет предельное время выполнения", () => {
+  const config = JSON.parse(readFileSync(path.join(root, "vercel.json"), "utf8"))
+  const hasCron = Array.isArray(config.crons) && config.crons.some((entry) => entry.path === "/api/ati/cron")
+  if (!hasCron) return // планировщик выключен — проверять нечего
+  const source = readFileSync(path.join(root, "app/api/ati/cron/route.ts"), "utf8")
+  assert.match(source, /maxDuration/, "роут планировщика обязан объявлять предельное время выполнения")
 })
 
 test("next.config: на Vercel standalone выключен, иначе включён", async () => {
@@ -60,6 +77,8 @@ test("next.config: на Vercel standalone выключен, иначе вклю�
 })
 
 test("роут планировщика объявляет предельное время выполнения", () => {
+  // Проверяем всегда, даже когда планировщик выключен: если его включат
+  // обратно, роут должен быть готов к длинному скану.
   const source = readFileSync(
     path.join(root, "app", "api", "ati", "cron", "route.ts"),
     "utf8",

@@ -263,5 +263,126 @@ test("экипаж по умолчанию: сначала готовая пар
 test("пустой вход — пустой выход, без выдумок", () => {
   assert.deepEqual(buildRouteProposals([], FLEET, NOW), [])
   assert.deepEqual(buildRouteProposals([order({ status: "delivered" })], FLEET, NOW), [])
-  assert.deepEqual(proposalSummary([], 0), { routes: 0, orders: 0, revenue: 0, unplaced: 0 })
+  // profitRub: null — без предложений прибыль не считается, а не «ноль рублей»
+  assert.deepEqual(proposalSummary([], 0), {
+    routes: 0,
+    orders: 0,
+    revenue: 0,
+    unplaced: 0,
+    profitRub: null,
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Себестоимость рейса: помощник обязан показывать прибыль, а не только выручку
+// ---------------------------------------------------------------------------
+
+const FLEET_WITH_FUEL = [
+  {
+    id: "v2",
+    plate: "О556АА750",
+    type: "Бортовая",
+    capacity: 10000,
+    volume: 45,
+    status: "available",
+    // 30 л/100 км — обычный грузовик среднего класса
+    fuelConsumptionPer100: 30,
+  },
+]
+
+test("прибыль = выручка − топливо по паспортному расходу машины", () => {
+  const proposals = buildRouteProposals([order()], FLEET_WITH_FUEL, NOW, 60)
+  assert.equal(proposals.length, 1)
+  const proposal = proposals[0]
+  // 190 км / 100 × 30 л × коэффициент загрузки (6000 из 10000 кг = 0,6 → 1,15)
+  const liters = (190 / 100) * 30 * 1.15
+  assert.equal(proposal.fuelLiters, Math.round(liters))
+  assert.equal(proposal.fuelCostRub, Math.round(liters * 60))
+  assert.equal(proposal.profitRub, 70000 - Math.round(liters * 60))
+  assert.equal(proposal.unprofitable, false)
+  assert.equal(proposal.costBasis, "estimate")
+})
+
+test("рейс в убыток помечается и объясняется первым пунктом", () => {
+  // 190 км по 30 л/100 км при цене 60 ₽ — это ~3 900 ₽ топлива,
+  // а выручка 1 000 ₽: рейс заведомо убыточен
+  const cheap = order({ price: 1000 })
+  const proposals = buildRouteProposals([cheap], FLEET_WITH_FUEL, NOW, 60)
+  const proposal = proposals[0]
+  assert.equal(proposal.profitRub < 0, true)
+  assert.equal(proposal.unprofitable, true)
+  assert.match(proposal.reasons[0], /Убыток/)
+})
+
+test("без расхода топлива прибыль не выдумывается", () => {
+  // У машины нет fuelConsumptionPer100 — честно отдаём null
+  const proposals = buildRouteProposals([order()], FLEET, NOW, 60)
+  const proposal = proposals[0]
+  assert.equal(proposal.fuelLiters, null)
+  assert.equal(proposal.fuelCostRub, null)
+  assert.equal(proposal.profitRub, null)
+  assert.equal(proposal.unprofitable, false)
+  // Флаг говорит экрану: покажи подсказку, куда пойти и что заполнить.
+  // Без него на экране просто не было бы цифр — и непонятно почему.
+  assert.equal(proposal.needsFuelSetup, true)
+})
+
+test("без цены литра прибыль тоже не считается", () => {
+  const proposals = buildRouteProposals([order()], FLEET_WITH_FUEL, NOW, null)
+  assert.equal(proposals[0].profitRub, null)
+})
+
+// ---------------------------------------------------------------------------
+// Обратная загрузка: машина не должна возвращаться пустой
+// ---------------------------------------------------------------------------
+
+test("обратная загрузка: груз из города выгрузки в город отправления", () => {
+  const there = order({ id: "o-there", routeFrom: "Москва, склад", routeTo: "Калуга, база" })
+  // Груз обратно: из Калуги в Москву — машина вернётся домой загруженной
+  const back = order({
+    id: "o-back",
+    routeFrom: "Калуга, завод",
+    routeTo: "Москва, склад клиента",
+    distance: 190,
+    weight: 4000,
+    price: 45000,
+  })
+  const proposals = buildRouteProposals([there, back], FLEET_WITH_FUEL, NOW, 60)
+  // Оба заказа — разные направления, значит два предложения
+  assert.ok(proposals.length >= 1)
+  const main = proposals.find((item) => item.orders.some((o) => o.id === "o-there"))
+  assert.ok(main, "рейс «Москва → Калуга» должен быть собран")
+  assert.ok(main.backload, "помощник обязан предложить обратную загрузку")
+  assert.equal(main.backload.returnsHome, true)
+  assert.equal(main.backload.revenue, 45000)
+  assert.equal(main.backload.fromCity, "Калуга")
+  assert.equal(main.backload.toCity, "Москва")
+  assert.ok(
+    main.reasons.some((reason) => reason.includes("Возврат с грузом")),
+    "в объяснениях должна быть обратная загрузка",
+  )
+})
+
+test("обратная загрузка: свой заказ повторно не предлагается", () => {
+  const there = order({ id: "o-there", routeFrom: "Москва, склад", routeTo: "Калуга, база" })
+  const proposals = buildRouteProposals([there], FLEET_WITH_FUEL, NOW, 60)
+  const main = proposals[0]
+  // Из Калуги больше ничего не везут — обратной загрузки нет
+  assert.equal(main.backload, null)
+})
+
+test("обратная загрузка: не влезает в машину — честно помечаем", () => {
+  const there = order({ id: "o-there", routeFrom: "Москва, склад", routeTo: "Калуга, база", weight: 9000 })
+  const back = order({
+    id: "o-back",
+    routeFrom: "Калуга, завод",
+    routeTo: "Москва, склад",
+    weight: 9000,
+    price: 45000,
+  })
+  // Машина на 10 т: 9 т основного + 9 т обратного = 18 т не влезает
+  const proposals = buildRouteProposals([there, back], FLEET_WITH_FUEL, NOW, 60)
+  const main = proposals.find((item) => item.orders.some((o) => o.id === "o-there"))
+  assert.ok(main.backload, "груз должен быть предложен, даже если не влезает")
+  assert.equal(main.backload.fitsVehicle, false)
 })
