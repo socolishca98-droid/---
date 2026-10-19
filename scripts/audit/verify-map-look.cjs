@@ -114,6 +114,87 @@ async function login(page, context) {
     `цветных линий: ${lineInfo.colored} из ${lineInfo.total} path`,
   )
 
+  // ── 3b. Нити: источник геометрии и порядок точек ──
+  // Жалоба была: «маршрут рисуется мимо дорог». Причины две — дорогу не
+  // отдал OSRM (линия расчётная) и точки шли зигзагом (рейс «ездил» назад).
+  // Проверяем обе: источник указан у каждой нити, нить начинается у водителя
+  // и заканчивается на базе, а пробег не завышен петлями.
+  const threads = await page.evaluate(async () => {
+    const res = await fetch("/api/lm/map")
+    const d = await res.json()
+    const km = (a, b) => {
+      const toRad = (v) => (v * Math.PI) / 180
+      const R = 6371
+      const dLat = toRad(b[0] - a[0])
+      const dLng = toRad(b[1] - a[1])
+      const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+    }
+    return {
+      base: d.base?.coordinates ?? null,
+      drivers: (d.drivers || []).map((x) => ({ id: x.id, lat: x.latitude, lng: x.longitude })),
+      routes: (d.routes || []).map((r) => {
+        const pts = r.points || []
+        const driver = (d.drivers || []).find((x) => x.id === r.driverId)
+        const ret = r.returnPoints || []
+        return {
+          id: r.id,
+          source: r.geometrySource ?? null,
+          km: r.distanceKm ?? null,
+          points: pts.length,
+          startToDriver: pts.length && driver ? km(pts[0], [driver.latitude, driver.longitude]) : null,
+          // Основная нить заканчивается последней выгрузкой; на базу ведёт
+          // отдельная возвратная линия — её конец и должен быть у парка.
+          returnToBase: ret.length && d.base?.coordinates ? km(ret[ret.length - 1], d.base.coordinates) : null,
+          returnFromWork: ret.length && pts.length ? km(ret[0], pts[pts.length - 1]) : null,
+        }
+      }),
+    }
+  })
+  check(
+    "У каждой нити указан источник линии (дорога или расчёт)",
+    threads.routes.length > 0 && threads.routes.every((r) => r.source === "osrm" || r.source === "line"),
+    threads.routes.map((r) => `${r.source ?? "нет"}`).join(",") || "нитей нет",
+  )
+  const wrongStart = threads.routes.filter((r) => r.startToDriver != null && r.startToDriver > 5)
+  check(
+    "Нить начинается у позиции водителя (порядок точек не перепутан)",
+    wrongStart.length === 0,
+    wrongStart.map((r) => `${r.id}: ${r.startToDriver?.toFixed(1)} км`).join(", "),
+  )
+  const wrongEnd = threads.routes.filter((r) => r.returnToBase != null && r.returnToBase > 60)
+  check(
+    "Возврат в парк доведён до базы",
+    wrongEnd.length === 0,
+    wrongEnd.map((r) => `${r.id}: ${r.returnToBase?.toFixed(1)} км`).join(", "),
+  )
+  const brokenReturn = threads.routes.filter((r) => r.returnFromWork != null && r.returnFromWork > 2)
+  check(
+    "Возвратная линия начинается там, где кончилась рабочая",
+    brokenReturn.length === 0,
+    brokenReturn.map((r) => `${r.id}: ${r.returnFromWork?.toFixed(2)} км`).join(", "),
+  )
+  check(
+    "Пробег нитей в пределах разумного (нет петель туда-обратно)",
+    threads.routes.every((r) => r.km == null || (r.km > 0 && r.km < 4000)),
+    threads.routes.map((r) => `${r.km}км`).join(", "),
+  )
+
+  // Расчётные нити (дорогу не отдал OSRM) рисуются пунктиром — чтобы не
+  // выглядели дорогой, которой нет.
+  const dashed = await page.evaluate(() => {
+    const paths = [...document.querySelectorAll(".leaflet-pane path")]
+    return paths.filter((p) => (p.getAttribute("stroke-dasharray") || "").trim().length > 0).length
+  })
+  const approximateCount = threads.routes.filter((r) => r.source === "line").length
+  check(
+    "Расчётные нити отличимы от дорожных (пунктир)",
+    approximateCount === 0 || dashed > 0,
+    `расчётных нитей: ${approximateCount}, пунктирных path: ${dashed}`,
+  )
+
   // ── 4. Точки «Погрузка»/«Выгрузка» ──
   // Тултип Leaflet открывается только при наведении, поэтому наводимся
   // на каждое кольцо конца нити и собираем подписи.

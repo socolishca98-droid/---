@@ -10,10 +10,24 @@
 //    долгоживущий сервер не растёт по памяти;
 //  — одновременные запросы одних и тех же точек склеиваются (in-flight dedupe):
 //    несколько рейсов с общим участком не дублируют запрос;
-//  — если OSRM недоступен, возвращается плавная кривая по точкам с пометкой
-//    source: "line" — карта честно рисует прямую, а не «пробку из ниоткуда».
+//  — если OSRM недоступен, линия идёт по точкам (ломаная) с пометкой
+//    source: "line" — карта рисует её пунктиром и честно подписывает, что
+//    маршрут расчётный. Раньше здесь рисовалась «плавная дуга»: она выглядит
+//    как дорога, которой нет, — и пользователь спрашивал, почему маршрут
+//    идёт мимо дорог;
+//  — основной OSRM лимитирует по IP, поэтому при его отказе пробуем
+//    запасной публичный сервер: на Vercel основной недоступен регулярно.
 
-import { decodePolyline, fetchOSRMRoute } from "@/lib/eta/osrm-client"
+import {
+  OSRM_BASE_URL,
+  OSRM_FALLBACK_BASE_URL,
+  decodePolyline,
+  fetchOSRMRoute,
+  fetchOSRMRouteFrom,
+} from "@/lib/eta/osrm-client"
+
+/** Основной публичный OSRM. */
+const OSRM_BASE = OSRM_BASE_URL
 import type { Coordinates } from "@/lib/geo/geocode"
 
 export type RouteGeometrySource = "osrm" | "line"
@@ -79,6 +93,15 @@ export function routeGeometryKey(points: readonly Coordinates[]): string {
  * Используется, когда дорогу получить не удалось: нитка на карте остаётся,
  * но помечена как приблизительная.
  */
+/**
+ * Ломаная по точкам объезда: честный запасной вариант, когда дорогу
+ * получить не удалось. В отличие от плавной кривой, она не притворяется
+ * дорогой — видно, что линия идёт «от точки к точке».
+ */
+export function straightLine(points: readonly Coordinates[]): [number, number][] {
+  return points.map((point) => [point.lat, point.lng] as [number, number])
+}
+
 export function smoothCurve(points: readonly Coordinates[], segments = 24): [number, number][] {
   const result: [number, number][] = []
   if (points.length === 0) return result
@@ -171,37 +194,47 @@ async function buildGeometry(points: readonly Coordinates[]): Promise<RouteGeome
 
   const fallbackDistanceKm = estimateDistanceKm(points)
   const fallback: RouteGeometry = {
-    coordinates: smoothCurve(points),
+    // Ломаная по точкам объезда: «от точки к точке» — это не дорога, и
+    // притворяться ею нельзя. Интерфейс показывает такие нити пунктиром.
+    coordinates: straightLine(points),
     distanceKm: fallbackDistanceKm,
     durationMin: estimateDurationMin(fallbackDistanceKm),
     source: "line",
   }
 
-  try {
-    const [origin, destination] = [points[0], points[points.length - 1]]
-    const middle = points.slice(1, -1)
-    const response = await fetchOSRMRoute(origin, destination, middle, {
-      overview: "full",
-      geometries: "polyline",
-    })
-    const route = response.routes?.[0]
-    if (!route) return fallback
+  const [origin, destination] = [points[0], points[points.length - 1]]
+  const middle = points.slice(1, -1)
 
-    const coordinates = decodePolyline(route.geometry).map(
-      (point) => [point.lat, point.lng] as [number, number],
-    )
-    if (coordinates.length < 2) return fallback
+  // Основной сервер; если он не ответил (лимит по IP, таймаут, 5xx) —
+  // тот же запрос на запасной. Оба публичные и бесплатные.
+  for (const baseUrl of [OSRM_BASE, OSRM_FALLBACK_BASE_URL]) {
+    try {
+      const response = await fetchOSRMRouteFrom(baseUrl, origin, destination, middle, {
+        overview: "full",
+        geometries: "polyline",
+      })
+      const route = response.routes?.[0]
+      if (!route) continue
 
-    return {
-      coordinates,
-      distanceKm: Math.round((route.distance ?? 0) / 1000),
-      durationMin: Math.round((route.duration ?? 0) / 60),
-      source: "osrm",
+      const coordinates = decodePolyline(route.geometry).map(
+        (point) => [point.lat, point.lng] as [number, number],
+      )
+      if (coordinates.length < 2) continue
+
+      return {
+        coordinates,
+        distanceKm: Math.round((route.distance ?? 0) / 1000),
+        durationMin: Math.round((route.duration ?? 0) / 60),
+        source: "osrm",
+      }
+    } catch {
+      // Сервер не ответил — пробуем следующий, а если не ответил никто,
+      // отдаём ломаную по точкам (выше). Карта не должна из-за этого пустеть.
+      continue
     }
-  } catch {
-    // OSRM публичный и лимитированный: карта не должна из-за этого пустеть
-    return fallback
   }
+
+  return fallback
 }
 
 /**

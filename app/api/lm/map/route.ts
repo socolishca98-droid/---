@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
 import { getRouteGeometry } from "@/lib/geo/route-geometry"
+import { buildRoutePoints, sortOrdersByRouteSequence } from "@/lib/routes/route-points"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -119,6 +120,9 @@ export async function GET(request: NextRequest) {
         routeTo: true,
         status: true,
         createdAt: true,
+        // Номер точки в рейсе: по нему точки идут по порядку объезда.
+        // Раньше порядок был по дате создания — получался зигзаг.
+        routeSequence: true,
       },
       orderBy: { createdAt: "asc" },
     })
@@ -173,27 +177,53 @@ export async function GET(request: NextRequest) {
           const driver = drivers.find((item) => item.id === group.driverId)
           if (!driver) return null
 
-          const points: Coordinates[] = [{ lat: driver.latitude, lng: driver.longitude }]
-          for (const order of group.orders) {
-            const from = coordsByAddress.get(order.routeFrom)
-            if (from) points.push(from)
-            const to = coordsByAddress.get(order.routeTo)
-            if (to) points.push(to)
-          }
-          points.push(basePoint)
+          // Порядок точек — по номеру в рейсе, без дублей подряд:
+          // иначе машина на карте едет назад, а пробег завышается в разы.
+          const ordersSorted = sortOrdersByRouteSequence(group.orders)
+          const points = buildRoutePoints({
+            orders: ordersSorted,
+            driverPoint: { lat: driver.latitude, lng: driver.longitude },
+            basePoint,
+            pointOf: (address) => coordsByAddress.get(address) ?? null,
+          })
           if (points.length < 2) return null
 
-          const geometry = await getRouteGeometry(points)
+          // Рабочий участок и возврат в парк — отдельные линии. Раньше это была
+          // одна петля: логист видел «рейс» на 2200 км там, где груз везли
+          // 500 км, потому что к нити приписывался ещё и путь до первой
+          // погрузки, и возврат на базу. Теперь рабочий участок сплошной,
+          // а порожний возврат — бледный пунктир.
+          const lastWorkIndex = points.length - 1 // последняя точка — база
+          const workPoints = points.slice(0, lastWorkIndex)
+          const returnPoints = points.slice(lastWorkIndex - 1)
+
+          const [workGeometry, returnGeometry] = await Promise.all([
+            workPoints.length >= 2 ? getRouteGeometry(workPoints) : null,
+            returnPoints.length >= 2 ? getRouteGeometry(returnPoints) : null,
+          ])
 
           return {
             id: routeKey,
             driverId: driver.id,
             driverName: driver.name,
             vehiclePlate: driver.vehiclePlate,
-            routeFrom: group.orders[0].routeFrom,
-            routeTo: group.orders[group.orders.length - 1].routeTo,
+            routeFrom: ordersSorted[0].routeFrom,
+            routeTo: ordersSorted[ordersSorted.length - 1].routeTo,
             status: driver.status,
-            points: compactLine(geometry.coordinates as Array<[number, number]>),
+            points: workGeometry
+              ? compactLine(workGeometry.coordinates as Array<[number, number]>)
+              : compactLine(workPoints.map((point) => [point.lat, point.lng] as [number, number])),
+            // "osrm" — линия по дорогам, "line" — расчётная по точкам.
+            // Экран рисует расчётную пунктиром, чтобы это не выглядело дорогой.
+            geometrySource: workGeometry?.source ?? "line",
+            // Пробег рабочего участка по дорогам.
+            distanceKm: workGeometry?.distanceKm ?? null,
+            // Порожний возврат в парк: своя линия, свой источник.
+            returnPoints: returnGeometry
+              ? compactLine(returnGeometry.coordinates as Array<[number, number]>)
+              : compactLine(returnPoints.map((point) => [point.lat, point.lng] as [number, number])),
+            returnSource: returnGeometry?.source ?? "line",
+            returnKm: returnGeometry?.distanceKm ?? null,
           }
         }),
       )

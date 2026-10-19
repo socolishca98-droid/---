@@ -52,6 +52,7 @@
     "../lib/logist-mobile/order-flow.ts",
     "../lib/logist-mobile/route-assistant.ts",
     "../lib/logist-mobile/route-flow.ts",
-    "../lib/logist-mobile/route-history.ts"
+    "../lib/logist-mobile/route-history.ts",
+    "../lib/routes/route-points.ts"
   ]
 }

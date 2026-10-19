@@ -4,7 +4,13 @@
 
 import type { Coordinates, OSRMResponse, RoutePoint } from "./types";
 
-const OSRM_BASE_URL = "https://router.project-osrm.org";
+export const OSRM_BASE_URL = "https://router.project-osrm.org";
+/**
+ * Запасной публичный OSRM (сообщество ФРГ). Нужен потому, что основной
+ * сервер лимитирует по IP, а серверные функции Vercel ходят с общих
+ * адресов: без запасного карта регулярно оставалась без линий.
+ */
+export const OSRM_FALLBACK_BASE_URL = "https://routing.openstreetmap.de/routed-car";
 const REQUEST_TIMEOUT = 10000;
 
 export interface OSRMRequestOptions {
@@ -17,6 +23,17 @@ export interface OSRMRequestOptions {
 }
 
 export async function fetchOSRMRoute(
+  origin: Coordinates,
+  destination: Coordinates,
+  waypoints: RoutePoint[] = [],
+  options: OSRMRequestOptions = {}
+): Promise<OSRMResponse> {
+  return fetchOSRMRouteFrom(OSRM_BASE_URL, origin, destination, waypoints, options);
+}
+
+/** Тот же запрос, но к конкретному серверу (основной или запасной). */
+export async function fetchOSRMRouteFrom(
+  baseUrl: string,
   origin: Coordinates,
   destination: Coordinates,
   waypoints: RoutePoint[] = [],
@@ -45,7 +62,7 @@ export async function fetchOSRMRoute(
     alternatives: String(alternatives)
   });
 
-  const url = `${OSRM_BASE_URL}/route/v1/${profile}/${coordinates}?${params}`;
+  const url = `${baseUrl}/route/v1/${profile}/${coordinates}?${params}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);

@@ -62,6 +62,19 @@ export interface MapRouteLine {
   routeTo: string
   status: string
   coordinates: Array<[number, number]>
+  /**
+   * Откуда линия: "osrm" — построена по дорогам, "line" — расчётная по
+   * точкам (дорогу получить не удалось). Расчётную рисуем пунктиром:
+   * сплошная линия выглядит дорогой, которой нет.
+   */
+  geometrySource?: "osrm" | "line"
+  /**
+   * Порожний возврат в парк — отдельная линия. Раньше она была частью
+   * одной петли, и «рейс» показывал вдвое больше километров, чем везли груз.
+   */
+  returnPoints?: Array<[number, number]>
+  returnSource?: "osrm" | "line"
+  returnKm?: number | null
 }
 
 interface MapBase {
@@ -143,6 +156,7 @@ export function DriversMap() {
   const mapRef = useRef<L.Map | null>(null)
   const driverMarkers = useRef<Map<string, L.CircleMarker>>(new Map())
   const routeLines = useRef<Map<string, { casing: L.Polyline; main: L.Polyline }>>(new Map())
+  const returnLines = useRef<Map<string, L.Polyline>>(new Map())
   /** Кольца «откуда»/«куда» на концах нитей рейсов — чтобы видеть точки маршрута. */
   const routeEndpoints = useRef<Map<string, L.CircleMarker>>(new Map())
   const baseMarker = useRef<L.CircleMarker | null>(null)
@@ -186,6 +200,10 @@ export function DriversMap() {
               routeTo: String(route.routeTo ?? ""),
               status: String(route.status ?? ""),
               coordinates: (route.points as Array<[number, number]>) ?? [],
+              geometrySource: (route.geometrySource as "osrm" | "line") ?? "osrm",
+              returnPoints: (route.returnPoints as Array<[number, number]>) ?? [],
+              returnSource: (route.returnSource as "osrm" | "line") ?? "osrm",
+              returnKm: typeof route.returnKm === "number" ? route.returnKm : null,
             }))
           : [],
       )
@@ -366,6 +384,10 @@ export function DriversMap() {
       const dimmed = selected !== null && !isActive
       const weight = crowded ? 2.5 : 3.5
       const opacity = dimmed ? 0.35 : 1
+      // Расчётный маршрут (дорогу получить не удалось) — пунктиром и
+      // бледнее: глаз должен отличать «дорогу» от «прикидки по точкам».
+      const approximate = route.geometrySource === "line"
+      const dash = approximate ? "3 7" : undefined
       const shared: L.PolylineOptions = {
         // Скруглые концы и стыки: без этого линия выглядит как «рваная
         // лесенка» из прямых отрезков
@@ -374,31 +396,71 @@ export function DriversMap() {
         // Лёгкое сглаживание: сервер прореживает длинную нить до 200 точек,
         // и без него на поворотах видны углы
         smoothFactor: 1.5,
+        dashArray: dash,
+        opacity: approximate ? Math.min(opacity, 0.75) : opacity,
       }
       const existing = routeLines.current.get(route.id)
       if (existing) {
         existing.main.setLatLngs(route.coordinates)
-        existing.main.setStyle({ color, weight, opacity })
+        existing.main.setStyle({
+          color,
+          weight,
+          opacity: shared.opacity,
+          dashArray: dash,
+        })
         existing.casing.setLatLngs(route.coordinates)
-        existing.casing.setStyle({ weight: weight + 3, opacity: dimmed ? 0.4 : 0.85 })
+        existing.casing.setStyle({
+          weight: approximate ? weight + 2 : weight + 3,
+          opacity: approximate ? Math.min(dimmed ? 0.3 : 0.5, 0.5) : dimmed ? 0.4 : 0.85,
+          dashArray: dash,
+        })
       } else {
         const casing = L.polyline(route.coordinates, {
           ...shared,
           color: "#0a0a0c",
-          weight: weight + 3,
-          opacity: dimmed ? 0.4 : 0.85,
+          weight: approximate ? weight + 2 : weight + 3,
+          opacity: approximate ? Math.min(dimmed ? 0.3 : 0.5, 0.5) : dimmed ? 0.4 : 0.85,
           pane: "casingPane",
         }).addTo(map)
         const main = L.polyline(route.coordinates, {
           ...shared,
           color,
           weight,
-          opacity,
           pane: "routePane",
         }).addTo(map)
         routeLines.current.set(route.id, { casing, main })
       }
       for (const point of route.coordinates) points.push(point)
+
+      // Порожний возврат в парк: та же цветовая нить, но бледная и
+      // пунктирная — глаз сразу отличает «везли груз» от «ехали пустые».
+      const returnPts = route.returnPoints ?? []
+      if (returnPts.length >= 2) {
+        const existingReturn = returnLines.current.get(route.id)
+        const returnApproximate = route.returnSource === "line"
+        if (existingReturn) {
+          existingReturn.setLatLngs(returnPts)
+          existingReturn.setStyle({ opacity: dimmed ? 0.15 : 0.35 })
+        } else {
+          returnLines.current.set(
+            route.id,
+            L.polyline(returnPts, {
+              color,
+              weight: crowded ? 1.5 : 2,
+              opacity: dimmed ? 0.15 : 0.35,
+              dashArray: returnApproximate ? "2 6" : "4 6",
+              lineCap: "round",
+              pane: "routePane",
+            }).addTo(map),
+          )
+        }
+      } else {
+        const stale = returnLines.current.get(route.id)
+        if (stale) {
+          map.removeLayer(stale)
+          returnLines.current.delete(route.id)
+        }
+      }
 
       // Точки «откуда» и «куда» — кольца в цвете нити с белой обводкой.
       // Раньше нить просто начиналась и заканчивалась ничем, и было не
@@ -425,7 +487,12 @@ export function DriversMap() {
             fillOpacity: 1,
             pane: "routePane",
           })
-            .bindTooltip(`${endpoint.kind}: ${endpoint.label || "—"}`, { direction: "top" })
+            .bindTooltip(
+              approximate
+                ? `${endpoint.kind}: ${endpoint.label || "—"} · маршрут расчётный`
+                : `${endpoint.kind}: ${endpoint.label || "—"}`,
+              { direction: "top" },
+            )
             .addTo(map)
           marker.on("click", () => {
             setSelected(route.driverId ?? null)
@@ -446,6 +513,11 @@ export function DriversMap() {
       map.removeLayer(line.casing)
       map.removeLayer(line.main)
       routeLines.current.delete(id)
+      const staleReturn = returnLines.current.get(id)
+      if (staleReturn) {
+        map.removeLayer(staleReturn)
+        returnLines.current.delete(id)
+      }
       for (const [key, marker] of routeEndpoints.current) {
         if (key.startsWith(`${id}:`)) {
           map.removeLayer(marker)
@@ -804,6 +876,11 @@ export function DriversMap() {
                       const meta = DRIVER_STATUS_META[driver.status] ?? DRIVER_STATUS_META.offline
                       const tel = telHref(driver.phone)
                       const active = driver.id === selected
+                      // Нить этой машины расчётная (дорогу получить не удалось) —
+                      // говорим об этом прямо, а не делаем вид, что линия — дорога.
+                      const approximate = routes.some(
+                        (route) => route.driverId === driver.id && route.geometrySource === "line",
+                      )
                       return (
                         <div
                           key={driver.id}
@@ -823,6 +900,11 @@ export function DriversMap() {
                                 ? `${driver.routeFrom} → ${driver.routeTo}`
                                 : driver.currentLocation || "маршрут не указан"}
                             </span>
+                            {approximate ? (
+                              <span className="mt-1 inline-block rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                                маршрут расчётный — уточняется по дорогам
+                              </span>
+                            ) : null}
                           </button>
                           <div className="mt-2.5 grid grid-cols-2 gap-2">
                             <button

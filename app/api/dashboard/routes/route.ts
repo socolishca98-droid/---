@@ -21,6 +21,7 @@ import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
 import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
 import { estimateDurationMin, getRouteGeometry } from "@/lib/geo/route-geometry"
+import { buildRoutePoints, sortOrdersByRouteSequence } from "@/lib/routes/route-points"
 import { getRouteTripEta, ensureRouteStages } from "@/lib/eta/trip-repository"
 import { gpsAgeSeconds } from "@/lib/fleet/presence"
 
@@ -267,11 +268,12 @@ export async function GET(request: NextRequest) {
           hasDriverGps && driver
             ? { lat: driver.latitude as number, lng: driver.longitude as number }
             : null
-        const ordersSorted = [...group.orders].sort(
-          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-        )
+        // Порядок объезда — routeSequence (номер точки рейса). Раньше стоял
+        // порядок по дате создания: заказы, оформленные в разное время,
+        // складывались в зигзаг, машина на карте ехала назад, а пробег
+        // завышался в разы.
+        const ordersSorted = sortOrdersByRouteSequence(group.orders)
 
-        const points: Coordinates[] = driverPoint ? [driverPoint] : []
         const waypoints: Waypoint[] = driverPoint
           ? [
               {
@@ -287,7 +289,6 @@ export async function GET(request: NextRequest) {
         for (const order of ordersSorted) {
           const from = pointOf(order.routeFrom)
           if (from) {
-            points.push(from)
             waypoints.push({
               type: "loading",
               label: LETTERS[waypointIndex++] || "•",
@@ -298,7 +299,6 @@ export async function GET(request: NextRequest) {
 
           const to = pointOf(order.routeTo)
           if (to) {
-            points.push(to)
             waypoints.push({
               type: "unloading",
               label: LETTERS[waypointIndex++] || "•",
@@ -308,13 +308,14 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // База — последняя точка: рейс возвращается в автопарк
-        points.push(basePoint)
-        waypoints.push({
-          type: "base",
-          label: "🏠",
-          address: base.address,
-          position: base.coordinates,
+        // Точки маршрута: водитель → погрузки/выгрузки по порядку объезда →
+        // база. Повторы подряд убираются (общий модуль lib/routes/route-points),
+        // иначе OSRM строит петли на месте и пробег завышается в разы.
+        const points = buildRoutePoints({
+          orders: ordersSorted,
+          driverPoint,
+          basePoint,
+          pointOf,
         })
 
         // Рейс без единой геокодируемой точки показать нечем
