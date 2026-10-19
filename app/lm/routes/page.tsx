@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Ban,
   CheckCircle2,
+  History as HistoryIcon,
   Package,
   Phone,
   Route as RouteIcon,
@@ -100,9 +101,13 @@ export default function LogistRoutesPage() {
 
   const allRoutes = useMemo(
     () =>
-      [...(data?.routes ?? [])].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      ),
+      [...(data?.routes ?? [])]
+        // Рейс без заказов — не рейс: ни точек, ни груза, ни денег. Такие
+        // записи остаются после снятия заказов (пересборка, отмена груза) и
+        // в списке только занимают место: «Точки не заданы · 0 заказов».
+        // Как только в рейс добавляют заказ, он появляется сам.
+        .filter((route) => (route.orders?.length ?? 0) > 0)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [data],
   )
 
@@ -159,6 +164,26 @@ export default function LogistRoutesPage() {
           ) : (
             <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
+        </Link>
+      </div>
+
+      {/* История: «чем машина ехала месяц назад и кто не заплатил» —
+          живёт отдельным экраном, отсюда — короткая дорожка. */}
+      <div className="px-4 pt-2.5">
+        <Link
+          href="/lm/history"
+          className="flex min-h-[48px] items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 active:opacity-70"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
+            <HistoryIcon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-semibold text-foreground">История рейсов</span>
+            <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
+              Что возили раньше, по какому маршруту и за кем оплата
+            </span>
+          </span>
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </Link>
       </div>
 

@@ -100,6 +100,8 @@ const SECTION_PARENTS: Record<string, string> = {
   "/lm/fuel": "/lm/fleet",
   "/lm/settings": "/lm/fleet",
   "/lm/audit": "/lm/organization",
+  // История рейсов — про рейсы: и вход с экрана «Рейсы», и возврат туда же.
+  "/lm/history": "/lm/routes",
   // Уведомления открываются колокольчиком с любого экрана: возврат — «Главная»,
   // а не «Ещё», иначе после колокольчика мы бы каждый раз попадали в профиль.
   "/lm/notifications": "/lm",
