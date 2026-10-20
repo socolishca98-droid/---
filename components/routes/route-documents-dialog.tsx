@@ -103,6 +103,16 @@ export function RouteDocumentsDialog({
             Выберите, что печатать. Накладные и заявки печатаются по каждому заказу
             рейса, путевой лист — один на рейс.
           </DialogDescription>
+
+          {ordersCount === 0 ? (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                В рейсе пока нет заказов — напечатается только путевой лист. Накладные,
+                счета и акты появятся, когда в рейс добавят грузы.
+              </span>
+            </div>
+          ) : null}
         </DialogHeader>
 
         <div className="space-y-3">

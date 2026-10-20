@@ -20,8 +20,11 @@ import {
   Ban,
   CheckCircle2,
   Clock,
+  FileText,
   Fuel,
   Loader2,
+  Plus,
+  Receipt,
   RefreshCw,
   MapPin,
   MessageCircle,
@@ -37,6 +40,7 @@ import { OrderStatusChip } from "@/components/logist-mobile/order-card"
 import { Card, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
+import { RouteDocumentsDialog } from "@/components/routes/route-documents-dialog"
 import {
   assignableDriversForVehicle,
   driverOfVehicle,
@@ -97,6 +101,14 @@ function perKm(value: number): string {
   return `${Math.round(value).toLocaleString("ru-RU")} ₽/км`
 }
 
+/** Виды расхода рейса — из EXPENSE_TYPES (lib/trips/history.ts). */
+const EXPENSE_KIND_LABELS: { value: "fuel" | "toll" | "repair" | "other"; label: string }[] = [
+  { value: "fuel", label: "Топливо" },
+  { value: "toll", label: "Платная дорога" },
+  { value: "repair", label: "Ремонт" },
+  { value: "other", label: "Другое" },
+]
+
 export default function LogistRoutePage() {
   const params = useParams<{ id: string }>()
   const routeId = params?.id
@@ -108,6 +120,12 @@ export default function LogistRoutePage() {
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
   const [busy, setBusy] = useState(false)
   const [changeDriver, setChangeDriver] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
+  const [expenseOpen, setExpenseOpen] = useState(false)
+  const [expenseAmount, setExpenseAmount] = useState("")
+  const [expenseType, setExpenseType] = useState<"fuel" | "toll" | "repair" | "other">("other")
+  const [expenseNote, setExpenseNote] = useState("")
+  const [expenseBusy, setExpenseBusy] = useState(false)
 
   const route = data?.route ?? null
   const drivers = driversState.data?.drivers ?? []
@@ -220,6 +238,41 @@ export default function LogistRoutePage() {
     reload()
   }
 
+  /**
+   * Расход рейса руками: тот же эндпоинт, что принимает чеки водителя
+   * (POST /api/routes/[id]/expenses). Виды — из lib/trips/history.
+   */
+  async function addExpense() {
+    if (!route) return
+    const amount = Number(expenseAmount.replace(",", "."))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Введите сумму расхода")
+      return
+    }
+    setExpenseBusy(true)
+    const result = await apiSend<{ message?: string }>(
+      `/api/routes/${route.id}/expenses`,
+      "POST",
+      {
+        type: expenseType,
+        amount,
+        ...(expenseNote.trim() ? { note: expenseNote.trim() } : {}),
+        source: "manual",
+      },
+    )
+    setExpenseBusy(false)
+
+    if (!result.ok) {
+      toast.error(result.error || "Не удалось записать расход")
+      return
+    }
+    toast.success((result.data as { message?: string })?.message || "Расход записан")
+    setExpenseOpen(false)
+    setExpenseAmount("")
+    setExpenseNote("")
+    reload()
+  }
+
   async function runStep(step: RouteStep) {
     if (!route || !step.action) return
     if (typeof window !== "undefined" && !window.confirm(step.action.confirm)) return
@@ -320,6 +373,19 @@ export default function LogistRoutePage() {
                   {busy ? "Работаю…" : flow.step.action.label}
                 </button>
               ) : null}
+
+              {/* Документы рейса — открываем существующий диалог печати */}
+              <button
+                type="button"
+                onClick={() => setDocumentsOpen(true)}
+                className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-secondary text-[13.5px] font-medium text-foreground active:opacity-70"
+              >
+                <FileText className="h-4 w-4" /> Документы
+                <span className="text-muted-foreground">
+                  ({route.orders?.length ?? 0}{" "}
+                  {formatCount(route.orders?.length ?? 0, ["заказ", "заказа", "заказов"])})
+                </span>
+              </button>
 
               {/* Нет водителя — здесь же и выбор: не гоняем логиста по экрану */}
               {needsApproval ? (
@@ -614,7 +680,68 @@ export default function LogistRoutePage() {
                   <ArrowRight className="h-3 w-3" />
                 </Link>
               )}
+
+              {/* Расход рейса руками — тот же эндпоинт, что и чеки водителя */}
+              {expenseOpen ? (
+                <div className="mt-2.5 space-y-2 rounded-lg border border-border p-2.5">
+                  <div className="flex gap-1.5">
+                    {EXPENSE_KIND_LABELS.map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setExpenseType(item.value)}
+                        className={`min-h-[36px] flex-1 rounded-md border px-2 text-[12.5px] font-medium active:opacity-70 ${
+                          expenseType === item.value
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-secondary text-foreground"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      inputMode="decimal"
+                      value={expenseAmount}
+                      onChange={(event) => setExpenseAmount(event.target.value)}
+                      placeholder="Сумма, ₽"
+                      className="min-h-[44px] flex-1 rounded-lg border border-border bg-background px-3 text-[14px] text-foreground outline-none focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      disabled={expenseBusy}
+                      onClick={() => void addExpense()}
+                      className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[13.5px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
+                    >
+                      {expenseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Записать
+                    </button>
+                  </div>
+                  <input
+                    value={expenseNote}
+                    onChange={(event) => setExpenseNote(event.target.value)}
+                    placeholder="Комментарий (необязательно)"
+                    className="min-h-[40px] w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setExpenseOpen(true)}
+                  className="mt-2.5 flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-border text-[13.5px] font-medium text-foreground active:opacity-70"
+                >
+                  <Receipt className="h-4 w-4" /> Добавить расход
+                </button>
+              )}
             </Card>
+
+            <RouteDocumentsDialog
+              routeId={route.id}
+              ordersCount={route.orders?.length ?? 0}
+              open={documentsOpen}
+              onOpenChange={setDocumentsOpen}
+            />
 
             {/* ── Несогласованные заказы: рейс пересобирается без них ── */}
             {unagreedOrders.length > 0 ? (
