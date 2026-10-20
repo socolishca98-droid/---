@@ -53,6 +53,9 @@
     "../lib/logist-mobile/route-assistant.ts",
     "../lib/logist-mobile/route-flow.ts",
     "../lib/logist-mobile/route-history.ts",
-    "../lib/routes/route-points.ts"
+    "../lib/routes/route-points.ts",
+    "../lib/orders/archive-policy.ts",
+    "../lib/fleet/archive-policy.ts",
+    "../lib/routes/complete-policy.ts"
   ]
 }

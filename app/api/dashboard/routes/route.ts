@@ -16,6 +16,7 @@
 
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES, isOrderMoving } from "@/lib/orders/stages"
@@ -189,6 +190,7 @@ export async function GET(request: NextRequest) {
     // ========== ЗАКАЗЫ В РАБОТЕ ==========
     const activeOrders = await prisma.order.findMany({
       where: scopedWhere(org.organizationId, {
+        ...NOT_ARCHIVED,
         status: { in: [...OCCUPYING_ORDER_STATUSES] },
         assignedDriverId: { not: null },
       }),

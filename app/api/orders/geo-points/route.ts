@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { prisma } from "@/lib/prisma"
 import { geocodeAddresses } from "@/lib/geo/geocode"
 import { shortCity } from "@/lib/logist-mobile/format"
@@ -37,6 +38,7 @@ export async function GET(request: NextRequest) {
     // согласованные и те, что ещё в переговорах (по ним логист звонит).
     const orders = await prisma.order.findMany({
       where: scopedWhere(org.organizationId, {
+        ...NOT_ARCHIVED,
         routeId: null,
         status: { in: ["agreed", "negotiation", "search"] },
       }),

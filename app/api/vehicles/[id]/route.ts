@@ -4,6 +4,9 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { decideVehicleRemoval } from "@/lib/fleet/archive-policy"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 
 const ALLOWED_VEHICLE_STATUSES = ["available", "in_use", "maintenance"] as const
 type VehicleStatus = typeof ALLOWED_VEHICLE_STATUSES[number]
@@ -214,7 +217,19 @@ export async function DELETE(_request: NextRequest,
     // Удаляем только машину своей организации: чужой id — 404
     const existing = await prisma.vehicle.findFirst({
       where: scopedWhere(__org.organizationId, { id }),
-      select: { id: true },
+      select: {
+        id: true,
+        plate: true,
+        _count: {
+          select: {
+            maintenanceLogs: true,
+            routes: true,
+            orders: true,
+            events: true,
+            stages: true,
+          },
+        },
+      },
     })
 
     if (!existing) {
@@ -222,6 +237,52 @@ export async function DELETE(_request: NextRequest,
         { success: false, error: "Vehicle not found" },
         { status: 404 }
       )
+    }
+
+    // Этап «сохранность данных»: с историей (ТО, рейсы, заказы, этапы) — архив,
+    // без истории — физическое удаление, как раньше.
+    const removal = decideVehicleRemoval({
+      maintenanceLogs: existing._count?.maintenanceLogs ?? 0,
+      routes: existing._count?.routes ?? 0,
+      orders: existing._count?.orders ?? 0,
+      routeEvents: existing._count?.events ?? 0,
+      stages: existing._count?.stages ?? 0,
+    })
+    const vehicleMeta = {
+      plate: existing.plate,
+      maintenanceLogs: existing._count?.maintenanceLogs ?? 0,
+      routes: existing._count?.routes ?? 0,
+      orders: existing._count?.orders ?? 0,
+      events: existing._count?.events ?? 0,
+      stages: existing._count?.stages ?? 0,
+    }
+
+    if (removal.action === "archive") {
+      // Архив: машина скрыта из автопарка и назначения, история остаётся.
+      await prisma.driver.updateMany({
+        where: scopedWhere(__org.organizationId, { vehicleId: id }),
+        data: { vehicleId: null },
+      })
+      await prisma.vehicle.updateMany({
+        where: scopedWhere(__org.organizationId, { id }),
+        data: { archivedAt: new Date(), status: "maintenance" },
+      })
+      await logAudit({
+        organizationId: __org.organizationId,
+        actorId: __org.userId,
+        actorEmail: __auth.user?.email ?? null,
+        action: "vehicle_archived",
+        targetId: id,
+        targetType: "vehicle",
+        metadata: { ...vehicleMeta, reason: "есть связанная история" },
+        ip: getClientIp(_request),
+      })
+      return NextResponse.json({
+        success: true,
+        archived: true,
+        message:
+          "ТС архивирована: она скрыта из автопарка и выбора, история рейсов и обслуживания сохранена.",
+      })
     }
 
     // Отвязываем водителя
@@ -232,6 +293,17 @@ export async function DELETE(_request: NextRequest,
 
     await prisma.vehicle.deleteMany({
       where: scopedWhere(__org.organizationId, { id }),
+    })
+
+    await logAudit({
+      organizationId: __org.organizationId,
+      actorId: __org.userId,
+      actorEmail: __auth.user?.email ?? null,
+      action: "vehicle_deleted",
+      targetId: id,
+      targetType: "vehicle",
+      metadata: vehicleMeta,
+      ip: getClientIp(_request),
     })
 
     return NextResponse.json({ success: true })

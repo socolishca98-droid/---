@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import {
   CLOSED_ORDER_STATUSES,
   LEGACY_ORDER_STATUS_MAP,
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
 
     const orders = await prisma.order.findMany({
       where: scopedWhere(org.organizationId, {
+        ...NOT_ARCHIVED,
         assignedDriverId: driverId,
         // Канон этапов заказа (lib/orders/stages.ts): «в работе» — заказ уже в
         // рейсе (in_route/documents/assigned/control + их прежние значения).
@@ -71,6 +73,7 @@ export async function GET(request: NextRequest) {
     // Статистика для водителя
     const stats = await prisma.order.aggregate({
       where: scopedWhere(org.organizationId, {
+        ...NOT_ARCHIVED,
         assignedDriverId: driverId,
         status: { in: statusesFor(['delivered']) },
       }),

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { findVehicleOccupant, linkDriverToVehicle } from "@/lib/fleet/assignment"
 // GET — список доступных машин
 export async function GET(request: NextRequest) {
@@ -13,13 +14,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const vehicles = await prisma.vehicle.findMany({
-      where: scopedWhere(org.organizationId, {}),
+      where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED }),
       orderBy: { plate: "asc" },
     })
 
     // Получаем информацию о привязанных водителях
     const drivers = await prisma.driver.findMany({
-      where: scopedWhere(org.organizationId, {
+      where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED,
         vehicleId: { not: null },
       }),
       select: {

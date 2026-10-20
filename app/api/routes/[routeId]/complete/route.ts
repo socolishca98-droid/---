@@ -64,11 +64,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       await deliverNotificationPush(result.completionPush)
     }
 
+    // noop: рейс уже был завершён — повторный вызов ничего не изменил
+    // (completedAt, топливо и итоги прежние). Флаг нужен интерфейсу,
+    // чтобы не показывать ложное «Рейс завершён» второй раз.
     return NextResponse.json({
       success: true,
-      message: "Рейс завершён",
+      message: result.noop ? "Рейс уже был завершён" : "Рейс завершён",
       route: result.route,
       stats: result.stats,
+      noop: result.noop === true,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"

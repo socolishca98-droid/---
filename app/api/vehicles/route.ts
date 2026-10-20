@@ -2,6 +2,7 @@
 
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { createVehicleSchema, zodErrorResponse } from "@/lib/validators"
@@ -39,6 +40,8 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, unknown> = {}
+    // Архивные машины не появляются в списках и выборе (этап «сохранность данных»)
+    where.archivedAt = null
     if (available === "true") {
       where.status = "available"
     }

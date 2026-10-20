@@ -28,6 +28,7 @@ import { createNotification } from "@/lib/notifications/create"
 import { estimateFuelL, fuelAfterRoute } from "@/lib/fleet/fuel"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { OCCUPYING_ORDER_STATUSES, type RouteOrderLike } from "@/lib/routes/model"
+import { decideRouteCompletion } from "@/lib/routes/complete-policy"
 import {
   changeRouteStatus,
   ensureRouteRow,
@@ -53,6 +54,11 @@ export interface CompleteRouteResult {
   ok: boolean
   /** HTTP-статус, который следует вернуть вызывающему роуту */
   status: 200 | 400 | 404 | 409 | 500
+  /**
+   * Рейс уже был завершён: вызов ничего не изменил (этап «сохранность
+   * данных»). Ответ успешный, но completedAt, топливо и итоги — прежние.
+   */
+  noop?: boolean
   error?: string
   /** Какие точки помешали завершению (только при status === 400) */
   pendingOrders?: Array<{
@@ -123,6 +129,33 @@ export async function completeRoute(
       return { ok: false, status: 404, error: "Маршрут не найден" }
     }
 
+    // Этап «сохранность данных»: повторное завершение уже завершённого рейса —
+    // no-op. Не переписываем completedAt, не пересчитываем топливо и итоги,
+    // не создаём событий. Отдельный ответ, чтобы клиент понял: сделанного не
+    // откатили, просто вторым запросом ничего не изменилось.
+    const noopDecision = decideRouteCompletion({ status: route.status })
+    if (noopDecision.kind === "noop") {
+      const orders = (await prisma.order.findMany({
+        where: scopedWhere(organizationId, { routeId }),
+        orderBy: routeOrdersOrderBy,
+      })) as (RouteOrderLike & { id: string })[]
+      return {
+        ok: true,
+        status: 200,
+        noop: true,
+        route: serializeRoute(route),
+        stats: {
+          ordersCount: orders.length,
+          totalDistance: orders.reduce((sum, o) => sum + (o.distance || 0), 0),
+          totalWeight: orders.reduce((sum, o) => sum + (o.weight || 0), 0),
+          totalRevenue: orders
+            .filter((o) => o.status !== "cancelled" && o.status !== "rejected")
+            .reduce((sum, o) => sum + (o.price || 0), 0),
+          additionalLoads: orders.filter((o) => o.isAdditionalLoad).length,
+        },
+      }
+    }
+
     const orders = route.orders
     const assignedDriverId = route.driverId
     const assignedVehicleId = route.vehicleId
@@ -151,8 +184,23 @@ export async function completeRoute(
     // водитель, машина, уведомление): на медленной базе пяти секунд по
     // умолчанию не хватает, и завершение рейса падало с «Transaction not found».
     let completionPush: NotificationInput | undefined
+    try {
     await prisma.$transaction(
       async (tx) => {
+        // Захват: условное обновление отметки времени. Если между проверкой
+        // выше и этой транзакцией другой запрос уже завершил рейс, строк не
+        // тронется (count === 0) — и мы обязаны ничего не делать.
+        const claim = await tx.route.updateMany({
+          where: scopedWhere(organizationId, {
+            id: routeId,
+            status: { not: "completed" },
+          }),
+          data: { updatedAt: new Date() },
+        })
+        if (claim.count === 0) {
+          throw new Error("ROUTE_ALREADY_COMPLETED")
+        }
+
         if (pendingOrders.length > 0) {
           await tx.order.updateMany({
             where: scopedWhere(organizationId, {
@@ -277,6 +325,31 @@ export async function completeRoute(
       },
       { maxWait: 10_000, timeout: 30_000 },
     )
+    } catch (txError) {
+      // Параллельный запрос успел раньше: транзакция откатилась (захват не
+      // изменял данные), возвращаем тот же no-op, что и при быстрой проверке.
+      const lostRace = txError instanceof Error && txError.message === "ROUTE_ALREADY_COMPLETED"
+      // На SQLite два одновременных завершения одного рейса упираются в лок
+      // базы («database is locked» / таймаут Prisma). Если победивший запрос
+      // уже зафиксировал completed — это тоже no-op, а не сбой.
+      const dbLocked =
+        txError instanceof Error &&
+        /locked|timed out|SQLITE_BUSY|P2034/i.test(txError.message)
+      if (lostRace || dbLocked) {
+        const already = await prisma.route.findFirst({
+          where: scopedWhere(organizationId, { id: routeId }),
+        })
+        if (already && already.status === "completed") {
+          return {
+            ok: true,
+            status: 200,
+            noop: true,
+            route: serializeRoute(already),
+          }
+        }
+      }
+      throw txError
+    }
 
     const updated = await prisma.route.findFirst({
       where: scopedWhere(organizationId, { id: routeId }),

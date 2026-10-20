@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { createOrderSchema, zodErrorResponse } from "@/lib/validators"
 import { linkOrderToClientByName } from "@/lib/clients/service"
 
@@ -33,6 +34,10 @@ export async function GET(request: NextRequest) {
     }
     if (driverId) where.assignedDriverId = driverId
     if (routeId) where.routeId = routeId
+
+    // Архивные заказы не показываем в рабочем списке (этап «сохранность
+    // данных»): они остаются в деньгах и отчётах, но не в работе.
+    where.archivedAt = null
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({

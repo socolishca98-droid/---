@@ -232,6 +232,11 @@ model Order {
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Архив (этап «сохранность данных»): заказ скрыт из рабочих списков, карты и
+  /// назначения, но остаётся в бухгалтерском/платёжном экспорте и в итогах по
+  /// деньгам. Архивный заказ не удаляется физически — вместо удаления
+  /// доставленного или оплаченного заказа API отвечает 409 и предлагает архив.
+  archivedAt      DateTime?
   source            String
   sourceId          String?
   routeFrom         String
@@ -375,6 +380,10 @@ model Driver {
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Архив (этап «сохранность данных»): карточка скрыта из выбора и назначения,
+  /// но история смен, рейсов, SOS и фото остаётся доступной. Физическое удаление
+  /// возможно только когда связанных исторических записей нет совсем.
+  archivedAt      DateTime?
   name            String
   /// Телефон — логин водителя в мобильном приложении, поэтому уникальный
   phone           String    @unique
@@ -426,6 +435,10 @@ model Vehicle {
   /// Организация-владелец записи. Берётся из проверенной сессии, не из тела запроса.
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Архив (этап «сохранность данных»): машина скрыта из автопарка, выбора и
+  /// назначения, но история рейсов, ТО и топлива остаётся. Физическое удаление
+  /// возможно только когда связанных исторических записей нет совсем.
+  archivedAt          DateTime?
   plate               String
   type                String
   brand               String?

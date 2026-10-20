@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { ACTIVE_LOAD_STATUSES } from "@/lib/fleet/load"
 
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const vehicles = await prisma.vehicle.findMany({
-      where: scopedWhere(org.organizationId),
+      where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED }),
       select: {
         id: true,
         plate: true,

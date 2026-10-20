@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 import { countOnlineDrivers } from "@/lib/fleet/presence"
 
@@ -21,11 +22,11 @@ export async function GET(request: NextRequest) {
   try {
     const [drivers, vehicles, activeShifts, activeOrders] = await Promise.all([
       prisma.driver.findMany({
-        where: scopedWhere(org.organizationId, {}),
+        where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED }),
         orderBy: { name: "asc" },
       }),
       prisma.vehicle.findMany({
-        where: scopedWhere(org.organizationId, {}),
+        where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED }),
         orderBy: [{ status: "asc" }, { plate: "asc" }],
       }),
       prisma.driverShift.findMany({

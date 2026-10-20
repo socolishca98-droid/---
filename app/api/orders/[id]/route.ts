@@ -4,6 +4,9 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { decideOrderDeletion } from "@/lib/orders/archive-policy"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 import {
   CLOSED_ORDER_STATUSES,
   ORDER_STATUSES,
@@ -59,6 +62,8 @@ const EDITABLE_ORDER_FIELDS = [
   "agreedPrice",
   "negotiationStatus",
   "nextFollowUpAt",
+  // Архив (этап «сохранность данных»): установка — архивировать, null — вернуть
+  "archivedAt",
 ] as const
 
 /**
@@ -250,6 +255,8 @@ export async function PATCH(request: NextRequest,
         negotiationStatus: true,
         assignedDriverId: true,
         assignedVehicleId: true,
+        isPaid: true,
+        archivedAt: true,
       },
     })
 
@@ -258,6 +265,37 @@ export async function PATCH(request: NextRequest,
         { success: false, error: "Заказ не найден" },
         { status: 404 }
       )
+    }
+
+    // Архив: строка/Date → Date, null/"" → снять архив. Значение проверяем
+    // здесь, чтобы в базу не ушло «Invalid date».
+    let archivedAtChanged = false
+    let archivedAtValue: Date | null = null
+    if ("archivedAt" in otherFields) {
+      const value = otherFields.archivedAt
+      if (value === null || value === "" || value === false) {
+        otherFields.archivedAt = null
+      } else if (typeof value === "string" || value instanceof Date) {
+        const date = new Date(value as string | Date)
+        if (Number.isNaN(date.getTime())) {
+          return NextResponse.json(
+            { success: false, error: "Неверная дата архива (archivedAt)" },
+            { status: 400 }
+          )
+        }
+        otherFields.archivedAt = date
+      } else if (value === true) {
+        otherFields.archivedAt = new Date()
+      } else {
+        return NextResponse.json(
+          { success: false, error: "Неверная дата архива (archivedAt)" },
+          { status: 400 }
+        )
+      }
+      const before = existing.archivedAt ? new Date(existing.archivedAt).getTime() : null
+      const after = otherFields.archivedAt ? (otherFields.archivedAt as Date).getTime() : null
+      archivedAtChanged = before !== after
+      archivedAtValue = (otherFields.archivedAt as Date | null) ?? null
     }
 
     // Назначить заказу можно только своего водителя и свою машину
@@ -452,6 +490,24 @@ export async function PATCH(request: NextRequest,
       return order
     })
 
+    // Архив и восстановление — в журнал аудита (этап «сохранность данных»)
+    if (archivedAtChanged) {
+      await logAudit({
+        organizationId: __org.organizationId,
+        actorId: __org.userId,
+        actorEmail: __auth.user?.email ?? null,
+        action: archivedAtValue ? "order_archived" : "order_restored",
+        targetId: id,
+        targetType: "order",
+        metadata: {
+          orderNumber: (updatedOrder as { sourceId?: string | null }).sourceId ?? null,
+          route: `${(updatedOrder as { routeFrom?: string }).routeFrom ?? ""} → ${(updatedOrder as { routeTo?: string }).routeTo ?? ""}`,
+          isPaid: Boolean((updatedOrder as { isPaid?: boolean }).isPaid),
+        },
+        ip: getClientIp(request),
+      })
+    }
+
     return NextResponse.json({ success: true, order: updatedOrder })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Order PATCH error"
@@ -487,8 +543,19 @@ export async function DELETE(_request: NextRequest,
       select: {
         id: true,
         status: true,
+        isPaid: true,
+        sourceId: true,
+        routeFrom: true,
+        routeTo: true,
         assignedDriverId: true,
         assignedVehicleId: true,
+        _count: {
+          select: {
+            negotiations: true,
+            expenses: true,
+            photos: true,
+          },
+        },
       },
     })
 
@@ -497,6 +564,71 @@ export async function DELETE(_request: NextRequest,
         { success: false, error: "Заказ не найден" },
         { status: 404 }
       )
+    }
+
+    // Этап «сохранность данных»: оплаченный или доставленный заказ не удаляем
+    // (409 с текстом), заказ с историей — архивируем, чистый — удаляем.
+    const decision = decideOrderDeletion({
+      status: existing.status,
+      isPaid: existing.isPaid,
+      history: {
+        negotiations: existing._count?.negotiations ?? 0,
+        expenses: existing._count?.expenses ?? 0,
+        photos: existing._count?.photos ?? 0,
+      },
+    })
+
+    const orderMeta = {
+      orderNumber: existing.sourceId ?? null,
+      route: `${existing.routeFrom ?? ""} → ${existing.routeTo ?? ""}`,
+      isPaid: Boolean(existing.isPaid),
+      status: existing.status,
+    }
+
+    if (decision.action === "reject") {
+      // Попытка удаления защищённых данных — в журнал аудита
+      await logAudit({
+        organizationId: __org.organizationId,
+        actorId: __org.userId,
+        actorEmail: __auth.user?.email ?? null,
+        action: "order_delete_rejected",
+        targetId: id,
+        targetType: "order",
+        metadata: { ...orderMeta, reason: decision.reason },
+        ip: getClientIp(_request),
+      })
+      return NextResponse.json(
+        {
+          success: false,
+          error: decision.reason,
+          code: "delete_not_allowed",
+          canArchive: true,
+        },
+        { status: 409 }
+      )
+    }
+
+    if (decision.action === "archive") {
+      await prisma.order.updateMany({
+        where: scopedWhere(__org.organizationId, { id }),
+        data: { archivedAt: new Date() },
+      })
+      await logAudit({
+        organizationId: __org.organizationId,
+        actorId: __org.userId,
+        actorEmail: __auth.user?.email ?? null,
+        action: "order_archived",
+        targetId: id,
+        targetType: "order",
+        metadata: { ...orderMeta, via: "delete" },
+        ip: getClientIp(_request),
+      })
+      return NextResponse.json({
+        success: true,
+        archived: true,
+        message:
+          "Заказ архивирован: он скрыт из рабочих списков и карты, но остаётся в отчётах и платежах.",
+      })
     }
 
     // Заказ занимал водителя/машину, пока не был закрыт (канон — lib/orders/stages.ts)
@@ -537,6 +669,17 @@ export async function DELETE(_request: NextRequest,
           }
         }
       }
+    })
+
+    await logAudit({
+      organizationId: __org.organizationId,
+      actorId: __org.userId,
+      actorEmail: __auth.user?.email ?? null,
+      action: "order_deleted",
+      targetId: id,
+      targetType: "order",
+      metadata: orderMeta,
+      ip: getClientIp(_request),
     })
 
     return NextResponse.json({ success: true })

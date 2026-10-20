@@ -14,6 +14,9 @@ import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
 import { normalizePhone } from "@/lib/auth/constants"
 import { linkDriverToVehicle } from "@/lib/fleet/assignment"
 import { parseDateValue } from "@/lib/dates"
+import { decideDriverRemoval } from "@/lib/fleet/archive-policy"
+import { logAudit } from "@/lib/audit"
+import { getClientIp } from "@/lib/rate-limiter"
 // ✅ Добавлен 'offline' в список разрешённых статусов
 const ALLOWED_DRIVER_STATUSES = ["available", "busy", "maintenance", "offline"] as const
 type DriverStatus = typeof ALLOWED_DRIVER_STATUSES[number]
@@ -227,13 +230,49 @@ export async function DELETE(
     // Удалить можно только водителя своей организации
     const existingDriver = await prisma.driver.findFirst({
       where: scopedWhere(org.organizationId, { id }),
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        _count: {
+          select: {
+            shifts: true,
+            sosAlerts: true,
+            photos: true,
+            events: true,
+            stages: true,
+            routes: true,
+          },
+        },
+      },
     })
     if (!existingDriver) {
       return NextResponse.json(
         { success: false, error: "Driver not found" },
         { status: 404 }
       )
+    }
+
+    // Этап «сохранность данных»: с историей (смены, SOS, фото, события) —
+    // архив, без истории — физическое удаление, как раньше.
+    const shiftEvents = await prisma.shiftEvent.count({
+      where: { shift: { driverId: id } },
+    })
+    const removal = decideDriverRemoval({
+      shifts: existingDriver._count?.shifts ?? 0,
+      shiftEvents,
+      sosAlerts: existingDriver._count?.sosAlerts ?? 0,
+      photos: existingDriver._count?.photos ?? 0,
+      routeEvents: existingDriver._count?.events ?? 0,
+    })
+    const driverMeta = {
+      driverName: existingDriver.name,
+      driverPhone: existingDriver.phone,
+      shifts: existingDriver._count?.shifts ?? 0,
+      shiftEvents,
+      sosAlerts: existingDriver._count?.sosAlerts ?? 0,
+      photos: existingDriver._count?.photos ?? 0,
+      events: existingDriver._count?.events ?? 0,
     }
 
     // Доступ водителя закрываем вместе с карточкой: иначе учётка останется
@@ -255,11 +294,51 @@ export async function DELETE(
       await revokeAllSessions(linkedUser.id, "Карточка водителя удалена")
     }
 
+    if (removal.action === "archive") {
+      // Архив: карточка скрыта из выбора и назначения, история остаётся.
+      // Учётку и сессии гасим в любом случае — архивный водитель не работает.
+      await prisma.driver.updateMany({
+        where: scopedWhere(org.organizationId, { id }),
+        data: {
+          archivedAt: new Date(),
+          status: "offline",
+          vehicleId: null,
+        },
+      })
+      await logAudit({
+        organizationId: org.organizationId,
+        actorId: org.userId,
+        actorEmail: auth.value.user?.email ?? null,
+        action: "driver_archived",
+        targetId: id,
+        targetType: "driver",
+        metadata: { ...driverMeta, reason: "есть связанная история" },
+        ip: getClientIp(request),
+      })
+      return NextResponse.json({
+        success: true,
+        archived: true,
+        message:
+          "Водитель архивирован: карточка скрыта из выбора и назначения, история смен, рейсов и фото сохранена. Доступ в приложение закрыт.",
+      })
+    }
+
     // Машина отвязывается автоматически: связь хранится в Driver.vehicleId
     // и удаляется вместе с карточкой водителя (поле Vehicle.driverId удалено
     // из схемы в задаче 2).
     await prisma.driver.deleteMany({
       where: scopedWhere(org.organizationId, { id }),
+    })
+
+    await logAudit({
+      organizationId: org.organizationId,
+      actorId: org.userId,
+      actorEmail: auth.value.user?.email ?? null,
+      action: "driver_deleted",
+      targetId: id,
+      targetType: "driver",
+      metadata: driverMeta,
+      ip: getClientIp(request),
     })
 
     return NextResponse.json({ success: true })

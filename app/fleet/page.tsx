@@ -176,33 +176,35 @@ export default function FleetPage() {
   // Helpers
   const handleDeleteVehicle = async (id: string) => {
     const ok = await confirm({
-      title: "Удалить транспорт?",
-      description: "Машина исчезнет из автопарка. История рейсов, где она была, сохранится.",
-      confirmLabel: "Удалить",
+      title: "Архивировать транспорт?",
+      description:
+        "Машина исчезнет из автопарка и выбора, но останется в истории рейсов и обслуживания. У удаления теперь те же правила: оплаченные и доставленные заказы не удаляются.",
+      confirmLabel: "Архивировать",
       destructive: true,
     })
     if (!ok) return
     try {
       await deleteVehicle(id)
-      toast.success("Транспорт удалён")
+      toast.success("Транспорт архивирован")
     } catch (e: any) {
-      toast.error(e.message)
+      toast.error(e.message || "Не удалось архивировать транспорт")
     }
   }
 
   const handleDeleteDriver = async (id: string) => {
     const ok = await confirm({
-      title: "Удалить водителя?",
-      description: "Учётная запись водителя и вход в мобильное приложение перестанут работать.",
-      confirmLabel: "Удалить",
+      title: "Архивировать водителя?",
+      description:
+        "Карточка исчезнет из выбора и назначения, доступ в приложение закроется. История смен, рейсов и фото сохранится.",
+      confirmLabel: "Архивировать",
       destructive: true,
     })
     if (!ok) return
     try {
       await deleteDriver(id)
-      toast.success("Водитель удалён")
+      toast.success("Водитель архивирован")
     } catch (e: any) {
-      toast.error(e.message)
+      toast.error(e.message || "Не удалось архивировать водителя")
     }
   }
 

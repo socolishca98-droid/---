@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import {
   geocodeAddressesWithSource,
   summarizeGeocodeSource,
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
     // Заказы строго своей организации: чужой id не попадёт в расчёт, а запрос
     // вернёт 404, не раскрывая, существует ли такой заказ вообще.
     const orders = (await prisma.order.findMany({
-      where: scopedWhere(org.organizationId, { id: { in: orderIds } }),
+      where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED, id: { in: orderIds } }),
       select: {
         id: true,
         routeFrom: true,

@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { prisma } from "@/lib/prisma"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 import { geocodeAddresses, type Coordinates } from "@/lib/geo/geocode"
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest) {
     // ========== МАШИНЫ (все, у кого есть координаты) ==========
     const driverRows = await prisma.driver.findMany({
       where: scopedWhere(org.organizationId, {
+        ...NOT_ARCHIVED,
         latitude: { not: null },
         longitude: { not: null },
       }),
@@ -109,6 +111,7 @@ export async function GET(request: NextRequest) {
     // ========== АКТИВНЫЕ ЗАКАЗЫ: что везут прямо сейчас ==========
     const activeOrders = await prisma.order.findMany({
       where: scopedWhere(org.organizationId, {
+        ...NOT_ARCHIVED,
         status: { in: [...OCCUPYING_ORDER_STATUSES] },
         assignedDriverId: { not: null },
       }),

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { driverRating } from "@/lib/drivers/rating"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { normalizePhone } from "@/lib/auth/constants"
 import { generateTemporaryPassword, hashPassword } from "@/lib/auth/password"
 import { friendlyDbError, friendlyDbErrorStatus } from "@/lib/db/errors"
@@ -63,6 +64,8 @@ export async function GET(request: NextRequest) {
     // водитель тянет за собой все свои доставки и фото — страница /drivers
     // росла вместе с организацией и начинала тормозить.
     const where: Record<string, unknown> = {}
+    // Архивные водители не появляются в списках и выборе (этап «сохранность данных»)
+    where.archivedAt = null
     if (status && status !== "all") {
       where.status = status
     }

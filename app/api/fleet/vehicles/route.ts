@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/routes/model"
 import { paginationMeta, parsePagination } from "@/lib/pagination"
 
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     const statusFilter = searchParams.get("status") || undefined
 
     const where: Record<string, unknown> = {}
+    where.archivedAt = null
     if (!Number.isNaN(minCapacity) && minCapacity > 0) {
       where.capacity = { gte: minCapacity }
     }

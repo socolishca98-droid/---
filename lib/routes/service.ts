@@ -200,6 +200,12 @@ export async function changeRouteStatus(
   const transition = canTransitionRoute(current, next)
   if (!transition.ok) return { ok: false, error: transition.reason }
 
+  // Этап «сохранность данных»: завершённый рейс не трогаем повторным
+  // завершением — completedAt, топливо и события остаются прежними.
+  if (current === "completed" && next === "completed") {
+    return { ok: true, status: next }
+  }
+
   const now = new Date()
   const data: Record<string, unknown> = { status: next }
 

@@ -15,7 +15,7 @@ import {
   Truck,
   MoreVertical,
   Edit,
-  Trash2,
+  Archive,
   UserPlus,
   Wrench,
   CheckCircle2,
@@ -156,9 +156,10 @@ export function VehicleCard({
 
   const handleDelete = async () => {
     const ok = await confirm({
-      title: `Удалить ТС ${vehicle.plate}?`,
-      description: "Машина исчезнет из автопарка. История рейсов сохранится.",
-      confirmLabel: "Удалить",
+      title: `Архивировать ТС ${vehicle.plate}?`,
+      description:
+        "Машина исчезнет из автопарка и выбора, но останется в истории рейсов и обслуживания. Вернуть можно будет через администратора базы.",
+      confirmLabel: "Архивировать",
       destructive: true,
     })
     if (!ok) return
@@ -172,13 +173,14 @@ export function VehicleCard({
       const data = await res.json()
 
       if (data.success) {
-        toast.success("ТС удалено")
+        toast.success(data.archived ? "ТС архивирована" : "ТС удалена")
         onRefresh?.()
       } else {
-        toast.error(data.error || "Ошибка удаления")
+        // 409 «удаление невозможно» и тексты этапа «сохранность данных»
+        toast.error(data.error || "Не удалось архивировать ТС")
       }
     } catch (error) {
-      console.error("Delete vehicle error:", error)
+      console.error("Archive vehicle error:", error)
       toast.error("Ошибка соединения")
     } finally {
       setIsDeleting(false)
@@ -338,8 +340,8 @@ export function VehicleCard({
                   onClick={handleDelete}
                   className="text-destructive focus:text-destructive"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Удалить
+                  <Archive className="h-4 w-4 mr-2" />
+                  Архивировать
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

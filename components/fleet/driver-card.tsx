@@ -188,7 +188,7 @@ export function DriverCard({ driver, vehicle, onEdit, onMessage, onDelete }: Dri
               <DropdownMenuItem onClick={onMessage}>Написать</DropdownMenuItem>
               <DropdownMenuItem>История рейсов</DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-                Уволить
+                Архивировать
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
