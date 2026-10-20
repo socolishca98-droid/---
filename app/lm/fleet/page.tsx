@@ -11,6 +11,7 @@ import { Fuel as FuelIcon, Phone, Settings2, Truck, Wrench } from "lucide-react"
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { EmptyState, ErrorState, KpiCard, LinkRow, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useJsonApi } from "@/hooks/use-json-api"
+import { RepairForm, type RepairFormVehicle } from "@/components/maintenance/repair-form"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
   DEADLINE_STATUS_META,
@@ -40,6 +41,7 @@ export default function LogistFleetPage() {
   }>(user ? "/api/maintenance" : null)
   const drivers = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
   const [tab, setTab] = useState("vehicles")
+  const [repairOpen, setRepairOpen] = useState(false)
 
   // Сроки ТО и страховки приходят из раздела обслуживания — сводим их к машинам
   const deadlinesByVehicle = useMemo(() => {
@@ -132,6 +134,16 @@ export default function LogistFleetPage() {
                 </button>
               ))}
             </div>
+
+            {tab === "service" ? (
+              <button
+                type="button"
+                onClick={() => setRepairOpen(true)}
+                className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-70"
+              >
+                <Wrench className="h-4 w-4" /> Записать ремонт
+              </button>
+            ) : null}
 
             <div className="mt-3 space-y-2.5">
               {tab === "vehicles"
@@ -235,6 +247,16 @@ export default function LogistFleetPage() {
             </div>
           </>
         )}
+
+        <RepairForm
+          open={repairOpen}
+          onOpenChange={setRepairOpen}
+          vehicles={(vehicles.data?.vehicles ?? []).map((vehicle) => ({
+            id: vehicle.id,
+            plate: vehicle.plate,
+          })) as RepairFormVehicle[]}
+          onSaved={() => vehicles.reload()}
+        />
       </div>
     </>
   )

@@ -703,6 +703,8 @@ model MaintenanceLog {
   cost        Int?
   performer   String    @default("driver")
   serviceName String?
+  /// Номер заказ-наряда СТО — чтобы потом найти запись по бумаге.
+  workOrderNumber String?
   status      String    @default("in_progress")
   startedAt   DateTime  @default(now())
   completedAt DateTime?

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T15:38:42.843Z",
+  "generatedAt": "2026-10-20T10:42:19.444Z",
   "endpoints": [
     {
       "method": "GET",
@@ -538,6 +538,16 @@
     },
     {
       "method": "GET",
+      "route": "/api/maintenance",
+      "group": "maintenance"
+    },
+    {
+      "method": "POST",
+      "route": "/api/maintenance",
+      "group": "maintenance"
+    },
+    {
+      "method": "PATCH",
       "route": "/api/maintenance",
       "group": "maintenance"
     },

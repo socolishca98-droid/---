@@ -8,11 +8,15 @@
 // что просрочено, что подойдёт в ближайший месяц и сколько стоят ремонты.
 
 import { useCallback, useEffect, useState } from "react"
+import { Wrench } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table"
 import { TruckLoader } from "@/components/ui/truck-loader"
 import { formatLocalDate } from "@/lib/dates"
+import { presetBounds, presetLabel, type ReportPeriodPreset } from "@/lib/reports/period"
+import { RepairForm, type RepairFormVehicle } from "@/components/maintenance/repair-form"
 
 interface Deadline {
   status: "expired" | "soon" | "ok"
@@ -53,8 +57,19 @@ interface MaintenanceLogRow {
   driverName: string | null
 }
 
+interface SpendByVehicle {
+  vehicleId: string | null
+  vehiclePlate: string | null
+  costRub: number
+  count: number
+}
+
 interface MaintenanceData {
   now: string
+  // Потрачено на ремонты: считает сервер по всей базе за период (from/to),
+  // а не по текущей странице журнала.
+  spend?: { costRub: number; count: number; byVehicle: SpendByVehicle[] }
+  spendPeriod?: { from: string | null; to: string | null }
   totals: {
     vehicles: number
     inMaintenance: number
@@ -159,6 +174,18 @@ const vehicleColumns: DataTableColumn<MaintenanceVehicle>[] = [
   },
 ]
 
+const spendColumns: DataTableColumn<SpendByVehicle>[] = [
+  { key: "plate", label: "Машина", cell: (row) => row.vehiclePlate ?? "—" },
+  { key: "count", label: "Работ", align: "right", cell: (row) => row.count },
+  {
+    key: "cost",
+    label: "Потрачено, ₽",
+    align: "right",
+    cellClassName: "font-medium",
+    cell: (row) => money(row.costRub),
+  },
+]
+
 const logColumns: DataTableColumn<MaintenanceLogRow>[] = [
   { key: "date", label: "Дата", cell: (row) => formatLocalDate(row.startedAt) },
   { key: "vehicle", label: "Машина", cell: (row) => row.vehiclePlate ?? "—" },
@@ -199,16 +226,24 @@ const logColumns: DataTableColumn<MaintenanceLogRow>[] = [
   },
 ]
 
+const SPEND_PRESETS: ReportPeriodPreset[] = ["7d", "30d", "90d", "month", "year"]
+
 export function MaintenanceView() {
   const [data, setData] = useState<MaintenanceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [spendPreset, setSpendPreset] = useState<ReportPeriodPreset>("30d")
+  const [repairOpen, setRepairOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/maintenance", { credentials: "include" })
+      const bounds = presetBounds(spendPreset)
+      const response = await fetch(
+        `/api/maintenance?from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}`,
+        { credentials: "include" },
+      )
       const json = await response.json()
       if (!response.ok || !json?.success) {
         setError(json?.error || "Не удалось загрузить обслуживание")
@@ -220,7 +255,7 @@ export function MaintenanceView() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [spendPreset])
 
   useEffect(() => {
     load()
@@ -295,7 +330,51 @@ export function MaintenanceView() {
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">Потрачено на ремонты</h2>
+          <span className="text-xs text-muted-foreground">
+            за период: {data?.spendPeriod?.from ?? "—"} — {data?.spendPeriod?.to ?? "—"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SPEND_PRESETS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setSpendPreset(item)}
+              className={`h-8 rounded-md border px-2.5 text-[12.5px] font-medium ${
+                spendPreset === item
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-input bg-background text-muted-foreground"
+              }`}
+            >
+              {presetLabel(item)}
+            </button>
+          ))}
+        </div>
+        <DataTable
+          columns={spendColumns}
+          rows={data?.spend?.byVehicle ?? []}
+          rowKey={(row) => row.vehicleId ?? "unknown"}
+          density="compact"
+          isLoading={loading}
+          empty={
+            <p className="p-6 text-center text-sm text-muted-foreground">
+              За период ремонтов с указанной стоимостью не было
+            </p>
+          }
+        />
+        <p className="text-sm text-muted-foreground">
+          Всего за период: {money(data?.spend?.costRub ?? 0)} · работ {data?.spend?.count ?? 0}.
+          Считаются записи журнала ремонтов (MaintenanceLog).
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold">Журнал работ</h2>
+          <Button size="sm" variant="outline" onClick={() => setRepairOpen(true)}>
+            <Wrench className="mr-1.5 h-3.5 w-3.5" /> Записать ремонт
+          </Button>
           {data?.pagination && data.pagination.total > data.pagination.shown && (
             <span className="text-xs text-muted-foreground">
               показано {data.pagination.shown} из {data.pagination.total}
@@ -315,6 +394,16 @@ export function MaintenanceView() {
           }
         />
       </div>
+
+      <RepairForm
+        open={repairOpen}
+        onOpenChange={setRepairOpen}
+        vehicles={(data?.vehicles ?? []).map((vehicle) => ({
+          id: vehicle.id,
+          plate: vehicle.plate,
+        })) as RepairFormVehicle[]}
+        onSaved={() => void load()}
+      />
     </div>
   )
 }

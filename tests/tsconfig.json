@@ -57,6 +57,7 @@
     "../lib/orders/archive-policy.ts",
     "../lib/fleet/archive-policy.ts",
     "../lib/routes/complete-policy.ts",
-    "../lib/reports/period.ts"
+    "../lib/reports/period.ts",
+    "../lib/maintenance/schedule.ts"
   ]
 }

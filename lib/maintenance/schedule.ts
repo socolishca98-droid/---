@@ -75,6 +75,8 @@ export function vehicleDeadlines(vehicle: VehicleDeadlineFields, now: Date): Veh
 export interface MaintenanceLogLike {
   cost?: number | null
   status?: string | null
+  vehicleId?: string | null
+  vehiclePlate?: string | null
 }
 
 export interface MaintenanceTotals {
@@ -94,4 +96,66 @@ export function maintenanceTotals(logs: readonly MaintenanceLogLike[]): Maintena
     if (log.status === "in_progress") inProgress += 1
   }
   return { count: logs.length, inProgress, costRub: Math.round(costRub) }
+}
+
+// Виды работ в журнале ремонтов: тип в базе — свободная строка, но в форме
+// предлагаем типовые, чтобы потом считать по видам.
+export const MAINTENANCE_TYPES = [
+  "repair",
+  "service",
+  "tires",
+  "battery",
+  "bodywork",
+  "diagnostics",
+  "other",
+] as const
+
+export type MaintenanceType = (typeof MAINTENANCE_TYPES)[number]
+
+export const MAINTENANCE_TYPE_LABELS: Record<MaintenanceType, string> = {
+  repair: "Ремонт",
+  service: "ТО",
+  tires: "Шины",
+  battery: "Аккумулятор",
+  bodywork: "Кузовные работы",
+  diagnostics: "Диагностика",
+  other: "Другое",
+}
+
+/**
+ * Сводка «Потрачено на ремонты»: сколько стоила работа за период.
+ * Источник расходов — MaintenanceLog; RouteExpense с type="repair" в приложении
+ * нигде не создаётся, поэтому ремонтные деньги считаются только по журналу.
+ */
+export function maintenanceSpend(logs: readonly MaintenanceLogLike[]): {
+  costRub: number
+  count: number
+  byVehicle: Array<{ vehicleId: string | null; vehiclePlate: string | null; costRub: number; count: number }>
+} {
+  let costRub = 0
+  let count = 0
+  const byVehicle = new Map<string, { vehicleId: string | null; vehiclePlate: string | null; costRub: number; count: number }>()
+
+  for (const log of logs) {
+    if (log.cost === null || log.cost === undefined || !Number.isFinite(log.cost)) continue
+    const cost = Number(log.cost)
+    costRub += cost
+    count += 1
+    const key = log.vehicleId ?? "unknown"
+    const entry = byVehicle.get(key) ?? {
+      vehicleId: log.vehicleId ?? null,
+      vehiclePlate: log.vehiclePlate ?? null,
+      costRub: 0,
+      count: 0,
+    }
+    entry.costRub += cost
+    entry.count += 1
+    byVehicle.set(key, entry)
+  }
+
+  return {
+    costRub: Math.round(costRub),
+    count,
+    byVehicle: [...byVehicle.values()].sort((a, b) => b.costRub - a.costRub),
+  }
 }
