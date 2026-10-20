@@ -6,13 +6,19 @@
 
 "use client"
 
-import { AlertTriangle, BarChart3, CheckCircle2, CircleAlert, Info, RefreshCw } from "lucide-react"
+import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleAlert, Download, FileText, Info, RefreshCw } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { Card, EmptyState, ErrorState, KpiCard, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
+import { useState } from "react"
 import { INSIGHT_LEVEL_META, type MobileInsight } from "@/lib/logist-mobile/types"
+import {
+  presetBounds,
+  presetLabel,
+  type ReportPeriodPreset,
+} from "@/lib/reports/period"
 import { formatMoney, shortCity } from "@/lib/logist-mobile/format"
 
 interface ReportsResponse {
@@ -36,9 +42,32 @@ interface ReportsResponse {
   insights: MobileInsight[]
 }
 
+const PERIOD_PRESETS: ReportPeriodPreset[] = ["7d", "30d", "90d", "month", "year"]
+
 export default function LogistReportsPage() {
   const { user } = useStaffSession()
-  const { data, error, loading, reload } = useJsonApi<ReportsResponse>(user ? "/api/reports" : null)
+  // Период: готовые варианты или свои даты. /api/reports и /api/reports/export
+  // понимают те же параметры (preset / from / to), платежный экспорт — from/to.
+  const [preset, setPreset] = useState<ReportPeriodPreset>("30d")
+  const [custom, setCustom] = useState(false)
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
+
+  const query = custom
+    ? from && to
+      ? `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+      : ""
+    : `preset=${preset}`
+
+  const { data, error, loading, reload } = useJsonApi<ReportsResponse>(
+    user ? (query ? `/api/reports?${query}` : null) : null,
+  )
+
+  // Границы периода для кнопок экспорта: платежный CSV понимает только даты.
+  const bounds = custom
+    ? { from, to, label: "свой период" }
+    : presetBounds(preset)
+  const paymentsQuery = `from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}`
 
   const report = data?.report
   const insights = data?.insights ?? []
