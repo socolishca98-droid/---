@@ -92,8 +92,20 @@ export async function POST(
     if (vehicleId) {
       const vehicle = await prisma.vehicle.findFirst({
         where: scopedWhere(org.organizationId, { id: vehicleId }),
-        select: { capacity: true },
+        select: { capacity: true, archivedAt: true },
       })
+      // Архивная машина скрыта из назначения (этап «сохранность данных»):
+      // новый груз не должен уезжать на неё, даже если рейс создан раньше.
+      if (vehicle?.archivedAt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Машина рейса в архиве — верните её в работу или выберите другой рейс",
+            code: "vehicle_archived",
+          },
+          { status: 409 },
+        )
+      }
 
       const currentWeight = existingOrders.reduce((sum, o) => sum + (o.weight || 0), 0)
       const newTotalWeight = currentWeight + (weight || 0)

@@ -71,6 +71,37 @@ test("оплата важнее любой истории: даже чистый
   assert.equal(decision.action, "reject")
 })
 
+test("заказ в рейсе (есть этапы) архивируется, а не удаляется", () => {
+  // RouteStage.orderId привязан onDelete: SetNull: физическое удаление заказа
+  // оставило бы этап рейса без заказа — историю рейса.
+  const decision = decideOrderDeletion({
+    status: "search",
+    isPaid: false,
+    history: { negotiations: 0, expenses: 0, photos: 0, routeStages: 2 },
+  })
+  assert.equal(decision.action, "archive")
+})
+
+test("заказ без этапов рейса по-прежнему может удаляться", () => {
+  const decision = decideOrderDeletion({
+    status: "search",
+    isPaid: false,
+    history: { negotiations: 0, expenses: 0, photos: 0, routeStages: 0 },
+  })
+  assert.equal(decision.action, "delete")
+})
+
+test("этапы рейса важнее чистоты: оплата/доставка + этапы → reject", () => {
+  assert.equal(
+    decideOrderDeletion({
+      status: "delivered",
+      isPaid: false,
+      history: { negotiations: 0, expenses: 0, photos: 0, routeStages: 1 },
+    }).action,
+    "reject",
+  )
+})
+
 test("canRestoreOrder отличает архивную запись от обычной", () => {
   assert.equal(canRestoreOrder({ archivedAt: new Date() }), true)
   assert.equal(canRestoreOrder({ archivedAt: null }), false)

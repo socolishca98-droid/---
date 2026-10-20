@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
     const [driver, vehicle] = await Promise.all([
       prisma.driver.findFirst({
         where: scopedWhere(org.organizationId, { id: driverId }),
-        select: { id: true, name: true },
+        select: { id: true, name: true, archivedAt: true },
       }),
       prisma.vehicle.findFirst({
         where: scopedWhere(org.organizationId, { id: vehicleId }),
-        select: { id: true, plate: true, type: true },
+        select: { id: true, plate: true, type: true, archivedAt: true },
       }),
     ])
 
@@ -62,6 +62,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Машина не найдена" },
         { status: 404 },
+      )
+    }
+
+    // Архивные водитель и машина скрыты из выбора и назначения
+    // (этап «сохранность данных»): вернуть в работу можно сняв архив.
+    if (driver.archivedAt) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Водитель ${driver.name || ""} в архиве — верните его в работу или выберите другого`.trim(),
+          code: "driver_archived",
+        },
+        { status: 409 },
+      )
+    }
+
+    if (vehicle.archivedAt) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Машина ${vehicle.plate} в архиве — верните её в работу или выберите другую`,
+          code: "vehicle_archived",
+        },
+        { status: 409 },
       )
     }
 

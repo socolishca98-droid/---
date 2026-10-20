@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
+import { NOT_ARCHIVED } from "@/lib/archive/filters"
 import { OCCUPYING_ORDER_STATUSES } from "@/lib/orders/stages"
 import { buildFleetInsights, SERVICE_WARNING_DAYS } from "@/lib/fleet/insights"
 
@@ -36,8 +37,9 @@ export async function GET(request: NextRequest) {
         : SERVICE_WARNING_DAYS
 
     const [vehicles, drivers, activeOrders, routes, maintenance] = await Promise.all([
+      // (фильтр архивных машин в рейсах применён ниже — после выборки)
       prisma.vehicle.findMany({
-        where: scopedWhere(org.organizationId, {}),
+        where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED }),
         orderBy: [{ plate: "asc" }],
         select: {
           id: true,
@@ -55,11 +57,12 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.driver.findMany({
-        where: scopedWhere(org.organizationId, {}),
+        where: scopedWhere(org.organizationId, { ...NOT_ARCHIVED }),
         select: { id: true, name: true, vehicleId: true, status: true },
       }),
       prisma.order.findMany({
         where: scopedWhere(org.organizationId, {
+          ...NOT_ARCHIVED,
           status: { in: OCCUPYING_ORDER_STATUSES as unknown as string[] },
         }),
         select: {
@@ -75,7 +78,10 @@ export async function GET(request: NextRequest) {
       prisma.route.findMany({
         where: scopedWhere(org.organizationId, {}),
         orderBy: [{ createdAt: "desc" }],
-        take: ROUTES_LIMIT,
+        // Архивные машины скрыты из сводки (этап «сохранность данных»):
+        // их рейсы не должны всплывать в истории назначений рабочего экрана.
+        // Фильтруем после выборки — Route не хранит архив машины.
+        take: ROUTES_LIMIT * 4,
         select: {
           id: true,
           name: true,
@@ -103,11 +109,18 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // Рейсы архивных машин не показываем: машина скрыта из сводки, и её
+    // история назначений не должна возвращать её на рабочий экран.
+    const activeVehicleIds = new Set(vehicles.map((v) => v.id))
+    const visibleRoutes = routes.filter(
+      (route) => !route.vehicleId || activeVehicleIds.has(route.vehicleId),
+    )
+
     const insights = buildFleetInsights({
       vehicles,
       drivers,
       activeOrders,
-      routes,
+      routes: visibleRoutes,
       maintenance,
       warningDays,
     })

@@ -399,10 +399,21 @@ export async function POST(request: NextRequest) {
     if (vehicleId) {
       const found = await prisma.vehicle.findFirst({
         where: scopedWhere(org.organizationId, { id: vehicleId }),
-        select: { id: true, plate: true, type: true, capacity: true, status: true },
+        select: { id: true, plate: true, type: true, capacity: true, status: true, archivedAt: true },
       })
       if (!found) {
         return NextResponse.json({ success: false, error: "Машина не найдена" }, { status: 404 })
+      }
+      // Архивная машина скрыта из выбора и назначения (этап «сохранность данных»)
+      if (found.archivedAt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Машина ${found.plate} в архиве — верните её в работу или выберите другую`,
+            code: "vehicle_archived",
+          },
+          { status: 409 },
+        )
       }
       vehicle = found
     }
@@ -410,10 +421,21 @@ export async function POST(request: NextRequest) {
     if (driverId) {
       const driver = await prisma.driver.findFirst({
         where: scopedWhere(org.organizationId, { id: driverId }),
-        select: { id: true, name: true },
+        select: { id: true, name: true, archivedAt: true },
       })
       if (!driver) {
         return NextResponse.json({ success: false, error: "Водитель не найден" }, { status: 404 })
+      }
+      // Архивный водитель скрыт из выбора и назначения (этап «сохранность данных»)
+      if (driver.archivedAt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Водитель ${driver.name || ""} в архиве — верните его в работу или выберите другого`.trim(),
+            code: "driver_archived",
+          },
+          { status: 409 },
+        )
       }
 
       // машина может быть закреплена только за одним водителем

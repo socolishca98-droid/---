@@ -16,6 +16,8 @@ export type OrderHistoryCounts = {
   negotiations: number
   expenses: number
   photos: number
+  /** Этапы рейсов, ссылающиеся на заказ (RouteStage.orderId, onDelete: SetNull). */
+  routeStages?: number
 }
 
 export type OrderDeleteDecision =
@@ -52,7 +54,14 @@ export function decideOrderDeletion(order: {
 
   const history = order.history
   const hasHistory =
-    !!history && (history.negotiations > 0 || history.expenses > 0 || history.photos > 0)
+    !!history &&
+    (history.negotiations > 0 ||
+      history.expenses > 0 ||
+      history.photos > 0 ||
+      // Заказ в рейсе: RouteStage.orderId привязан onDelete: SetNull — физическое
+      // удаление оставит этап рейса без заказа (погрузка/выгрузка без груза).
+      // Такой заказ тоже архивируем, а не удаляем.
+      (history.routeStages ?? 0) > 0)
 
   return hasHistory ? { action: "archive" } : { action: "delete" }
 }
