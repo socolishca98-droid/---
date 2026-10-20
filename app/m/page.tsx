@@ -107,7 +107,24 @@ interface ActiveMaintenance {
   startedAt: string
 }
 
-type GpsStatus = "inactive" | "searching" | "active" | "error"
+// Плашка GPS показывает причину всегда: смена не начата / рейс не назначен /
+// ожидание сигнала / работает / отказано в доступе / ошибка отправки.
+type GpsStatus =
+  | "inactive"      // смена не начата
+  | "no_trip"       // смена идёт, но рейс не назначен
+  | "searching"     // ждём спутники
+  | "active"        // координаты уходят
+  | "denied"        // браузер не дал геолокацию
+  | "error"         // отправка не удалась
+
+const GPS_LABELS: Record<GpsStatus, string> = {
+  inactive: "Смена не начата",
+  no_trip: "Рейс не назначен",
+  searching: "Ожидание сигнала",
+  active: "GPS работает",
+  denied: "Нет доступа к геолокации: как разрешить",
+  error: "Ошибка отправки, проверьте связь",
+}
 
 /** Статусы, при которых заказ считается «в исполнении». */
 const ORDER_STATUS_FOR_TRIP: Record<string, string> = {
@@ -119,8 +136,6 @@ const ORDER_STATUS_FOR_TRIP: Record<string, string> = {
 
 /** Что делать после перерыва: запоминаем, чем водитель занимался. */
 const DEFAULT_RETURN_STATUS = "driving"
-
-let geoPermissionToastShown = false
 
 export default function MobileHomePage() {
   const confirm = useConfirm()
@@ -291,14 +306,10 @@ export default function MobileHomePage() {
   const handleGpsError = useCallback((error: GeolocationPositionError) => {
     console.error("[GPS] Error:", error.message)
 
+    // Отказ в доступе — не ошибка связи: подсказка постоянная, внутри плашки
+    // (см. GPS_LABELS), чтобы водитель всегда видел, что делать.
     if (error.code === error.PERMISSION_DENIED) {
-      setGpsStatus("error")
-      if (!geoPermissionToastShown) {
-        geoPermissionToastShown = true
-        toast.error("Нет доступа к геолокации", {
-          description: "Разрешите доступ в настройках браузера",
-        })
-      }
+      setGpsStatus("denied")
       return
     }
 
@@ -306,8 +317,9 @@ export default function MobileHomePage() {
   }, [])
 
   useEffect(() => {
+    // Условие ОТПРАВКИ не меняем — меняем только то, что видит водитель.
     if (!shift || !driver?.id || !hasActiveTrip) {
-      setGpsStatus("inactive")
+      setGpsStatus(!shift || !driver?.id ? "inactive" : "no_trip")
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current)
         watchIdRef.current = null
@@ -802,25 +814,31 @@ export default function MobileHomePage() {
             </div>
 
             <div className="flex items-center gap-2 ml-3">
-              {hasActiveTrip && shift && (
-                <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    gpsStatus === "active"
-                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  gpsStatus === "active"
+                    ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                    : gpsStatus === "denied"
+                      ? "bg-red-500/20 text-red-400 border border-red-500/30"
                       : gpsStatus === "error"
                         ? "bg-red-500/20 text-red-400 border border-red-500/30"
                         : gpsStatus === "searching"
                           ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
                           : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
-                  }`}
-                >
-                  {gpsStatus === "active" && <Wifi className="h-3 w-3" />}
-                  {gpsStatus === "error" && <WifiOff className="h-3 w-3" />}
-                  {gpsStatus === "searching" && <Locate className="h-3 w-3 animate-pulse" />}
-                  {gpsStatus === "inactive" && <WifiOff className="h-3 w-3" />}
-                  <span>GPS</span>
-                </div>
-              )}
+                }`}
+                title={
+                  gpsStatus === "denied"
+                    ? "Разрешите доступ к геолокации в настройках браузера для этого сайта"
+                    : undefined
+                }
+              >
+                {gpsStatus === "active" && <Wifi className="h-3 w-3" />}
+                {gpsStatus === "denied" && <WifiOff className="h-3 w-3" />}
+                {gpsStatus === "error" && <WifiOff className="h-3 w-3" />}
+                {gpsStatus === "searching" && <Locate className="h-3 w-3 animate-pulse" />}
+                {(gpsStatus === "inactive" || gpsStatus === "no_trip") && <WifiOff className="h-3 w-3" />}
+                <span>{GPS_LABELS[gpsStatus]}</span>
+              </div>
 
               {!isOnline && (
                 <span
