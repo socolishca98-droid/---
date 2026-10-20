@@ -89,6 +89,82 @@ export default function LogistReportsPage() {
           <EmptyState icon={<BarChart3 className="h-6 w-6" />} title="Отчёт не собрался" description="Попробуйте обновить" />
         ) : (
           <>
+            {/* Период отчёта: готовые варианты или свои даты */}
+            <div className="mb-3">
+              <div className="flex flex-wrap gap-1.5">
+                {PERIOD_PRESETS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setCustom(false)
+                      setPreset(item)
+                    }}
+                    className={`min-h-[36px] rounded-full border px-3 text-[12.5px] font-medium active:opacity-70 ${
+                      !custom && preset === item
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-secondary text-muted-foreground"
+                    }`}
+                  >
+                    {presetLabel(item)}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCustom((value) => !value)}
+                  className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium active:opacity-70 ${
+                    custom
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-secondary text-muted-foreground"
+                  }`}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" /> Свои даты
+                </button>
+              </div>
+
+              {custom ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(event) => setFrom(event.target.value)}
+                    className="min-h-[42px] flex-1 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                  />
+                  <span className="text-[12.5px] text-muted-foreground">—</span>
+                  <input
+                    type="date"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(event) => setTo(event.target.value)}
+                    className="min-h-[42px] flex-1 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
+                  />
+                </div>
+              ) : null}
+
+              {/* Выгрузки с тем же периодом */}
+              <div className="mt-2 flex gap-1.5">
+                <a
+                  href={`/api/reports/export?format=csv&${query}`}
+                  className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12.5px] font-medium text-foreground active:opacity-70"
+                >
+                  <Download className="h-3.5 w-3.5" /> CSV
+                </a>
+                <a
+                  href={`/api/reports/export?format=txt&${query}`}
+                  className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12.5px] font-medium text-foreground active:opacity-70"
+                >
+                  <FileText className="h-3.5 w-3.5" /> Текстом
+                </a>
+                <a
+                  href={`/api/payments/export?${paymentsQuery}`}
+                  className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12.5px] font-medium text-foreground active:opacity-70"
+                >
+                  <Download className="h-3.5 w-3.5" /> Платежи
+                </a>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2.5">
               <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
               <KpiCard

@@ -3,6 +3,10 @@ import { withSentryConfig } from "@sentry/nextjs"
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Dev-ресурсы (HMR/чанки) Next.js 16 отдаёт только разрешённым origin'ам.
+  // Песочница и локальная проверка ходят на 127.0.0.1 и localhost — без этого
+  // в headless-браузере не выполняется клиентский JS (нет гидратации).
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   // standalone нужен для Docker: там свой сервер (node .next/standalone/server.js).
   // На Vercel он не только не нужен, но и ломает деплой: сборщик Vercel читает
   // .next/next-server.js.nft.json, который Next 16.3 в standalone-режиме больше
