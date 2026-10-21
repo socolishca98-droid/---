@@ -34,7 +34,7 @@ import {
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
+import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
@@ -52,7 +52,8 @@ import {
 } from "@/lib/logist-mobile/route-assistant"
 import { DRIVER_STATUS_META, type MobileDriver, type MobileOrder } from "@/lib/logist-mobile/types"
 import { ProposalEtaComparison } from "@/components/logist-mobile/proposal-eta-comparison"
-import { formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
+import { suggestExchangeLoads, type SuggestionLoad, type SuggestionVehicle } from "@/lib/logist-mobile/load-suggestions"
+import { formatKm, formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
 
 export default function RouteAssistantPage() {
   const router = useRouter()
@@ -61,6 +62,28 @@ export default function RouteAssistantPage() {
   const ordersState = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
   const vehiclesState = useJsonApi<{ vehicles: AssistantVehicle[] }>(user ? "/api/vehicles" : null)
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
+  // Биржа грузов: грузы с площадок ATI + автообновление (если кэш устарел —
+  // сервер сам дёргает ATI и только потом отдаёт список)
+  const loadsState = useJsonApi<{
+    items: Array<{
+      id: string
+      atiLoadId: string
+      routeFrom: string
+      routeTo: string
+      distance: number | null
+      weight: number | null
+      volume: number | null
+      cargoType: string | null
+      price: number | null
+      vatIncluded: boolean
+      loadingDate: string | null
+      firmName: string | null
+      note: string | null
+      status: string
+    }>
+    lastScanAt: string | null
+    refreshError: string | null
+  }>(user ? "/api/ati/loads?status=new&limit=50" : null)
 
   const [hidden, setHidden] = useState<string[]>([])
   const [busy, setBusy] = useState<string | null>(null)
@@ -128,6 +151,79 @@ export default function RouteAssistantPage() {
   const readyCount = orders.filter((order) => !order.routeId && order.status === "agreed").length
   const summary = proposalSummary(proposals, readyCount)
   const anchorOrder = anchorId ? orders.find((order) => order.id === anchorId) ?? null : null
+
+  // ── Биржа: три примерно подходящих груза ──
+  // ATI не отдаёт контакты под автоматическую сборку — помощник только
+  // показывает три варианта. Логист звонит, договаривается, потом жмёт
+  // «Взять в работу»: груз становится нашим заказом (этап «Поиск»).
+  const exchangeLoads = useMemo<SuggestionLoad[]>(() => {
+    const rows = loadsState.data?.items ?? []
+    return rows.map((row) => ({
+      id: row.id,
+      loadId: row.atiLoadId,
+      fromCity: row.routeFrom,
+      toCity: row.routeTo,
+      weightKg: row.weight,
+      volumeM3: row.volume,
+      cargoType: row.cargoType,
+      priceRub: row.price,
+      priceWithNds: row.vatIncluded ? row.price : null,
+      distanceKm: row.distance,
+      ratePerKm:
+        row.price && row.distance && row.distance > 0 ? row.price / row.distance : null,
+      firmName: row.firmName,
+      firmRating: null,
+      firstDate: row.loadingDate,
+      lastDate: null,
+      status: row.status,
+    }))
+  }, [loadsState.data])
+
+  const exchangeSuggestions = useMemo(
+    () => suggestExchangeLoads(exchangeLoads, vehicles as SuggestionVehicle[]),
+    [exchangeLoads, vehicles],
+  )
+
+  /** «Взять в работу» — груз с биржи становится нашим заказом. */
+  const [takingLoad, setTakingLoad] = useState<string | null>(null)
+  const [refreshingLoads, setRefreshingLoads] = useState(false)
+
+  async function takeExchangeLoad(load: SuggestionLoad) {
+    setTakingLoad(load.id)
+    try {
+      const result = await apiSend<{ order: { id: string } }>("/api/orders/from-cache", "POST", {
+        cacheId: load.id,
+        fetchContacts: true,
+      })
+      if (result.ok && result.data?.order) {
+        toast.success("Груз взят в работу — заказ создан")
+        router.push(`/lm/orders/${result.data.order.id}`)
+      } else {
+        toast.error(result.error ?? "Не удалось взять груз в работу")
+      }
+    } catch {
+      toast.error("Не удалось взять груз в работу")
+    } finally {
+      setTakingLoad(null)
+    }
+  }
+
+  async function refreshExchangeLoads() {
+    setRefreshingLoads(true)
+    try {
+      const result = await apiSend<{ count?: number; total?: number }>("/api/ati/loads", "POST")
+      if (result.ok) {
+        toast.success(`Биржа обновлена: грузов ${result.data?.count ?? result.data?.total ?? 0}`)
+        loadsState.reload()
+      } else {
+        toast.error(result.error ?? "Не удалось обновить биржу")
+      }
+    } catch {
+      toast.error("Не удалось обновить биржу")
+    } finally {
+      setRefreshingLoads(false)
+    }
+  }
 
   /**
    * Экипаж предложения: машина и водитель подставляются помощником, логист может
@@ -780,6 +876,137 @@ export default function RouteAssistantPage() {
                 })}
               </div>
             )}
+
+            {/* Биржа грузов: три примерно подходящих груза. ATI не отдаёт
+                контакты под автоматическую сборку — показываем варианты,
+                логист сам договаривается и берёт груз в работу. */}
+            {user ? (
+              <section className="mt-6 space-y-3">
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <h2 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Грузы с биржи
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={refreshExchangeLoads}
+                    disabled={refreshingLoads}
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-border px-3 text-[12.5px] font-medium text-foreground/90 active:bg-secondary/60 disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${refreshingLoads ? "animate-spin" : ""}`} />
+                    Обновить
+                  </button>
+                </div>
+
+                {loadsState.error && !loadsState.data ? (
+                  <ErrorState
+                    message={loadsState.error}
+                    onRetry={() => loadsState.reload()}
+                  />
+                ) : loadsState.loading && !loadsState.data ? (
+                  <ListSkeleton rows={3} />
+                ) : exchangeSuggestions.length === 0 ? (
+                  <Card>
+                    <div className="px-1 py-3">
+                      <p className="text-[13px] font-medium text-foreground">
+                        Подходящих грузов пока нет
+                      </p>
+                      <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+                        Помощник показывает грузы, которые влезают в ваши машины и
+                        с озвученной ставкой. Попробуйте обновить биржу или загляните
+                        позже — грузы на площадках меняются быстро.
+                      </p>
+                      {loadsState.data?.refreshError ? (
+                        <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+                          {loadsState.data.refreshError}
+                        </p>
+                      ) : null}
+                    </div>
+                  </Card>
+                ) : (
+                  <>
+                    <p className="px-1 text-[12px] leading-snug text-muted-foreground">
+                      Три варианта «примерно подходящих» грузов: ATI не даёт
+                      контакты под автоматическую сборку — позвоните фрахтователю,
+                      договоритесь и возьмите груз в работу.
+                    </p>
+                    {exchangeSuggestions.map((suggestion) => (
+                      <Card key={suggestion.load.id}>
+                        <div className="space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-[13.5px] font-semibold text-foreground">
+                                {shortCity(suggestion.load.fromCity)}
+                                <ArrowRight className="mx-1 inline h-3.5 w-3.5 text-muted-foreground" />
+                                {shortCity(suggestion.load.toCity)}
+                              </p>
+                              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                                {suggestion.load.firmName ?? "Фрахтователь скрыт"}
+                                {suggestion.load.cargoType ? ` · ${suggestion.load.cargoType}` : ""}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-[14px] font-semibold text-primary">
+                                {suggestion.load.priceWithNds != null || suggestion.load.priceRub != null
+                                  ? formatMoney(suggestion.load.priceWithNds ?? suggestion.load.priceRub)
+                                  : "—"}
+                              </p>
+                              {suggestion.ratePerKm != null ? (
+                                <p className="text-[11px] text-muted-foreground">
+                                  {Math.round(suggestion.ratePerKm)} ₽/км
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+                            {suggestion.load.weightKg != null ? (
+                              <span>{formatWeightKg(suggestion.load.weightKg)}</span>
+                            ) : null}
+                            {suggestion.load.distanceKm != null ? (
+                              <span>{formatKm(suggestion.load.distanceKm)}</span>
+                            ) : null}
+                            <span className="text-foreground/70">{suggestion.vehicle.plate}</span>
+                          </div>
+
+                          <p className="rounded-lg bg-secondary/40 px-2.5 py-1.5 text-[11.5px] leading-snug text-muted-foreground">
+                            {suggestion.reason}
+                          </p>
+
+                          <ActionButton
+                            tone="primary"
+                            onClick={() => takeExchangeLoad(suggestion.load)}
+                            disabled={takingLoad === suggestion.load.id}
+                            full
+                          >
+                            {takingLoad === suggestion.load.id ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Беру в работу…
+                              </>
+                            ) : (
+                              <>
+                                <Package className="h-4 w-4" />
+                                Взять в работу
+                              </>
+                            )}
+                          </ActionButton>
+                        </div>
+                      </Card>
+                    ))}
+                    {loadsState.data?.lastScanAt ? (
+                      <p className="px-1 text-center text-[11px] text-muted-foreground">
+                        Биржа обновлена:{" "}
+                        {new Date(loadsState.data.lastScanAt).toLocaleTimeString("ru-RU", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </section>
+            ) : null}
 
             {/* Пусто совсем: заказов нет */}
             {!loading && proposals.length === 0 && readyCount === 0 && orders.length > 0 ? (

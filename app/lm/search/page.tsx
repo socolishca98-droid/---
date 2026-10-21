@@ -43,6 +43,8 @@ export default function LogistSearchPage() {
   const [stats, setStats] = useState<MobileAtiStats | null>(null)
   const [loads, setLoads] = useState<MobileAtiLoad[]>([])
   const [total, setTotal] = useState(0)
+  /** Когда последний раз обновлялась биржа (автообновление на сервере) */
+  const [lastScanAt, setLastScanAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
@@ -54,10 +56,12 @@ export default function LogistSearchPage() {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ status: "new", limit: "50", sortBy: "scannedAt", sortOrder: "desc" })
+      const params = new URLSearchParams({ status: "new", limit: "50" })
       if (query.trim().length >= 2) params.set("search", query.trim())
       const [listRes, statsRes] = await Promise.all([
-        fetch(`/api/ati/cache?${params.toString()}`),
+        // /api/ati/loads — тот же кэш, но с автообновлением: если данные
+        // устарели, сервер сам сходит в ATI и вернёт свежий список
+        fetch(`/api/ati/loads?${params.toString()}`),
         fetch("/api/ati/cache?stats=true"),
       ])
       const listData = await listRes.json()
@@ -65,6 +69,7 @@ export default function LogistSearchPage() {
       if (!listRes.ok) throw new Error(listData?.error || "Не удалось загрузить базу")
       setLoads((listData?.items ?? []) as MobileAtiLoad[])
       setTotal(Number(listData?.total ?? 0))
+      setLastScanAt((listData?.lastScanAt as string | null) ?? null)
       setStats(statsData as MobileAtiStats)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки")
@@ -192,6 +197,12 @@ export default function LogistSearchPage() {
 
       {tab === "base" ? (
         <div className="px-4 pt-3.5">
+          {lastScanAt ? (
+            <p className="mb-2 text-center text-[11px] text-muted-foreground">
+              Биржа обновлена{" "}
+              {new Date(lastScanAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} — открытие экрана само подтягивает свежие грузы
+            </p>
+          ) : null}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input

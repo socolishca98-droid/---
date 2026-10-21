@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-20T19:56:43.493Z",
+  "generatedAt": "2026-10-21T21:21:45.847Z",
   "endpoints": [
     {
       "method": "GET",
@@ -98,6 +98,16 @@
     },
     {
       "method": "GET",
+      "route": "/api/ati/loads",
+      "group": "ati"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ati/loads",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
       "route": "/api/ati/oauth/callback",
       "group": "ati"
     },
@@ -119,6 +129,16 @@
     {
       "method": "POST",
       "route": "/api/ati/scan",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ati/scan-config",
+      "group": "ati"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ati/scan-config",
       "group": "ati"
     },
     {
