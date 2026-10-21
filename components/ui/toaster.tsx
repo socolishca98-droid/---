@@ -20,33 +20,35 @@ export function Toaster() {
         title,
         description,
         action,
+        variant,
         ...props
       }) {
         return (
           <Toast
             key={id}
             {...props}
-            className="bg-[#18181b]/95 border border-gray-700 text-sm text-gray-100 shadow-lg shadow-black/40"
+            variant={variant}
+            className="w-full text-[13px]"
           >
-            <div className="grid gap-1 pr-6">
+            <div className="grid min-w-0 flex-1 gap-0.5">
               {title && (
                 <ToastTitle className="text-[13px] font-semibold">
                   {title}
                 </ToastTitle>
               )}
               {description && (
-                <ToastDescription className="text-[11px] text-gray-400">
+                <ToastDescription className="text-[11px] opacity-75">
                   {description}
                 </ToastDescription>
               )}
             </div>
             {action}
-            <ToastClose className="text-gray-500 hover:text-gray-200" />
+            <ToastClose />
           </Toast>
         )
       })}
-      {/* Тосты снизу по центру */}
-      <ToastViewport className="fixed bottom-4 left-1/2 -translate-x-1/2 flex flex-col gap-2 w-full max-w-sm z-[100]" />
+      {/* Тосты снизу по центру — как шторка iOS */}
+      <ToastViewport className="fixed bottom-4 left-1/2 z-[100] flex w-full max-w-[400px] -translate-x-1/2 flex-col gap-2 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" />
     </ToastProvider>
   )
 }
