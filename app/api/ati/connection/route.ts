@@ -17,6 +17,7 @@ import { requireOrganization } from "@/lib/org"
 import {
   connectionStatus,
   disconnectAti,
+  isAsciiToken,
   saveManualToken,
 } from "@/lib/ati/connection"
 import { logAudit } from "@/lib/audit"
@@ -62,6 +63,17 @@ export async function POST(request: NextRequest) {
         success: false,
         error:
           "Нужен access_token ATI.SU: создайте его в разделе «Мои токены» (ati.su/developers/tokens) по client_id нашего продукта",
+      },
+      { status: 400 },
+    )
+  }
+
+  if (!isAsciiToken(token)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Токен ATI.SU состоит из латиницы, цифр и знаков — похоже, скопирован не токен. Возьмите его в разделе «Мои токены» (ati.su/developers/tokens)",
       },
       { status: 400 },
     )

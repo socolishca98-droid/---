@@ -159,10 +159,27 @@ async function refreshOAuthToken(
   }
 }
 
+/**
+ * Проверка, что токен — печатный ASCII.
+ *
+ * Заголовки HTTP (Authorization: Bearer …) не принимают не-ASCII: токен с
+ * кириллицей (скопировали не токен, а подпись или письмо) ронял fetch с
+ * «Cannot convert argument to a ByteString», а пользователь видел «Нет связи
+ * с ATI.SU». Лучше сказать сразу, что вставлено не то.
+ */
+export function isAsciiToken(token: string): boolean {
+  return /^[\x21-\x7e]+$/.test(token)
+}
+
 /** Сохранить постоянный токен, введённый пользователем вручную. */
 export async function saveManualToken(organizationId: string, token: string) {
   const clean = token.trim()
   if (!clean) throw new Error("Пустой токен")
+  if (!isAsciiToken(clean)) {
+    throw new Error(
+      "Токен ATI.SU состоит из латиницы, цифр и знаков — похоже, скопирован не токен",
+    )
+  }
   const data = {
     tokenEncrypted: encryptSecret(clean),
     kind: "token",

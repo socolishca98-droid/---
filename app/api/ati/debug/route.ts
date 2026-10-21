@@ -1,7 +1,13 @@
 // app/api/ati/debug/route.ts
 //
-// Диагностика подключения организации к ATI.SU: кто я (users/me) и моя фирма
-// (firms/my). Запросы идут с токеном ОРГАНИЗАЦИИ; сам токен в ответ не попадает.
+// Диагностика подключения организации к ATI.SU: моя фирма (firms/my) и
+// доступ к грузам (loads/search/byboards). Запросы идут с токеном ОРГАНИЗАЦИИ;
+// сам токен в ответ не попадает.
+//
+// Важно: эндпоинт /v1.0/users/me у ATI больше не существует (отвечает 404) —
+// проверено вживую. Поэтому «кто я» определяется через фирму: токен выдаётся
+// на контакт в аккаунте, и firms/my возвращает ту фирму, от имени которой
+// работаем.
 
 import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization } from "@/lib/org"
@@ -20,22 +26,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, code: ati.code, error: ati.error }, { status: 400 })
   }
 
-  const results: any = { connected: true, me: {}, firm: {} }
+  const results: any = { connected: true, firm: {}, loads: {} }
 
-  // 1. Кто я? (Проверка токена)
-  try {
-    const res = await atiFetch(
-      `${ATI_API_BASE}/v1.0/users/me`,
-      { headers: atiHeaders(ati.token), cache: "no-store" },
-      __org.organizationId,
-    )
-    const data = await res.json().catch(() => ({}))
-    results.me = { status: res.status, data }
-  } catch (e) {
-    results.me = { error: (e as Error).message }
-  }
-
-  // 2. Моя фирма (Проверка связи с аккаунтом)
+  // 1. Моя фирма (проверка токена: токен жив — ATI вернёт 200)
   try {
     const res = await atiFetch(
       `${ATI_API_BASE}/v1.0/firms/my`,
@@ -46,6 +39,23 @@ export async function GET(request: NextRequest) {
     results.firm = { status: res.status, id: data.id, name: data.name, city: data.city }
   } catch (e) {
     results.firm = { error: (e as Error).message }
+  }
+
+  // 2. Доступ к грузам (проверка прав: даже пустой поиск отвечает 200)
+  try {
+    const res = await atiFetch(
+      `${ATI_API_BASE}/v1.0/loads/search/byboards`,
+      {
+        method: "POST",
+        headers: atiHeaders(ati.token),
+        body: JSON.stringify({ page: 0, items_per_page: 1 }),
+        cache: "no-store",
+      },
+      __org.organizationId,
+    )
+    results.loads = { status: res.status }
+  } catch (e) {
+    results.loads = { error: (e as Error).message }
   }
 
   return NextResponse.json(results)
