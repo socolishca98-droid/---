@@ -92,14 +92,16 @@ const route = (extra = {}) => ({
 })
 
 test("виды документов: параметр печати понимает галочки и не молчит на опечатке", () => {
-  assert.deepEqual(DOCUMENT_KINDS, ["ttn", "waybill", "contract"])
+  assert.deepEqual(DOCUMENT_KINDS, ["ttn", "waybill", "contract", "invoice", "act"])
 
   assert.deepEqual(parseDocumentKinds("ttn"), ["ttn"])
   assert.deepEqual(parseDocumentKinds("waybill,ttn"), ["ttn", "waybill"])
   assert.deepEqual(parseDocumentKinds(["contract", "ttn", "ttn"]), ["ttn", "contract"])
-  // ничего не выбрано — печатаем полный комплект, а не пустой лист
-  assert.deepEqual(parseDocumentKinds(""), [...DOCUMENT_KINDS])
-  assert.deepEqual(parseDocumentKinds(null), [...DOCUMENT_KINDS])
+  // ничего не выбрано — печатаем комплект по умолчанию (ttn, waybill, contract),
+  // а не пустой лист; счёт и акт — только по явному выбору
+  assert.deepEqual(parseDocumentKinds(""), ["ttn", "waybill", "contract"])
+  assert.deepEqual(parseDocumentKinds(null), ["ttn", "waybill", "contract"])
+  assert.deepEqual(parseDocumentKinds("invoice,act"), ["invoice", "act"])
 })
 
 test("деньги, вес и даты печатаются так, как принято в документах", () => {

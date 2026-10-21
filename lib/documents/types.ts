@@ -10,15 +10,30 @@
 // Модуль чистый: без Prisma и без Next.js — его можно тестировать в Node
 // (tests/documents.test.mjs) и импортировать где угодно.
 
-/** Виды документов. Ровно то, что печатает логист по рейсу. */
-export const DOCUMENT_KINDS = ["ttn", "waybill", "contract"] as const
+/**
+ * Виды документов. Ровно то, что печатает логист по рейсу.
+ *
+ * Основной комплект — ttn/waybill/contract. Счёт на оплату и акт печатаются
+ * по заказу (по одному бланку), как ТТН и договор: это документы денег, их
+ * готовят, когда переговоры закончены.
+ */
+export const DOCUMENT_KINDS = ["ttn", "waybill", "contract", "invoice", "act"] as const
 
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number]
+
+/**
+ * Набор по умолчанию: то, что печатается без выбора (пустой types=) и что
+ * отмечено галочками при открытии диалога. Меняется только вместе с
+ * DOCUMENT_KINDS — счёт и акт в комплект по умолчанию НЕ входят.
+ */
+export const DEFAULT_DOCUMENT_KINDS: DocumentKind[] = ["ttn", "waybill", "contract"]
 
 export const DOCUMENT_TITLES: Record<DocumentKind, string> = {
   ttn: "Транспортная накладная",
   waybill: "Путевой лист",
   contract: "Договор-заявка на перевозку груза",
+  invoice: "Счёт на оплату",
+  act: "Акт выполненных работ",
 }
 
 /** Короткое описание — для галочек в интерфейсе. */
@@ -26,6 +41,8 @@ export const DOCUMENT_HINTS: Record<DocumentKind, string> = {
   ttn: "по каждому заказу: груз, вес, стоимость, подписи сдал/принял",
   waybill: "один на рейс: машина, водитель, задание, время выезда и возврата",
   contract: "по каждому заказу: стороны, маршрут, стоимость и порядок оплаты",
+  invoice: "по каждому заказу: сумма к оплате, сумма прописью, НДС",
+  act: "по каждому заказу: выполненные работы, сумма, подписи приёмки",
 }
 
 export function isDocumentKind(value: unknown): value is DocumentKind {
@@ -35,8 +52,9 @@ export function isDocumentKind(value: unknown): value is DocumentKind {
 /**
  * Разбор параметра `types=ttn,waybill` в набор видов.
  * Возвращает только известные виды, порядок — как в DOCUMENT_KINDS.
- * Если не выбрано ничего — отдаём полный комплект: молча пустая печать хуже
- * лишней страницы, а набор видов всё равно виден в интерфейсе галочками.
+ * Если не выбрано ничего — отдаём комплект по умолчанию (ttn, waybill,
+ * contract): молча пустая печать хуже лишней страницы, а счёт и акт печатаем
+ * только по явному выбору — это документы денег, их готовят осознанно.
  */
 export function parseDocumentKinds(value: unknown): DocumentKind[] {
   const raw = Array.isArray(value)
@@ -48,7 +66,7 @@ export function parseDocumentKinds(value: unknown): DocumentKind[] {
   const picked = new Set(raw.map((item) => item.trim().toLowerCase()).filter(Boolean))
   const known = DOCUMENT_KINDS.filter((kind) => picked.has(kind))
 
-  return known.length > 0 ? known : [...DOCUMENT_KINDS]
+  return known.length > 0 ? known : [...DEFAULT_DOCUMENT_KINDS]
 }
 
 /** Строка блока «реквизиты»: подпись и значение (пустое — печатается как прочерк). */

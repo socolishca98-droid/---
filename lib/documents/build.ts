@@ -17,6 +17,8 @@ import {
   type DocumentTable,
   type PrintDocument,
 } from "./types"
+import { amountInWords } from "./money-words"
+import { vatBreakdown } from "./vat"
 
 const MONTHS_RU = [
   "января",
@@ -394,16 +396,161 @@ export function buildContract(
 }
 
 // ---------------------------------------------------------------------------
+// Счёт на оплату — по каждому заказу рейса
+// ---------------------------------------------------------------------------
+
+/** Позиция счёта: одна услуга — перевозка груза по маршруту заказа. */
+function invoiceServiceRow(order: DocumentOrder, price: number | null): DocumentTable {
+  return {
+    title: "Перевозка груза",
+    columns: ["№", "Наименование", "Кол-во", "Цена", "Сумма"],
+    rows: price !== null
+      ? [["1", `Перевозка груза «${order.cargoType}», ${order.routeFrom} — ${order.routeTo}`, "1 услуга", formatMoney(price) ?? "—", formatMoney(price) ?? "—"]]
+      : [],
+  }
+}
+
+/**
+ * Счёт на оплату по заказу: сумма к оплате, сумма прописью, НДС по условию
+ * заказа (vatType). Номер — через общий нумератор рейса, чтобы счёт, акт,
+ * ТТН и договор рейса различались, но находились по названию.
+ */
+export function buildInvoice(
+  route: DocumentRoute,
+  order: DocumentOrder,
+  carrier: CarrierRequisites,
+  orderIndex: number,
+): PrintDocument {
+  const price = orderPrice(order)
+  const gross = price ?? 0
+  const vat = vatBreakdown(order.vatType, gross)
+  const amount = price !== null ? vat.grossAmount : null
+
+  const totalRow: DocumentBlock = {
+    title: "Итого",
+    fields: [
+      { label: "Сумма к оплате", value: amount !== null ? formatMoney(amount) : null },
+      { label: "В том числе НДС", value: price !== null ? vat.label : null },
+      { label: "Сумма прописью", value: amount !== null ? amountInWords(amount) : null },
+    ],
+  }
+
+  return {
+    kind: "invoice",
+    number: routeDocumentNumber(route, 3, orderIndex),
+    title: DOCUMENT_TITLES.invoice,
+    subtitle: `${order.routeFrom} — ${order.routeTo}`,
+    blocks: [
+      carrierBlock(carrier),
+      bankBlock(carrier),
+      {
+        title: "Плательщик (клиент)",
+        fields: [
+          { label: "Наименование", value: orBlank(order.clientName) },
+          { label: "Контактное лицо", value: orBlank(order.clientContact) },
+          { label: "ИНН / адрес", value: null },
+        ],
+      },
+      totalRow,
+    ],
+    tables: price !== null ? [invoiceServiceRow(order, price)] : [],
+    notes: [
+      price === null
+        ? "Цена перевозки по заказу не задана: укажите её в заказе до печати — счёт без суммы недействителен."
+        : `Условие налогообложения: ${vat.label}.`,
+      `Назначение платежа: оплата перевозки груза по маршруту ${order.routeFrom} — ${order.routeTo}, ${routeDocumentNumber(route, 0, orderIndex)}.`,
+    ].filter(Boolean),
+    signatures: [
+      signatureLine(carrier),
+      "Руководитель / бухгалтер ______________ / ______________ /",
+    ],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Акт выполненных работ — по каждому заказу рейса
+// ---------------------------------------------------------------------------
+
+/** Позиция акта: перевозка груза по маршруту заказа. */
+function actServiceRow(order: DocumentOrder, price: number | null): DocumentTable {
+  return {
+    title: "Выполненные работы (услуги)",
+    columns: ["№", "Наименование", "Кол-во", "Цена", "Стоимость"],
+    rows: price !== null
+      ? [["1", `Перевозка груза «${order.cargoType}», ${order.routeFrom} — ${order.routeTo}`, "1 услуга", formatMoney(price) ?? "—", formatMoney(price) ?? "—"]]
+      : [],
+  }
+}
+
+/**
+ * Акт выполненных работ по заказу: подписывается обеими сторонами, поэтому в
+ * бланке есть реквизиты обеих, перечень услуг и сумма прописью. Номер —
+ * через общий нумератор рейса (routeDocumentNumber), отдельный вид документа.
+ */
+export function buildAct(
+  route: DocumentRoute,
+  order: DocumentOrder,
+  carrier: CarrierRequisites,
+  orderIndex: number,
+): PrintDocument {
+  const price = orderPrice(order)
+  const gross = price ?? 0
+  const vat = vatBreakdown(order.vatType, gross)
+  const amount = price !== null ? vat.grossAmount : null
+
+  const totalRow: DocumentBlock = {
+    title: "Итого",
+    fields: [
+      { label: "Всего стоимость работ", value: amount !== null ? formatMoney(amount) : null },
+      { label: "В том числе НДС", value: price !== null ? vat.label : null },
+      { label: "Сумма прописью", value: amount !== null ? amountInWords(amount) : null },
+    ],
+  }
+
+  return {
+    kind: "act",
+    number: routeDocumentNumber(route, 4, orderIndex),
+    title: DOCUMENT_TITLES.act,
+    subtitle: `${order.routeFrom} — ${order.routeTo}`,
+    blocks: [
+      carrierBlock(carrier),
+      {
+        title: "Заказчик",
+        fields: [
+          { label: "Наименование", value: orBlank(order.clientName) },
+          { label: "Контактное лицо", value: orBlank(order.clientContact) },
+          { label: "ИНН / адрес", value: null },
+        ],
+      },
+      totalRow,
+    ],
+    tables: price !== null ? [actServiceRow(order, price)] : [],
+    notes: [
+      price === null
+        ? "Цена перевозки по заказу не задана: укажите её в заказе до печати — акт без суммы недействителен."
+        : `Условие налогообложения: ${vat.label}.`,
+      `Услуги оказаны: ${formatDate(order.deadline) ?? "дата не указана"}. Претензий по объёму и качеству работ не имею (заполняется при подписании).`,
+    ].filter(Boolean),
+    signatures: [
+      "Исполнитель ______________ / ______________ /",
+      signatureLine(carrier),
+      "Заказчик ______________ / ______________ /",
+    ],
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Сборка комплекта
 // ---------------------------------------------------------------------------
 
 /**
  * Документы по рейсу выбранных видов.
  *
- * ТТН и договор-заявка печатаются на каждый заказ рейса (по одному бланку),
- * путевой лист — один на рейс. Если в рейсе ещё нет ни одного заказа, путевой
- * лист всё равно печатается (машина и водитель могут быть назначены раньше
- * точек), а ТТН и заявки — нет: печатать пустой бланк без груза бессмысленно.
+ * ТТН, договор-заявка, счёт и акт печатаются на каждый заказ рейса (по
+ * одному бланку), путевой лист — один на рейс. Если в рейсе ещё нет ни
+ * одного заказа, путевой лист всё равно печатается (машина и водитель
+ * могут быть назначены раньше точек), а ТТН, заявки, счета и акты — нет:
+ * печатать пустой бланк без груза бессмысленно.
  */
 export function buildRouteDocuments(input: {
   route: DocumentRoute
@@ -423,7 +570,11 @@ export function buildRouteDocuments(input: {
       documents.push(
         kind === "ttn"
           ? buildTtn(route, order, carrier, index)
-          : buildContract(route, order, carrier, index),
+          : kind === "contract"
+            ? buildContract(route, order, carrier, index)
+            : kind === "invoice"
+              ? buildInvoice(route, order, carrier, index)
+              : buildAct(route, order, carrier, index),
       )
     })
   }

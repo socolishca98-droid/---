@@ -46,11 +46,15 @@ export function RouteDocumentsDialog({
   open,
   onOpenChange,
 }: RouteDocumentsDialogProps) {
-  // По умолчанию — полный комплект: обычно печатают всё сразу
+  // По умолчанию — комплект ttn/waybill/contract (DEFAULT_DOCUMENT_KINDS):
+  // обычно печатают его сразу. Счёт и акт — по явному выбору: это документы
+  // денег, их готовят осознанно, когда переговоры закончены.
   const [kinds, setKinds] = useState<Record<DocumentKind, boolean>>({
     ttn: true,
     waybill: true,
     contract: true,
+    invoice: false,
+    act: false,
   })
   const [settings, setSettings] = useState<SettingsLike | null>(null)
   const [isChecking, setIsChecking] = useState(false)
