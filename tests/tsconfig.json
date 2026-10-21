@@ -39,6 +39,7 @@
     "../lib/clients/import.ts",
     "../lib/documents/types.ts",
     "../lib/documents/build.ts",
+    "../lib/documents/missing.ts",
     "../lib/ati/scan-profile.ts",
     "../lib/reports/aggregate.ts",
     "../lib/reports/insights.ts",

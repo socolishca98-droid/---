@@ -41,6 +41,7 @@ import { Card, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { RouteDocumentsDialog } from "@/components/routes/route-documents-dialog"
+import { missingForDocuments } from "@/lib/documents/missing"
 import {
   assignableDriversForVehicle,
   driverOfVehicle,
@@ -172,6 +173,27 @@ export default function LogistRoutePage() {
       detailsHref: routeMapsHref(waypoints[0], waypoints[waypoints.length - 1]),
       load: formatWeightKg(route.stats?.cargoWeight),
     }
+  }, [route])
+
+  /** «Чего не хватает» для документов: по данным рейса (без реквизитов —
+   *  их проверяет диалог печати вместе с настройками автопарка). */
+  const missingItems = useMemo(() => {
+    if (!route) return []
+    return missingForDocuments({
+      route: {
+        driverName: route.driver?.name ?? null,
+        vehiclePlate: route.vehicle?.plate ?? null,
+        orders: (route.orders ?? []).map((order) => ({
+          clientName: order.clientName ?? null,
+          weightKg: order.weight ?? null,
+          priceRub: order.price ?? null,
+          agreedPriceRub: order.agreedPrice ?? null,
+          deadline: order.deadline ?? null,
+          paymentType: order.paymentType ?? null,
+          vatType: order.vatType ?? null,
+        })),
+      },
+    })
   }, [route])
 
   /**
@@ -385,6 +407,15 @@ export default function LogistRoutePage() {
                   ({route.orders?.length ?? 0}{" "}
                   {formatCount(route.orders?.length ?? 0, ["заказ", "заказа", "заказов"])})
                 </span>
+                {missingItems.length > 0 ? (
+                  <span
+                    className="ml-1 inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning"
+                    title="Не хватает данных для документов — откройте «Документы»"
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    не хватает: {missingItems.length}
+                  </span>
+                ) : null}
               </button>
 
               {/* Нет водителя — здесь же и выбор: не гоняем логиста по экрану */}
@@ -741,6 +772,19 @@ export default function LogistRoutePage() {
               ordersCount={route.orders?.length ?? 0}
               open={documentsOpen}
               onOpenChange={setDocumentsOpen}
+              routeData={{
+                driverName: route.driver?.name ?? null,
+                vehiclePlate: route.vehicle?.plate ?? null,
+                orders: (route.orders ?? []).map((order) => ({
+                  clientName: order.clientName ?? null,
+                  weightKg: order.weight ?? null,
+                  priceRub: order.price ?? null,
+                  agreedPriceRub: order.agreedPrice ?? null,
+                  deadline: order.deadline ?? null,
+                  paymentType: order.paymentType ?? null,
+                  vatType: order.vatType ?? null,
+                })),
+              }}
             />
 
             {/* ── Несогласованные заказы: рейс пересобирается без них ── */}

@@ -26,12 +26,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DOCUMENT_HINTS, DOCUMENT_KINDS, DOCUMENT_TITLES, type DocumentKind } from "@/lib/documents/types"
+import { missingForDocuments, type MissingRouteLike } from "@/lib/documents/missing"
 
 interface RouteDocumentsDialogProps {
   routeId: string
   ordersCount: number
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Данные рейса для проверки «чего не хватает»: экипаж и заказы.
+   * Если не переданы (например, карточка активного рейса не грузила заказы),
+   * диалог проверяет только реквизиты организации, как раньше.
+   */
+  routeData?: MissingRouteLike
 }
 
 type SettingsLike = {
@@ -45,6 +52,7 @@ export function RouteDocumentsDialog({
   ordersCount,
   open,
   onOpenChange,
+  routeData,
 }: RouteDocumentsDialogProps) {
   // По умолчанию — комплект ttn/waybill/contract (DEFAULT_DOCUMENT_KINDS):
   // обычно печатают его сразу. Счёт и акт — по явному выбору: это документы
@@ -83,8 +91,22 @@ export function RouteDocumentsDialog({
   }, [open])
 
   const selected = DOCUMENT_KINDS.filter((kind) => kinds[kind])
-  const missingRequisites =
-    settings !== null && (!settings.legalName || !settings.inn || !settings.legalAddress)
+
+  // «Чего не хватает» считаем сразу, как только пришли настройки и известны
+  // данные рейса: диалог всегда получает routeData (оба места вызова), но на
+  // случай его отсутствия — реквизиты проверяем по-прежнему.
+  const requisitesLike = settings
+    ? {
+        legalName: settings.legalName,
+        inn: settings.inn,
+        legalAddress: settings.legalAddress,
+      }
+    : null
+
+  const missingItems = missingForDocuments({
+    route: routeData ?? { driverName: null, vehiclePlate: null, orders: [] },
+    requisites: requisitesLike,
+  })
 
   const canPrintOrders = ordersCount > 0
 
@@ -158,18 +180,40 @@ export function RouteDocumentsDialog({
           {isChecking ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Проверяю реквизиты организации…
+              Проверяю документы и реквизиты…
             </div>
-          ) : missingRequisites ? (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          ) : missingItems.length === 0 ? (
+            <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-xs text-success">
+              <FileText className="h-3.5 w-3.5 shrink-0" />
               <span>
-                В настройках автопарка не заполнены реквизиты организации (наименование,
-                ИНН, адрес). Документ напечатается с пустыми строками — заполнить можно
-                во вкладке «Автопарк» → «Настройки».
+                Для документов всё есть: экипаж, цены, клиенты и реквизиты заполнены.
               </span>
             </div>
-          ) : null}
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                Чего не хватает: {missingItems.length}{" "}
+                {missingItems.length === 1 ? "пункт" : missingItems.length < 5 ? "пункта" : "пунктов"}
+              </div>
+              {missingItems.map((item) => (
+                <div
+                  key={item.key}
+                  className={`rounded-lg border p-2.5 text-xs ${
+                    item.severity === "blocker"
+                      ? "border-destructive/40 bg-destructive/10 text-destructive"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  }`}
+                >
+                  <div className="font-medium">
+                    {item.severity === "blocker" ? "Без этого документ недействителен: " : ""}
+                    {item.label}
+                  </div>
+                  <div className="mt-0.5 text-muted-foreground/90">{item.hint}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>

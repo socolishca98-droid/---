@@ -78,6 +78,11 @@ export interface MobileRouteOrder {
   agreedPrice: number | null
   routeSequence: number | null
   isAdditionalLoad?: boolean
+  /** Срок доставки заказа (ISO-строка) — для проверки «чего не хватает». */
+  deadline?: string | null
+  /** Условия оплаты заказа: форма оплаты и НДС — приходят из заказа. */
+  paymentType?: string | null
+  vatType?: string | null
   /**
    * Состояние переговоров по заказу: new | in_progress | agreed | lost.
    * Нужно, чтобы в карточке рейса увидеть заказы, по которым согласие так и

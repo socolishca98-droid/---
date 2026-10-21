@@ -794,6 +794,11 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
         ordersCount={route.orders?.length ?? 0}
         open={showDocuments}
         onOpenChange={setShowDocuments}
+        routeData={{
+          driverName: route.driverName ?? null,
+          vehiclePlate: route.vehiclePlate ?? null,
+          orders: route.orders ?? [],
+        }}
       />
 
       <RouteCrewDialog
