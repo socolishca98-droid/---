@@ -204,8 +204,13 @@ export async function saveManualToken(organizationId: string, token: string) {
 }
 
 /**
- * Живая проверка токена: GET /v1.0/firms/my — фирма, на которую выдан токен.
- * Заодно заполняет firmId/firmName: их видно в настройках организации.
+ * Живая проверка токена: GET /v1.0/account — «кто я» для ЛЮБОГО аккаунта ATI.
+ *
+ * Раньше проверяли через /v1.0/firms/my — но этот метод отвечает 404 для
+ * физлиц без фирмы (проверено вживую на реальном аккаунте), и подключение
+ * ломалось с 404 у совершенно валидного токена. /v1.0/account работает
+ * всегда: 200 — токен жив, 401 — не принят. Заполняет firmId (AccountId) и
+ * firmName: их видно в настройках организации.
  */
 export async function verifyConnection(organizationId: string) {
   const connection = await prisma.atiConnection.findFirst({
@@ -217,7 +222,7 @@ export async function verifyConnection(organizationId: string) {
 
   try {
     const response = await atiFetch(
-      `${ATI_API_BASE}/v1.0/firms/my`,
+      `${ATI_API_BASE}/v1.0/account`,
       {
         headers: atiHeaders(token),
         signal: AbortSignal.timeout(10_000),
@@ -234,9 +239,9 @@ export async function verifyConnection(organizationId: string) {
       return { ok: false as const, code: "invalid" as const, error: message }
     }
 
-    const firm: any = await response.json()
-    const firmId = firm?.id != null ? String(firm.id) : null
-    const firmName = firm?.name ?? firm?.firm?.name ?? null
+    const account: any = await response.json()
+    const firmId = account?.AccountId != null ? String(account.AccountId) : null
+    const firmName = account?.FullFirmName ?? account?.FirmName ?? null
     await prisma.atiConnection.update({
       where: { id: connection.id },
       data: {

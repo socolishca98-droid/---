@@ -26,19 +26,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, code: ati.code, error: ati.error }, { status: 400 })
   }
 
-  const results: any = { connected: true, firm: {}, loads: {} }
+  const results: any = { connected: true, account: {}, loads: {} }
 
-  // 1. Моя фирма (проверка токена: токен жив — ATI вернёт 200)
+  // 1. Кто я: GET /v1.0/account — работает для любого аккаунта ATI, включая
+  //    физлиц без фирмы (у тех /v1.0/firms/my отвечает 404 — проверено вживую)
   try {
     const res = await atiFetch(
-      `${ATI_API_BASE}/v1.0/firms/my`,
+      `${ATI_API_BASE}/v1.0/account`,
       { headers: atiHeaders(ati.token), cache: "no-store" },
       __org.organizationId,
     )
     const data = await res.json().catch(() => ({}))
-    results.firm = { status: res.status, id: data.id, name: data.name, city: data.city }
+    results.account = {
+      status: res.status,
+      accountId: data.AccountId,
+      name: data.FullFirmName ?? data.FirmName,
+      city: data.Location?.CityName,
+    }
   } catch (e) {
-    results.firm = { error: (e as Error).message }
+    results.account = { error: (e as Error).message }
   }
 
   // 2. Доступ к грузам (проверка прав: даже пустой поиск отвечает 200)
