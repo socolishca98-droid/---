@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  FileText,
   Map as MapIcon,
   Package,
   Plus,
@@ -26,6 +27,7 @@ import {
   Truck,
   UserPlus,
   Users,
+  Wallet,
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
@@ -42,6 +44,7 @@ import {
   type MobileRoute,
 } from "@/lib/logist-mobile/types"
 import { formatDeadline, plural, routeTitle } from "@/lib/logist-mobile/format"
+import { missingForDocuments } from "@/lib/documents/missing"
 
 /** Строка «что сделать» — показываем только когда есть что делать */
 interface HomeAction {
@@ -89,6 +92,43 @@ export default function LogistHomePage() {
   const routesWithoutDriver = activeRoutes.filter((route) => !route.driver)
   const freeDrivers = driverList.filter((driver) => driver.status === "available")
 
+  // ── B3: рейсы завершены, а для документов не хватает данных ──
+  // Берём те же данные, что печать (lib/documents/missing.ts): реквизиты
+  // здесь не проверяем (их видно в диалоге печати), смотрим по рейсу —
+  // экипаж, цены, клиентов, сроки.
+  const routesAwaitingDocuments = routeList
+    .filter((route) => route.status === "completed")
+    .map((route) => ({
+      route,
+      missing: missingForDocuments({
+        route: {
+          driverName: route.driver?.name ?? null,
+          vehiclePlate: route.vehicle?.plate ?? null,
+          orders: (route.orders ?? []).map((order) => ({
+            clientName: order.clientName ?? null,
+            weightKg: order.weight ?? null,
+            priceRub: order.price ?? null,
+            agreedPriceRub: order.agreedPrice ?? null,
+            deadline: order.deadline ?? null,
+            paymentType: order.paymentType ?? null,
+            vatType: order.vatType ?? null,
+          })),
+        },
+      }),
+    }))
+    .filter((item) => item.missing.length > 0)
+
+  // ── B3: просроченные оплаты — срок прошёл, денег нет ──
+  const now = new Date()
+  const overduePayments = orderList.filter((order) => {
+    if (order.isPaid || !order.dueDate) return false
+    return new Date(order.dueDate).getTime() < now.getTime()
+  })
+  const overduePaymentsSum = overduePayments.reduce(
+    (sum, order) => sum + (order.agreedPrice ?? order.price ?? 0),
+    0,
+  )
+
   const loading = sessionLoading || orders.loading || routes.loading || drivers.loading
   const routesLoading = sessionLoading || routes.loading
   const driversLoading = sessionLoading || drivers.loading
@@ -131,14 +171,32 @@ export default function LogistHomePage() {
       hint: "рейс не поедет",
       tone: "warn",
     },
+    {
+      key: "docs-missing",
+      href: "/lm/routes",
+      icon: FileText,
+      title: `${routesAwaitingDocuments.length} ${plural(routesAwaitingDocuments.length, ["рейс", "рейса", "рейсов"])} ждут данные для документов`,
+      hint: "рейс закрыт, а счёт и акт не выйдут",
+      tone: "warn",
+    },
+    {
+      key: "payments-overdue",
+      href: "/lm/payments",
+      icon: Wallet,
+      title: `${overduePayments.length} ${plural(overduePayments.length, ["оплата", "оплаты", "оплат"])} просрочено`,
+      hint: `на ${overduePaymentsSum.toLocaleString("ru-RU").replace(/\u00a0/g, " ")} ₽ — срок прошёл`,
+      tone: "danger",
+    },
   ] as HomeAction[])
     .filter((action) => {
       if (action.key === "pending") return !staffLoading && pendingCount > 0
+      if (action.key === "docs-missing") return !routesLoading && routesAwaitingDocuments.length > 0
+      if (action.key === "payments-overdue") return !ordersLoading && overduePayments.length > 0
       if (ordersLoading || routesLoading) return false
       // Убираем строки с нулём: «0 просрочено» — это шум, а не дело
       return !action.title.startsWith("0 ")
     })
-    .slice(0, 4)
+    .slice(0, 6)
 
   const today = new Date().toLocaleDateString("ru-RU", {
     day: "numeric",
@@ -287,6 +345,45 @@ export default function LogistHomePage() {
             })}
           </div>
         )}
+
+        {/* B3: рейсы закрыты, а для документов не хватает данных — счёт и акт не выйдут */}
+        {routesAwaitingDocuments.length > 0 ? (
+          <>
+            <SectionTitle
+              title="Ждут данные для документов"
+              action={{ label: "Все рейсы", href: "/lm/routes" }}
+            />
+            <div className="space-y-2.5">
+              {routesAwaitingDocuments.slice(0, 3).map(({ route, missing }) => {
+                const meta = ROUTE_STATUS_META[route.status] ?? ROUTE_STATUS_META.planned
+                const first = route.orders?.[0]
+                const last = route.orders?.[route.orders.length - 1]
+                return (
+                  <Link
+                    key={route.id}
+                    href={`/lm/routes/${route.id}`}
+                    className="block rounded-xl border border-warning/30 bg-warning/[0.07] p-4 active:opacity-70"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+                        {route.name || (first ? routeTitle(first.routeFrom, last?.routeTo) : "Рейс")}
+                      </p>
+                      <span
+                        className={`inline-flex shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${meta.style}`}
+                      >
+                        {meta.label}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-warning">
+                      <FileText className="h-3.5 w-3.5 shrink-0" />
+                      Не хватает: {missing.map((item) => item.label.toLowerCase()).join(", ")}
+                    </p>
+                  </Link>
+                )
+              })}
+            </div>
+          </>
+        ) : null}
 
         <SectionTitle title="Активные рейсы" action={{ label: "Все рейсы", href: "/lm/routes" }} />
         {routesLoading ? (

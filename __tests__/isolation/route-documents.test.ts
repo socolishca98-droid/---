@@ -260,7 +260,7 @@ describe("документы по маршруту (GET /api/routes/[routeId]/do
     const { response, data } = await callDocuments(world.routeA, cookieA, "ttn,накладная")
 
     expect(response.status).toBe(400)
-    expect(data.allowed).toEqual(["ttn", "waybill", "contract"])
+    expect(data.allowed).toEqual(["ttn", "waybill", "contract", "invoice", "act"])
   })
 
   it("пустой рейс: печатается только путевой лист, без выдуманных заказов", async () => {
