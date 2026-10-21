@@ -61,7 +61,9 @@ export default function LogistHomePage() {
   const { user, isLoading: sessionLoading } = useStaffSession()
 
   const orders = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
-  const routes = useJsonApi<{ routes: MobileRoute[] }>(user ? "/api/routes?limit=50" : null)
+  // includeClosed=1: завершённые рейсы нужны для пункта «рейс закрыт, а для
+  // документов не хватает данных» — без флага API отрезает их из списка.
+  const routes = useJsonApi<{ routes: MobileRoute[] }>(user ? "/api/routes?limit=50&includeClosed=1" : null)
   const drivers = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
   // Заявки на доступ видят и логист, и админ — решение принимает API (пункт 2.4)
   const staff = useJsonApi<{ pendingCount: number }>(
