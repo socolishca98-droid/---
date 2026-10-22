@@ -21,8 +21,8 @@ function env(name: string): string {
   return (process.env[name] || "").trim()
 }
 
-/** Разбор аргументов командной строки: --email, --org, --clean. */
-function args(): { email?: string; org?: string; clean: boolean } {
+/** Разбор аргументов командной строки: --email, --org, --clean, --sql. */
+function args(): { email?: string; org?: string; clean: boolean; sql: boolean } {
   const argv = process.argv.slice(2)
   const get = (flag: string): string | undefined => {
     const i = argv.indexOf(flag)
@@ -32,6 +32,7 @@ function args(): { email?: string; org?: string; clean: boolean } {
     email: get("--email"),
     org: get("--org"),
     clean: argv.includes("--clean"),
+    sql: argv.includes("--sql"),
   }
 }
 
@@ -706,8 +707,120 @@ async function resolveOrganizationId(
   return first.id
 }
 
+/** SQL-строка: значение или NULL. */
+function lit(value: unknown): string {
+  if (value === null || value === undefined) return "NULL"
+  if (typeof value === "boolean") return value ? "true" : "false"
+  if (typeof value === "number") return String(value)
+  return `'${String(value).replace(/'/g, "''")}'`
+}
+
+/** Печатает Postgres-скрипт для применения в Supabase (превью/прод). */
+function printSql(email?: string): void {
+  const orgExpr = email
+    ? `COALESCE((SELECT "organizationId" FROM "User" WHERE email = ${lit(email)} LIMIT 1), (SELECT "organizationId" FROM "User" WHERE role IN ('admin','logist') AND "organizationId" IS NOT NULL ORDER BY "createdAt" LIMIT 1))`
+    : `(SELECT "organizationId" FROM "User" WHERE role IN ('admin','logist') AND "organizationId" IS NOT NULL ORDER BY "createdAt" LIMIT 1)`
+
+  console.log(`-- Демо-грузы ATI для Postgres (Supabase). Идемпотентно: ON CONFLICT DO UPDATE.
+-- Применить: Supabase → SQL Editor → Run. Проверка:
+--   SELECT COUNT(*) FROM "AtiCache" WHERE "atiLoadId" LIKE 'demo-%';
+-- Удалить: DELETE FROM "AtiCache" WHERE "atiLoadId" LIKE 'demo-%';
+DO $$
+DECLARE org_id TEXT;
+BEGIN
+  SELECT ${orgExpr} INTO org_id;
+  IF org_id IS NULL THEN
+    RAISE EXCEPTION 'Не найдена организация пользователя — сначала привяжите организацию';
+  END IF;`)
+
+  for (const l of LOADS) {
+    const columns = [
+      'id',
+      '"organizationId"',
+      '"atiLoadId"',
+      '"routeFrom"',
+      '"routeFromId"',
+      '"routeTo"',
+      '"routeToId"',
+      'distance',
+      'weight',
+      'volume',
+      '"cargoType"',
+      '"truckType"',
+      '"loadingType"',
+      'price',
+      '"priceType"',
+      '"paymentType"',
+      '"vatIncluded"',
+      '"loadingDate"',
+      '"unloadingDate"',
+      '"firmName"',
+      '"contactName"',
+      '"contactPhone"',
+      'note',
+      '"rawJson"',
+      'status',
+      '"aiScore"',
+      '"aiReason"',
+      '"scannedAt"',
+      '"expiresAt"',
+    ]
+    const values = [
+      `'demo-ati-${l.loadId}'`,
+      'org_id',
+      `'${LOAD_PREFIX}${l.loadId}'`,
+      lit(l.routeFrom),
+      lit(l.routeFromId ?? null),
+      lit(l.routeTo),
+      lit(l.routeToId ?? null),
+      String(l.distance),
+      String(l.weight),
+      l.volume != null ? String(l.volume) : 'NULL',
+      lit(l.cargoType),
+      lit(l.truckType),
+      lit(l.loadingType ?? null),
+      String(l.price),
+      lit(l.priceType ?? 'rub'),
+      lit(l.paymentType),
+      l.vatIncluded ? 'true' : 'false',
+      lit(daysFromNow(l.loadingIn).toISOString()),
+      lit(daysFromNow(l.unloadingIn).toISOString()),
+      lit(l.firmName),
+      lit(l.contactName),
+      lit(l.contactPhone),
+      lit(l.note ?? null),
+      lit(rawJsonFor(l)),
+      lit('new'),
+      String(l.aiScore),
+      lit(l.aiReason),
+      lit(new Date(Date.now() - LOADS.indexOf(l) * 37 * 60 * 1000).toISOString()),
+      lit(new Date(Date.now() + 2 * DAY).toISOString()),
+    ]
+    console.log(
+      `  INSERT INTO "AtiCache" (${columns.join(', ')})\n  VALUES (${values.join(', ')})\n  ON CONFLICT ("organizationId", "atiLoadId") DO UPDATE SET`
+        .concat(
+          ' "routeFrom" = EXCLUDED."routeFrom", "routeTo" = EXCLUDED."routeTo",'
+          .concat(
+            ' distance = EXCLUDED.distance, price = EXCLUDED.price, status = EXCLUDED.status,'
+              .concat(' "scannedAt" = EXCLUDED."scannedAt", "expiresAt" = EXCLUDED."expiresAt";')
+          )
+        )
+    )
+  }
+  console.log('END $$;')
+}
+
 async function main(): Promise<void> {
-  const { email, org, clean } = args()
+  const { email, org, clean, sql } = args()
+
+  // Режим --sql: печатает Postgres-скрипт вместо записи в локальную БД.
+  // Применять в Supabase (SQL Editor) — для превью/прод, где БД — Postgres.
+  //   npm run seed:ati -- --sql > scripts/seed-ati-loads.sql
+  if (sql) {
+    printSql(email)
+    return
+  }
+
   const organizationId = await resolveOrganizationId(email, org)
   const org_ = await prisma.organization.findUnique({
     where: { id: organizationId },
