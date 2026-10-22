@@ -42,7 +42,8 @@
     "schema:postgres": "node scripts/make-postgres-schema.mjs",
     "vapid:generate": "node scripts/generate-vapid.mjs",
     "db:sql:push": "prisma db execute --file prisma/sql/2026-10-13-push-subscriptions.sql --schema prisma/schema.prisma",
-    "db:sql:eta": "node scripts/db-sql.mjs 2026-10-14-eta-forecast"
+    "db:sql:eta": "node scripts/db-sql.mjs 2026-10-14-eta-forecast",
+    "seed:ati": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-ati-loads.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
