@@ -40,7 +40,30 @@ export default function RootLayout({
             </SidebarProvider>
           </AuthProvider>
         </CsrfProvider>
-        <SonnerToaster richColors position="top-right" />
+        {/* Уведомления — «прозрачное стекло» iOS: размытая подложка,
+            лёгкая световая рамка, мягкая тень, крупное скругление.
+            Позиция сверху по центру — как баннер-уведомление на iPhone. */}
+        <SonnerToaster
+          richColors
+          position="top-center"
+          toastOptions={{
+            classNames: {
+              toast:
+                "!rounded-2xl !border !border-white/15 !bg-white/10 !backdrop-blur-xl !backdrop-saturate-150 !shadow-[0_8px_32px_rgba(0,0,0,0.36)] !ring-1 !ring-inset !ring-white/10 !text-[13px] !font-medium",
+              title: "!text-[13px] !font-semibold",
+              description: "!text-[11.5px] !opacity-75",
+              actionButton:
+                "!rounded-full !border-white/15 !bg-white/15 !backdrop-blur-sm !text-[12px]",
+              cancelButton: "!rounded-full !border-white/15 !bg-white/10",
+              closeButton: "!rounded-full !border-white/10 !bg-white/10",
+              success:
+                "!border-emerald-400/30 !bg-emerald-950/45 !text-emerald-50",
+              error: "!border-red-400/30 !bg-red-950/45 !text-red-50",
+              warning: "!border-amber-400/30 !bg-amber-950/45 !text-amber-50",
+              info: "!border-white/15 !bg-white/10 !text-foreground",
+            },
+          }}
+        />
       </body>
     </html>
   )

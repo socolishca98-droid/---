@@ -92,7 +92,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 }
 
 /** Статус → этап процесса. */
-const STATUS_STAGE: Record<OrderStatus, OrderStage> = {
+export const STATUS_STAGE: Record<OrderStatus, OrderStage> = {
   search: "search",
   negotiation: "negotiation",
   agreed: "negotiation",

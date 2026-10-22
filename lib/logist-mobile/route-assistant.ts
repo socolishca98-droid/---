@@ -15,7 +15,12 @@
 // Модуль чистый (без Next, без Prisma, без React) — его проверяют юнит-тесты
 // tests/logist-mobile-route-assistant.test.mjs.
 
-import { normalizeOrderStatus } from "../orders/stages"
+import {
+  normalizeOrderStatus,
+  ORDER_STATUSES,
+  STATUS_STAGE,
+  type OrderStatus,
+} from "../orders/stages"
 import { estimateFuelL } from "../fleet/fuel"
 import { formatDateShort, formatMoney, shortCity } from "./format"
 
@@ -152,9 +157,26 @@ export interface BackloadSuggestion {
 // ---------------------------------------------------------------------------
 
 /** Заказ можно предложить в рейс: он согласован и ещё никуда не включён. */
+/**
+ * Заказ попадает в сборку помощника, когда он ещё без рейса и находится на
+ * живых этапах процесса — «Поиск» или «Согласование».
+ *
+ * Раньше в сборку брали только согласованные («agreed») — и логист сначала
+ * должен был договориться по каждому заказу, а потом собирать рейс. По
+ * решению владельца продукта порядок обратный: помощник собирает рейс из
+ * всех подходящих заказов, а логист уже смотрит готовое предложение и
+ * согласовывает. Закрытые заказы (отменённые, отклонённые, истёкшие,
+ * доставленные) и заказы, которые уже в рейсе или дальше по процессу, —
+ * мимо: они либо отработаны, либо управляются другими экранами.
+ */
+const ASSISTANT_STAGES = new Set(["search", "negotiation"])
+
 export function isRouteableForAssistant(order: AssistantOrder): boolean {
   if (order.routeId) return false
-  return normalizeOrderStatus(order.status) === "agreed"
+  const status = normalizeOrderStatus(order.status)
+  if (!status || !(ORDER_STATUSES as readonly string[]).includes(status)) return false
+  const stage = STATUS_STAGE[status as OrderStatus]
+  return ASSISTANT_STAGES.has(stage)
 }
 
 /** Город для сравнения: значение до запятой, без «г.», в нижнем регистре, ё → е. */

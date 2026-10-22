@@ -2,7 +2,8 @@
  * Тесты помощника сборки рейсов (lib/logist-mobile/route-assistant.ts).
  *
  * Помощник обещает логисту три вещи, и все три проверяются здесь:
- *  1) в сборку попадают только согласованные заказы, которых ещё нет в рейсе;
+ *  1) в сборку попадают все заказы без рейса на живых этапах («Поиск» и
+ *     «Согласование»): помощник собирает рейс сразу, условия согласуются позже;
  *  2) заказы складываются по направлению и не превышают машину,
  *     а машина выбирается самая маленькая подходящая;
  *  3) цифры предложения (вес, деньги, ₽/км) считаются честно.
@@ -61,15 +62,26 @@ const FLEET = [
   { id: "v5", plate: "В108МК799", type: "Тягач", capacity: 20000, volume: 90, status: "maintenance" },
 ]
 
-test("в сборку попадают только согласованные заказы без рейса", () => {
+test("в сборку попадают все заказы без рейса на поиске и согласовании", () => {
+  // Помощник собирает рейс из всех живых заказов без рейса — согласование
+  // условий идёт позже, по собранному предложению (решение владельца продукта)
   assert.equal(isRouteableForAssistant(order()), true)
-  assert.equal(isRouteableForAssistant(order({ status: "search" })), false)
-  assert.equal(isRouteableForAssistant(order({ status: "negotiation" })), false)
+  assert.equal(isRouteableForAssistant(order({ status: "search" })), true)
+  assert.equal(isRouteableForAssistant(order({ status: "negotiation" })), true)
+  // Прежние значения поиска и согласования — легас тех же этапов
+  assert.equal(isRouteableForAssistant(order({ status: "new" })), true)
+  assert.equal(isRouteableForAssistant(order({ status: "processing" })), true)
+  assert.equal(isRouteableForAssistant(order({ status: "confirmed" })), true)
+  // Уже в рейсе и дальше по процессу — мимо
   assert.equal(isRouteableForAssistant(order({ status: "in_route" })), false)
+  assert.equal(isRouteableForAssistant(order({ status: "control" })), false)
+  // Закрытые: отменён, отклонён, истёк, доставлен
+  assert.equal(isRouteableForAssistant(order({ status: "cancelled" })), false)
+  assert.equal(isRouteableForAssistant(order({ status: "rejected" })), false)
+  assert.equal(isRouteableForAssistant(order({ status: "expired" })), false)
+  assert.equal(isRouteableForAssistant(order({ status: "delivered" })), false)
   // Уже в рейсе — не предлагаем повторно
   assert.equal(isRouteableForAssistant(order({ routeId: "demo-route-1" })), false)
-  // Прежнее значение «confirmed» — это и есть согласованный заказ
-  assert.equal(isRouteableForAssistant(order({ status: "confirmed" })), true)
 })
 
 test("город для сравнения: «г. Калуга» и «Калуга» — один город", () => {
@@ -162,7 +174,9 @@ test("итог и строка предложения считаются по в
   const orders = [
     order({ id: "o1", weight: 4000, price: 60000, routeTo: "Калуга" }),
     order({ id: "o2", weight: 2000, price: 30000, routeTo: "Калуга, центр" }),
-    order({ id: "o3", status: "search", routeTo: "Тула" }),
+    // Уже в рейсе — в сборку не попадает (новое правило: попадают все живые
+    // заказы без рейса, но не те, что уже в рейсе или дальше по процессу)
+    order({ id: "o3", status: "control", routeId: "demo-route-1", routeTo: "Тула" }),
   ]
 
   const proposals = buildRouteProposals(orders, FLEET, NOW)

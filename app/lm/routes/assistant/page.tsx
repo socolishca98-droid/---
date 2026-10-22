@@ -42,6 +42,7 @@ import {
   buildRouteFromAnchor,
   buildRouteProposals,
   driverOfVehicle,
+  isRouteableForAssistant,
   pickCrew,
   proposalLine,
   proposalSummary,
@@ -148,7 +149,7 @@ export default function RouteAssistantPage() {
   const visible = anchorBuild
     ? [anchorBuild.proposal]
     : proposals.filter((proposal) => !hidden.includes(proposal.id))
-  const readyCount = orders.filter((order) => !order.routeId && order.status === "agreed").length
+  const readyCount = orders.filter(isRouteableForAssistant).length
   const summary = proposalSummary(proposals, readyCount)
   const anchorOrder = anchorId ? orders.find((order) => order.id === anchorId) ?? null : null
 
@@ -309,10 +310,10 @@ export default function RouteAssistantPage() {
               </p>
               <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">
                 {summary.routes > 0
-                  ? `Согласованные заказы, которые ещё не в рейсе. Проверьте состав и предложите рейс — дальше назначите водителя.`
+                  ? `Заказы без рейса, собранные в рейсы. Проверьте состав и предложите рейс — дальше назначите водителя.`
                   : readyCount === 0
-                    ? "Нет согласованных заказов без рейса. Заказ попадает сюда, когда вы согласовали условия в карточке заказа."
-                    : "Все согласованные заказы уже разобраны по рейсам."}
+                    ? "Нет заказов без рейса. Заказ попадает в сборку сразу после создания — согласование будет позже, когда рейс собран."
+                    : "Все заказы без рейса уже разобраны по предложениям."}
               </p>
 
               {/* Порядок работы тремя шагами. Логисту не нужно разбираться,
@@ -407,7 +408,7 @@ export default function RouteAssistantPage() {
                     </p>
                     <div className="max-h-[220px] space-y-1.5 overflow-y-auto overscroll-contain">
                       {orders
-                        .filter((order) => !order.routeId && order.status === "agreed")
+                        .filter(isRouteableForAssistant)
                         .map((order) => {
                           const active = order.id === anchorId
                           return (
@@ -1011,8 +1012,9 @@ export default function RouteAssistantPage() {
             {/* Пусто совсем: заказов нет */}
             {!loading && proposals.length === 0 && readyCount === 0 && orders.length > 0 ? (
               <p className="mt-3 px-1 text-center text-[12.5px] text-muted-foreground">
-                Всего заказов: {orders.length}. В сборку попадают только согласованные — те, где вы договорились
-                о цене и условиях.
+                Всего заказов: {orders.length}. В сборку попадают все заказы без рейса —
+                на поиске и на согласовании. Помощник соберёт рейс сейчас, а условия
+                согласуете в карточке заказа.
               </p>
             ) : null}
           </>

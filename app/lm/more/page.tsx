@@ -57,7 +57,7 @@ const WORK_LINKS: SectionLink[] = [
   { href: "/lm/chat", label: "Чат", icon: MessageSquare },
   { href: "/lm/payments", label: "Оплаты", icon: Wallet },
   { href: "/lm/photos", label: "Фото от водителей", icon: CameraIcon },
-  { href: "/lm/search", label: "Поиск грузов", icon: SearchIcon },
+  { href: "/lm/search", label: "Биржа грузов", icon: SearchIcon },
 ]
 
 /** Компания: сюда заходят реже — настроить, проверить, отчитаться. */
