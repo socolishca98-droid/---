@@ -48,6 +48,7 @@ import {
   type BuilderVehicle,
   type BuiltRoute,
 } from "@/lib/logist-mobile/route-builder"
+import { normalizeCityKey } from "@/lib/logist-mobile/city-norm"
 import { type MobileDriver } from "@/lib/logist-mobile/types"
 import { formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
 
@@ -94,6 +95,8 @@ export default function RouteAssistantPage() {
   // ── Состояние помощника ──
   const [startCity, setStartCity] = useState("")
   const [vehicleId, setVehicleId] = useState("")
+  /** Радиус «по пути», км: груз рядом с маршрутом тоже берём */
+  const [detourKm, setDetourKm] = useState(150)
   const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
   const [buildStep, setBuildStep] = useState(0)
   const [route, setRoute] = useState<BuiltRoute | null>(null)
@@ -134,7 +137,6 @@ export default function RouteAssistantPage() {
       })),
     [loadsState.data],
   )
-
   const vehicles = vehiclesState.data?.vehicles ?? []
   const drivers = driversState.data?.drivers ?? []
 
@@ -169,6 +171,39 @@ export default function RouteAssistantPage() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
   }, [usableLoads])
 
+  // ── Координаты городов биржи: нужны, чтобы брать грузы «по пути» ──
+  // Без них цепочка строится только по точному совпадению городов, а на
+  // бирже один город пишут по-разному и «стыков» мало — маршрут оборвётся
+  // на одном плече. Точки тянем один раз на все города грузов.
+  const pointsQuery = useMemo(() => {
+    const cities = new Set<string>()
+    for (const load of usableLoads) {
+      cities.add(shortCity(load.fromCity))
+      cities.add(shortCity(load.toCity))
+    }
+    return [...cities].slice(0, 40).join(",")
+  }, [usableLoads])
+
+  const pointsState = useJsonApi<{ points: Record<string, { lat: number; lng: number } | null> }>(
+    user && pointsQuery ? `/api/ati/cities/points?cities=${encodeURIComponent(pointsQuery)}` : null,
+  )
+  const cityPoints = pointsState.data?.points ?? null
+
+  /** Грузы с координатами городов — билдер умеет брать «по пути». */
+  const loadsWithPoints = useMemo<BuilderLoad[]>(() => {
+    if (!cityPoints) return loads
+    return loads.map((load) => ({
+      ...load,
+      fromPoint: cityPoints[normalizeCityKey(shortCity(load.fromCity))] ?? null,
+      toPoint: cityPoints[normalizeCityKey(shortCity(load.toCity))] ?? null,
+    }))
+  }, [loads, cityPoints])
+
+  const startPoint = useMemo(
+    () => (cityPoints && startCity ? cityPoints[normalizeCityKey(shortCity(startCity))] ?? null : null),
+    [cityPoints, startCity],
+  )
+
   // ── Построение маршрута ──
   function runBuild(start: string, keep: string[], exclude: string[]) {
     if (!start.trim()) {
@@ -189,11 +224,13 @@ export default function RouteAssistantPage() {
       window.clearInterval(tick)
       const built = buildRoute({
         startCity: start.trim(),
-        loads,
+        loads: loadsWithPoints,
         vehicles,
         fuelPriceRubPerL: 62,
         keepIds: keep,
         excludeIds: exclude,
+        detourKm,
+        startPoint,
       })
       setRoute(built)
       setPhase("route")
@@ -372,6 +409,8 @@ export default function RouteAssistantPage() {
             setVehicleId={setVehicleId}
             drivers={drivers}
             usableLoadsCount={usableLoads.length}
+            detourKm={detourKm}
+            setDetourKm={setDetourKm}
             onBuild={() => runBuild(startCity, keepIds, excludeIds)}
           />
         ) : phase === "building" ? (
@@ -431,6 +470,8 @@ function SetupPhase({
   setVehicleId,
   drivers,
   usableLoadsCount,
+  detourKm,
+  setDetourKm,
   onBuild,
 }: {
   startCity: string
@@ -442,6 +483,8 @@ function SetupPhase({
   setVehicleId: (value: string) => void
   drivers: MobileDriver[]
   usableLoadsCount: number
+  detourKm: number
+  setDetourKm: (value: number) => void
   onBuild: () => void
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
@@ -530,6 +573,30 @@ function SetupPhase({
             За {selected.plate} не закреплён водитель — при отправке назначим свободного.
           </p>
         ) : null}
+      </Card>
+
+      {/* Насколько далеко от маршрута брать грузы */}
+      <Card>
+        <p className="text-[13px] font-medium text-foreground">Грузы «по пути»</p>
+        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+          Берём груз из вашего города и из городов рядом с маршрутом — так цепочка не обрывается на одном плече.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[50, 100, 150, 300].map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setDetourKm(value)}
+              className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                detourKm === value
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border text-foreground/90"
+              }`}
+            >
+              {value} км
+            </button>
+          ))}
+        </div>
       </Card>
 
       {/* Что будет */}
@@ -673,6 +740,13 @@ function RoutePhase({
           />
         </div>
 
+        {route.returnDeadheadKm > 0 ? (
+          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+            В конце — возврат в {route.path[0]}: {route.returnDeadheadKm} км порожнем, топливо на него
+            уже учтено в прибыли.
+          </p>
+        ) : null}
+
         {route.unprofitable ? (
           <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-2 text-[12.5px] leading-snug text-destructive">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -744,7 +818,18 @@ function RoutePhase({
                           домой с грузом
                         </span>
                       ) : null}
+                      {leg.byTheWay ? (
+                        <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-foreground/80">
+                          по пути
+                        </span>
+                      ) : null}
                     </div>
+
+                    {leg.deadheadKm > 0 ? (
+                      <p className="mt-1 text-[12px] text-muted-foreground">
+                        +{leg.deadheadKm} км подъезда к погрузке — учтено в прибыли плеча
+                      </p>
+                    ) : null}
 
                     {/* Звонок и статус */}
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">

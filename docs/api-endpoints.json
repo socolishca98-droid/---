@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-23T20:00:08.654Z",
+  "generatedAt": "2026-10-23T20:30:55.767Z",
   "endpoints": [
     {
       "method": "GET",
@@ -44,6 +44,11 @@
     {
       "method": "GET",
       "route": "/api/ati/cities",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ati/cities/points",
       "group": "ati"
     },
     {

@@ -7,22 +7,31 @@
 // ровно как работает реальный логист на бирже:
 //
 //   1. есть точка старта — база или город, где стоит машина;
-//   2. из неё ищем груз в соседний город, из того города — груз дальше,
-//      и так складывается цепочка: А → Б → В → Г;
-//   3. на каждом плече машина едет гружёной, прибыль плеча = ставка − топливо;
-//   4. если плечо убыточное — оно нам не нужно, берём следующее по выгоде;
-//   5. в конце цепочки стараемся вернуться домой с грузом, а не пустым.
+//   2. из неё берём груз (из того же города или «по пути» — в пределах
+//      радиуса, если известны координаты) и едем в его город выгрузки;
+//   3. оттуда — следующий груз, и так складывается цепочка А → Б → В;
+//   4. на каждом плече машина едет гружёной; прибыль = ставка − топливо
+//      на гружёный путь и на подъезд к погрузке;
+//   5. убыточные плечи не берём — маршрут должен окупаться на каждом шаге;
+//   6. в конце цепочки считаем дорогу домой: если обратного груза нет,
+//       порожний пробег входит в расходы, и прибыль это учитывает.
 //
 // Модуль чистый (без Next, Prisma, React) — его проверяет юнит-тест
 // tests/logist-mobile-route-builder.test.mjs.
 
 import { estimateFuelL } from "../fleet/fuel"
-import { cityKey } from "./route-assistant"
+import { normalizeCityKey } from "./city-norm"
 import { formatMoney, shortCity } from "./format"
 
 // ---------------------------------------------------------------------------
 // Вход
 // ---------------------------------------------------------------------------
+
+/** Точка на карте. */
+export interface Point {
+  lat: number
+  lng: number
+}
 
 /** Груз биржи, каким его отдаёт /api/ati/loads (строка AtiCache). */
 export interface BuilderLoad {
@@ -46,6 +55,10 @@ export interface BuilderLoad {
   /** Дата загрузки (ISO) — просроченные грузы не берём */
   loadingDate: string | null
   status: string
+  /** Координаты города погрузки — если геокодер знает город */
+  fromPoint?: Point | null
+  /** Координаты города выгрузки */
+  toPoint?: Point | null
 }
 
 /** Машина автопарка, какая нужна билдеру. */
@@ -79,6 +92,14 @@ export interface BuildRouteOptions {
    */
   minProfitPerKm?: number
   /**
+   * Радиус «по пути», км: груз можно взять, если его город погрузки
+   * не дальше этого от текущей точки маршрута. Ноль — только точное
+   * совпадение города. По умолчанию 150 км.
+   */
+  detourKm?: number
+  /** Координаты города старта — для радиуса «по пути» и возврата домой */
+  startPoint?: Point | null
+  /**
    * Грузы, которые обязательно оставляем в маршруте: уже согласованы
    * звонком. Пересборка «заменить отказавшего» не должна выкидывать их.
    */
@@ -92,10 +113,10 @@ export interface BuildRouteOptions {
 // Выход
 // ---------------------------------------------------------------------------
 
-/** Одно плечо маршрута: один груз от города отправления до города выгрузки. */
+/** Одно плечо маршрута: один груз от текущей точки до города выгрузки. */
 export interface RouteLeg {
   load: BuilderLoad
-  /** Порожний пробег до погрузки, км (груз берём из города, где стоим) */
+  /** Порожний пробег до погрузки, км (0 — груз из города, где стоим) */
   deadheadKm: number
   /** Гружёное плечо, км */
   loadedKm: number
@@ -104,8 +125,10 @@ export interface RouteLeg {
   fuelCostRub: number | null
   profitRub: number | null
   profitPerKm: number | null
-  /** Груз везёт машину домой — обратный плечо уже занято */
+  /** Груз везёт машину домой — обратное плечо уже занято */
   returnsHome: boolean
+  /** Груз «по пути»: город погрузки не совпал, но рядом с маршрутом */
+  byTheWay: boolean
 }
 
 /** Груз, который не попал в маршрут, и почему. */
@@ -118,11 +141,11 @@ export interface BuiltRoute {
   /** Стабильный ключ для React и кэша */
   id: string
   startCity: string
-  /** Города по порядку: старт → точки погрузки/выгрузки */
+  /** Города по порядку: старт → точки выгрузки */
   path: string[]
   legs: RouteLeg[]
   vehicle: BuilderVehicle | null
-  /** Возврат к точке старта: порожний пробег, км. 0 — вернулись с грузом */
+  /** Дорога домой в конце маршрута, км. 0 — вернулись с грузом */
   returnDeadheadKm: number
   /** Последнее плечо — домой с грузом */
   returnsHomeWithLoad: boolean
@@ -159,7 +182,7 @@ function isFresh(load: BuilderLoad, now: Date): boolean {
   return date.getTime() > now.getTime() - 12 * 60 * 60 * 1000
 }
 
-/** Машины, которые вообще можно ставить (не на ТО, не в архиве). */
+/** Машины, которые вообще можно ставить (не на ТО). */
 function usableVehicles(vehicles: BuilderVehicle[]): BuilderVehicle[] {
   return vehicles.filter((vehicle) => vehicle.status !== "maintenance")
 }
@@ -185,6 +208,22 @@ export function loadRatePerKm(load: BuilderLoad): number | null {
   return price / load.distanceKm
 }
 
+/**
+ * Расстояние между двумя точками по дуге, км (формула гаверсинуса).
+ * Точность на сотнях километров — с ошибкой меньше километра, для
+ * решения «взять или нет» этого хватает.
+ */
+export function haversineKm(a: Point, b: Point): number {
+  const R = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)))
+}
+
 /** Деньги плеча: выручка минус топливо на пробег. */
 function legMoney(
   load: BuilderLoad,
@@ -205,28 +244,39 @@ function legMoney(
 /**
  * Цепочка под конкретную машину.
  *
- * Жадный обход: из текущего города берём самый выгодный груз (прибыль на
- * километр), переезжаем в его город выгрузки, повторяем. Убыточные плечи
- * не берём — маршрут должен окупаться на каждом шаге. Грузы из keepIds
- * (уже согласованы звонком) имеют приоритет на своём плече.
+ * Жадный обход: из текущего города берём самый выгодный груз — из того же
+ * города или «по пути» (если точка погрузки в пределах радиуса), переезжаем
+ * в его город выгрузки, повторяем. Убыточные плечи не берём. Грузы из
+ * keepIds (уже согласованы звонком) имеют приоритет на своём шаге.
  */
 function buildChain(
   startCity: string,
+  startPoint: Point | null,
   pool: BuilderLoad[],
   vehicle: BuilderVehicle,
   fuelPrice: number | null,
   maxLegs: number,
   minProfitPerKm: number,
+  detourKm: number,
   keepIds: readonly string[],
 ): RouteLeg[] {
   const legs: RouteLeg[] = []
   const used = new Set<string>()
-  let current = cityKey(startCity)
+  const startKey = normalizeCityKey(startCity)
+  let currentKey = startKey
+  let currentPoint: Point | null = startPoint
 
   for (let step = 0; step < maxLegs; step += 1) {
-    const candidates = pool.filter(
-      (load) => !used.has(load.id) && cityKey(load.fromCity) === current && loadFitsVehicle(load, vehicle),
-    )
+    // Кандидаты: город совпал ИЛИ груз «по пути» (если есть координаты)
+    const candidates = pool.filter((load) => {
+      if (used.has(load.id)) return false
+      if (!loadFitsVehicle(load, vehicle)) return false
+      if (normalizeCityKey(load.fromCity) === currentKey) return true
+      if (detourKm > 0 && currentPoint && load.fromPoint) {
+        return haversineKm(currentPoint, load.fromPoint) <= detourKm
+      }
+      return false
+    })
 
     // Сначала согласованные: логист уже договорился — они в приоритете
     const ordered = [...candidates].sort((a, b) => {
@@ -238,17 +288,35 @@ function buildChain(
       return rb - ra
     })
 
-    let best: { load: BuilderLoad; money: ReturnType<typeof legMoney>; profitPerKm: number } | null = null
+    let best: {
+      load: BuilderLoad
+      money: ReturnType<typeof legMoney>
+      deadheadKm: number
+      profitPerKm: number
+      byTheWay: boolean
+    } | null = null
     for (const load of ordered) {
-      const km = Math.max(0, load.distanceKm ?? 0)
-      const money = legMoney(load, km, vehicle, fuelPrice)
+      const sameCity = normalizeCityKey(load.fromCity) === currentKey
+      const deadheadKm =
+        sameCity || !currentPoint || !load.fromPoint
+          ? 0
+          : haversineKm(currentPoint, load.fromPoint)
+      const loadedKm = Math.max(0, load.distanceKm ?? 0)
+      const totalKm = deadheadKm + loadedKm
+      const money = legMoney(load, totalKm, vehicle, fuelPrice)
       if (money.revenue <= 0) continue
       if (money.profitRub !== null && money.profitRub <= 0) continue
-      if (km > 0) {
-        const perKm = money.profitRub !== null ? money.profitRub / km : money.revenue / km
+      if (totalKm > 0) {
+        const perKm = money.profitRub !== null ? money.profitRub / totalKm : money.revenue / totalKm
         if (perKm < minProfitPerKm) continue
       }
-      best = { load, money, profitPerKm: km > 0 ? (money.profitRub ?? money.revenue) / km : 0 }
+      best = {
+        load,
+        money,
+        deadheadKm,
+        profitPerKm: totalKm > 0 ? (money.profitRub ?? money.revenue) / totalKm : 0,
+        byTheWay: !sameCity,
+      }
       break
     }
 
@@ -257,16 +325,18 @@ function buildChain(
     used.add(best.load.id)
     legs.push({
       load: best.load,
-      deadheadKm: 0,
+      deadheadKm: best.deadheadKm,
       loadedKm: Math.max(0, best.load.distanceKm ?? 0),
       revenue: best.money.revenue,
       fuelLiters: best.money.fuelLiters === null ? null : Math.round(best.money.fuelLiters),
       fuelCostRub: best.money.fuelCostRub,
       profitRub: best.money.profitRub,
       profitPerKm: Math.round(best.profitPerKm),
-      returnsHome: cityKey(best.load.toCity) === cityKey(startCity),
+      returnsHome: normalizeCityKey(best.load.toCity) === startKey,
+      byTheWay: best.byTheWay,
     })
-    current = cityKey(best.load.toCity)
+    currentKey = normalizeCityKey(best.load.toCity)
+    currentPoint = best.load.toPoint ?? currentPoint
   }
 
   return legs
@@ -282,40 +352,38 @@ function buildChain(
  * Перебираем автопарк: для каждой машины строим цепочку и оставляем вариант
  * с лучшей прибылью на километр. Так «маленькая машина рядом» не съедает
  * выгодный длинный маршрут на фуре, и наоборот.
- *
- * null — собрать нечего: объяснение лежит в поле `reason` вызывающему
- * через исключения (см. excludeLoads), либо массив грузов пуст.
  */
 export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
   const now = options.now ?? new Date()
   const maxLegs = Math.max(1, Math.min(options.maxLegs ?? 4, 6))
   const minProfitPerKm = options.minProfitPerKm ?? 25
+  const detourKm = options.detourKm ?? 150
   const fuelPrice = options.fuelPriceRubPerL
   const excludeIds = new Set(options.excludeIds ?? [])
   const keepIds = options.keepIds ?? []
 
-  const excluded: ExcludedLoad[] = []
+  const preExcluded: ExcludedLoad[] = []
   const pool: BuilderLoad[] = []
 
   for (const load of options.loads) {
     if (load.status !== "new") {
-      excluded.push({ load, reason: "груз уже не в бирже" })
+      preExcluded.push({ load, reason: "груз уже не в бирже" })
       continue
     }
     if (excludeIds.has(load.id)) {
-      excluded.push({ load, reason: "исключён вами" })
+      preExcluded.push({ load, reason: "исключён вами" })
       continue
     }
-    if (!cityKey(load.fromCity) || !cityKey(load.toCity)) {
-      excluded.push({ load, reason: "маршрут неизвестен" })
+    if (!normalizeCityKey(load.fromCity) || !normalizeCityKey(load.toCity)) {
+      preExcluded.push({ load, reason: "маршрут неизвестен" })
       continue
     }
     if (loadPrice(load) <= 0) {
-      excluded.push({ load, reason: "ставка не озвучена" })
+      preExcluded.push({ load, reason: "ставка не озвучена" })
       continue
     }
     if (!isFresh(load, now)) {
-      excluded.push({ load, reason: "дата загрузки прошла" })
+      preExcluded.push({ load, reason: "дата загрузки прошла" })
       continue
     }
     pool.push(load)
@@ -326,9 +394,7 @@ export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
   // Точка старта: база машины, иначе город самого выгодного груза
   const startCity = options.startCity.trim()
   const startFromCity = startCity.length > 0
-  const effectiveStart = startFromCity
-    ? startCity
-    : (shortCity(pool[0].fromCity) ?? startCity)
+  const effectiveStart = startFromCity ? startCity : shortCity(pool[0].fromCity)
 
   const vehicles = usableVehicles(options.vehicles)
   if (vehicles.length === 0) return null
@@ -349,37 +415,43 @@ export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
 
     const legs = buildChain(
       effectiveStart,
+      options.startPoint ?? null,
       fitting,
       vehicle,
       fuelPrice,
       maxLegs,
       minProfitPerKm,
+      detourKm,
       keepIds,
     )
     if (legs.length === 0) continue
 
     const totalRevenue = legs.reduce((sum, leg) => sum + leg.revenue, 0)
     const totalLoaded = legs.reduce((sum, leg) => sum + leg.loadedKm, 0)
-    const lastCity = shortCity(legs[legs.length - 1].load.toCity)
-    const homeKey = cityKey(effectiveStart)
-    const atHome = cityKey(legs[legs.length - 1].load.toCity) === homeKey
+    const totalDeadhead = legs.reduce((sum, leg) => sum + leg.deadheadKm, 0)
+    const lastLeg = legs[legs.length - 1]
+    const lastCity = shortCity(lastLeg.load.toCity)
+    const atHome = normalizeCityKey(lastLeg.load.toCity) === normalizeCityKey(effectiveStart)
 
     const route = finalize({
       legs,
       vehicle,
       effectiveStart,
       startFromCity,
+      startPoint: options.startPoint ?? null,
       pool,
-      preExcluded: excluded,
+      preExcluded,
       excludeIds,
       keepIds,
       fuelPrice,
       totalRevenue,
       totalLoaded,
+      totalDeadhead,
       lastCity,
       atHome,
       now,
       minProfitPerKm,
+      detourKm,
     })
     if (!route) continue
 
@@ -400,6 +472,7 @@ interface FinalizeInput {
   vehicle: BuilderVehicle
   effectiveStart: string
   startFromCity: boolean
+  startPoint: Point | null
   pool: BuilderLoad[]
   /** Грузы, отсеянные ещё до цепочки: не в бирже, исключены вами, без ставки… */
   preExcluded: ExcludedLoad[]
@@ -408,10 +481,12 @@ interface FinalizeInput {
   fuelPrice: number | null
   totalRevenue: number
   totalLoaded: number
+  totalDeadhead: number
   lastCity: string
   atHome: boolean
   now: Date
   minProfitPerKm: number
+  detourKm: number
 }
 
 /** Считать итоги маршрута и собрать объяснения — один раз на вариант. */
@@ -421,6 +496,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     vehicle,
     effectiveStart,
     startFromCity,
+    startPoint,
     pool,
     preExcluded,
     excludeIds,
@@ -428,27 +504,37 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     fuelPrice,
     totalRevenue,
     totalLoaded,
+    totalDeadhead,
     lastCity,
     atHome,
   } = input
 
-  // Обратное плечо: домой с грузом — иначе порожний возврат (в прибыль не
-  // включаем: точное расстояние домой без координат городов не узнать, а
-  // занижать прибыль молча — обманывать логиста).
+  // Дорога домой: если последнее плечо не привело на базу, считаем порожний
+  // возврат — иначе прибыль маршрута была бы завышена на весь обратный путь.
+  const lastPoint = legs[legs.length - 1].load.toPoint ?? null
+  const returnDeadheadKm = atHome || !startPoint || !lastPoint ? 0 : haversineKm(startPoint, lastPoint)
+  const returnFuelLiters =
+    returnDeadheadKm > 0 ? estimateFuelL(vehicle, returnDeadheadKm, 0) : null
+  const returnFuelCostRub =
+    returnFuelLiters !== null && fuelPrice !== null && fuelPrice > 0
+      ? Math.round(returnFuelLiters * fuelPrice)
+      : null
+
   const returnsHomeWithLoad = atHome || legs.some((leg) => leg.returnsHome)
 
-  const totalDistanceKm = totalLoaded
-  const hasFuel = legs.every((leg) => leg.fuelCostRub !== null)
-  const totalFuelCostRub = hasFuel
-    ? legs.reduce((sum, leg) => sum + (leg.fuelCostRub as number), 0)
-    : null
+  const totalDistanceKm = totalLoaded + totalDeadhead + returnDeadheadKm
+  const hasFuel =
+    legs.every((leg) => leg.fuelCostRub !== null) &&
+    (returnDeadheadKm === 0 || returnFuelCostRub !== null)
+  const legsFuel = legs.reduce((sum, leg) => sum + (leg.fuelCostRub ?? 0), 0)
+  const totalFuelCostRub = hasFuel ? legsFuel + (returnFuelCostRub ?? 0) : null
   const totalProfitRub = totalFuelCostRub !== null ? totalRevenue - totalFuelCostRub : null
   const profitPerKm =
     totalProfitRub !== null && totalDistanceKm > 0 ? Math.round(totalProfitRub / totalDistanceKm) : null
   const needsFuelSetup = vehicle.fuelConsumptionPer100 == null || vehicle.fuelConsumptionPer100 <= 0
 
   // Что осталось за бортом — с причинами. Сначала отсеянные до цепочки
-  // (их причина известена точно), потом непопавшие грузы из общего пула.
+  // (их причина известна точно), потом непопавшие грузы из общего пула.
   const usedIds = new Set(legs.map((leg) => leg.load.id))
   const excluded: ExcludedLoad[] = [...preExcluded]
   for (const load of pool) {
@@ -458,7 +544,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     if (excludeIds.has(load.id)) reason = "исключён вами"
     else if (loadPrice(load) <= 0) reason = "ставка не озвучена"
     else if (!loadFitsVehicle(load, vehicle)) reason = "не влезает в выбранную машину"
-    else if (legs.some((leg) => cityKey(leg.load.toCity) === cityKey(load.fromCity))) {
+    else if (legs.some((leg) => normalizeCityKey(leg.load.toCity) === normalizeCityKey(load.fromCity))) {
       const km = Math.max(0, load.distanceKm ?? 0)
       const money = legMoney(load, km, vehicle, fuelPrice)
       if (money.profitRub !== null && money.profitRub <= 0) reason = "плечо в убыток"
@@ -474,12 +560,27 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     reasons.push(`Город старта не указан — начали от самого выгодного груза в ${shortCity(effectiveStart)}`)
   }
   if (legs.length > 1) {
-    reasons.push(`Цепочка из ${legs.length} плеч: ${shortCity(effectiveStart)} → ${lastCity}`)
+    reasons.push(
+      `Цепочка из ${legs.length} плеч: ${shortCity(effectiveStart)} → ${lastCity}`,
+    )
+  }
+  const byTheWay = legs.filter((leg) => leg.byTheWay).length
+  if (byTheWay > 0) {
+    reasons.push(`${byTheWay} груз(а) взяты «по пути» — в пределах ${input.detourKm} км от маршрута`)
+  }
+  if (totalDeadhead > 0) {
+    reasons.push(`Подъезды к погрузке: ${totalDeadhead} км порожними — учтены в прибыли`)
   }
   if (returnsHomeWithLoad) {
-    reasons.push(`Возврат домой с грузом — машина не поедет пустой`)
+    reasons.push("Возврат домой с грузом — машина не поедет пустой")
+  } else if (returnDeadheadKm > 0) {
+    reasons.push(
+      `Обратно в ${shortCity(effectiveStart)}: ${returnDeadheadKm} км порожнем — учтено в прибыли`,
+    )
   } else if (!atHome) {
-    reasons.push(`Обратно в ${shortCity(effectiveStart)} — порожним пробегом, точное расстояние посчитает навигатор`)
+    reasons.push(
+      `Обратно в ${shortCity(effectiveStart)} — порожним пробегом; точное расстояние посчитает навигатор`,
+    )
   }
   if (needsFuelSetup) {
     reasons.push("У машины не заполнен расход топлива — прибыль не посчитана")
@@ -498,7 +599,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     path,
     legs,
     vehicle,
-    returnDeadheadKm: 0,
+    returnDeadheadKm,
     returnsHomeWithLoad,
     totalDistanceKm,
     totalRevenue,

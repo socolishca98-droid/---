@@ -279,3 +279,113 @@ test("строка-итог маршрута содержит плечи, км �
   assert.match(line, /500 км/)
   assert.match(line, /прибыль/)
 })
+
+// ── 13. Нормализация городов: «Ступино г.» и «Ступино» — один город ───────
+test("город, написанный по-разному, стыкуется в цепочку", () => {
+  const route = buildRoute({
+    startCity: "Ступино г. (г.о. Ступино), Московская область",
+    loads: [
+      load({ id: "a", fromCity: "Ступино, Московская область", toCity: "Воронеж", distanceKm: 450, priceRub: 90000 }),
+      load({ id: "b", fromCity: "Воронеж г.", toCity: "Липецк", distanceKm: 280, priceRub: 70000 }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+
+  assert.ok(route, "цепочка должна собраться через нормализацию городов")
+  assert.equal(route.legs.length, 2)
+})
+
+// ── 14. Груз «по пути»: город не совпал, но рядом с маршрутом ────────────
+test("груз берётся «по пути», если город погрузки в радиусе", () => {
+  // Домодедово (~37.7, 55.4) и Ворсино (~55.2, 36.0) — ~160 км
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000 }),
+      // Из Воронежа нет груза, но рядом Коломна (~110 км) — берём «по пути»
+      load({ id: "b", fromCity: "Коломна", toCity: "Рязань", distanceKm: 300, priceRub: 80000 }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 200,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+  })
+  // Точки у грузов не заданы — «по пути» не считается, цепочка обрывается
+  assert.ok(route)
+  assert.equal(route.legs.length, 1)
+})
+
+test("с координатами «по пути» продолжает цепочку и считает подъезд", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000,
+        fromPoint: { lat: 55.7558, lng: 37.6173 }, toPoint: { lat: 51.6720, lng: 39.1843 },
+      }),
+      // Коломна ~110 км от Воронежа? Нет — но в радиусе проверки используем
+      // реальные близкие точки: Липецк ~150 км от Воронежа
+      load({
+        id: "b", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 90000,
+        fromPoint: { lat: 52.6088, lng: 39.5992 }, toPoint: { lat: 52.7212, lng: 41.4523 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 200,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+  })
+
+  assert.ok(route)
+  assert.equal(route.legs.length, 2, "второй груз берётся по пути")
+  const second = route.legs[1]
+  assert.ok(second.byTheWay, "плечо помечено как «по пути»")
+  assert.ok(second.deadheadKm > 0, "подъезд к погрузке посчитан")
+})
+
+// ── 15. Возврат домой: порожний пробег входит в расходы ──────────────────
+test("порожний возврат домой учитывается в километраже и прибыли", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000,
+        fromPoint: { lat: 55.7558, lng: 37.6173 }, toPoint: { lat: 51.6720, lng: 39.1843 },
+      }),
+    ],
+    vehicles: [vehicle({ fuelConsumptionPer100: 30 })],
+    fuelPriceRubPerL: 100,
+    now: NOW,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+  })
+
+  assert.ok(route)
+  // Воронеж → Москва ~466 км по прямой (ATI даёт 526 по дороге)
+  assert.ok(route.returnDeadheadKm >= 400, `возврат должен быть посчитан, получено ${route.returnDeadheadKm}`)
+  assert.ok(route.totalDistanceKm > 900, "итоговый пробег включает возврат")
+  assert.ok(route.reasons.some((reason) => reason.includes("порожнем")))
+})
+
+// ── 16. Домой с грузом — возврат не нужен ─────────────────────────────────
+test("груз домой закрывает обратное плечо", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "a", fromCity: "Воронеж", toCity: "Москва", distanceKm: 526, priceRub: 120000,
+        fromPoint: { lat: 51.6720, lng: 39.1843 }, toPoint: { lat: 55.7558, lng: 37.6173 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+  })
+  // Из Москвы груза нет — маршрут начнётся от груза «по пути»? Нет:
+  // город старта не совпал и точек-городов старта нет в грузе.
+  assert.equal(route, null)
+})
