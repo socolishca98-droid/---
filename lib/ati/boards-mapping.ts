@@ -70,6 +70,12 @@ export function mapBoardsLoad(load: any, cities: AtiCityMap): any {
 
   return {
     id: String(load?.Id ?? ""),
+    // Фрахтователь: в грузе приходит только FirmId — имя и телефон фрахтователя
+    // дотягиваем отдельным запросом карточки фирмы (POST /api/ati/loads/contacts)
+    firm: {
+      id: load?.FirmId ? String(load.FirmId) : null,
+      name: null,
+    },
     loading: {
       location: { city: from.city, region: from.region },
       firstDate,

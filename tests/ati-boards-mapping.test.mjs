@@ -93,3 +93,10 @@ test("collectCityIds — все CityId погрузки и выгрузки", ()
   const ids = collectCityIds([boardsLoad()])
   assert.deepEqual(ids.sort(), [1257, 3022])
 })
+
+test("FirmId фрахтователя переносится для дозапроса контактов", () => {
+  const mapped = mapBoardsLoad(boardsLoad(), CITIES)
+  assert.equal(mapped.firm.id, "2465093")
+  // Имя фрахтователя приходит только карточкой фирмы — в грузе его нет
+  assert.equal(mapped.firm.name, null)
+})
