@@ -415,7 +415,12 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
           contactName: null,
           contactPhone: null,
           note: null,
-          rawJson: null,
+          // Точные координаты точек погрузки/выгрузки: помощник берёт по ним
+          // грузы "по пути" (геокодер мелкие сёла не знает)
+          rawJson: JSON.stringify({
+            fromPoint: item.loading?.point ?? null,
+            toPoint: item.unloading?.point ?? null,
+          }),
           scannedAt: now,
           expiresAt,
         },

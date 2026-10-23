@@ -55,6 +55,17 @@ export function mapBoardsLoad(load: any, cities: AtiCityMap): any {
   const from = cityInfo(load?.Loading)
   const to = cityInfo(load?.Unloading)
 
+  // Точные координаты точки погрузки/выгрузки — в грузе byboards они есть.
+  // Нужны, чтобы брать грузы «по пути»: геокодер мелкие сёla не знает,
+  // а груз с координатами встроится в цепочку без точного совпадения городов.
+  const point = (loc: any): { lat: number; lng: number } | null => {
+    const lat = Number(loc?.Latitude)
+    const lng = Number(loc?.Longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    if (lat === 0 && lng === 0) return null
+    return { lat, lng }
+  }
+
   const cargo = load?.Cargo || {}
   const payment = load?.Payment || {}
   const transport = load?.Transport || {}
@@ -79,9 +90,11 @@ export function mapBoardsLoad(load: any, cities: AtiCityMap): any {
     loading: {
       location: { city: from.city, region: from.region },
       firstDate,
+      point: point(load?.Loading),
     },
     unloading: {
       location: { city: to.city, region: to.region },
+      point: point(load?.Unloading),
     },
     route: { distance: Number(load?.Distance) || 0 },
     load: {

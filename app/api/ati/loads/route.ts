@@ -99,11 +99,30 @@ export async function GET(request: NextRequest) {
       organizationId,
     })
 
+    // Точки погрузки/выгрузки: лежат в rawJson груза — помощник берёт по ним
+    // грузы «по пути». Сам rawJson наружу не отдаём (он может быть большим).
+    const items = (result.items ?? []).map((row: any) => {
+      let fromPoint = null
+      let toPoint = null
+      if (typeof row.rawJson === "string" && row.rawJson.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(row.rawJson)
+          fromPoint = parsed.fromPoint ?? null
+          toPoint = parsed.toPoint ?? null
+        } catch {
+          // битый rawJson — просто без точек, это не ошибка экрана
+        }
+      }
+      const { rawJson: _rawJson, ...rest } = row
+      return { ...rest, fromPoint, toPoint }
+    })
+
     const freshScannedAt = refreshed ? new Date() : scannedAt
 
     return NextResponse.json({
       success: true,
       ...result,
+      items,
       lastScanAt: freshScannedAt,
       refreshed,
       refreshError,

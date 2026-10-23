@@ -85,6 +85,8 @@ export default function RouteAssistantPage() {
       firmName: string | null
       contactPhone: string | null
       status: string
+      fromPoint: { lat: number; lng: number } | null
+      toPoint: { lat: number; lng: number } | null
     }>
     refreshError: string | null
   }>(user ? "/api/ati/loads?status=new&limit=100" : null)
@@ -134,6 +136,10 @@ export default function RouteAssistantPage() {
         contactPhone: row.contactPhone,
         loadingDate: row.loadingDate,
         status: row.status,
+        // Точные координаты точки погрузки/выгрузки из груза ATI —
+        // приоритетнее центра города из геокодера
+        fromPoint: row.fromPoint ?? null,
+        toPoint: row.toPoint ?? null,
       })),
     [loadsState.data],
   )
@@ -194,8 +200,8 @@ export default function RouteAssistantPage() {
     if (!cityPoints) return loads
     return loads.map((load) => ({
       ...load,
-      fromPoint: cityPoints[normalizeCityKey(shortCity(load.fromCity))] ?? null,
-      toPoint: cityPoints[normalizeCityKey(shortCity(load.toCity))] ?? null,
+      fromPoint: load.fromPoint ?? cityPoints[normalizeCityKey(shortCity(load.fromCity))] ?? null,
+      toPoint: load.toPoint ?? cityPoints[normalizeCityKey(shortCity(load.toCity))] ?? null,
     }))
   }, [loads, cityPoints])
 
