@@ -1,8 +1,9 @@
-﻿// lib/ati-client.ts
+// lib/ati-client.ts
 // ATI.su интеграция — без лишних логов и без создания Order
 
 import { prisma } from "@/lib/prisma"
 import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
+import { resolveAtiCities } from "./ati/ati-city-resolver"
 
 // Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
 // ATI.SU (своя подписка, свои площадки, свои лимиты), токен передаётся
@@ -203,6 +204,112 @@ async function fetchLoadsByBoards(token: string, organizationId: string): Promis
 }
 
 // =============================================================================
+// ГРУЗЫ ПЛОЩАДОК (byboards) → внутренний формат
+// =============================================================================
+
+/** Типы кузова ATI (Transport.CarType) → подпись. */
+const CAR_TYPES: Record<number, string> = {
+  1: "Тент",
+  2: "Фургон",
+  3: "Цельнометаллический",
+  4: "Рефрижератор",
+  5: "Изотермический",
+  6: "Бортовой",
+  7: "Самосвал",
+  8: "Контейнеровоз",
+  9: "Автовоз",
+  10: "Негабарит",
+  11: "Тент-крышка",
+  12: "Микроавтобус",
+}
+
+/** Типы погрузки/выгрузки ATI (Transport.LoadingType) → подпись. */
+const LOADING_TYPES: Record<number, string> = {
+  1: "Верхняя",
+  2: "Боковая",
+  3: "Задняя",
+  4: "Любая",
+  5: "Верхняя/боковая",
+  6: "Задняя/боковая",
+}
+
+/**
+ * Груз с площадки (GET /v1.0/loads/search/byboards) → внутренний формат
+ * сканера: у ATI в ответе только CityId, имя города берём из словаря
+ * (resolveAtiCities). Дальше груз идёт через общий пайплайн: фильтры
+ * профиля → saveToCache → биржа.
+ */
+function mapBoardsLoad(
+  load: any,
+  cities: Map<number, { name: string; region: string }>
+): any {
+  const cityInfo = (loc: any): { city: string | null; region: string } => {
+    const cityId = Number(loc?.CityId) || 0
+    const hit = cityId ? cities.get(cityId) : undefined
+    return {
+      city: hit?.name ?? (cityId ? `Город #${cityId}` : null),
+      region: hit?.region ?? "",
+    }
+  }
+
+  const from = cityInfo(load?.Loading)
+  const to = cityInfo(load?.Unloading)
+
+  const cargo = load?.Cargo || {}
+  const payment = load?.Payment || {}
+  const transport = load?.Transport || {}
+  const carTypeId = Number(transport.CarType) || 0
+  const loadingTypeId = Number(transport.LoadingType) || 0
+
+  const firstDate = load?.FirstDate || load?.LastDate || null
+  const price =
+    Number(payment.SumWithNDS) ||
+    Number(payment.SumWithoutNDS) ||
+    Number(payment.RateSum) ||
+    0
+
+  return {
+    id: String(load?.Id ?? ""),
+    loading: {
+      location: { city: from.city, region: from.region },
+      firstDate,
+    },
+    unloading: {
+      location: { city: to.city, region: to.region },
+    },
+    route: { distance: Number(load?.Distance) || 0 },
+    load: {
+      weight: Number(cargo.Weight) || 0,
+      volume: Number(cargo.Volume) || null,
+      cargoType: cargo.CargoType || "Груз",
+    },
+    rate: {
+      priceNds: Number(payment.SumWithNDS) || undefined,
+      priceNoNds: Number(payment.SumWithoutNDS) || undefined,
+      price: price || undefined,
+    },
+    truck: {
+      carTypes: carTypeId ? [CAR_TYPES[carTypeId] || `Кузов #${carTypeId}`] : [],
+      loadingTypes: loadingTypeId
+        ? [LOADING_TYPES[loadingTypeId] || `Погрузка #${loadingTypeId}`]
+        : [],
+    },
+  }
+}
+
+/** Все CityId погрузки/выгрузки из грузов byboards. */
+function collectCityIds(loads: any[]): number[] {
+  const ids = new Set<number>()
+  for (const load of loads) {
+    for (const side of ["Loading", "Unloading"] as const) {
+      const cityId = Number(load?.[side]?.CityId)
+      if (Number.isFinite(cityId) && cityId > 0) ids.add(cityId)
+    }
+  }
+  return [...ids]
+}
+
+// =============================================================================
 // СКАНИРОВАНИЕ
 // =============================================================================
 
@@ -238,7 +345,9 @@ export async function scanAtiLoads(params?: any) {
     }
 
     const boards = await fetchBoardIds(token, organizationId)
-    const loads = await fetchLoadsByBoards(token, organizationId)
+    const rawLoads = await fetchLoadsByBoards(token, organizationId)
+    const cities = await resolveAtiCities(collectCityIds(rawLoads))
+    const loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
 
     const picked: any[] = []
     for (const load of loads) {
@@ -286,7 +395,9 @@ async function manualSearch(
   const fromCityKey = normalizeGeoToCityKey(params.fromGeo)
   const toCityKey = normalizeGeoToCityKey(params.toGeo)
 
-  const loads = await fetchLoadsByBoards(token, organizationId)
+  const rawLoads = await fetchLoadsByBoards(token, organizationId)
+  const cities = await resolveAtiCities(collectCityIds(rawLoads))
+  const loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
   const allLoads: any[] = []
   for (const load of loads) {
     if (fromCityKey) {

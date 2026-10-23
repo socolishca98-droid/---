@@ -44,7 +44,8 @@
     "db:sql:push": "prisma db execute --file prisma/sql/2026-10-13-push-subscriptions.sql --schema prisma/schema.prisma",
     "db:sql:eta": "node scripts/db-sql.mjs 2026-10-14-eta-forecast",
     "seed:ati": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-ati-loads.ts",
-    "seed:active-orders": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-active-orders.ts"
+    "seed:active-orders": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-active-orders.ts",
+    "seed:ati-cities": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/seed-ati-cities.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
