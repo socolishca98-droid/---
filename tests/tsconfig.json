@@ -60,7 +60,6 @@
     "../lib/routes/complete-policy.ts",
     "../lib/reports/period.ts",
     "../lib/maintenance/schedule.ts",
-    "../lib/logist-mobile/load-suggestions.ts",
-    "../lib/ati/boards-mapping.ts"
+    "../lib/logist-mobile/load-suggestions.ts"
   ]
 }
