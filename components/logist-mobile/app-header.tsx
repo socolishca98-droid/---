@@ -11,6 +11,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import type { ReactNode } from "react"
 import { ArrowLeft, Bell } from "lucide-react"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { mobileParentPath } from "@/lib/logist-mobile/routing"
@@ -25,11 +26,14 @@ export function LogistHeader({
   subtitle,
   back = false,
   userName,
+  action,
 }: {
   title: string
   subtitle?: string
   back?: boolean
   userName?: string | null
+  /** Кнопка действия в шапке (например «Обновить») — между заголовком и уведомлениями */
+  action?: ReactNode
 }) {
   const { data } = useJsonApi<{ unread: number }>("/api/notifications")
   const unread = data?.unread ?? 0
@@ -55,6 +59,8 @@ export function LogistHeader({
           <h1 className="truncate text-[17px] font-semibold leading-tight text-foreground">{title}</h1>
           {subtitle ? <p className="truncate text-[12px] text-muted-foreground">{subtitle}</p> : null}
         </div>
+
+        {action ? <div className="flex shrink-0 items-center">{action}</div> : null}
 
         <Link
           href="/lm/notifications"
