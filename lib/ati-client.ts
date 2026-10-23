@@ -337,7 +337,12 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
         if (existing.status === "new") {
           await prisma.atiCache.update({
             where: { id: existing.id },
-            data: { scannedAt: now },
+            data: {
+              scannedAt: now,
+              // Добор фрахтователя: в старых записях FirmId мог не сохраниться —
+              // без него кнопка «Узнать телефон» не сработает
+              firmId: existing.firmId ?? (item.firm?.id ? String(item.firm.id) : null),
+            },
           })
         }
         saved.push(existing)
