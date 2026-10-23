@@ -61,6 +61,8 @@
     "../lib/reports/period.ts",
     "../lib/maintenance/schedule.ts",
     "../lib/logist-mobile/load-suggestions.ts",
+    "../lib/fleet/fuel.ts",
+    "../lib/logist-mobile/route-builder.ts",
     "../lib/ati/boards-mapping.ts"
   ]
 }

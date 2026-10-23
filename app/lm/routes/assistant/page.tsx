@@ -1,20 +1,23 @@
-// app/lm/routes/assistant/page.tsx — помощник сборки рейсов.
+// app/lm/routes/assistant/page.tsx — помощник сборки: МАРШРУТ из грузов биржи.
 //
-// Экран сделан как для логиста: три блока сверху вниз, на каждом блоке —
-// одна главная кнопка. Всё, что нужно не всегда (состав рейса, выбор машины
-// и водителя, радиус сборки, обратная загрузка), свёрнуто в «Подробности»
-// и не мешает основному пути: увидел → предложил рейс.
+// Экран работает так, как работает реальный логист на бирже ATI:
 //
-//   1. Что собираем  — сколько заказов ждут рейса и кнопка «Собрать рейс»
-//   2. Готовые рейсы — карточки с прибылью и кнопкой «Предложить рейс»
-//   3. Биржа грузов  — три варианта с биржи и кнопка «Взять в работу»
+//   1. «Куда едем» — город, где стоит машина (база). Выбираешь машину.
+//   2. Жмёшь «Построить маршрут» — помощник идёт по грузам и складывает
+//      цепочку: база → город → город → домой. Каждое плечо окупается,
+//      убыточные маршруты он не предлагает.
+//   3. «Маршрут собран» — видно все плечи, деньги и компании. Звонишь
+//      фрахтователям и отмечаешь: согласовано / отказ.
+//   4. Отказали — «Заменить груз» или «Убрать из маршрута», маршрут
+//      пересобирается, согласованные грузы остаются.
+//   5. Всё созвонил — «Отправить машину»: грузы становятся заказами,
+//      создаётся рейс с машиной и водителем, водителю уходит уведомление.
 //
-// После «Предложить рейс» создаётся рейс (POST /api/routes) и открывается
-// его карточка: там назначают водителя и отправляют рейс.
+// Всё сложное — под катом: «что осталось на бирже» и «почему так собрал».
 
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -22,51 +25,49 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronUp,
   Loader2,
+  MapPin,
   Package,
   Phone,
   RefreshCw,
   Route as RouteIcon,
-  Settings2,
-  Sparkles,
   Truck,
-  Undo2,
-  User,
   X,
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
+import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
-  assignableDrivers,
-  buildRouteFromAnchor,
-  buildRouteProposals,
-  driverOfVehicle,
-  isRouteableForAssistant,
-  pickCrew,
-  proposalLine,
-  proposalSummary,
-  vehiclesForCargo,
-  type AssistantOrder,
-  type AssistantVehicle,
-  type RouteProposal,
-} from "@/lib/logist-mobile/route-assistant"
-import { DRIVER_STATUS_META, type MobileDriver, type MobileOrder } from "@/lib/logist-mobile/types"
-import { ProposalEtaComparison } from "@/components/logist-mobile/proposal-eta-comparison"
-import { suggestExchangeLoads, type SuggestionLoad, type SuggestionVehicle } from "@/lib/logist-mobile/load-suggestions"
-import { formatKm, formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
+  buildRoute,
+  routeSummaryLine,
+  type BuilderLoad,
+  type BuilderVehicle,
+  type BuiltRoute,
+} from "@/lib/logist-mobile/route-builder"
+import { type MobileDriver } from "@/lib/logist-mobile/types"
+import { formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
+
+/** Статус договорённости с фрахтователем по конкретному грузу. */
+type CallStatus = "pending" | "agreed" | "declined"
+
+/** Шаги анимации построения маршрута. */
+const BUILD_STEPS = [
+  "Ищем грузы с биржи…",
+  "Складываем цепочку плеч…",
+  "Считаем деньги по каждому плечу…",
+  "Проверяем, что маршрут в плюс…",
+]
+
+const START_CITY_KEY = "assistant-start-city"
 
 export default function RouteAssistantPage() {
   const router = useRouter()
   const { user } = useStaffSession()
 
-  const ordersState = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
-  const vehiclesState = useJsonApi<{ vehicles: AssistantVehicle[] }>(user ? "/api/vehicles" : null)
-  const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
-  // Биржа грузов: грузы с площадок ATI + автообновление (если кэш устарел —
-  // сервер сам дёргает ATI и только потом отдаёт список)
   const loadsState = useJsonApi<{
     items: Array<{
       id: string
@@ -81,239 +82,242 @@ export default function RouteAssistantPage() {
       vatIncluded: boolean
       loadingDate: string | null
       firmName: string | null
-      note: string | null
+      contactPhone: string | null
       status: string
     }>
-    lastScanAt: string | null
     refreshError: string | null
-  }>(user ? "/api/ati/loads?status=new&limit=50" : null)
+  }>(user ? "/api/ati/loads?status=new&limit=100" : null)
 
-  const [hidden, setHidden] = useState<string[]>([])
-  const [busy, setBusy] = useState<string | null>(null)
-  /** Что логист поменял руками: своя машина и водитель на предложение */
-  const [vehicleChoice, setVehicleChoice] = useState<Record<string, string>>({})
-  const [driverChoice, setDriverChoice] = useState<Record<string, string>>({})
-  /**
-   * Опорный заказ: рейс строится вокруг него. По умолчанию выключено —
-   * помощник сам раскладывает все заказы без рейса по направлениям.
-   * Включается в «Настройках сборки» (нуно редко — под конкретный груз).
-   */
-  const [anchorId, setAnchorId] = useState<string | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  /** Радиус сборки, км. Ноль — только по направлению (общий город). */
-  const [radiusKm, setRadiusKm] = useState(0)
-  const [refreshingAll, setRefreshingAll] = useState(false)
+  const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
+  const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
 
-  // Координаты городов — только когда выбран опорный заказ и радиус: без них
-  // геокодер зря не дёргается.
-  const geoState = useJsonApi<{ points: Record<string, { lat: number; lng: number } | null> }>(
-    user && anchorId && radiusKm > 0 ? "/api/orders/geo-points" : null,
+  // ── Состояние помощника ──
+  const [startCity, setStartCity] = useState("")
+  const [vehicleId, setVehicleId] = useState("")
+  const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
+  const [buildStep, setBuildStep] = useState(0)
+  const [route, setRoute] = useState<BuiltRoute | null>(null)
+  /** Договорённости по грузам: позвонил → согласовано / отказ */
+  const [calls, setCalls] = useState<Record<string, CallStatus>>({})
+  /** Согласованные звонком грузы — пересборка их сохраняет */
+  const [keepIds, setKeepIds] = useState<string[]>([])
+  /** Грузы, которые убираем: отказались или логист исключил */
+  const [excludeIds, setExcludeIds] = useState<string[]>([])
+  const [refreshing, setRefreshing] = useState(false)
+
+  // Город старта помним: логист обычно едет из одной базы
+  useEffect(() => {
+    const saved = window.localStorage.getItem(START_CITY_KEY)
+    if (saved) setStartCity(saved)
+  }, [])
+
+  const loads = useMemo<BuilderLoad[]>(
+    () =>
+      (loadsState.data?.items ?? []).map((row) => ({
+        id: row.id,
+        loadId: row.atiLoadId,
+        fromCity: row.routeFrom,
+        toCity: row.routeTo,
+        weightKg: row.weight,
+        volumeM3: row.volume,
+        cargoType: row.cargoType,
+        priceRub: row.price,
+        priceWithNds: row.vatIncluded ? row.price : null,
+        distanceKm: row.distance,
+        firmName: row.firmName,
+        contactPhone: row.contactPhone,
+        loadingDate: row.loadingDate,
+        status: row.status,
+      })),
+    [loadsState.data],
   )
 
-  const orders = (ordersState.data?.orders ?? []) as AssistantOrder[]
   const vehicles = vehiclesState.data?.vehicles ?? []
   const drivers = driversState.data?.drivers ?? []
 
-  const loading = ordersState.loading || vehiclesState.loading
-  const error = ordersState.error || vehiclesState.error
+  const loading = loadsState.loading || vehiclesState.loading
+  const error = loadsState.error || vehiclesState.error
 
-  // Координаты подставляем заказам: без них радиус не измерить, и помощник
-  // честно соберёт по направлению.
-  const geoPoints = geoState.data?.points ?? null
-  const ordersWithPoints = useMemo(() => {
-    if (!geoPoints) return orders
-    return orders.map((order) => ({
-      ...order,
-      fromPoint: geoPoints[shortCity(order.routeFrom)] ?? null,
-      toPoint: geoPoints[shortCity(order.routeTo)] ?? null,
-    }))
-  }, [orders, geoPoints])
-
-  const proposals = useMemo(
-    () => buildRouteProposals(ordersWithPoints, vehicles),
-    [ordersWithPoints, vehicles],
+  const freeVehicles = useMemo(
+    () => vehicles.filter((vehicle) => vehicle.status === "available"),
+    [vehicles],
   )
 
-  /** Сборка от опорного заказа (если выбран в настройках). */
-  const anchorBuild = useMemo(() => {
-    if (!anchorId) return null
-    return buildRouteFromAnchor(ordersWithPoints, vehicles, {
-      anchorOrderId: anchorId,
-      radiusKm: radiusKm > 0 ? radiusKm : null,
-    })
-  }, [anchorId, radiusKm, ordersWithPoints, vehicles])
+  /** Грузы, которые вообще могут поехать: свежие, со ставкой, известный маршрут. */
+  const usableLoads = useMemo(
+    () =>
+      loads.filter(
+        (load) =>
+          load.status === "new" &&
+          (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
+          shortCity(load.fromCity) !== "—" &&
+          shortCity(load.toCity) !== "—",
+      ),
+    [loads],
+  )
 
-  // Когда выбран опорный заказ — показываем сборку вокруг него одной карточкой.
-  const visible = anchorBuild
-    ? [anchorBuild.proposal]
-    : proposals.filter((proposal) => !hidden.includes(proposal.id))
-  const readyCount = orders.filter(isRouteableForAssistant).length
-  const summary = proposalSummary(proposals, readyCount)
-  const anchorOrder = anchorId ? orders.find((order) => order.id === anchorId) ?? null : null
+  /** Города погрузки на бирже — быстрый выбор базы, если своей нет в списке. */
+  const topFromCities = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const load of usableLoads) {
+      const city = shortCity(load.fromCity)
+      counts.set(city, (counts.get(city) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+  }, [usableLoads])
 
-  /** Пересборка: убираем скрытые предложения и перечитываем все списки. */
-  function rebuildAll() {
-    setHidden([])
-    ordersState.reload()
+  // ── Построение маршрута ──
+  function runBuild(start: string, keep: string[], exclude: string[]) {
+    if (!start.trim()) {
+      toast.error("Укажите город, откуда едете")
+      return
+    }
+    setPhase("building")
+    setBuildStep(0)
+
+    // Анимация построения: шаги с задержкой, затем результат
+    let step = 0
+    const tick = window.setInterval(() => {
+      step += 1
+      if (step < BUILD_STEPS.length) {
+        setBuildStep(step)
+        return
+      }
+      window.clearInterval(tick)
+      const built = buildRoute({
+        startCity: start.trim(),
+        loads,
+        vehicles,
+        fuelPriceRubPerL: 62,
+        keepIds: keep,
+        excludeIds: exclude,
+      })
+      setRoute(built)
+      setPhase("route")
+      if (!built) {
+        toast.error("Из этого города не собралось ни одного окупаемого плеча")
+      }
+    }, 550)
+  }
+
+  function refreshAll() {
+    setRefreshing(true)
+    loadsState.reload()
     vehiclesState.reload()
     driversState.reload()
-    loadsState.reload()
-  }
-
-  async function refreshAll() {
-    setRefreshingAll(true)
-    try {
-      rebuildAll()
+    window.setTimeout(() => {
+      setRefreshing(false)
       toast.success("Данные обновлены")
-    } finally {
-      setRefreshingAll(false)
-    }
+    }, 800)
   }
 
-  // ── Биржа: три примерно подходящих груза ──
-  // ATI не отдаёт контакты под автоматическую сборку — помощник только
-  // показывает три варианта. Логист звонит, договаривается, потом жмёт
-  // «Взять в работу»: груз становится нашим заказом (этап «Поиск»).
-  const exchangeLoads = useMemo<SuggestionLoad[]>(() => {
-    const rows = loadsState.data?.items ?? []
-    return rows.map((row) => ({
-      id: row.id,
-      loadId: row.atiLoadId,
-      fromCity: row.routeFrom,
-      toCity: row.routeTo,
-      weightKg: row.weight,
-      volumeM3: row.volume,
-      cargoType: row.cargoType,
-      priceRub: row.price,
-      priceWithNds: row.vatIncluded ? row.price : null,
-      distanceKm: row.distance,
-      ratePerKm:
-        row.price && row.distance && row.distance > 0 ? row.price / row.distance : null,
-      firmName: row.firmName,
-      firmRating: null,
-      firstDate: row.loadingDate,
-      lastDate: null,
-      status: row.status,
-    }))
-  }, [loadsState.data])
+  /** Отказ фрахтователя: убираем груз и пересобираем, согласованные остаются. */
+  function declineLoad(loadId: string) {
+    setCalls((prev) => ({ ...prev, [loadId]: "declined" }))
+    const keep = keepIds.filter((id) => id !== loadId)
+    const exclude = [...excludeIds, loadId]
+    setKeepIds(keep)
+    setExcludeIds(exclude)
+    runBuild(startCity, keep, exclude)
+    toast("Груз убран — пересобираю маршрут")
+  }
 
-  const exchangeSuggestions = useMemo(
-    () => suggestExchangeLoads(exchangeLoads, vehicles as SuggestionVehicle[]),
-    [exchangeLoads, vehicles],
-  )
+  /** Убрать груз из маршрута без статуса отказа. */
+  function removeLoad(loadId: string) {
+    const keep = keepIds.filter((id) => id !== loadId)
+    const exclude = [...excludeIds, loadId]
+    setKeepIds(keep)
+    setExcludeIds(exclude)
+    runBuild(startCity, keep, exclude)
+  }
 
-  /** «Взять в работу» — груз с биржи становится нашим заказом. */
-  const [takingLoad, setTakingLoad] = useState<string | null>(null)
-  const [refreshingLoads, setRefreshingLoads] = useState(false)
-
-  async function takeExchangeLoad(load: SuggestionLoad) {
-    setTakingLoad(load.id)
-    try {
-      const result = await apiSend<{ order: { id: string } }>("/api/orders/from-cache", "POST", {
-        cacheId: load.id,
-        fetchContacts: true,
+  function markCall(loadId: string, status: CallStatus) {
+    setCalls((prev) => ({ ...prev, [loadId]: status }))
+    if (status === "agreed" && !keepIds.includes(loadId)) {
+      const keep = [...keepIds, loadId]
+      setKeepIds(keep)
+      setRoute((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          reasons: [
+            ...current.reasons.filter((reason) => !reason.startsWith("Согласованные грузы")),
+            `Согласованные грузы сохранены: ${current.legs.filter((leg) => keep.includes(leg.load.id)).length}`,
+          ],
+        }
       })
-      if (result.ok && result.data?.order) {
-        toast.success("Груз взят в работу — заказ создан")
-        router.push(`/lm/orders/${result.data.order.id}`)
-      } else {
-        toast.error(result.error ?? "Не удалось взять груз в работу")
-      }
-    } catch {
-      toast.error("Не удалось взять груз в работу")
-    } finally {
-      setTakingLoad(null)
+    }
+    if (status === "declined") {
+      declineLoad(loadId)
     }
   }
 
-  async function refreshExchangeLoads() {
-    setRefreshingLoads(true)
+  /** Отправить машину: грузы → заказы → рейс с экипажем. */
+  async function sendRoute() {
+    if (!route) return
+    setPhase("sending")
     try {
-      const result = await apiSend<{ count?: number; total?: number }>("/api/ati/loads", "POST")
-      if (result.ok) {
-        toast.success(`Биржа обновлена: грузов ${result.data?.count ?? result.data?.total ?? 0}`)
-        loadsState.reload()
-      } else {
-        toast.error(result.error ?? "Не удалось обновить биржу")
+      const vehicle =
+        vehicles.find((item) => item.id === vehicleId) ?? route.vehicle ?? null
+      const driver = vehicle
+        ? drivers.find((item) => item.vehicleId === vehicle.id) ??
+          drivers.find((item) => item.status === "available") ??
+          null
+        : null
+
+      // 1. Каждый груз биржи становится нашим заказом (этап «Поиск»)
+      const orderIds: string[] = []
+      for (const leg of route.legs) {
+        const result = await apiSend<{ order: { id: string } }>("/api/orders/from-cache", "POST", {
+          cacheId: leg.load.id,
+          fetchContacts: true,
+        })
+        if (result.ok && result.data?.order) {
+          orderIds.push(result.data.order.id)
+        } else {
+          toast.error(result.error ?? `Не удалось взять груз ${shortCity(leg.load.fromCity)} → ${shortCity(leg.load.toCity)}`)
+          setPhase("route")
+          return
+        }
       }
-    } catch {
-      toast.error("Не удалось обновить биржу")
-    } finally {
-      setRefreshingLoads(false)
-    }
-  }
 
-  /**
-   * Экипаж предложения: машина и водитель подставляются помощником, логист
-   * может поменять любого (в «Подробностях» карточки). Связка всегда
-   * допустимая — машина в базе закреплена за одним водителем.
-   */
-  function crewFor(proposal: RouteProposal): { vehicle: AssistantVehicle | null; driver: MobileDriver | null } {
-    const preset = pickCrew(proposal.weightKg, proposal.volumeM3, vehicles, drivers)
-    const manualVehicle = vehicleChoice[proposal.id]
-    const manualDriver = driverChoice[proposal.id]
-
-    let vehicle: AssistantVehicle | null
-    if (manualVehicle === "none") vehicle = null
-    else if (manualVehicle) vehicle = vehicles.find((item) => item.id === manualVehicle) ?? null
-    else vehicle = preset.vehicle
-
-    let driver: MobileDriver | null
-    if (manualDriver === "none") driver = null
-    else if (manualDriver) driver = drivers.find((item) => item.id === manualDriver) ?? null
-    else driver = preset.driver
-
-    // Машина одна на водителя: если выбрана чужая — берём её хозяина,
-    // если выбран водитель со своей машиной — едет на своей.
-    const owner = driverOfVehicle(vehicle?.id, drivers)
-    if (owner && driver && owner.id !== driver.id) driver = owner
-    if (driver?.vehicleId && driver.vehicleId !== vehicle?.id) {
-      vehicle = vehicles.find((item) => item.id === driver?.vehicleId) ?? vehicle
-    }
-
-    return { vehicle, driver }
-  }
-
-  async function propose(proposal: RouteProposal) {
-    const { vehicle, driver } = crewFor(proposal)
-    setBusy(proposal.id)
-    try {
-      const result = await apiSend<{ route?: { id: string } }>("/api/routes", "POST", {
-        orderIds: proposal.orders.map((order) => order.id),
+      // 2. Рейс: заказы + машина + водитель
+      const created = await apiSend<{ route: { id: string } }>("/api/routes", "POST", {
+        orderIds,
         vehicleId: vehicle?.id ?? null,
         driverId: driver?.id ?? null,
-        name: proposal.name,
+        name: `Маршрут: ${route.path.join(" → ")}`,
       })
-      if (result.ok) {
-        const created = (result.data as { route?: { id: string } } | null)?.route?.id
-        toast.success(driver ? "Рейс предложен — водителю ушло уведомление" : "Рейс предложен — назначьте водителя")
-        router.push(created ? `/lm/routes/${created}` : "/lm/routes")
+      if (created.ok && created.data?.route) {
+        toast.success(driver ? "Машина в пути — водителю ушло уведомление" : "Рейс создан — назначьте водителя")
+        router.push(`/lm/routes/${created.data.route.id}`)
       } else {
-        toast.error(result.error ?? "Не удалось предложить рейс")
+        toast.error(created.error ?? "Не удалось создать рейс")
+        setPhase("route")
       }
     } catch {
-      toast.error("Не удалось предложить рейс")
-    } finally {
-      setBusy(null)
+      toast.error("Не удалось отправить машину")
+      setPhase("route")
     }
   }
 
+  // ═══════════════ Экран ═══════════════
   return (
     <>
       <LogistHeader
-        title="Помощник сборки"
-        subtitle="Заказы → рейс, без лишних шагов"
+        title="Сборка маршрута"
+        subtitle="Грузы биржи → цепочка → машина в пути"
         back
         userName={user?.name}
         action={
           <button
             type="button"
-            onClick={() => void refreshAll()}
-            disabled={refreshingAll}
+            onClick={refreshAll}
+            disabled={refreshing}
             aria-label="Обновить"
             className="flex h-10 w-10 items-center justify-center rounded-full text-foreground/80 active:bg-secondary/60 disabled:opacity-50"
           >
-            <RefreshCw className={`h-5 w-5 ${refreshingAll ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         }
       />
@@ -323,651 +327,569 @@ export default function RouteAssistantPage() {
           <ErrorState
             message={error}
             onRetry={() => {
-              ordersState.reload()
+              loadsState.reload()
               vehiclesState.reload()
-              driversState.reload()
             }}
           />
         ) : loading ? (
           <ListSkeleton rows={3} />
+        ) : phase === "setup" ? (
+          <SetupPhase
+            startCity={startCity}
+            setStartCity={(value) => {
+              setStartCity(value)
+              window.localStorage.setItem(START_CITY_KEY, value)
+            }}
+            topFromCities={topFromCities}
+            vehicles={freeVehicles}
+            allVehiclesBusy={freeVehicles.length === 0 && vehicles.length > 0}
+            vehicleId={vehicleId}
+            setVehicleId={setVehicleId}
+            drivers={drivers}
+            usableLoadsCount={usableLoads.length}
+            onBuild={() => runBuild(startCity, keepIds, excludeIds)}
+          />
+        ) : phase === "building" ? (
+          <BuildingPhase step={buildStep} />
+        ) : route ? (
+          <RoutePhase
+            route={route}
+            calls={calls}
+            keepIds={keepIds}
+            onCall={markCall}
+            onRemove={removeLoad}
+            onRebuild={() => {
+              setCalls({})
+              setKeepIds([])
+              setExcludeIds([])
+              runBuild(startCity, [], [])
+            }}
+            onBack={() => setPhase("setup")}
+            onSend={() => void sendRoute()}
+            sending={phase === "sending"}
+          />
         ) : (
-          <>
-            {/* ═══════════ БЛОК 1. Что собираем ═══════════ */}
-            <section>
-              <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] px-4 py-3.5">
-                <p className="text-[13px] text-muted-foreground">Заказов ждут рейса</p>
-                <p className="mt-0.5 flex items-baseline gap-2">
-                  <span className="text-[32px] font-bold leading-none text-foreground">{readyCount}</span>
-                  {summary.routes > 0 ? (
-                    <span className="text-[13px] text-foreground/80">
-                      · собрал {summary.routes} {plural(summary.routes, ["рейс", "рейса", "рейсов"])}
-                    </span>
-                  ) : null}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={rebuildAll}
-                  disabled={readyCount === 0}
-                  className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[16px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
-                >
-                  <Truck className="h-5 w-5" />
-                  {readyCount === 0 ? "Собирать нечего" : "Собрать рейс"}
-                </button>
-
-                {readyCount === 0 ? (
-                  <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
-                    Заказ попадает в сборку сразу после создания — согласование будет
-                    позже, когда рейс собран.{" "}
-                    <Link href="/lm/orders" className="font-medium text-primary">
-                      К заказам
-                    </Link>
-                  </p>
-                ) : (
-                  <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
-                    Помощник разложит все заказы без рейса по направлениям и посчитает
-                    прибыль каждого рейса.
-                  </p>
-                )}
-
-                {/* Настройки сборки — редко нужны, поэтому свёрнуты */}
-                {readyCount > 0 ? (
-                  <div className="mt-2.5 border-t border-primary/15 pt-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setSettingsOpen((v) => !v)}
-                      className="flex min-h-[36px] w-full items-center gap-1.5 text-[12.5px] font-medium text-foreground/70 active:opacity-70"
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                      Настройки сборки
-                      {anchorId ? " · вокруг заказа" : ""}
-                    </button>
-
-                    {settingsOpen ? (
-                      <div className="mt-2 space-y-3">
-                        <p className="text-[12px] text-muted-foreground">
-                          Опорный заказ — рейс строится вокруг него. Не выбран: помощник
-                          сам раскладывает все заказы по направлениям.
-                        </p>
-                        <div className="max-h-[200px] space-y-1.5 overflow-y-auto overscroll-contain">
-                          {orders
-                            .filter(isRouteableForAssistant)
-                            .map((order) => {
-                              const active = order.id === anchorId
-                              return (
-                                <button
-                                  key={order.id}
-                                  type="button"
-                                  onClick={() => setAnchorId(active ? null : order.id)}
-                                  className={`flex w-full items-start gap-2 rounded-xl border px-2.5 py-2 text-left active:opacity-70 ${
-                                    active ? "border-primary/40 bg-primary/10" : "border-border"
-                                  }`}
-                                >
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-[13px] text-foreground">
-                                      {order.clientName?.trim() || shortCity(order.routeFrom)}
-                                    </span>
-                                    <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
-                                      {shortCity(order.routeFrom)}
-                                      <ArrowRight className="h-3 w-3" />
-                                      {shortCity(order.routeTo)}
-                                      {order.weight ? <span>· {formatWeightKg(order.weight)}</span> : null}
-                                    </span>
-                                  </span>
-                                  {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
-                                </button>
-                              )
-                            })}
-                        </div>
-
-                        {anchorId ? (
-                          <>
-                            <div className="rounded-xl bg-secondary/40 px-3 py-2.5">
-                              <p className="text-[12.5px] font-medium text-foreground">
-                                Радиус сборки: {radiusKm === 0 ? "по направлению" : `${radiusKm} км`}
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {[0, 50, 100, 200, 400].map((value) => (
-                                  <button
-                                    key={value}
-                                    type="button"
-                                    onClick={() => setRadiusKm(value)}
-                                    className={`min-h-[34px] rounded-md border px-3 text-[12.5px] ${
-                                      radiusKm === value
-                                        ? "border-primary/40 bg-primary/15 text-primary"
-                                        : "border-border text-foreground/90"
-                                    }`}
-                                  >
-                                    {value === 0 ? "по направлению" : `${value} км`}
-                                  </button>
-                                ))}
-                              </div>
-                              <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
-                                {radiusKm === 0
-                                  ? "Берём грузы с общим городом погрузки или выгрузки."
-                                  : "Берём грузы, у которых город рядом с вашим маршрутом."}
-                              </p>
-                              {radiusKm > 0 && geoState.loading ? (
-                                <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-                                  <Loader2 className="h-3 w-3 animate-spin" /> Считаю расстояния…
-                                </p>
-                              ) : null}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAnchorId(null)
-                                setRadiusKm(0)
-                              }}
-                              className="text-[12.5px] font-medium text-primary"
-                            >
-                              Сбросить опорный заказ
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </section>
-
-            {/* ═══════════ БЛОК 2. Готовые рейсы ═══════════ */}
-            <section className="mt-5">
-              <h2 className="mb-2 px-1 text-[14px] font-semibold text-foreground">
-                {anchorBuild ? "Рейс вокруг заказа" : "Готовые рейсы"}
-              </h2>
-
-              {visible.length === 0 ? (
-                <EmptyState
-                  icon={<RouteIcon className="h-6 w-6" />}
-                  title={
-                    readyCount === 0
-                      ? "Заказов без рейса нет"
-                      : proposals.length > 0
-                        ? "Предложения разобраны"
-                        : "Предложений нет"
-                  }
-                  description={
-                    readyCount === 0
-                      ? "Как только появится заказ без рейса — помощник соберёт из него рейс."
-                      : proposals.length > 0
-                        ? "Вы скрыли все предложения. Нажмите «Собрать рейс», чтобы вернуть их."
-                        : "Помощник не смог собрать рейс из этих заказов. Попробуйте «Собрать рейс» ещё раз."
-                  }
-                  action={
-                    <Link
-                      href="/lm/orders"
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
-                    >
-                      К заказам
-                    </Link>
-                  }
-                />
-              ) : (
-                <div className="space-y-3">
-                  {visible.map((proposal) => {
-                    const { vehicle, driver } = crewFor(proposal)
-                    const tooHeavy =
-                      vehiclesForCargo(proposal.weightKg, proposal.volumeM3, vehicles).length === 0
-
-                    return (
-                      <Card key={proposal.id} className={proposal.urgent ? "border-warning/30" : ""}>
-                        {/* Шапка рейса: направление и главная цифра — прибыль */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[16px] font-semibold leading-snug text-foreground">
-                              {proposal.name}
-                            </p>
-                            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                              {proposalLine(proposal)}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setHidden((prev) => [...prev, proposal.id])}
-                            aria-label="Скрыть предложение"
-                            className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground active:opacity-70"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-
-                        {proposal.urgent ? (
-                          <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-warning/10 px-2 py-1 text-[12px] text-warning">
-                            <AlertTriangle className="h-3.5 w-3.5" /> {proposal.deadlineText}
-                          </p>
-                        ) : null}
-
-                        {/* Деньги рейса — сразу под названием: по этой цифре
-                            логист решает, брать рейс или нет */}
-                        {proposal.profitRub !== null && proposal.fuelCostRub !== null ? (
-                          <div
-                            className={`mt-2.5 rounded-xl px-3 py-2.5 ${
-                              proposal.unprofitable ? "bg-destructive/10" : "bg-success/10"
-                            }`}
-                          >
-                            <p className="text-[18px] font-semibold text-foreground">
-                              {proposal.unprofitable ? "Убыток " : "Прибыль ≈ "}
-                              <span className={proposal.unprofitable ? "text-destructive" : "text-success"}>
-                                {formatMoney(Math.abs(proposal.profitRub))}
-                              </span>
-                            </p>
-                            <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
-                              Выручка {formatMoney(proposal.revenue)} − топливо{" "}
-                              {formatMoney(proposal.fuelCostRub)}
-                              {proposal.distanceKm > 0 ? ` · ${formatKm(proposal.distanceKm)}` : ""}
-                            </p>
-                          </div>
-                        ) : null}
-
-                        {/* Единственная главная кнопка карточки */}
-                        <button
-                          type="button"
-                          onClick={() => void propose(proposal)}
-                          disabled={busy !== null || tooHeavy}
-                          className="mt-3 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
-                        >
-                          {busy === proposal.id ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : (
-                            <Truck className="h-5 w-5" />
-                          )}
-                          {busy === proposal.id ? "Предлагаю…" : "Предложить рейс"}
-                        </button>
-                        <p className="mt-1.5 text-center text-[12px] text-muted-foreground">
-                          {tooHeavy
-                            ? "Под этот вес машины в автопарке нет"
-                            : driver
-                              ? `Водителю ${driver.name.split(" ")[0]} уйдёт уведомление`
-                              : "Водителя назначите в карточке рейса"}
-                        </p>
-
-                        {/* ── Подробности: свёрнуты, чтобы не мешали ── */}
-                        <details className="group mt-2.5 border-t border-border pt-2">
-                          <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-2 text-[13px] font-medium text-foreground/80 [&::-webkit-details-marker]:hidden">
-                            Состав рейса ({proposal.orders.length})
-                            <span className="text-[11px] text-muted-foreground group-open:hidden">
-                              показать
-                            </span>
-                            <span className="hidden text-[11px] text-muted-foreground group-open:inline">
-                              скрыть
-                            </span>
-                          </summary>
-                          <div className="mt-1.5 space-y-1.5">
-                            {proposal.orders.map((order) => {
-                              const tel = telHref(order.clientPhone ?? order.clientContact ?? null)
-                              return (
-                                <div
-                                  key={order.id}
-                                  className="flex items-center gap-2 rounded-xl bg-card px-2.5 py-2 shadow-sm"
-                                >
-                                  <Link
-                                    href={`/lm/orders/${order.id}`}
-                                    className="flex min-w-0 flex-1 items-start gap-2 active:opacity-70"
-                                  >
-                                    <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-[13px] text-foreground">
-                                        {order.clientName?.trim() || shortCity(order.routeFrom)}
-                                      </span>
-                                      <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
-                                        {shortCity(order.routeFrom)}
-                                        <ArrowRight className="h-3 w-3" />
-                                        {shortCity(order.routeTo)}
-                                        {order.weight ? <span>· {formatWeightKg(order.weight)}</span> : null}
-                                        {order.agreedPrice || order.price ? (
-                                          <span>· {formatMoney(order.agreedPrice ?? order.price)}</span>
-                                        ) : null}
-                                      </span>
-                                    </span>
-                                  </Link>
-                                  {tel ? (
-                                    <a
-                                      href={tel}
-                                      className="flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-xl bg-success/15 px-3 text-[12.5px] font-medium text-success active:opacity-70"
-                                    >
-                                      <Phone className="h-3.5 w-3.5" /> Позвонить
-                                    </a>
-                                  ) : null}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </details>
-
-                        <details className="group mt-1 border-t border-border pt-2">
-                          <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-2 text-[13px] font-medium text-foreground/80 [&::-webkit-details-marker]:hidden">
-                            <span className="flex items-center gap-1.5">
-                              <Truck className="h-3.5 w-3.5" />
-                              {vehicle ? vehicle.plate : "Машина не выбрана"}
-                              {driver ? ` · ${driver.name.split(" ")[0]}` : " · водитель не назначен"}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground group-open:hidden">
-                              изменить
-                            </span>
-                          </summary>
-                          <div className="mt-2 space-y-2">
-                            <p className="text-[12px] text-muted-foreground">Машина</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setVehicleChoice((prev) => ({ ...prev, [proposal.id]: "none" }))}
-                                className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
-                                  !vehicle
-                                    ? "border-primary/40 bg-primary/15 text-primary"
-                                    : "border-border text-foreground/90"
-                                }`}
-                              >
-                                без машины
-                              </button>
-                              {vehiclesForCargo(proposal.weightKg, proposal.volumeM3, vehicles).map((item) => {
-                                const active = vehicle?.id === item.id
-                                const owner = driverOfVehicle(item.id, drivers)
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => setVehicleChoice((prev) => ({ ...prev, [proposal.id]: item.id }))}
-                                    className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
-                                      active
-                                        ? "border-primary/40 bg-primary/15 text-primary"
-                                        : item.status === "available"
-                                          ? "border-border text-foreground"
-                                          : "border-border text-warning/70"
-                                    }`}
-                                  >
-                                    {item.plate}
-                                    {item.capacity ? ` · ${(item.capacity / 1000).toFixed(0)} т` : ""}
-                                    {owner ? ` · ${owner.name.split(" ")[0]}` : ""}
-                                    {item.status === "available" ? "" : " · занята"}
-                                  </button>
-                                )
-                              })}
-                            </div>
-
-                            <p className="pt-1 text-[12px] text-muted-foreground">Водитель</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setDriverChoice((prev) => ({ ...prev, [proposal.id]: "none" }))}
-                                className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
-                                  !driver
-                                    ? "border-primary/40 bg-primary/15 text-primary"
-                                    : "border-border text-foreground/90"
-                                }`}
-                              >
-                                назначу позже
-                              </button>
-                              {assignableDrivers(proposal.weightKg, proposal.volumeM3, vehicles, drivers).map((item) => {
-                                const active = driver?.id === item.id
-                                const meta = DRIVER_STATUS_META[item.status ?? "offline"] ?? DRIVER_STATUS_META.offline
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => setDriverChoice((prev) => ({ ...prev, [proposal.id]: item.id }))}
-                                    className={`rounded-md border px-3 py-1.5 text-[12.5px] ${
-                                      active
-                                        ? "border-primary/40 bg-primary/15 text-primary"
-                                        : "border-border text-foreground"
-                                    }`}
-                                  >
-                                    {item.name.split(" ")[0]}
-                                    {item.vehiclePlate ? ` · ${item.vehiclePlate}` : ""}
-                                    <span className={`ml-1.5 ${active ? "" : meta.text}`}>
-                                      · {meta.label.toLowerCase()}
-                                    </span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-
-                            {tooHeavy ? (
-                              <p className="rounded-xl bg-warning/10 px-3 py-2 text-[12.5px] text-warning">
-                                Свободной машины под этот вес нет. Уберите часть заказов или
-                                добавьте машину в автопарк.
-                              </p>
-                            ) : null}
-                          </div>
-                        </details>
-
-                        <details className="group mt-1 border-t border-border pt-2">
-                          <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-2 text-[13px] font-medium text-foreground/80 [&::-webkit-details-marker]:hidden">
-                            Подробности сборки
-                            <span className="text-[11px] text-muted-foreground group-open:hidden">
-                              показать
-                            </span>
-                          </summary>
-                          <div className="mt-1.5 space-y-2.5">
-                            <ul className="space-y-1">
-                              {proposal.reasons.map((reason) => (
-                                <li
-                                  key={reason}
-                                  className="flex items-start gap-1.5 text-[12.5px] leading-snug text-muted-foreground"
-                                >
-                                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-secondary" />
-                                  {reason}
-                                </li>
-                              ))}
-                            </ul>
-
-                            {proposal.backload ? (
-                              <div className="rounded-xl border border-success/25 bg-success/[0.07] px-3 py-2.5">
-                                <p className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-                                  <Undo2 className="h-3.5 w-3.5 text-success" />
-                                  {proposal.backload.returnsHome
-                                    ? "Возврат с грузом — машина приедет домой загруженной"
-                                    : "На обратном плече есть груз"}
-                                </p>
-                                <p className="mt-1 text-[12.5px] leading-snug text-foreground/90">
-                                  {proposal.backload.orders.length}{" "}
-                                  {plural(proposal.backload.orders.length, ["заказ", "заказа", "заказов"])} из{" "}
-                                  {proposal.backload.fromCity} → {proposal.backload.toCity} на{" "}
-                                  {formatMoney(proposal.backload.revenue)}
-                                  {proposal.backload.weightKg > 0
-                                    ? ` · ${formatWeightKg(proposal.backload.weightKg)}`
-                                    : ""}
-                                </p>
-                                {!proposal.backload.fitsVehicle ? (
-                                  <p className="mt-1 text-[12px] text-warning">
-                                    Вместе с основным грузом в эту машину уже не влезает — нужна
-                                    вторая машина или часть заказов в другой рейс.
-                                  </p>
-                                ) : null}
-                              </div>
-                            ) : null}
-
-                            {anchorBuild &&
-                            proposal.id === anchorBuild.proposal.id &&
-                            anchorBuild.excluded.length > 0 ? (
-                              <div className="rounded-xl bg-secondary/40 px-3 py-2.5">
-                                <p className="text-[12.5px] font-medium text-foreground">
-                                  Не взято ({anchorBuild.excluded.length}) — и почему:
-                                </p>
-                                <ul className="mt-1 space-y-1">
-                                  {anchorBuild.excluded.slice(0, 5).map((entry) => (
-                                    <li
-                                      key={entry.order.id}
-                                      className="flex items-start gap-1.5 text-[11.5px] leading-snug text-muted-foreground"
-                                    >
-                                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-secondary" />
-                                      {shortCity(entry.order.routeFrom)} →{" "}
-                                      {shortCity(entry.order.routeTo)} — {entry.reason}
-                                    </li>
-                                  ))}
-                                </ul>
-                                {anchorBuild.excluded.length > 5 ? (
-                                  <p className="mt-1 text-[11.5px] text-muted-foreground">
-                                    и ещё {anchorBuild.excluded.length - 5}
-                                  </p>
-                                ) : null}
-                              </div>
-                            ) : null}
-
-                            <ProposalEtaComparison
-                              orderIds={proposal.orders.map((order) => order.id)}
-                              vehicleId={crewFor(proposal).vehicle?.id ?? null}
-                            />
-                          </div>
-                        </details>
-                      </Card>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* ═══════════ БЛОК 3. Биржа грузов ═══════════ */}
-            {user ? (
-              <section className="mt-6">
-                <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                  <h2 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    Грузы с биржи
-                  </h2>
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      href="/lm/search"
-                      className="flex min-h-[34px] items-center rounded-lg px-2.5 text-[12.5px] font-medium text-primary active:opacity-70"
-                    >
-                      Все грузы
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={refreshExchangeLoads}
-                      disabled={refreshingLoads}
-                      className="flex min-h-[34px] items-center gap-1.5 rounded-lg border border-border px-2.5 text-[12.5px] font-medium text-foreground/90 active:bg-secondary/60 disabled:opacity-60"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${refreshingLoads ? "animate-spin" : ""}`} />
-                      Обновить
-                    </button>
-                  </div>
-                </div>
-
-                {loadsState.error && !loadsState.data ? (
-                  <ErrorState message={loadsState.error} onRetry={() => loadsState.reload()} />
-                ) : loadsState.loading && !loadsState.data ? (
-                  <ListSkeleton rows={3} />
-                ) : exchangeSuggestions.length === 0 ? (
-                  <Card>
-                    <div className="px-1 py-3">
-                      <p className="text-[13px] font-medium text-foreground">Подходящих грузов пока нет</p>
-                      <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-                        Показываем грузы, которые влезают в ваши машины и с озвученной
-                        ставкой. Нажмите «Обновить» — или откройте биржу и выберите груз вручную.
-                      </p>
-                      {loadsState.data?.refreshError ? (
-                        <p className="mt-1.5 text-[11.5px] text-muted-foreground">
-                          {loadsState.data.refreshError}
-                        </p>
-                      ) : null}
-                    </div>
-                  </Card>
-                ) : (
-                  <>
-                    <p className="mb-2 px-1 text-[12px] leading-snug text-muted-foreground">
-                      Позвоните фрахтователю, договоритесь — и жмите «Взять в работу»:
-                      груз станет нашим заказом.
-                    </p>
-                    {exchangeSuggestions.map((suggestion) => (
-                      <Card key={suggestion.load.id} className="mb-3">
-                        <div className="space-y-2.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="truncate text-[14px] font-semibold text-foreground">
-                                {shortCity(suggestion.load.fromCity)}
-                                <ArrowRight className="mx-1 inline h-3.5 w-3.5 text-muted-foreground" />
-                                {shortCity(suggestion.load.toCity)}
-                              </p>
-                              <p className="mt-0.5 text-[12px] text-muted-foreground">
-                                {suggestion.load.firmName ?? "Фрахтователь скрыт"}
-                                {suggestion.load.cargoType ? ` · ${suggestion.load.cargoType}` : ""}
-                              </p>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="text-[15px] font-semibold text-primary">
-                                {suggestion.load.priceWithNds != null || suggestion.load.priceRub != null
-                                  ? formatMoney(suggestion.load.priceWithNds ?? suggestion.load.priceRub)
-                                  : "—"}
-                              </p>
-                              {suggestion.ratePerKm != null ? (
-                                <p className="text-[11px] text-muted-foreground">
-                                  {Math.round(suggestion.ratePerKm)} ₽/км
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-                            {suggestion.load.weightKg != null ? (
-                              <span>{formatWeightKg(suggestion.load.weightKg)}</span>
-                            ) : null}
-                            {suggestion.load.distanceKm != null ? (
-                              <span>{formatKm(suggestion.load.distanceKm)}</span>
-                            ) : null}
-                            <span className="text-foreground/70">{suggestion.vehicle.plate}</span>
-                          </div>
-
-                          <p className="rounded-lg bg-secondary/40 px-2.5 py-1.5 text-[11.5px] leading-snug text-muted-foreground">
-                            {suggestion.reason}
-                          </p>
-
-                          <ActionButton
-                            tone="primary"
-                            full
-                            onClick={() => takeExchangeLoad(suggestion.load)}
-                            disabled={takingLoad === suggestion.load.id}
-                          >
-                            {takingLoad === suggestion.load.id ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Беру в работу…
-                              </>
-                            ) : (
-                              <>
-                                <Package className="h-4 w-4" />
-                                Взять в работу
-                              </>
-                            )}
-                          </ActionButton>
-                        </div>
-                      </Card>
-                    ))}
-                    {loadsState.data?.lastScanAt ? (
-                      <p className="px-1 text-center text-[11px] text-muted-foreground">
-                        Биржа обновлена:{" "}
-                        {new Date(loadsState.data.lastScanAt).toLocaleTimeString("ru-RU", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    ) : null}
-                  </>
-                )}
-              </section>
-            ) : null}
-
-            {/* Подсказка для самого начала: заказы есть, но все в рейсах */}
-            {!loading && proposals.length === 0 && readyCount === 0 && orders.length > 0 ? (
-              <p className="mt-4 px-1 text-center text-[12.5px] text-muted-foreground">
-                Всего заказов: {orders.length}. В сборку попадают все заказы без рейса —
-                на поиске и на согласовании. Помощник соберёт рейс сейчас, а условия
-                согласуете в карточке заказа.
-              </p>
-            ) : null}
-          </>
+          <EmptyState
+            icon={<RouteIcon className="h-6 w-6" />}
+            title="Маршрут не собрался"
+            description="Из этого города не нашлось окупаемых плеч. Попробуйте другой город или нажмите «Обновить» — возможно, биржа обновилась."
+            action={
+              <button
+                type="button"
+                onClick={() => setPhase("setup")}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
+              >
+                Другой город
+              </button>
+            }
+          />
         )}
       </div>
     </>
   )
 }
 
-function plural(count: number, forms: [string, string, string]): string {
-  const n = Math.abs(count) % 100
-  const tail = n % 10
-  if (n > 10 && n < 20) return forms[2]
-  if (tail > 1 && tail < 5) return forms[1]
-  if (tail === 1) return forms[0]
-  return forms[2]
+// ---------------------------------------------------------------------------
+// Шаг 1. Куда едем
+// ---------------------------------------------------------------------------
+
+function SetupPhase({
+  startCity,
+  setStartCity,
+  topFromCities,
+  vehicles,
+  allVehiclesBusy,
+  vehicleId,
+  setVehicleId,
+  drivers,
+  usableLoadsCount,
+  onBuild,
+}: {
+  startCity: string
+  setStartCity: (value: string) => void
+  topFromCities: Array<[string, number]>
+  vehicles: BuilderVehicle[]
+  allVehiclesBusy: boolean
+  vehicleId: string
+  setVehicleId: (value: string) => void
+  drivers: MobileDriver[]
+  usableLoadsCount: number
+  onBuild: () => void
+}) {
+  const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
+  const driver = selected ? drivers.find((item) => item.vehicleId === selected.id) ?? null : null
+
+  return (
+    <div className="space-y-5">
+      {/* Откуда едем */}
+      <Card>
+        <label className="block text-[13px] font-medium text-foreground">
+          Откуда едете (база или город машины)
+        </label>
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-background px-3">
+          <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            value={startCity}
+            onChange={(event) => setStartCity(event.target.value)}
+            placeholder="Например: Коломна"
+            className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
+          />
+        </div>
+
+        {topFromCities.length > 0 ? (
+          <div className="mt-2.5">
+            <p className="text-[12px] text-muted-foreground">Города погрузки на бирже:</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {topFromCities.map(([city, count]) => (
+                <button
+                  key={city}
+                  type="button"
+                  onClick={() => setStartCity(city)}
+                  className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                    startCity === city
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-border text-foreground/90"
+                  }`}
+                >
+                  {city} · {count}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
+      {/* Машина */}
+      <Card>
+        <p className="text-[13px] font-medium text-foreground">Машина</p>
+        {vehicles.length === 0 ? (
+          <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
+            {allVehiclesBusy
+              ? "Все машины заняты или на ТО. Маршрут всё равно можно построить — машину назначите позже."
+              : "Свободных машин нет. Маршрут всё равно можно построить — машину назначите позже."}
+          </p>
+        ) : (
+          <div className="mt-2 space-y-1.5">
+            {vehicles.map((vehicle) => {
+              const active = (vehicleId || vehicles[0]?.id) === vehicle.id
+              const vehicleDriver = drivers.find((item) => item.vehicleId === vehicle.id) ?? null
+              return (
+                <button
+                  key={vehicle.id}
+                  type="button"
+                  onClick={() => setVehicleId(vehicle.id)}
+                  className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left active:opacity-70 ${
+                    active ? "border-primary/40 bg-primary/10" : "border-border"
+                  }`}
+                >
+                  <Truck className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] font-medium text-foreground">{vehicle.plate}</span>
+                    <span className="mt-0.5 block text-[12px] text-muted-foreground">
+                      {vehicle.type ?? "машина"}
+                      {vehicle.capacity ? ` · ${formatWeightKg(vehicle.capacity)}` : ""}
+                      {vehicleDriver ? ` · ${vehicleDriver.name}` : " · водитель не закреплён"}
+                    </span>
+                  </span>
+                  {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {selected && !driver ? (
+          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+            За {selected.plate} не закреплён водитель — при отправке назначим свободного.
+          </p>
+        ) : null}
+      </Card>
+
+      {/* Что будет */}
+      <Card className="border-primary/25 bg-primary/[0.06]">
+        <p className="text-[13px] text-muted-foreground">
+          Помощник пройдёт по {usableLoadsCount} грузам биржи и сложит цепочку: из вашего города —
+          в соседний, оттуда — дальше, и обратно домой с грузом. Убыточные плеча не берёт.
+        </p>
+        <button
+          type="button"
+          onClick={onBuild}
+          disabled={usableLoadsCount === 0}
+          className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[16px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
+        >
+          <RouteIcon className="h-5 w-5" />
+          Построить маршрут
+        </button>
+        {usableLoadsCount === 0 ? (
+          <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
+            Свежих грузов на бирже нет. Нажмите «Обновить» в шапке — подтянем новые с ATI.
+          </p>
+        ) : null}
+        <Link
+          href="/lm/search"
+          className="mt-3 flex min-h-[40px] items-center justify-center gap-1.5 text-[13px] font-medium text-primary active:opacity-70"
+        >
+          <Package className="h-4 w-4" />
+          Открыть биржу грузов
+        </Link>
+      </Card>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Шаг 2. Анимация построения
+// ---------------------------------------------------------------------------
+
+function BuildingPhase({ step }: { step: number }) {
+  return (
+    <div className="pt-10">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/15">
+        <RouteIcon className="h-8 w-8 animate-pulse text-primary" />
+      </div>
+      <p className="mt-4 text-center text-[16px] font-semibold text-foreground">Строим маршрут</p>
+      <ul className="mx-auto mt-5 max-w-[280px] space-y-2.5">
+        {BUILD_STEPS.map((text, index) => {
+          const done = index < step
+          const active = index === step
+          return (
+            <li
+              key={text}
+              className={`flex items-center gap-2.5 text-[13.5px] ${
+                done ? "text-foreground/70" : active ? "text-foreground" : "text-muted-foreground/50"
+              }`}
+            >
+              {done ? (
+                <Check className="h-4 w-4 shrink-0 text-primary" />
+              ) : active ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              ) : (
+                <span className="h-4 w-4 shrink-0 rounded-full border border-border" />
+              )}
+              {text}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Шаг 3. Маршрут собран
+// ---------------------------------------------------------------------------
+
+function RoutePhase({
+  route,
+  calls,
+  keepIds,
+  onCall,
+  onRemove,
+  onRebuild,
+  onBack,
+  onSend,
+  sending,
+}: {
+  route: BuiltRoute
+  calls: Record<string, CallStatus>
+  keepIds: string[]
+  onCall: (loadId: string, status: CallStatus) => void
+  onRemove: (loadId: string) => void
+  onRebuild: () => void
+  onBack: () => void
+  onSend: () => void
+  sending: boolean
+}) {
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [whyOpen, setWhyOpen] = useState(false)
+
+  const agreedCount = route.legs.filter((leg) => calls[leg.load.id] === "agreed").length
+  const declinedCount = route.legs.filter((leg) => calls[leg.load.id] === "declined").length
+
+  return (
+    <div className="space-y-5">
+      {/* Итог: деньги — главное */}
+      <Card className="border-primary/25 bg-primary/[0.06]">
+        <p className="text-[13px] text-muted-foreground">Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}</p>
+        <p className="mt-1 text-[30px] font-bold leading-none text-foreground">
+          {route.totalProfitRub !== null ? (
+            <>
+              {route.totalProfitRub < 0 ? "−" : "+"}
+              {formatMoney(Math.abs(route.totalProfitRub))} ₽
+            </>
+          ) : (
+            "Прибыль не посчитана"
+          )}
+        </p>
+        {route.totalProfitRub === null ? (
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            У машины не заполнен расход топлива — прибыль нечем оценить
+          </p>
+        ) : null}
+
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-primary/15 pt-3">
+          <SummaryCell label="Выручка" value={`${formatMoney(route.totalRevenue)} ₽`} />
+          <SummaryCell
+            label="Топливо"
+            value={route.totalFuelCostRub !== null ? `≈ ${formatMoney(route.totalFuelCostRub)} ₽` : "—"}
+          />
+          <SummaryCell label="Плеч" value={String(route.legs.length)} />
+          <SummaryCell
+            label="Расстояние"
+            value={route.totalDistanceKm > 0 ? `${route.totalDistanceKm} км` : "—"}
+          />
+        </div>
+
+        {route.unprofitable ? (
+          <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-2 text-[12.5px] leading-snug text-destructive">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            Маршрут в убыток — отправлять невыгодно. Уберите груз или пересоберите.
+          </p>
+        ) : null}
+        {route.needsFuelSetup ? (
+          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+            Заполните расход топлива у машины — помощник будет считать прибыль точно.
+          </p>
+        ) : null}
+      </Card>
+
+      {/* Плечи: цепочка городов */}
+      <section>
+        <h2 className="mb-2 px-1 text-[14px] font-semibold text-foreground">Маршрут по плечам</h2>
+        <div className="space-y-3">
+          {route.legs.map((leg, index) => {
+            const status = calls[leg.load.id] ?? "pending"
+            const phone = telHref(leg.load.contactPhone)
+            return (
+              <Card key={leg.load.id}>
+                <div className="flex items-start gap-3">
+                  {/* Точка маршрута */}
+                  <div className="flex flex-col items-center pt-1">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary">
+                      {index + 1}
+                    </span>
+                    {index < route.legs.length - 1 ? (
+                      <span className="mt-1 w-px flex-1 bg-border" aria-hidden />
+                    ) : null}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {/* Направление */}
+                    <p className="flex items-center gap-1.5 text-[15px] font-semibold leading-snug text-foreground">
+                      <span className="truncate">{shortCity(leg.load.fromCity)}</span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{shortCity(leg.load.toCity)}</span>
+                    </p>
+
+                    {/* Компания и груз — отдельными строками, без склеек */}
+                    <p className="mt-1 truncate text-[13px] text-foreground/90">
+                      {leg.load.firmName?.trim() || "Фрахтователь не указан"}
+                      {leg.load.cargoType ? ` · ${leg.load.cargoType}` : ""}
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                      {leg.loadedKm > 0 ? `${leg.loadedKm} км` : "расстояние неизвестно"}
+                      {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
+                    </p>
+
+                    {/* Деньги плеча */}
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="text-[14px] font-semibold tabular-nums text-foreground">
+                        {formatMoney(leg.revenue)} ₽
+                      </span>
+                      {leg.profitRub !== null ? (
+                        <span
+                          className={`text-[12.5px] font-medium tabular-nums ${
+                            leg.profitRub >= 0 ? "text-primary" : "text-destructive"
+                          }`}
+                        >
+                          прибыль {leg.profitRub >= 0 ? "+" : "−"}
+                          {formatMoney(Math.abs(leg.profitRub))} ₽
+                        </span>
+                      ) : null}
+                      {leg.returnsHome ? (
+                        <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                          домой с грузом
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Звонок и статус */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      {phone ? (
+                        <a
+                          href={phone}
+                          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-3 text-[13px] font-medium text-white active:opacity-70"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          Позвонить
+                        </a>
+                      ) : (
+                        <span className="text-[12px] text-muted-foreground">Телефон появится после «взять в работу»</span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => onCall(leg.load.id, "agreed")}
+                        className={`inline-flex min-h-[38px] items-center gap-1 rounded-lg border px-2.5 text-[12.5px] active:opacity-70 ${
+                          status === "agreed"
+                            ? "border-primary/40 bg-primary/15 text-primary"
+                            : "border-border text-foreground/90"
+                        }`}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Договорились
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onCall(leg.load.id, "declined")}
+                        className="inline-flex min-h-[38px] items-center gap-1 rounded-lg border border-border px-2.5 text-[12.5px] text-foreground/90 active:opacity-70"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Отказ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(leg.load.id)}
+                        className="inline-flex min-h-[38px] items-center rounded-lg px-2 text-[12.5px] text-muted-foreground active:opacity-70"
+                      >
+                        Убрать
+                      </button>
+                    </div>
+
+                    {status === "agreed" ? (
+                      <p className="mt-1.5 text-[12px] font-medium text-primary">
+                        Согласовано — груз останется в маршруте при пересборке
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* Договорённости: сколько созвонили */}
+      {agreedCount + declinedCount > 0 ? (
+        <p className="px-1 text-[12.5px] text-muted-foreground">
+          Созвонились: {agreedCount} из {route.legs.length} договорились, {declinedCount} отказали
+        </p>
+      ) : null}
+
+      {/* Отправка машины */}
+      <Card className="border-primary/25 bg-primary/[0.06]">
+        <p className="text-[12.5px] leading-snug text-muted-foreground">
+          {agreedCount === route.legs.length && route.legs.length > 0
+            ? "Все фрахтователи согласованы — можно отправлять."
+            : "Отправлять можно и без полного согласования: что-то договоритесь уже в пути."}
+        </p>
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={sending || route.unprofitable}
+          className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[16px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
+        >
+          {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Truck className="h-5 w-5" />}
+          {sending ? "Отправляю машину…" : "Отправить машину"}
+        </button>
+        <div className="mt-2.5 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={onRebuild}
+            className="inline-flex min-h-[40px] items-center gap-1.5 text-[13px] font-medium text-foreground/80 active:opacity-70"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Пересобрать маршрут
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex min-h-[40px] items-center gap-1.5 text-[13px] font-medium text-foreground/80 active:opacity-70"
+          >
+            <MapPin className="h-4 w-4" />
+            Другой город
+          </button>
+        </div>
+      </Card>
+
+      {/* Подробности: что осталось на бирже */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((value) => !value)}
+          className="flex min-h-[40px] w-full items-center justify-between rounded-xl px-1 text-[13px] font-medium text-foreground/80 active:opacity-70"
+        >
+          Что осталось на бирже ({route.excluded.length})
+          {detailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {detailsOpen ? (
+          <div className="mt-2 space-y-1.5">
+            {route.excluded.length === 0 ? (
+              <p className="px-1 text-[12.5px] text-muted-foreground">Все грузы биржи уже в маршруте.</p>
+            ) : (
+              route.excluded.slice(0, 20).map(({ load, reason }) => (
+                <div
+                  key={load.id}
+                  className="flex items-start gap-2 rounded-xl border border-border px-3 py-2"
+                >
+                  <Package className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] text-foreground">
+                      {shortCity(load.fromCity)} → {shortCity(load.toCity)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      {load.firmName?.trim() || "фрахтователь не указан"} · {reason}
+                    </p>
+                  </div>
+                  {load.priceRub ? (
+                    <span className="shrink-0 text-[12.5px] tabular-nums text-foreground/90">
+                      {formatMoney(load.priceRub)} ₽
+                    </span>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+      </section>
+
+      {/* Подробности: почему так собрал */}
+      <section>
+        <button
+          type="button"
+          onClick={() => setWhyOpen((value) => !value)}
+          className="flex min-h-[40px] w-full items-center justify-between rounded-xl px-1 text-[13px] font-medium text-foreground/80 active:opacity-70"
+        >
+          Почему собрал так
+          {whyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {whyOpen ? (
+          <ul className="mt-2 space-y-1.5 px-1">
+            {route.reasons.map((reason) => (
+              <li key={reason} className="text-[12.5px] leading-snug text-muted-foreground">
+                · {reason}
+              </li>
+            ))}
+            {keepIds.length > 0 ? (
+              <li className="text-[12.5px] leading-snug text-muted-foreground">
+                · Согласованные вами грузы: {keepIds.length}
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
+      </section>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Мелочи
+// ---------------------------------------------------------------------------
+
+function SummaryCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11.5px] text-muted-foreground">{label}</p>
+      <p className="text-[14px] font-semibold tabular-nums text-foreground">{value}</p>
+    </div>
+  )
 }
