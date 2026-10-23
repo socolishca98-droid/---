@@ -262,6 +262,10 @@ function buildChain(
 ): RouteLeg[] {
   const legs: RouteLeg[] = []
   const used = new Set<string>()
+  // Города, с которых уже забирали: машина не может трижды ездить «из точки
+  // А в точку Б» — это три отдельные поездки, а не один маршрут. Поэтому
+  // с одной погрузочной точки берём один груз.
+  const usedFromKeys = new Set<string>()
   const startKey = normalizeCityKey(startCity)
   let currentKey = startKey
   let currentPoint: Point | null = startPoint
@@ -271,6 +275,7 @@ function buildChain(
     const candidates = pool.filter((load) => {
       if (used.has(load.id)) return false
       if (!loadFitsVehicle(load, vehicle)) return false
+      if (usedFromKeys.has(normalizeCityKey(load.fromCity))) return false
       if (normalizeCityKey(load.fromCity) === currentKey) return true
       if (detourKm > 0 && currentPoint && load.fromPoint) {
         return haversineKm(currentPoint, load.fromPoint) <= detourKm
@@ -323,6 +328,7 @@ function buildChain(
     if (!best) break
 
     used.add(best.load.id)
+    usedFromKeys.add(normalizeCityKey(best.load.fromCity))
     legs.push({
       load: best.load,
       deadheadKm: best.deadheadKm,
