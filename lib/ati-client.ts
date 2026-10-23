@@ -335,6 +335,16 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
       if (existing) {
         // Обновляем только scannedAt для "new" записей
         if (existing.status === "new") {
+          // Точки погрузки/выгрузки из груза: в старых записях их не было,
+          // а без них помощник не берёт грузы «по пути»
+          const pointsJson = JSON.stringify({
+            fromPoint: item.loading?.point ?? null,
+            toPoint: item.unloading?.point ?? null,
+          })
+          const hasPoints =
+            item.loading?.point || item.unloading?.point
+              ? !existing.rawJson || !existing.rawJson.startsWith("{")
+              : false
           await prisma.atiCache.update({
             where: { id: existing.id },
             data: {
@@ -342,6 +352,7 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
               // Добор фрахтователя: в старых записях FirmId мог не сохраниться —
               // без него кнопка «Узнать телефон» не сработает
               firmId: existing.firmId ?? (item.firm?.id ? String(item.firm.id) : null),
+              rawJson: hasPoints ? pointsJson : undefined,
             },
           })
         }
