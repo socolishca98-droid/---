@@ -104,6 +104,9 @@ export default function RouteAssistantPage() {
   /** Грузы, которые убираем: отказались или логист исключил */
   const [excludeIds, setExcludeIds] = useState<string[]>([])
   const [refreshing, setRefreshing] = useState(false)
+  /** Телефоны фрахтователей, добытые кнопкой «Узнать телефон» */
+  const [phones, setPhones] = useState<Record<string, string>>({})
+  const [phoneBusy, setPhoneBusy] = useState<string | null>(null)
 
   // Город старта помним: логист обычно едет из одной базы
   useEffect(() => {
@@ -211,9 +214,31 @@ export default function RouteAssistantPage() {
     }, 800)
   }
 
+  /** «Узнать телефон»: ATI отдаёт контакт фрахтователя отдельным запросом. */
+  async function fetchPhone(loadId: string) {
+    setPhoneBusy(loadId)
+    try {
+      const result = await apiSend<{ phone: string | null; name: string | null }>(
+        "/api/ati/loads/contacts",
+        "POST",
+        { cacheId: loadId },
+      )
+      if (result.ok && result.data?.phone) {
+        setPhones((prev) => ({ ...prev, [loadId]: result.data?.phone as string }))
+        loadsState.reload()
+        toast.success(`Фрахтователь: ${result.data.phone}`)
+      } else {
+        toast.error(result.error ?? "Телефон не найден")
+      }
+    } catch {
+      toast.error("Не удалось получить телефон")
+    } finally {
+      setPhoneBusy(null)
+    }
+  }
+
   /** Отказ фрахтователя: убираем груз и пересобираем, согласованные остаются. */
-  function declineLoad(loadId: string) {
-    setCalls((prev) => ({ ...prev, [loadId]: "declined" }))
+  function declineLoad(loadId: string) {    setCalls((prev) => ({ ...prev, [loadId]: "declined" }))
     const keep = keepIds.filter((id) => id !== loadId)
     const exclude = [...excludeIds, loadId]
     setKeepIds(keep)
@@ -356,6 +381,9 @@ export default function RouteAssistantPage() {
             route={route}
             calls={calls}
             keepIds={keepIds}
+            phones={phones}
+            phoneBusy={phoneBusy}
+            onFetchPhone={(loadId) => void fetchPhone(loadId)}
             onCall={markCall}
             onRemove={removeLoad}
             onRebuild={() => {
@@ -582,6 +610,9 @@ function RoutePhase({
   route,
   calls,
   keepIds,
+  phones,
+  phoneBusy,
+  onFetchPhone,
   onCall,
   onRemove,
   onRebuild,
@@ -592,6 +623,9 @@ function RoutePhase({
   route: BuiltRoute
   calls: Record<string, CallStatus>
   keepIds: string[]
+  phones: Record<string, string>
+  phoneBusy: string | null
+  onFetchPhone: (loadId: string) => void
   onCall: (loadId: string, status: CallStatus) => void
   onRemove: (loadId: string) => void
   onRebuild: () => void
@@ -658,7 +692,7 @@ function RoutePhase({
         <div className="space-y-3">
           {route.legs.map((leg, index) => {
             const status = calls[leg.load.id] ?? "pending"
-            const phone = telHref(leg.load.contactPhone)
+            const phone = telHref(phones[leg.load.id] ?? leg.load.contactPhone)
             return (
               <Card key={leg.load.id}>
                 <div className="flex items-start gap-3">
@@ -723,7 +757,19 @@ function RoutePhase({
                           Позвонить
                         </a>
                       ) : (
-                        <span className="text-[12px] text-muted-foreground">Телефон появится после «взять в работу»</span>
+                        <button
+                          type="button"
+                          onClick={() => onFetchPhone(leg.load.id)}
+                          disabled={phoneBusy === leg.load.id}
+                          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-3 text-[13px] font-medium text-white active:opacity-70 disabled:opacity-50"
+                        >
+                          {phoneBusy === leg.load.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Phone className="h-3.5 w-3.5" />
+                          )}
+                          Узнать телефон
+                        </button>
                       )}
 
                       <button
