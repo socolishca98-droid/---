@@ -81,19 +81,6 @@ model AtiCache {
   @@index([routeFrom, routeTo])
 }
 
-/// Справочник городов ATI.SU (dictionaries/cities) для разбора грузов
-/// byboards: в грузе приходит только CityId, имя города — из словаря.
-/// Кэш общий для всех организаций. Наполняется scripts/seed-ati-cities.ts.
-model AtiCity {
-  cityId   Int    @id
-  name     String
-  region   String @default("")
-  lat      Float?
-  lon      Float?
-
-  @@index([name])
-}
-
 // ============================================
 // ПОДКЛЮЧЕНИЕ ОРГАНИЗАЦИИ К ATI.SU
 // ============================================

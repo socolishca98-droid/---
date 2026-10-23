@@ -1,10 +1,8 @@
-// lib/ati-client.ts
+﻿// lib/ati-client.ts
 // ATI.su интеграция — без лишних логов и без создания Order
 
 import { prisma } from "@/lib/prisma"
 import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
-import { resolveAtiCities } from "./ati/ati-city-resolver"
-import { mapBoardsLoad, collectCityIds } from "./ati/boards-mapping"
 
 // Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
 // ATI.SU (своя подписка, свои площадки, свои лимиты), токен передаётся
@@ -240,9 +238,7 @@ export async function scanAtiLoads(params?: any) {
     }
 
     const boards = await fetchBoardIds(token, organizationId)
-    const rawLoads = await fetchLoadsByBoards(token, organizationId)
-    const cities = await resolveAtiCities(collectCityIds(rawLoads))
-    const loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
+    const loads = await fetchLoadsByBoards(token, organizationId)
 
     const picked: any[] = []
     for (const load of loads) {
@@ -290,9 +286,7 @@ async function manualSearch(
   const fromCityKey = normalizeGeoToCityKey(params.fromGeo)
   const toCityKey = normalizeGeoToCityKey(params.toGeo)
 
-  const rawLoads = await fetchLoadsByBoards(token, organizationId)
-  const cities = await resolveAtiCities(collectCityIds(rawLoads))
-  const loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
+  const loads = await fetchLoadsByBoards(token, organizationId)
   const allLoads: any[] = []
   for (const load of loads) {
     if (fromCityKey) {
