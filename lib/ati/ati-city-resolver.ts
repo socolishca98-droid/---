@@ -4,12 +4,12 @@
 // (scripts/seed-ati-cities.ts). Внешних запросов нет — только БД/JSON.
 
 import { prisma } from "@/lib/prisma"
-import builtinCities from "./ati-cities.json"
+import { ATI_CITIES } from "./ati-cities"
 
 export type AtiCityInfo = { name: string; region: string }
 
-/** Компактный срез: cityId → [name, region] (lib/ati/ati-cities.json). */
-const BUILTIN = builtinCities as unknown as Record<string, string[]>
+/** Компактный срез: cityId → [name, region] (lib/ati/ati-cities.ts). */
+const BUILTIN = ATI_CITIES
 
 /**
  * Резолв списка CityId → { name, region }.
