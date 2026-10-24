@@ -20,7 +20,6 @@ import {
   ArrowRight,
   CheckCircle2,
   FileText,
-  Map as MapIcon,
   Package,
   Plus,
   Route as RouteIcon,
@@ -289,18 +288,18 @@ export default function LogistHomePage() {
         {/* Главное действие и два быстрых перехода */}
         <div className="mt-4 grid grid-cols-3 gap-2.5">
           <Link
-            href="/lm/orders/new"
+            href="/lm/routes/assistant"
             className="flex min-h-[76px] flex-col items-start justify-between rounded-xl bg-primary p-3.5 text-primary-foreground active:opacity-70"
           >
-            <Plus className="h-5.5 w-5.5" />
-            <span className="text-[13.5px] font-semibold leading-tight">Новый заказ</span>
+            <RouteIcon className="h-5.5 w-5.5" />
+            <span className="text-[13.5px] font-semibold leading-tight">Собрать маршрут</span>
           </Link>
           <Link
-            href="/lm/map"
+            href="/lm/orders/new"
             className="flex min-h-[76px] flex-col items-start justify-between rounded-xl border border-border bg-card shadow-sm p-3.5 text-foreground active:opacity-70"
           >
-            <MapIcon className="h-5.5 w-5.5 text-primary" />
-            <span className="text-[13.5px] font-medium leading-tight">Карта</span>
+            <Plus className="h-5.5 w-5.5 text-primary" />
+            <span className="text-[13.5px] font-medium leading-tight">Новый заказ</span>
           </Link>
           <Link
             href="/lm/drivers"
