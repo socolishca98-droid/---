@@ -21,7 +21,7 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { buildRoute, loadPrice, loadRatePerKm, routeSummaryLine } = require(
+const { buildRoute, loadPrice, loadRatePerKm, routeSummaryLine, explainFailure } = require(
   "../.test-build/lib/logist-mobile/route-builder.js",
 )
 
@@ -388,4 +388,63 @@ test("груз домой закрывает обратное плечо", () =>
   // Из Москвы груза нет — маршрут начнётся от груза «по пути»? Нет:
   // город старта не совпал и точек-городов старта нет в грузе.
   assert.equal(route, null)
+})
+
+// ── 17. Почему не собралось: экран обязан объяснять ────────────────────────
+test("объяснение: из города нет грузов", () => {
+  const reason = explainFailure({
+    startCity: "Казань",
+    loads: [load({ id: "a", fromCity: "Москва", toCity: "Тула", distanceKm: 400, priceRub: 60000 })],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.loadsFromCity, 0)
+  assert.match(reason.headline, /грузов на бирже сейчас нет/)
+})
+
+test("объяснение: грузы не влезают в машины", () => {
+  const reason = explainFailure({
+    startCity: "Вязники",
+    loads: [load({ id: "a", fromCity: "Вязники г.", toCity: "Пермь", distanceKm: 1229, priceRub: 203100, weightKg: 20000 })],
+    vehicles: [vehicle({ capacity: 5000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.loadsFromCity, 1)
+  assert.equal(reason.tooHeavy, 1)
+  assert.match(reason.headline, /не влезают/)
+})
+
+test("объяснение: ставка не озвучена", () => {
+  const reason = explainFailure({
+    startCity: "Вязники",
+    loads: [load({ id: "a", fromCity: "Вязники г.", toCity: "Пермь", priceRub: 0, priceWithNds: null })],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.noPrice, 1)
+  assert.match(reason.headline, /ставка нигде не озвучена/)
+})
+
+test("объяснение: плечо в убыток", () => {
+  const reason = explainFailure({
+    startCity: "Тула",
+    // 400 км за 3000 ₽ при расходе 40 л — топливо дороже ставки
+    loads: [load({ id: "a", fromCity: "Тула", toCity: "Москва", distanceKm: 400, priceRub: 3000 })],
+    vehicles: [vehicle({ fuelConsumptionPer100: 40 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.unprofitable, 1)
+  assert.match(reason.headline, /не окупаются/)
+})
+
+test("объяснение: пустой город — null", () => {
+  assert.equal(explainFailure({ startCity: "", loads: [], vehicles: [], fuelPriceRubPerL: null }), null)
 })

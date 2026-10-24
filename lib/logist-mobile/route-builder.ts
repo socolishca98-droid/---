@@ -627,6 +627,97 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Почему маршрут не собрался
+// ---------------------------------------------------------------------------
+
+/**
+ * Разбор причины: из этого города грузов нет, они не влезают в машины,
+ * ставка не озвучена, дата прошла или плечо убыточное.
+ *
+ * Зачем: помощник обязан объяснять провал словами и показывать, откуда
+ * можно строить. Молчаливое «не собралось» — это тупик для логиста.
+ */
+export interface FailureReason {
+  /** Город, из которого пробовали строить */
+  city: string
+  /** Сколько грузов биржи выходят из этого города */
+  loadsFromCity: number
+  /** Без озвученной ставки — нечем мерить выгоду */
+  noPrice: number
+  /** Не влезают ни в одну машину парка */
+  tooHeavy: number
+  /** Дата загрузки уже прошла */
+  overdue: number
+  /** Ставка ниже себестоимости или ниже порога ₽/км */
+  unprofitable: number
+  /** Главная причина одной строкой — для экрана */
+  headline: string
+}
+
+/** Разбор провала по городу старта. null — город пустой. */
+export function explainFailure(options: {
+  startCity: string
+  loads: BuilderLoad[]
+  vehicles: BuilderVehicle[]
+  fuelPriceRubPerL: number | null
+  minProfitPerKm?: number
+  now?: Date
+}): FailureReason | null {
+  const city = options.startCity.trim()
+  if (!city) return null
+  const now = options.now ?? new Date()
+  const minPerKm = options.minProfitPerKm ?? 25
+  const vehicles = usableVehicles(options.vehicles)
+
+  const key = normalizeCityKey(city)
+  const fromCity = options.loads.filter((load) => normalizeCityKey(load.fromCity) === key)
+  const fitsSomeVehicle = (load: BuilderLoad) =>
+    vehicles.length > 0 && vehicles.some((vehicle) => loadFitsVehicle(load, vehicle))
+
+  const noPrice = fromCity.filter((load) => loadPrice(load) <= 0).length
+  const overdue = fromCity.filter((load) => !isFresh(load, now)).length
+  const tooHeavy = fromCity.filter(
+    (load) => loadPrice(load) > 0 && isFresh(load, now) && !fitsSomeVehicle(load),
+  ).length
+
+  let unprofitable = 0
+  for (const load of fromCity) {
+    if (loadPrice(load) <= 0 || !isFresh(load, now)) continue
+    if (!fitsSomeVehicle(load)) continue
+    const km = Math.max(0, load.distanceKm ?? 0)
+    if (km === 0) continue
+    // Считаем по лучшей машине, в которую груз влезает
+    const vehicle = vehicles.find((item) => loadFitsVehicle(load, item))
+    if (!vehicle) continue
+    const money = legMoney(load, km, vehicle, options.fuelPriceRubPerL)
+    if (money.profitRub !== null && money.profitRub <= 0) {
+      // Топливо дороже ставки — плечо в чистый убыток
+      unprofitable += 1
+      continue
+    }
+    const perKm = money.profitRub !== null ? money.profitRub / km : loadPrice(load) / km
+    if (perKm < minPerKm) unprofitable += 1
+  }
+
+  let headline: string
+  if (fromCity.length === 0) {
+    headline = `Из «${shortCity(city)}» грузов на бирже сейчас нет`
+  } else if (noPrice === fromCity.length) {
+    headline = `Из «${shortCity(city)}» есть грузы, но ставка нигде не озвучена`
+  } else if (tooHeavy > 0 && tooHeavy + noPrice + overdue >= fromCity.length) {
+    headline = `Грузы из «${shortCity(city)}» не влезают в ваши машины — нужна большегрузная`
+  } else if (unprofitable > 0 && unprofitable + noPrice + overdue + tooHeavy >= fromCity.length) {
+    headline = `Плеча из «${shortCity(city)}» не окупаются — ставка ниже расходов на топливо`
+  } else if (overdue > 0 && overdue + noPrice + tooHeavy + unprofitable >= fromCity.length) {
+    headline = `Даты загрузки из «${shortCity(city)}» уже прошли`
+  } else {
+    headline = `Из «${shortCity(city)}» ничего не сложилось в окупаемую цепочку`
+  }
+
+  return { city: shortCity(city), loadsFromCity: fromCity.length, noPrice, tooHeavy, overdue, unprofitable, headline }
+}
+
 /** Строка-итог маршрута для карточек и шапок. */
 export function routeSummaryLine(route: BuiltRoute): string {
   const parts = [

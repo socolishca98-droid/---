@@ -43,6 +43,7 @@ import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
   buildRoute,
+  explainFailure,
   routeSummaryLine,
   type BuilderLoad,
   type BuilderVehicle,
@@ -235,10 +236,18 @@ export default function RouteAssistantPage() {
     }))
   }, [loads, cityPoints])
 
-  const startPoint = useMemo(
-    () => (cityPoints && startCity ? cityPoints[normalizeCityKey(shortCity(startCity))] ?? null : null),
-    [cityPoints, startCity],
-  )
+  const startPoint = useMemo(() => {
+    if (!startCity.trim()) return null
+    // 1. Центр города из геокодера
+    const fromGeocoder = cityPoints?.[normalizeCityKey(shortCity(startCity))] ?? null
+    if (fromGeocoder) return fromGeocoder
+    // 2. Геокодер не знает город — берём точку погрузки любого груза из
+    //    этого города: она и есть точка в городе, точнее центра не нужно
+    const anyLoad = loadsWithPoints.find(
+      (load) => load.fromPoint && normalizeCityKey(shortCity(load.fromCity)) === normalizeCityKey(shortCity(startCity)),
+    )
+    return anyLoad?.fromPoint ?? null
+  }, [cityPoints, startCity, loadsWithPoints])
 
   // ── Построение маршрута ──
   // Таймер анимации живёт в ref: если логист ушёл с экрана mid-анимации,
@@ -493,19 +502,17 @@ export default function RouteAssistantPage() {
             sending={phase === "sending"}
           />
         ) : (
-          <EmptyState
-            icon={<RouteIcon className="h-6 w-6" />}
-            title="Маршрут не собрался"
-            description="Из этого города не нашлось окупаемых плеч. Попробуйте другой город или нажмите «Обновить» — возможно, биржа обновилась."
-            action={
-              <button
-                type="button"
-                onClick={() => setPhase("setup")}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
-              >
-                Другой город
-              </button>
-            }
+          <FailedPhase
+            startCity={startCity}
+            loads={loadsWithPoints}
+            vehicles={vehicles}
+            onPickCity={(city) => {
+              setStartCity(city)
+              window.localStorage.setItem(START_CITY_KEY, city)
+              runBuild(city, keepIds, excludeIds)
+            }}
+            onOtherCity={() => setPhase("setup")}
+            onRefresh={refreshAll}
           />
         )}
       </div>
@@ -737,6 +744,135 @@ function BuildingPhase({ step }: { step: number }) {
           )
         })}
       </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Провал: объясняем причину и показываем, откуда можно строить
+// ---------------------------------------------------------------------------
+
+function FailedPhase({
+  startCity,
+  loads,
+  vehicles,
+  onPickCity,
+  onOtherCity,
+  onRefresh,
+}: {
+  startCity: string
+  loads: BuilderLoad[]
+  vehicles: BuilderVehicle[]
+  onPickCity: (city: string) => void
+  onOtherCity: () => void
+  onRefresh: () => void
+}) {
+  // Причина провала — из тех же данных, что и сборка
+  const reason = useMemo(
+    () =>
+      explainFailure({
+        startCity,
+        loads,
+        vehicles,
+        fuelPriceRubPerL: 62,
+      }),
+    [startCity, loads, vehicles],
+  )
+
+  // Города, из которых маршрут СТРОИТСЯ прямо сейчас — первыми кандидатами
+  const workingCities = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const load of loads) {
+      if (load.status !== "new") continue
+      if ((load.priceWithNds ?? load.priceRub ?? 0) <= 0) continue
+      const city = shortCity(load.fromCity)
+      counts.set(city, (counts.get(city) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .filter(([city]) => city !== shortCity(startCity))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+  }, [loads, startCity])
+
+  return (
+    <div className="space-y-4">
+      <Card className="border-warning/30 bg-warning/[0.06]">
+        <p className="text-[16px] font-semibold text-foreground">Маршрут не собрался</p>
+        <p className="mt-1 text-[13.5px] leading-snug text-foreground/90">{reason?.headline}</p>
+        {reason && reason.loadsFromCity > 0 ? (
+          <ul className="mt-2.5 space-y-1">
+            {reason.tooHeavy > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.tooHeavy} груз(ов) тяжелее ваших машин
+              </li>
+            ) : null}
+            {reason.noPrice > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.noPrice} без озвученной ставки
+              </li>
+            ) : null}
+            {reason.overdue > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.overdue} с прошедшей датой загрузки
+              </li>
+            ) : null}
+            {reason.unprofitable > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.unprofitable} не окупаются после топлива
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
+      </Card>
+
+      {/* Откуда можно строить — один тап и маршрут строится оттуда */}
+      {workingCities.length > 0 ? (
+        <Card>
+          <p className="text-[13px] font-medium text-foreground">Откуда сейчас можно строить</p>
+          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+            Города погрузки на биржи. Нажмите — помощник построит маршрут оттуда.
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {workingCities.map(([city, count]) => (
+              <button
+                key={city}
+                type="button"
+                onClick={() => onPickCity(city)}
+                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[13px] font-medium text-primary active:opacity-70"
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                {city} · {count}
+              </button>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onOtherCity}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+        >
+          <MapPin className="h-4 w-4" />
+          Другой город
+        </button>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Обновить биржу
+        </button>
+        <Link
+          href="/lm/search"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
+        >
+          <Package className="h-4 w-4" />
+          Биржа
+        </Link>
+      </div>
     </div>
   )
 }
