@@ -1128,6 +1128,7 @@ function RoutePhase({
                     </p>
                     <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                       {leg.loadedKm > 0 ? `${leg.loadedKm} км` : "расстояние неизвестно"}
+                      {leg.hours > 0 ? ` · ≈ ${Math.round(leg.hours)} ч в пути` : ""}
                       {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
                     </p>
 
