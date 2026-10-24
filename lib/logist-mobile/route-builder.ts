@@ -103,6 +103,13 @@ export interface BuildRouteOptions {
    * совпадение города. По умолчанию 150 км.
    */
   detourKm?: number
+  /**
+   * Радиус поиска ПЕРВОГО груза от базы, км. Порожний выезд за грузом —
+   * обычное дело: логист готов проехать 300–500 км, если ставка это
+   * покрывает. Поэтому первый груз ищем шире, чем «по пути». Ноль —
+   * только точное совпадение города. По умолчанию 300 км.
+   */
+  startRadiusKm?: number
   /** Координаты города старта — для радиуса «по пути» и возврата домой */
   startPoint?: Point | null
   /**
@@ -264,6 +271,7 @@ function buildChain(
   maxLegs: number,
   minProfitPerKm: number,
   detourKm: number,
+  startRadiusKm: number,
   keepIds: readonly string[],
 ): RouteLeg[] {
   const legs: RouteLeg[] = []
@@ -276,15 +284,19 @@ function buildChain(
   let currentKey = startKey
   let currentPoint: Point | null = startPoint
 
+  // Первый груз ищем шире: порожний выезд за ним — норма, если ставка
+  // покрывает пробег. Дальше по цепочке — уже «по пути».
+  const radius = legs.length === 0 ? startRadiusKm : detourKm
+
   for (let step = 0; step < maxLegs; step += 1) {
-    // Кандидаты: город совпал ИЛИ груз «по пути» (если есть координаты)
+    // Кандидаты: город совпал ИЛИ груз в радиусе (если есть координаты)
     const candidates = pool.filter((load) => {
       if (used.has(load.id)) return false
       if (!loadFitsVehicle(load, vehicle)) return false
       if (usedFromKeys.has(normalizeCityKey(load.fromCity))) return false
       if (normalizeCityKey(load.fromCity) === currentKey) return true
-      if (detourKm > 0 && currentPoint && load.fromPoint) {
-        return haversineKm(currentPoint, load.fromPoint) <= detourKm
+      if (radius > 0 && currentPoint && load.fromPoint) {
+        return haversineKm(currentPoint, load.fromPoint) <= radius
       }
       return false
     })
@@ -370,6 +382,7 @@ export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
   const maxLegs = Math.max(1, Math.min(options.maxLegs ?? 4, 6))
   const minProfitPerKm = options.minProfitPerKm ?? 25
   const detourKm = options.detourKm ?? 150
+  const startRadiusKm = options.startRadiusKm ?? 300
   const fuelPrice = options.fuelPriceRubPerL
   const excludeIds = new Set(options.excludeIds ?? [])
   const keepIds = options.keepIds ?? []
@@ -434,6 +447,7 @@ export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
       maxLegs,
       minProfitPerKm,
       detourKm,
+      startRadiusKm,
       keepIds,
     )
     if (legs.length === 0) continue
@@ -574,6 +588,12 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   if (legs.length > 1) {
     reasons.push(
       `Цепочка из ${legs.length} плеч: ${shortCity(effectiveStart)} → ${lastCity}`,
+    )
+  }
+  const firstLeg = legs[0]
+  if (firstLeg && firstLeg.byTheWay && firstLeg.deadheadKm > 0) {
+    reasons.push(
+      `Первый груз в ${firstLeg.deadheadKm} км от базы — порожний выезд учтён в прибыли`,
     )
   }
   const byTheWay = legs.filter((leg) => leg.byTheWay).length

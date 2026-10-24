@@ -448,3 +448,50 @@ test("объяснение: плечо в убыток", () => {
 test("объяснение: пустой город — null", () => {
   assert.equal(explainFailure({ startCity: "", loads: [], vehicles: [], fuelPriceRubPerL: null }), null)
 })
+
+// ── 18. Радиус поиска первого груза от базы ────────────────────────────────
+test("первый груз берётся шире «по пути»: радиус поиска отдельный", () => {
+  // База — Коломна (~55.10, 38.76). Груз из Воронежа (~51.67, 39.18) — ~530 км:
+  // за пределами «по пути», но в пределах разумного выезда за грузом.
+  const route = buildRoute({
+    startCity: "Коломна",
+    loads: [
+      load({
+        id: "far", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 300, priceRub: 90000,
+        fromPoint: { lat: 51.6720, lng: 39.1843 }, toPoint: { lat: 52.6088, lng: 39.5992 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 150,
+    startRadiusKm: 600,
+    startPoint: { lat: 55.0938, lng: 38.7670 },
+  })
+
+  assert.ok(route, "груз за пределами «по пути», но в радиусе поиска — берём")
+  assert.equal(route.legs.length, 1)
+  const leg = route.legs[0]
+  assert.ok(leg.byTheWay, "груз не из нашего города")
+  assert.ok(leg.deadheadKm > 350, `порожний выезд большой: ${leg.deadheadKm}`)
+  assert.ok(route.reasons.some((r) => r.includes("Первый груз в")))
+})
+
+test("за пределами радиуса поиска первый груз не берётся", () => {
+  const route = buildRoute({
+    startCity: "Коломна",
+    loads: [
+      load({
+        id: "far", fromCity: "Сочи", toCity: "Краснодар", distanceKm: 300, priceRub: 90000,
+        fromPoint: { lat: 43.6028, lng: 39.7342 }, toPoint: { lat: 45.0355, lng: 38.9753 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 150,
+    startRadiusKm: 600,
+    startPoint: { lat: 55.0938, lng: 38.7670 },
+  })
+  assert.equal(route, null)
+})

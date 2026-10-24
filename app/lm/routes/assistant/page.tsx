@@ -101,6 +101,8 @@ export default function RouteAssistantPage() {
   const [vehicleId, setVehicleId] = useState("")
   /** Радиус «по пути», км: груз рядом с маршрутом тоже берём */
   const [detourKm, setDetourKm] = useState(150)
+  /** Радиус поиска первого груза от базы, км: порожний выезд за грузом */
+  const [startRadiusKm, setStartRadiusKm] = useState(300)
   const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
   const [buildStep, setBuildStep] = useState(0)
   const [route, setRoute] = useState<BuiltRoute | null>(null)
@@ -283,6 +285,7 @@ export default function RouteAssistantPage() {
         keepIds: keep,
         excludeIds: exclude,
         detourKm,
+        startRadiusKm,
         startPoint,
       })
       setRoute(built)
@@ -475,6 +478,8 @@ export default function RouteAssistantPage() {
             usableLoadsCount={usableLoads.length}
             detourKm={detourKm}
             setDetourKm={setDetourKm}
+            startRadiusKm={startRadiusKm}
+            setStartRadiusKm={setStartRadiusKm}
             pointsLoading={pointsState.loading}
             noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
             onBuild={() => runBuild(startCity, keepIds, excludeIds)}
@@ -506,6 +511,13 @@ export default function RouteAssistantPage() {
             startCity={startCity}
             loads={loadsWithPoints}
             vehicles={vehicles}
+            startRadiusKm={startRadiusKm}
+            onWiderRadius={() => {
+              // Провал часто = «груз есть, но дальше радиуса» — пробуем шире
+              const wider = startRadiusKm >= 500 ? 500 : startRadiusKm + 200
+              setStartRadiusKm(wider)
+              runBuild(startCity, keepIds, excludeIds)
+            }}
             onPickCity={(city) => {
               setStartCity(city)
               window.localStorage.setItem(START_CITY_KEY, city)
@@ -536,6 +548,8 @@ function SetupPhase({
   usableLoadsCount,
   detourKm,
   setDetourKm,
+  startRadiusKm,
+  setStartRadiusKm,
   pointsLoading,
   noStartPoint,
   onBuild,
@@ -551,6 +565,9 @@ function SetupPhase({
   usableLoadsCount: number
   detourKm: number
   setDetourKm: (value: number) => void
+  /** Радиус поиска первого груза от базы, км */
+  startRadiusKm: number
+  setStartRadiusKm: (value: number) => void
   /** Точки городов ещё считаются — «по пути» пока не работает */
   pointsLoading: boolean
   /** Для выбранного города нет координат — только точное совпадение городов */
@@ -654,11 +671,32 @@ function SetupPhase({
         ) : null}
       </Card>
 
-      {/* Насколько далеко от маршрута брать грузы */}
+      {/* Насколько далеко искать: выезд за первым грузом и «по пути» */}
       <Card>
-        <p className="text-[13px] font-medium text-foreground">Грузы «по пути»</p>
+        <p className="text-[13px] font-medium text-foreground">Выезд за первым грузом</p>
         <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Берём груз из вашего города и из городов рядом с маршрутом — так цепочка не обрывается на одном плече.
+          Насколько километров от базы ищем первый груз. Порожний выезд окупается ставкой — он уже учтён в прибыли.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[100, 200, 300, 500].map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStartRadiusKm(value)}
+              className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                startRadiusKm === value
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border text-foreground/90"
+              }`}
+            >
+              {value} км
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-3.5 text-[13px] font-medium text-foreground">Грузы «по пути»</p>
+        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+          Насколько в стороне от маршрута берём следующие грузы — так цепочка не обрывается на одном плече.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {[50, 100, 150, 300].map((value) => (
@@ -756,6 +794,8 @@ function FailedPhase({
   startCity,
   loads,
   vehicles,
+  startRadiusKm,
+  onWiderRadius,
   onPickCity,
   onOtherCity,
   onRefresh,
@@ -763,6 +803,8 @@ function FailedPhase({
   startCity: string
   loads: BuilderLoad[]
   vehicles: BuilderVehicle[]
+  startRadiusKm: number
+  onWiderRadius: () => void
   onPickCity: (city: string) => void
   onOtherCity: () => void
   onRefresh: () => void
@@ -857,6 +899,16 @@ function FailedPhase({
           <MapPin className="h-4 w-4" />
           Другой город
         </button>
+        {startRadiusKm < 500 ? (
+          <button
+            type="button"
+            onClick={onWiderRadius}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
+          >
+            <RouteIcon className="h-4 w-4" />
+            Искать шире ({Math.min(startRadiusKm + 200, 500)} км)
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onRefresh}
