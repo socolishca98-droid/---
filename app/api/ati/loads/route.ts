@@ -69,24 +69,11 @@ export async function GET(request: NextRequest) {
     let refreshed = false
     let refreshError: string | null = null
 
+    // Экран не должен ждать скан ATI: он занимает больше минуты, а логист
+    // открыл помощник, чтобы строить маршрут. Поэтому кэш отдаём сразу, а
+    // «устарел» помечаем флагом — клиент сам обновит биржу в фоне.
     if (needsRefresh) {
-      const ati = await getActiveAtiToken(organizationId)
-      if (ati.ok) {
-        const result = await scanAtiLoads({
-          token: ati.token,
-          organizationId,
-          cityIds,
-        })
-        if (result?.success) {
-          refreshed = true
-          if (profile) await markProfileScanned(profile.id, organizationId)
-        } else {
-          refreshError = (result as { error?: string })?.error ?? "ATI.SU не ответил"
-        }
-      } else {
-        // Не подключены — показываем кэш без обновления, это не ошибка экрана
-        refreshError = ati.error
-      }
+      refreshError = "stale"
     }
 
     // 3. Список из кэша (после возможного обновления)
@@ -126,6 +113,8 @@ export async function GET(request: NextRequest) {
       lastScanAt: freshScannedAt,
       refreshed,
       refreshError,
+      /** Кэш устарел — клиент обновит биржу в фоне (POST на этот же путь) */
+      stale: refreshError === "stale",
       /** Профиль сканирования организации (города, интервал) — для шторки настроек */
       scanProfile: profile
         ? {

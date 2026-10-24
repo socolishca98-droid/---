@@ -17,7 +17,7 @@
 
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -89,6 +89,7 @@ export default function RouteAssistantPage() {
       toPoint: { lat: number; lng: number } | null
     }>
     refreshError: string | null
+    stale: boolean
   }>(user ? "/api/ati/loads?status=new&limit=100" : null)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
@@ -119,6 +120,19 @@ export default function RouteAssistantPage() {
     if (saved) setStartCity(saved)
   }, [])
 
+  // Биржа обновляется в фоне: скан ATI занимает больше минуты, и экран не
+  // должен из-за него висеть. Сервер помечает кэш «stale» — дёргаем POST
+  // и перечитываем список, когда он уже показан.
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  useEffect(() => {
+    if (!loadsState.data?.stale || autoRefresh) return
+    setAutoRefresh(true)
+    void apiSend<{ count?: number }>("/api/ati/loads", "POST").then((result) => {
+      loadsState.reload()
+      if (result.ok) toast.success("Биржа обновлена")
+    })
+  }, [loadsState.data, autoRefresh, loadsState])
+
   const loads = useMemo<BuilderLoad[]>(
     () =>
       (loadsState.data?.items ?? []).map((row) => ({
@@ -143,7 +157,23 @@ export default function RouteAssistantPage() {
       })),
     [loadsState.data],
   )
-  const vehicles = vehiclesState.data?.vehicles ?? []
+  const vehicles = useMemo<BuilderVehicle[]>(() => {
+    // У машин часто не заполнен паспортный расход — прибыль тогда нечем
+    // считать. Подставляем оценку по типу кузова и честно помечаем это в
+    // «Почему собрал так»: точные литры появятся, когда расход заполнят.
+    const rows = vehiclesState.data?.vehicles ?? []
+    return rows.map((vehicle) => {
+      if (vehicle.fuelConsumptionPer100 && vehicle.fuelConsumptionPer100 > 0) return vehicle
+      const type = (vehicle.type ?? "").toLowerCase()
+      const estimate = /газел|малый|малотон|микро/.test(type)
+        ? 18
+        : /фур|полуфур|тент|рефриж|изотерм|борт/.test(type)
+          ? 30
+          : 24
+      return { ...vehicle, fuelConsumptionPer100: estimate, fuelEstimated: true }
+    })
+  }, [vehiclesState.data])
+
   const drivers = driversState.data?.drivers ?? []
 
   const loading = loadsState.loading || vehiclesState.loading
@@ -211,6 +241,13 @@ export default function RouteAssistantPage() {
   )
 
   // ── Построение маршрута ──
+  // Таймер анимации живёт в ref: если логист ушёл с экрана mid-анимации,
+  // интервал гасится — иначе он стучится в размонтированный компонент.
+  const buildTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (buildTimer.current !== null) window.clearInterval(buildTimer.current)
+  }, [])
+
   function runBuild(start: string, keep: string[], exclude: string[]) {
     if (!start.trim()) {
       toast.error("Укажите город, откуда едете")
@@ -228,6 +265,7 @@ export default function RouteAssistantPage() {
         return
       }
       window.clearInterval(tick)
+      buildTimer.current = null
       const built = buildRoute({
         startCity: start.trim(),
         loads: loadsWithPoints,
@@ -244,6 +282,7 @@ export default function RouteAssistantPage() {
         toast.error("Из этого города не собралось ни одного окупаемого плеча")
       }
     }, 550)
+    buildTimer.current = tick
   }
 
   function refreshAll() {
@@ -254,6 +293,9 @@ export default function RouteAssistantPage() {
     window.setTimeout(() => {
       setRefreshing(false)
       toast.success("Данные обновлены")
+      // Маршрут уже построен — пересобираем на свежих грузах, иначе он
+      // показывает вчерашнюю биржу
+      if (route) runBuild(startCity, keepIds, excludeIds)
     }, 800)
   }
 
@@ -336,11 +378,18 @@ export default function RouteAssistantPage() {
       // 1. Каждый груз биржи становится нашим заказом (этап «Поиск»)
       const orderIds: string[] = []
       for (const leg of route.legs) {
-        const result = await apiSend<{ order: { id: string } }>("/api/orders/from-cache", "POST", {
+        const result = await apiSend<{
+          order: { id: string }
+          code?: string
+        }>("/api/orders/from-cache", "POST", {
           cacheId: leg.load.id,
           fetchContacts: true,
         })
         if (result.ok && result.data?.order) {
+          orderIds.push(result.data.order.id)
+        } else if (result.data?.code === "already_taken" && result.data?.order?.id) {
+          // Груз уже взят в работу раньше (например, с экрана биржи) —
+          // используем тот заказ, дубликат не нужен
           orderIds.push(result.data.order.id)
         } else {
           toast.error(result.error ?? `Не удалось взять груз ${shortCity(leg.load.fromCity)} → ${shortCity(leg.load.toCity)}`)
@@ -417,6 +466,8 @@ export default function RouteAssistantPage() {
             usableLoadsCount={usableLoads.length}
             detourKm={detourKm}
             setDetourKm={setDetourKm}
+            pointsLoading={pointsState.loading}
+            noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
             onBuild={() => runBuild(startCity, keepIds, excludeIds)}
           />
         ) : phase === "building" ? (
@@ -478,6 +529,8 @@ function SetupPhase({
   usableLoadsCount,
   detourKm,
   setDetourKm,
+  pointsLoading,
+  noStartPoint,
   onBuild,
 }: {
   startCity: string
@@ -491,6 +544,10 @@ function SetupPhase({
   usableLoadsCount: number
   detourKm: number
   setDetourKm: (value: number) => void
+  /** Точки городов ещё считаются — «по пути» пока не работает */
+  pointsLoading: boolean
+  /** Для выбранного города нет координат — только точное совпадение городов */
+  noStartPoint: boolean
   onBuild: () => void
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
@@ -512,6 +569,15 @@ function SetupPhase({
             className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
           />
         </div>
+
+        {pointsLoading ? (
+          <p className="mt-2 text-[12px] text-muted-foreground">Считаю расстояния между городами биржи…</p>
+        ) : noStartPoint ? (
+          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+            Для этого города нет точных координат — маршрут соберём только по точному совпадению
+            городов. Укажите ближайший крупный город, чтобы работали грузы «по пути».
+          </p>
+        ) : null}
 
         {topFromCities.length > 0 ? (
           <div className="mt-2.5">

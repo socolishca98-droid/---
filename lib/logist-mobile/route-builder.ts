@@ -73,6 +73,12 @@ export interface BuilderVehicle {
   status?: string | null
   /** Паспортный расход, л/100 км */
   fuelConsumptionPer100?: number | null
+  /**
+   * Расход не заполнен в карточке машины — стоит оценка по типу кузова.
+   * Экран честно пишет об этом: прибыль примерная, точные литры появятся,
+   * когда расход заполнят.
+   */
+  fuelEstimated?: boolean
 }
 
 export interface BuildRouteOptions {
@@ -590,6 +596,8 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   }
   if (needsFuelSetup) {
     reasons.push("У машины не заполнен расход топлива — прибыль не посчитана")
+  } else if (vehicle.fuelEstimated) {
+    reasons.push("Расход топлива — оценка по типу кузова: уточните его в карточке машины для точной прибыли")
   }
   if (keepIds.length > 0) {
     const kept = legs.filter((leg) => keepIds.includes(leg.load.id)).length
