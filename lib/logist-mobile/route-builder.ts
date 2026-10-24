@@ -140,6 +140,12 @@ export interface RouteLeg {
   loadedKm: number
   /** Время плеча в часах: путь + погрузка/выгрузка */
   hours: number
+  /**
+   * Сколько часов стоим и ждём даты загрузки: фрахтователь назвал число
+   * позже нашего приезда. Это тоже время маршрута — логист планирует
+   * «сколько едем», а не «сколько крутим руль».
+   */
+  waitHours: number
   revenue: number
   fuelLiters: number | null
   fuelCostRub: number | null
@@ -149,6 +155,18 @@ export interface RouteLeg {
   returnsHome: boolean
   /** Груз «по пути»: город погрузки не совпал, но рядом с маршрутом */
   byTheWay: boolean
+  /**
+   * Когда машина по расчёту доедет до погрузки. Ориентир: выезд сейчас,
+   * ~60 км/ч порожним и ~55 км/ч с грузом.
+   */
+  etaAt: Date
+  /** Дата загрузки, которую назвал фрахтователь (если озвучена) */
+  loadsAt: Date | null
+  /**
+   * По расчёту мы приезжаем позже даты загрузки — груз могут отдать другому.
+   * Не приговор, а флаг «уточните дату при звонке».
+   */
+  lateRisk: boolean
 }
 
 /** Груз, который не попал в маршрут, и почему. */
@@ -161,6 +179,8 @@ export interface BuiltRoute {
   /** Стабильный ключ для React и кэша */
   id: string
   startCity: string
+  /** Точка базы — с неё начинаем и на карте, и в расчёте возврата */
+  startPoint: Point | null
   /** Города по порядку: старт → точки выгрузки */
   path: string[]
   legs: RouteLeg[]
@@ -172,6 +192,12 @@ export interface BuiltRoute {
   totalDistanceKm: number
   /** Вся поездка в часах, включая возврат и погрузки/выгрузки */
   totalHours: number
+  /** Когда машина выезжает по расчёту (сейчас + сборы) */
+  departAt: Date
+  /** Когда машина дома по расчёту — с учётом ожидания дат загрузки */
+  homeAt: Date
+  /** Сколько плеч с риском «не успеваем к дате загрузки» */
+  lateRiskLegs: number
   totalRevenue: number
   totalFuelCostRub: number | null
   totalProfitRub: number | null
@@ -255,6 +281,37 @@ export const AVG_LOADED_KMH = 55
 export const AVG_DEADHEAD_KMH = 60
 export const LOAD_UNLOAD_HOURS = 4
 
+/** Полночь даты в UTC — сравниваем календарные дни, а не часы. */
+function dayStart(date: Date): number {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+/** Дата загрузки груза, если она озвучена и её можно прочитать. */
+function loadDate(load: BuilderLoad): Date | null {
+  if (!load.loadingDate) return null
+  const date = new Date(load.loadingDate)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+/**
+ * Когда машина реально выедет: сборы и документы — пара часов. Если уже
+ * вечер, логист утром: узлы в пути лучше не планировать.
+ */
+export function departTime(now: Date): Date {
+  if (now.getHours() >= 18) {
+    const morning = new Date(now)
+    morning.setDate(morning.getDate() + 1)
+    morning.setHours(8, 0, 0, 0)
+    return morning
+  }
+  return new Date(now.getTime() + 2 * 3600000)
+}
+
+/** Часы между двумя датами. */
+function hoursBetween(from: Date, to: Date): number {
+  return (to.getTime() - from.getTime()) / 3600000
+}
+
 /** Часы плеча: подъезд + гружёный путь + погрузка/выгрузка. */
 export function legHours(deadheadKm: number, loadedKm: number): number {
   const hours = deadheadKm / AVG_DEADHEAD_KMH + loadedKm / AVG_LOADED_KMH + LOAD_UNLOAD_HOURS
@@ -299,6 +356,7 @@ function buildChain(
   startRadiusKm: number,
   maxHours: number,
   keepIds: readonly string[],
+  departAt: Date,
 ): { legs: RouteLeg[]; stoppedByHours: boolean } {
   const legs: RouteLeg[] = []
   let stoppedByHours = false
@@ -310,7 +368,8 @@ function buildChain(
   const startKey = normalizeCityKey(startCity)
   let currentKey = startKey
   let currentPoint: Point | null = startPoint
-  let spentHours = 0
+  // Часы с момента выезда — по ним считаем, когда доедем до погрузки
+  let clock = 0
 
   // Первый груз ищем шире: порожний выезд за ним — норма, если ставка
   // покрывает пробег. Дальше по цепочке — уже «по пути».
@@ -329,23 +388,57 @@ function buildChain(
       return false
     })
 
-    // Сначала согласованные: логист уже договорился — они в приоритете
+    // Порядок выбора — ровно как логист смотрит биржу, стоя в городе:
+    //  1. согласованные звонком грузы — они в приоритете;
+    //  2. грузы, к дате загрузки которых успеваем: уехавший груз не купить
+    //     никакой ставкой;
+    //  3. тот, кто готов раньше: простаивающая машина — потерянные деньги,
+    //     поэтому маршрут двигается по календарю, а не прыгает по датам;
+    //  4. при равной готовности — самая высокая ставка за километр.
     const ordered = [...candidates].sort((a, b) => {
       const aKeep = keepIds.includes(a.id) ? 0 : 1
       const bKeep = keepIds.includes(b.id) ? 0 : 1
       if (aKeep !== bKeep) return aKeep - bKeep
+      const aLate = isLate(a) ? 1 : 0
+      const bLate = isLate(b) ? 1 : 0
+      if (aLate !== bLate) return aLate - bLate
+      const aWait = waitDays(a)
+      const bWait = waitDays(b)
+      if (aWait !== bWait) return aWait - bWait
       const ra = loadRatePerKm(a) ?? -1
       const rb = loadRatePerKm(b) ?? -1
       return rb - ra
     })
 
+    /** Приедем ли мы к дате загрузки: сравниваем календарные дни. */
+    function isLate(load: BuilderLoad): boolean {
+      const date = loadDate(load)
+      if (!date) return false
+      return dayStart(arriveAt(clock)) > dayStart(date)
+    }
+
+    /** Сколько суток ждать загрузки от нашего приезда. 0 — груз готов. */
+    function waitDays(load: BuilderLoad): number {
+      const date = loadDate(load)
+      if (!date) return 0
+      const diff = Math.round((dayStart(date) - dayStart(arriveAt(clock))) / 86400000)
+      return diff > 0 ? diff : 0
+    }
+
+    /** Момент приезда к текущей точке, если ехать прямо сейчас. */
+    function arriveAt(clockHours: number): Date {
+      return new Date(departAt.getTime() + clockHours * 3600000)
+    }
+
     let best: {
       load: BuilderLoad
       money: ReturnType<typeof legMoney>
       deadheadKm: number
+      loadedKm: number
       profitPerKm: number
       byTheWay: boolean
       hours: number
+      waitHours: number
     } | null = null
     for (const load of ordered) {
       const sameCity = normalizeCityKey(load.fromCity) === currentKey
@@ -356,9 +449,12 @@ function buildChain(
       const loadedKm = Math.max(0, load.distanceKm ?? 0)
       const totalKm = deadheadKm + loadedKm
       const hours = legHours(deadheadKm, loadedKm)
-      // Маршрут планируется по времени: если плечо не влезает в смены,
-      // дальше не набираем — логист едет столько, сколько договорился
-      if (spentHours + hours > maxHours) {
+      // Ожидание даты загрузки — тоже время маршрута: логист договорился
+      // «еду трое суток», и пять суток простоя это нарушение
+      const waitHours = waitDays(load) * 24
+      // Маршрут планируется по времени: если плечо (с ожиданием) не влезает
+      // в смены, дальше не набираем
+      if (clock + waitHours + hours > maxHours) {
         stoppedByHours = true
         break
       }
@@ -373,15 +469,29 @@ function buildChain(
         load,
         money,
         deadheadKm,
+        loadedKm,
         profitPerKm: totalKm > 0 ? (money.profitRub ?? money.revenue) / totalKm : 0,
         byTheWay: !sameCity,
         hours,
+        waitHours,
       }
       break
     }
 
     if (!best) break
-    spentHours += best.hours
+
+    // ЕТА погрузки: выезд + часы в пути. Если фрахтователь назвал дату
+    // загрузки позже — стоим и ждём, часы ожидания тоже идут в маршрут.
+    const deadheadHours = best.deadheadKm / AVG_DEADHEAD_KMH
+    const arriveHours = clock + deadheadHours
+    const etaAt = new Date(departAt.getTime() + arriveHours * 3600000)
+    const loadsAt = loadDate(best.load)
+    const lateRisk = loadsAt ? dayStart(etaAt) > dayStart(loadsAt) : false
+    const startHours =
+      loadsAt && !lateRisk && hoursBetween(departAt, loadsAt) > arriveHours
+        ? hoursBetween(departAt, loadsAt)
+        : arriveHours
+    clock = startHours + best.loadedKm / AVG_LOADED_KMH + LOAD_UNLOAD_HOURS
 
     used.add(best.load.id)
     usedFromKeys.add(normalizeCityKey(best.load.fromCity))
@@ -397,6 +507,10 @@ function buildChain(
       profitPerKm: Math.round(best.profitPerKm),
       returnsHome: normalizeCityKey(best.load.toCity) === startKey,
       byTheWay: best.byTheWay,
+      etaAt,
+      loadsAt,
+      lateRisk,
+      waitHours: best.waitHours,
     })
     currentKey = normalizeCityKey(best.load.toCity)
     currentPoint = best.load.toPoint ?? currentPoint
@@ -416,12 +530,158 @@ function buildChain(
  * с лучшей прибылью на километр. Так «маленькая машина рядом» не съедает
  * выгодный длинный маршрут на фуре, и наоборот.
  */
+/** Сборы перед выездом, часы — из них считаем ЕТА первой погрузки. */
+const DEPART_DELAY_HOURS = 2
+
 export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
+  return buildRouteFor(options, options.maxHours)
+}
+
+// ---------------------------------------------------------------------------
+// Карта маршрута
+// ---------------------------------------------------------------------------
+
+/** Точка на карте цепочки: база, погрузка или выгрузка. */
+export interface RouteMapPoint {
+  lat: number
+  lng: number
+  /** Подпись точки: город и что на ней происходит */
+  label: string
+  /** Номер плеча — рисуем в кружке. У базы номера нет. */
+  index?: number
+  /** Домашняя точка — другим цветом */
+  home?: boolean
+}
+
+/**
+ * Точки для карты: база → погрузка → выгрузка → …
+ *
+ * Дубли убираем: соседние точки ближе 5 км — это один и тот же город, второй
+ * маркер только шумит на экране. Чистая функция — её проверяют тесты, а
+ * экран просто рисует.
+ */
+export function routeMapPoints(route: BuiltRoute): RouteMapPoint[] {
+  const points: RouteMapPoint[] = []
+  const push = (
+    point: Point | null | undefined,
+    label: string,
+    index?: number,
+    home?: boolean,
+  ) => {
+    if (!point) return
+    const last = points[points.length - 1]
+    if (last && haversineKm(last, point) < 5) return
+    points.push({ lat: point.lat, lng: point.lng, label, index, home })
+  }
+
+  push(route.startPoint, `База: ${route.path[0]}`, undefined, true)
+  route.legs.forEach((leg, index) => {
+    push(leg.load.fromPoint, `${index + 1}. Погрузка: ${shortCity(leg.load.fromCity)}`, index + 1)
+    push(leg.load.toPoint, `${index + 1}. Выгрузка: ${shortCity(leg.load.toCity)}`, index + 1)
+  })
+  return points
+}
+
+// ---------------------------------------------------------------------------
+// Варианты маршрута: выбор за логистом, а не за программой
+// ---------------------------------------------------------------------------
+
+/** Шаги лимита времени: сутки → двое → трое → пятеро → неделя. */
+export const HOURS_STEPS = [24, 48, 72, 120, 168]
+
+/** «72» → «3 дня». Для подписей вариантов и кнопок. */
+export function hoursLabel(hours: number): string {
+  if (hours % 24 === 0) {
+    const days = hours / 24
+    if (days === 1) return "1 день"
+    if (days < 5) return `${days} дня`
+    return `${days} дней`
+  }
+  return `${hours} ч`
+}
+
+/** Следующий шаг лимита времени: 24 → 48 → 72 → 120 → 168. */
+export function nextHoursStep(current: number): number {
+  return HOURS_STEPS.find((value) => value > current) ?? current
+}
+
+/** Предыдущий шаг лимита времени: 168 → 120 → 72 → 48 → 24. */
+export function prevHoursStep(current: number): number {
+  const lower = HOURS_STEPS.filter((value) => value < current)
+  return lower.length > 0 ? lower[lower.length - 1] : current
+}
+
+/** Чем отличаются варианты маршрута. */
+export type RouteVariantKind = "chosen" | "money" | "fast"
+
+export interface RouteVariant {
+  kind: RouteVariantKind
+  /** Короткая подпись для переключателя: «Больше денег» */
+  label: string
+  /** Чем этот вариант отличается: «5 дней в пути» */
+  hint: string
+  /** Лимит часов этого варианта — им и пересобираем при выборе */
+  hours: number
+  route: BuiltRoute
+}
+
+/**
+ * Несколько вариантов одного и того же выезда.
+ *
+ * Логист на бирже никогда не строит «единственно правильный» маршрут: он
+ * смотрит, что дадут сутки, что дадут трое, и выбирает по обстоятельствам —
+ * машина нужна завтра или можно подольше поработать. Поэтому помощник
+ * предлагает три плана с одним выездом и одной базой:
+ *
+ *  • «Как выбрано» — ровно тот лимит часов, который задал логист;
+ *  • «Больше денег» — на шаг дольше: цепочка длиннее, выручка выше;
+ *  • «Быстрее домой» — на шаг короче: меньше плеч, машина свободна раньше.
+ *
+ * Одинаковые маршруты не дублируем: если длиннее не набирается ничего
+ * нового, варианта просто нет.
+ */
+export function buildRouteVariants(options: BuildRouteOptions): RouteVariant[] {
+  const base = options.maxHours && options.maxHours > 0 ? options.maxHours : 72
+  const plans: Array<{ kind: RouteVariantKind; label: string; hours: number }> = [
+    { kind: "chosen", label: "Как выбрано", hours: base },
+    { kind: "money", label: "Больше денег", hours: nextHoursStep(base) },
+    { kind: "fast", label: "Быстрее домой", hours: prevHoursStep(base) },
+  ]
+
+  const variants: RouteVariant[] = []
+  const seen = new Set<string>()
+  for (const plan of plans) {
+    const route = buildRouteFor(options, plan.hours)
+    if (!route) continue
+    if (seen.has(route.id)) continue
+    seen.add(route.id)
+    variants.push({
+      kind: plan.kind,
+      label: plan.label,
+      hint: `${hoursLabel(plan.hours)} в пути`,
+      hours: plan.hours,
+      route,
+    })
+  }
+  return variants
+}
+
+/**
+ * Собрать маршрут с заданным лимитом часов. Внутренняя: варианты маршрута
+ * («как выбрано», «больше денег», «быстрее домой») отличаются только им.
+ */
+function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): BuiltRoute | null {
   const now = options.now ?? new Date()
+  const departAt = departTime(now)
   // Жёсткий предел плеч — страховка от бесконечной цепочки; реальный
   // лимит задаёт время (maxHours)
   const maxLegs = 8
-  const maxHours = options.maxHours && options.maxHours > 0 ? options.maxHours : 72
+  const maxHours =
+    maxHoursOption && maxHoursOption > 0
+      ? maxHoursOption
+      : options.maxHours && options.maxHours > 0
+        ? options.maxHours
+        : 72
   const minProfitPerKm = options.minProfitPerKm ?? 25
   const detourKm = options.detourKm ?? 150
   const startRadiusKm = options.startRadiusKm ?? 300
@@ -492,6 +752,7 @@ export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
       startRadiusKm,
       maxHours,
       keepIds,
+      departAt,
     )
     const legs = chain.legs
     if (legs.length === 0) continue
@@ -541,6 +802,7 @@ export function buildRoute(options: BuildRouteOptions): BuiltRoute | null {
       lastCity,
       atHome,
       now,
+      departAt,
       minProfitPerKm,
       detourKm,
       maxHours,
@@ -579,6 +841,8 @@ interface FinalizeInput {
   lastCity: string
   atHome: boolean
   now: Date
+  /** Когда машина выезжает — от этого считаем ЕТА и дату дома */
+  departAt: Date
   minProfitPerKm: number
   detourKm: number
   maxHours: number
@@ -607,6 +871,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     lastCity,
     atHome,
     maxHours,
+    departAt,
   } = input
 
   // Дорога домой: если последнее плечо не привело на базу, считаем порожний
@@ -624,9 +889,16 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
 
   const totalDistanceKm = totalLoaded + totalDeadhead + returnDeadheadKm
   // Время: плечи + дорога домой (если возврат не гружёный)
-  const legsHours = legs.reduce((sum, leg) => sum + leg.hours, 0)
+  // Время поездки = дорога + погрузки/выгрузки + ожидание дат загрузки +
+  // дорога домой. Логист планирует «сколько едем» целиком: простой под дату
+  // загрузки — такое же время маршрута, как километры.
+  const legsHours = legs.reduce((sum, leg) => sum + leg.hours + leg.waitHours, 0)
+  const waitHoursTotal = legs.reduce((sum, leg) => sum + leg.waitHours, 0)
   const returnHours = returnDeadheadKm > 0 ? legHours(returnDeadheadKm, 0) : 0
   const totalHours = Math.round((legsHours + returnHours) * 10) / 10
+  // Домой — конец того же таймлайна: выезд + все часы маршрута
+  const homeAt = new Date(departAt.getTime() + totalHours * 3600000)
+  const lateRiskLegs = legs.filter((leg) => leg.lateRisk).length
   const hasFuel =
     legs.every((leg) => leg.fuelCostRub !== null) &&
     (returnDeadheadKm === 0 || returnFuelCostRub !== null)
@@ -668,6 +940,9 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       `Цепочка из ${legs.length} плеч: ${shortCity(effectiveStart)} → ${lastCity}`,
     )
   }
+  if (legs.length > 1 && legs.some((leg) => leg.loadsAt)) {
+    reasons.push("Грузы набирались по датам загрузки: ближайший к нашему приезду — первым")
+  }
   const firstLeg = legs[0]
   if (firstLeg && firstLeg.byTheWay && firstLeg.deadheadKm > 0) {
     reasons.push(
@@ -702,6 +977,16 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       ? `Маршрут на ${days} дн. (${Math.round(maxHours)} ч) — в лимит уложились`
       : `Маршрут на ${Math.round(maxHours)} ч — в лимит уложились`,
   )
+  if (waitHoursTotal >= 12) {
+    reasons.push(
+      `Ожидание дат загрузки: ${Math.round(waitHoursTotal)} ч — грузы готовы к разным числам`,
+    )
+  }
+  if (lateRiskLegs > 0) {
+    reasons.push(
+      `По датам: ${formatCount(lateRiskLegs, ["плечо", "плеча", "плеч"])} с риском не успеть к загрузке — уточните дату при звонке`,
+    )
+  }
   if (input.stoppedByHours) {
     reasons.push("Дальше грузы были, но маршрут не влезал в лимит времени")
   }
@@ -724,6 +1009,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   return {
     id: `route:${legs.map((leg) => leg.load.id).join("-")}`,
     startCity: shortCity(effectiveStart),
+    startPoint,
     path,
     legs,
     vehicle,
@@ -731,6 +1017,9 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     returnsHomeWithLoad,
     totalDistanceKm,
     totalHours,
+    departAt,
+    homeAt,
+    lateRiskLegs,
     totalRevenue,
     totalFuelCostRub,
     totalProfitRub,

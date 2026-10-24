@@ -21,9 +21,17 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { buildRoute, loadPrice, loadRatePerKm, routeSummaryLine, explainFailure } = require(
-  "../.test-build/lib/logist-mobile/route-builder.js",
-)
+const {
+  buildRoute,
+  buildRouteVariants,
+  departTime,
+  hoursLabel,
+  loadPrice,
+  loadRatePerKm,
+  routeMapPoints,
+  routeSummaryLine,
+  explainFailure,
+} = require("../.test-build/lib/logist-mobile/route-builder.js")
 
 const NOW = new Date("2026-10-22T10:00:00.000Z")
 const FUEL = 62
@@ -42,7 +50,7 @@ function load(overrides = {}) {
     distanceKm: 526,
     firmName: "ООО «Ромашка»",
     contactPhone: "+79001234567",
-    loadingDate: "2026-10-24T08:00:00.000Z",
+    loadingDate: null,
     status: "new",
     ...overrides,
   }
@@ -494,6 +502,222 @@ test("за пределами радиуса поиска первый груз 
     startPoint: { lat: 55.0938, lng: 38.7670 },
   })
   assert.equal(route, null)
+})
+
+// ── 18b. Даты загрузки: ЕТА плеча и риск не успеть ───────────────────────
+test("плечо знает дату загрузки и когда машина доедет", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const loads = [
+    load({
+      id: "a",
+      fromCity: "Москва",
+      toCity: "Воронеж",
+      distanceKm: 526,
+      priceRub: 120000,
+      loadingDate: "2026-10-26T00:00:00.000Z",
+      fromPoint: MOSCOW,
+      toPoint: VORONEZH,
+    }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: new Date("2026-10-25T09:00:00.000Z"),
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  const leg = route.legs[0]
+  assert.ok(leg.loadsAt, "дата загрузки фрахтователя попала в плечо")
+  assert.ok(leg.etaAt instanceof Date, "ЕСТь ЕТА погрузки")
+  assert.equal(leg.lateRisk, false, "27 октября — доедем с запасом")
+  assert.ok(route.homeAt.getTime() > route.departAt.getTime(), "домой позже выезда")
+  // сутки ожидания даты загрузки + дорога туда-обратно — в пределах лимита
+  assert.ok(route.totalHours > 0 && route.totalHours <= 72, `в пути ${route.totalHours} ч`)
+  assert.equal(route.legs[0].waitHours, 24, "сутки ждём даты загрузки")
+})
+
+test("груз, к дате загрузки которого не успеть, помечается риском", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const PERM = { lat: 58.01, lng: 56.25 }
+  const loads = [
+    load({
+      id: "a",
+      fromCity: "Москва",
+      toCity: "Воронеж",
+      distanceKm: 526,
+      priceRub: 120000,
+      loadingDate: "2026-10-25T00:00:00.000Z",
+      fromPoint: MOSCOW,
+      toPoint: VORONEZH,
+    }),
+    load({
+      id: "b",
+      fromCity: "Воронеж",
+      toCity: "Пермь",
+      distanceKm: 1400,
+      priceRub: 200000,
+      // загрузка сегодня, а до Воронежа мы доедем только к вечеру — и ещё
+      // сутки ехать: фрахтователь груз не ждёт
+      loadingDate: "2026-10-25T00:00:00.000Z",
+      fromPoint: VORONEZH,
+      toPoint: PERM,
+    }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: new Date("2026-10-25T09:00:00.000Z"),
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 2)
+  assert.equal(route.legs[1].lateRisk, true, "приедем завтра, загрузка была сегодня")
+  assert.equal(route.lateRiskLegs, 1)
+  assert.ok(
+    route.reasons.some((line) => line.includes("не успеть")),
+    `причины: ${route.reasons.join(" | ")}`,
+  )
+})
+
+test("вечером выезд переносится на утро — узлы в пути не планируют", () => {
+  const evening = departTime(new Date("2026-10-25T20:30:00.000Z"))
+  assert.equal(evening.getHours(), 8, "выезд в 8 утра")
+  assert.equal(evening.getDate(), 26, "на следующий день")
+  const morning = departTime(new Date("2026-10-25T09:00:00.000Z"))
+  assert.equal(morning.getHours(), 11, "утром — через пару часов сборов")
+})
+
+test("среди двух грузов берём тот, к дате загрузки которого успеваем", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const PERM = { lat: 58.01, lng: 56.25 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  // Первое плечо — общее. Дальше выбор: «дорогой» груз, к загрузке которого
+  // мы не успеваем, и спокойный рядом. Логист возьмёт спокойный: груз,
+  // который уедет, не купить никакой ставкой.
+  const loads = [
+    load({
+      id: "first",
+      fromCity: "Москва",
+      toCity: "Воронеж",
+      distanceKm: 526,
+      priceRub: 120000,
+      loadingDate: "2026-10-25T00:00:00.000Z",
+      fromPoint: MOSCOW,
+      toPoint: VORONEZH,
+    }),
+    load({
+      id: "rich-but-late",
+      fromCity: "Воронеж",
+      toCity: "Пермь",
+      distanceKm: 1400,
+      priceRub: 400000,
+      loadingDate: "2026-10-25T00:00:00.000Z",
+      fromPoint: VORONEZH,
+      toPoint: PERM,
+    }),
+    load({
+      id: "calm",
+      fromCity: "Воронеж",
+      toCity: "Липецк",
+      distanceKm: 280,
+      priceRub: 70000,
+      loadingDate: "2026-10-26T00:00:00.000Z",
+      fromPoint: VORONEZH,
+      toPoint: LIPETSK,
+    }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: new Date("2026-10-25T09:00:00.000Z"),
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 2)
+  assert.equal(route.legs[1].load.id, "calm", "груз, к которому успеваем, важнее ставки")
+})
+
+// ── 18c. Варианты маршрута: выбор за логистом ─────────────────────────────
+test("помощник предлагает варианты: как выбрано, больше денег, быстрее", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const TAMBOV = { lat: 52.72, lng: 41.45 }
+  const SARATOV = { lat: 51.53, lng: 46.03 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: LIPETSK }),
+    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000, fromPoint: LIPETSK, toPoint: TAMBOV }),
+    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000, fromPoint: TAMBOV, toPoint: SARATOV }),
+  ]
+  // Плечи занимают 43.5 ч: в сутки влезают два, в двое — все четыре
+  const variants = buildRouteVariants({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 48,
+  })
+  assert.ok(variants.length >= 2, `вариантов: ${variants.length}`)
+  const kinds = variants.map((variant) => variant.kind)
+  assert.ok(kinds.includes("chosen"), "первый — как выбрано")
+  assert.ok(
+    variants.every((variant) => variant.hours > 0 && variant.route.legs.length > 0),
+    "у каждого варианта есть часы и плечи",
+  )
+  // «Быстрее домой» короче по времени, «больше денег» — не короче
+  const fast = variants.find((variant) => variant.kind === "fast")
+  const money = variants.find((variant) => variant.kind === "money")
+  if (fast) assert.ok(fast.route.totalHours <= variants[0].route.totalHours + 0.01)
+  if (money) assert.ok(money.route.totalHours >= variants[0].route.totalHours - 0.01)
+  // Одинаковых маршрутов не дублируем
+  const ids = variants.map((variant) => variant.route.id)
+  assert.equal(new Set(ids).size, ids.length)
+})
+
+test("карта маршрута: база, погрузки и выгрузки без дублей", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    // выгрузка здесь же, где следующая погрузка: второй маркер не нужен
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: { lat: 52.61, lng: 39.59 } }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  const points = routeMapPoints(route)
+  assert.equal(points[0].home, true, "первая точка — база")
+  assert.equal(points[0].label, "База: Москва")
+  // Москва один раз: база и погрузка первого плеча — один город
+  assert.equal(points[1].index, 1, "выгрузка первого плеча — Воронеж")
+  // Воронеж один раз: погрузка второго плеча совпала с выгрузкой первого
+  assert.equal(points[2].index, 2, "выгрузка второго плеча — Липецк")
+  assert.equal(points.length, 3, `точек: ${points.length}`)
+})
+
+test("подписи лимита времени: 24 → «1 день», 72 → «3 дня»", () => {
+  assert.equal(hoursLabel(24), "1 день")
+  assert.equal(hoursLabel(48), "2 дня")
+  assert.equal(hoursLabel(72), "3 дня")
+  assert.equal(hoursLabel(120), "5 дней")
+  assert.equal(hoursLabel(168), "7 дней")
 })
 
 // ── 19. Длина маршрута считается по времени (maxHours) ─────────────────────

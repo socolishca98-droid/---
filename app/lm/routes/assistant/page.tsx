@@ -38,21 +38,36 @@ import {
   X,
 } from "lucide-react"
 
+import dynamic from "next/dynamic"
+
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
-  buildRoute,
+  buildRouteVariants,
   explainFailure,
-  routeSummaryLine,
+  haversineKm,
+  HOURS_STEPS,
+  hoursLabel,
+  nextHoursStep,
+  prevHoursStep,
+  routeMapPoints,
   type BuilderLoad,
   type BuilderVehicle,
   type BuiltRoute,
+  type RouteVariant,
 } from "@/lib/logist-mobile/route-builder"
 import { normalizeCityKey } from "@/lib/logist-mobile/city-norm"
 import { type MobileDriver } from "@/lib/logist-mobile/types"
-import { formatMoney, formatWeightKg, shortCity, telHref } from "@/lib/logist-mobile/format"
+import {
+  formatCount,
+  formatDateShort,
+  formatMoney,
+  formatWeightKg,
+  shortCity,
+  telHref,
+} from "@/lib/logist-mobile/format"
 
 /** Статус договорённости с фрахтователем по конкретному грузу. */
 type CallStatus = "pending" | "agreed" | "declined"
@@ -108,7 +123,13 @@ export default function RouteAssistantPage() {
   const [maxHours, setMaxHours] = useState(72)
   const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
   const [buildStep, setBuildStep] = useState(0)
-  const [route, setRoute] = useState<BuiltRoute | null>(null)
+  /**
+   * Варианты одного выезда: «как выбрано», «больше денег», «быстрее домой».
+   * Логист выбирает сам — помощник не решает за него.
+   */
+  const [variants, setVariants] = useState<RouteVariant[]>([])
+  const [variantIndex, setVariantIndex] = useState(0)
+  const route = variants[variantIndex]?.route ?? null
   /** Договорённости по грузам: позвонил → согласовано / отказ */
   const [calls, setCalls] = useState<Record<string, CallStatus>>({})
   /** Согласованные звонком грузы — пересборка их сохраняет */
@@ -262,11 +283,49 @@ export default function RouteAssistantPage() {
     if (buildTimer.current !== null) window.clearInterval(buildTimer.current)
   }, [])
 
-  function runBuild(start: string, keep: string[], exclude: string[], hoursLimit?: number) {
+  /**
+   * Собрать варианты маршрута. `instant` — без анимации: после отказа
+   * фрахтователя или при переключении варианта ждать два секунды глупо,
+   * логист работает в темпе телефонных звонков.
+   */
+  function runBuild(
+    start: string,
+    keep: string[],
+    exclude: string[],
+    hoursLimit?: number,
+    instant = false,
+  ) {
     if (!start.trim()) {
       toast.error("Укажите город, откуда едете")
       return
     }
+
+    const build = () => {
+      const built = buildRouteVariants({
+        startCity: start.trim(),
+        loads: loadsWithPoints,
+        vehicles,
+        fuelPriceRubPerL: 62,
+        keepIds: keep,
+        excludeIds: exclude,
+        detourKm,
+        startRadiusKm,
+        maxHours: hoursLimit ?? maxHours,
+        startPoint,
+      })
+      setVariants(built)
+      setVariantIndex(0)
+      setPhase("route")
+      if (built.length === 0) {
+        toast.error("Из этого города не собралось ни одного окупаемого плеча")
+      }
+    }
+
+    if (instant) {
+      build()
+      return
+    }
+
     setPhase("building")
     setBuildStep(0)
 
@@ -280,25 +339,17 @@ export default function RouteAssistantPage() {
       }
       window.clearInterval(tick)
       buildTimer.current = null
-      const built = buildRoute({
-        startCity: start.trim(),
-        loads: loadsWithPoints,
-        vehicles,
-        fuelPriceRubPerL: 62,
-        keepIds: keep,
-        excludeIds: exclude,
-        detourKm,
-        startRadiusKm,
-        maxHours: hoursLimit ?? maxHours,
-        startPoint,
-      })
-      setRoute(built)
-      setPhase("route")
-      if (!built) {
-        toast.error("Из этого города не собралось ни одного окупаемого плеча")
-      }
-    }, 550)
+      build()
+    }, 420)
     buildTimer.current = tick
+  }
+
+  /** Переключение варианта: тот же выезд, другой лимит часов — пересборка. */
+  function selectVariant(index: number) {
+    const variant = variants[index]
+    if (!variant) return
+    setVariantIndex(index)
+    runBuild(startCity, keepIds, excludeIds, variant.hours, true)
   }
 
   function refreshAll() {
@@ -311,7 +362,7 @@ export default function RouteAssistantPage() {
       toast.success("Данные обновлены")
       // Маршрут уже построен — пересобираем на свежих грузах, иначе он
       // показывает вчерашнюю биржу
-      if (route) runBuild(startCity, keepIds, excludeIds)
+      if (route) runBuild(startCity, keepIds, excludeIds, route ? variants[variantIndex]?.hours : undefined)
     }, 800)
   }
 
@@ -344,7 +395,7 @@ export default function RouteAssistantPage() {
     const exclude = [...excludeIds, loadId]
     setKeepIds(keep)
     setExcludeIds(exclude)
-    runBuild(startCity, keep, exclude)
+    runBuild(startCity, keep, exclude, variants[variantIndex]?.hours, true)
     toast("Груз убран — пересобираю маршрут")
   }
 
@@ -354,7 +405,7 @@ export default function RouteAssistantPage() {
     const exclude = [...excludeIds, loadId]
     setKeepIds(keep)
     setExcludeIds(exclude)
-    runBuild(startCity, keep, exclude)
+    runBuild(startCity, keep, exclude, variants[variantIndex]?.hours, true)
   }
 
   function markCall(loadId: string, status: CallStatus) {
@@ -362,16 +413,26 @@ export default function RouteAssistantPage() {
     if (status === "agreed" && !keepIds.includes(loadId)) {
       const keep = [...keepIds, loadId]
       setKeepIds(keep)
-      setRoute((current) => {
-        if (!current) return current
-        return {
-          ...current,
-          reasons: [
-            ...current.reasons.filter((reason) => !reason.startsWith("Согласованные грузы")),
-            `Согласованные грузы сохранены: ${current.legs.filter((leg) => keep.includes(leg.load.id)).length}`,
-          ],
-        }
-      })
+      // В объяснении сразу видно, что согласованный груз закреплён: он
+      // останется в маршруте при любой пересборке
+      setVariants((current) =>
+        current.map((variant, index) =>
+          index === variantIndex
+            ? {
+                ...variant,
+                route: {
+                  ...variant.route,
+                  reasons: [
+                    ...variant.route.reasons.filter((reason) => !reason.startsWith("Согласованные грузы")),
+                    `Согласованные грузы сохранены: ${
+                      variant.route.legs.filter((leg) => keep.includes(leg.load.id)).length
+                    }`,
+                  ],
+                },
+              }
+            : variant,
+        ),
+      )
     }
     if (status === "declined") {
       declineLoad(loadId)
@@ -492,7 +553,7 @@ export default function RouteAssistantPage() {
           />
         ) : phase === "building" ? (
           <BuildingPhase step={buildStep} />
-        ) : route ? (
+        ) : variants.length > 0 && route ? (
           <RoutePhase
             route={route}
             calls={calls}
@@ -506,11 +567,14 @@ export default function RouteAssistantPage() {
               setCalls({})
               setKeepIds([])
               setExcludeIds([])
-              runBuild(startCity, [], [])
+              runBuild(startCity, [], [], variants[variantIndex]?.hours, true)
             }}
             onBack={() => setPhase("setup")}
             onSend={() => void sendRoute()}
             sending={phase === "sending"}
+            variants={variants}
+            activeVariant={variantIndex}
+            onSelectVariant={selectVariant}
           />
         ) : (
           <FailedPhase
@@ -520,20 +584,20 @@ export default function RouteAssistantPage() {
             startRadiusKm={startRadiusKm}
             maxHours={maxHours}
             onMoreHours={() => {
-              const longer = nextHours(maxHours)
+              const longer = nextHoursStep(maxHours)
               setMaxHours(longer)
-              runBuild(startCity, keepIds, excludeIds, longer)
+              runBuild(startCity, keepIds, excludeIds, longer, true)
             }}
             onWiderRadius={() => {
               // Провал часто = «груз есть, но дальше радиуса» — пробуем шире
               const wider = startRadiusKm >= 1200 ? 1200 : startRadiusKm + 200
               setStartRadiusKm(wider)
-              runBuild(startCity, keepIds, excludeIds, maxHours)
+              runBuild(startCity, keepIds, excludeIds, maxHours, true)
             }}
             onPickCity={(city) => {
               setStartCity(city)
               window.localStorage.setItem(START_CITY_KEY, city)
-              runBuild(city, keepIds, excludeIds, maxHours)
+              runBuild(city, keepIds, excludeIds, maxHours, true)
             }}
             onOtherCity={() => setPhase("setup")}
             onRefresh={refreshAll}
@@ -593,6 +657,8 @@ function SetupPhase({
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
   const driver = selected ? drivers.find((item) => item.vehicleId === selected.id) ?? null : null
+  // Радиусы — редкость: свёрнуты, чтобы первый экран был «город → машина → ехать»
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   return (
     <div className="space-y-5">
@@ -765,9 +831,11 @@ function SetupPhase({
 
       {/* Что будет */}
       <Card className="border-primary/25 bg-primary/[0.06]">
-        <p className="text-[13px] text-muted-foreground">
-          Помощник пройдёт по {usableLoadsCount} грузам биржи и сложит цепочку: из вашего города —
-          в соседний, оттуда — дальше, и обратно домой с грузом. Убыточные плеча не берёт.
+        <p className="text-[13px] leading-snug text-muted-foreground">
+          Помощник пройдёт по {usableLoadsCount} грузам биржи и сложит цепочку по датам загрузки: из
+          вашего города — в соседний, оттуда — дальше, и обратно домой с грузом. Убыточные плеча не
+          берёт, а сколько едем — покажет картой и датами. В конце предложит варианты: короче или
+          подольше.
         </p>
         <button
           type="button"
@@ -963,7 +1031,7 @@ function FailedPhase({
             className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
           >
             <Clock className="h-4 w-4" />
-            Ехать дольше ({hoursLabel(nextHours(maxHours))})
+            Ехать дольше ({hoursLabel(nextHoursStep(maxHours))})
           </button>
         ) : null}
         {startRadiusKm < 1200 ? (
@@ -1013,6 +1081,9 @@ function RoutePhase({
   onBack,
   onSend,
   sending,
+  variants,
+  activeVariant,
+  onSelectVariant,
 }: {
   route: BuiltRoute
   calls: Record<string, CallStatus>
@@ -1026,6 +1097,9 @@ function RoutePhase({
   onBack: () => void
   onSend: () => void
   sending: boolean
+  variants: RouteVariant[]
+  activeVariant: number
+  onSelectVariant: (index: number) => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
@@ -1037,7 +1111,10 @@ function RoutePhase({
     <div className="space-y-5">
       {/* Итог: деньги — главное */}
       <Card className="border-primary/25 bg-primary/[0.06]">
-        <p className="text-[13px] text-muted-foreground">Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}</p>
+        <p className="text-[13px] text-muted-foreground">
+          Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}
+          {route.vehicle?.plate ? ` · ${route.vehicle.plate}` : ""}
+        </p>
         <p className="mt-1 text-[30px] font-bold leading-none text-foreground">
           {route.totalProfitRub !== null ? (
             <>
@@ -1066,7 +1143,50 @@ function RoutePhase({
             value={route.totalDistanceKm > 0 ? `${route.totalDistanceKm} км` : "—"}
           />
           <SummaryCell label="В пути" value={routeTimeText(route)} />
+          <SummaryCell
+            label="На км"
+            value={route.profitPerKm !== null ? `${formatMoney(route.profitPerKm)} ₽` : "—"}
+          />
         </div>
+
+        {/* Когда выезжаем и когда дома — план поездки, а не только деньги */}
+        <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
+          <span>Выезд {formatDateShort(route.departAt.toISOString())}</span>
+          <ArrowRight className="h-3 w-3 shrink-0" />
+          <span>дома ≈ {formatDateShort(route.homeAt.toISOString())}</span>
+          {route.lateRiskLegs > 0 ? (
+            <span className="inline-flex items-center gap-1 font-medium text-amber-600">
+              <AlertTriangle className="h-3 w-3" />
+              {formatCount(route.lateRiskLegs, ["плечо", "плеча", "плеч"])} с риском по дате
+            </span>
+          ) : null}
+        </p>
+
+        {/* Варианты: логист выбирает, а не программа за него */}
+        {variants.length > 1 ? (
+          <div className="mt-3 border-t border-primary/15 pt-3">
+            <p className="text-[12.5px] font-medium text-foreground">Другие варианты этого выезда</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {variants.map((variant, index) => (
+                <button
+                  key={variant.kind}
+                  type="button"
+                  onClick={() => onSelectVariant(index)}
+                  className={`min-h-[38px] rounded-lg border px-3 text-left active:opacity-70 ${
+                    index === activeVariant
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-border text-foreground/90"
+                  }`}
+                >
+                  <span className="block text-[13px] font-medium">{variant.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    {variant.hint} · {formatMoney(variant.route.totalProfitRub ?? 0)} ₽
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {route.returnDeadheadKm > 0 ? (
           <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
@@ -1092,6 +1212,24 @@ function RoutePhase({
           </p>
         ) : null}
       </Card>
+
+      {/* Форма поездки: логист принимает решение глазами */}
+      <section>
+        <h2 className="mb-2 px-1 text-[14px] font-semibold text-foreground">Как едем</h2>
+        <Card>
+          <RouteChainMapLazy points={routeMapPoints(route)} />
+        </Card>
+      </section>
+
+      {/* Кому позвонить: рабочий список в порядке плеч */}
+      <CallSheet
+        route={route}
+        calls={calls}
+        phones={phones}
+        phoneBusy={phoneBusy}
+        onFetchPhone={onFetchPhone}
+        onCall={onCall}
+      />
 
       {/* Плечи: цепочка городов */}
       <section>
@@ -1131,6 +1269,24 @@ function RoutePhase({
                       {leg.hours > 0 ? ` · ≈ ${Math.round(leg.hours)} ч в пути` : ""}
                       {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
                     </p>
+
+                    {/* Дата загрузки: по ней логист понимает, успевает ли цепочка */}
+                    <p
+                      className={`mt-0.5 flex items-center gap-1 text-[12.5px] ${
+                        leg.lateRisk ? "font-medium text-amber-600" : "text-muted-foreground"
+                      }`}
+                    >
+                      {leg.lateRisk ? <AlertTriangle className="h-3 w-3 shrink-0" /> : null}
+                      {leg.loadsAt
+                        ? `Загрузка ${formatDateShort(leg.loadsAt.toISOString())}`
+                        : "Дата загрузки не названа"}
+                      {leg.loadsAt ? ` · приедем ≈ ${formatDateShort(leg.etaAt.toISOString())}` : ""}
+                    </p>
+                    {leg.waitHours >= 1 ? (
+                      <p className="mt-0.5 text-[12px] text-muted-foreground">
+                        Ждём загрузки ≈ {Math.round(leg.waitHours)} ч — это время тоже в маршруте
+                      </p>
+                    ) : null}
 
                     {/* Деньги плеча */}
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -1347,26 +1503,135 @@ function RoutePhase({
 }
 
 // ---------------------------------------------------------------------------
-// Мелочи
+// Карта цепочки и список звонков
 // ---------------------------------------------------------------------------
 
-/** Следующий шаг лимита времени: сутки → двое → трое → пятеро → неделя. */
-const HOURS_STEPS = [24, 48, 72, 120, 168]
+/** Leaflet тянет window при загрузке — на сервере упал бы при пререндере. */
+const RouteChainMapLazy = dynamic(
+  () =>
+    import("@/components/logist-mobile/route-chain-map").then((module) => module.RouteChainMap),
+  { ssr: false },
+)
 
-function nextHours(current: number): number {
-  const next = HOURS_STEPS.find((value) => value > current)
-  return next ?? 168
+/**
+ * Список звонков — рабочее окно логиста.
+ *
+ * Плечи ниже показывают деньги и детали, но звонить нужно быстро и по
+ * порядку: фрахтователей пять, и лезть за каждым в карточку с расчётами
+ * неудобно. Поэтому сверху — плоский список «компания → позвонить →
+ * договорились / отказ», а статус один на всё: он же виден в плечах.
+ */
+function CallSheet({
+  route,
+  calls,
+  phones,
+  phoneBusy,
+  onFetchPhone,
+  onCall,
+}: {
+  route: BuiltRoute
+  calls: Record<string, CallStatus>
+  phones: Record<string, string>
+  phoneBusy: string | null
+  onFetchPhone: (loadId: string) => void
+  onCall: (loadId: string, status: CallStatus) => void
+}) {
+  const agreed = route.legs.filter((leg) => calls[leg.load.id] === "agreed").length
+  return (
+    <Card>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[13px] font-medium text-foreground">Кому позвонить</p>
+        <p className="text-[12px] text-muted-foreground">
+          договорились {agreed} из {route.legs.length}
+        </p>
+      </div>
+      <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+        Порядок звонков — по порядку плеч. «Договорились» закрепляет груз: он останется в
+        маршруте при любой пересборке.
+      </p>
+      <div className="mt-2.5 space-y-1.5">
+        {route.legs.map((leg, index) => {
+          const status = calls[leg.load.id] ?? "pending"
+          const phone = telHref(phones[leg.load.id] ?? leg.load.contactPhone)
+          return (
+            <div
+              key={leg.load.id}
+              className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 ${
+                status === "agreed"
+                  ? "border-primary/30 bg-primary/[0.06]"
+                  : status === "declined"
+                    ? "border-border opacity-60"
+                    : "border-border"
+              }`}
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[12px] font-semibold text-foreground/80">
+                {index + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium text-foreground">
+                  {leg.load.firmName?.trim() || "Фрахтователь не указан"}
+                </p>
+                <p className="truncate text-[12px] text-muted-foreground">
+                  {shortCity(leg.load.fromCity)} → {shortCity(leg.load.toCity)}
+                  {leg.loadsAt
+                    ? ` · ${formatDateShort(leg.loadsAt.toISOString())}`
+                    : " · дата не названа"}
+                </p>
+              </div>
+              {phone ? (
+                <a
+                  href={phone}
+                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-2.5 text-[12.5px] font-medium text-white active:opacity-70"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  {status === "agreed" ? "Ещё раз" : "Звонить"}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onFetchPhone(leg.load.id)}
+                  disabled={phoneBusy === leg.load.id}
+                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-2.5 text-[12.5px] font-medium text-white active:opacity-70 disabled:opacity-50"
+                >
+                  {phoneBusy === leg.load.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Phone className="h-3.5 w-3.5" />
+                  )}
+                  Телефон
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onCall(leg.load.id, "agreed")}
+                aria-label="Договорились"
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border active:opacity-70 ${
+                  status === "agreed"
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-border text-foreground/80"
+                }`}
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onCall(leg.load.id, "declined")}
+                aria-label="Отказ"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-foreground/80 active:opacity-70"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
 }
 
-function hoursLabel(hours: number): string {
-  if (hours % 24 === 0) {
-    const days = hours / 24
-    if (days === 1) return "1 день"
-    if (days < 5) return `${days} дня`
-    return `${days} дней`
-  }
-  return `${hours} ч`
-}
+// ---------------------------------------------------------------------------
+// Мелочи
+// ---------------------------------------------------------------------------
 
 /**
  * Сколько времени займёт маршрут — по часам, как его и планирует логист:
