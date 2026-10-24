@@ -495,3 +495,23 @@ test("за пределами радиуса поиска первый груз 
   })
   assert.equal(route, null)
 })
+
+// ── 19. Длина маршрута: maxLegs управляет числом плеч ──────────────────────
+test("длина маршрута ограничивает число плеч", () => {
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000 }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000 }),
+    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000 }),
+    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000 }),
+  ]
+  const short = buildRoute({
+    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxLegs: 2,
+  })
+  const long = buildRoute({
+    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxLegs: 6,
+  })
+  assert.ok(short && long)
+  assert.equal(short.legs.length, 2, "короткий маршрут — 2 плеча")
+  assert.equal(long.legs.length, 4, "длинный маршрут — все 4 плеча")
+  assert.ok(long.totalRevenue > short.totalRevenue)
+})

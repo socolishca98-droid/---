@@ -103,6 +103,8 @@ export default function RouteAssistantPage() {
   const [detourKm, setDetourKm] = useState(150)
   /** Радиус поиска первого груза от базы, км: порожний выезд за грузом */
   const [startRadiusKm, setStartRadiusKm] = useState(300)
+  /** Длина маршрута: сколько плеч максимум собирать */
+  const [maxLegs, setMaxLegs] = useState(4)
   const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
   const [buildStep, setBuildStep] = useState(0)
   const [route, setRoute] = useState<BuiltRoute | null>(null)
@@ -286,6 +288,7 @@ export default function RouteAssistantPage() {
         excludeIds: exclude,
         detourKm,
         startRadiusKm,
+        maxLegs,
         startPoint,
       })
       setRoute(built)
@@ -480,6 +483,8 @@ export default function RouteAssistantPage() {
             setDetourKm={setDetourKm}
             startRadiusKm={startRadiusKm}
             setStartRadiusKm={setStartRadiusKm}
+            maxLegs={maxLegs}
+            setMaxLegs={setMaxLegs}
             pointsLoading={pointsState.loading}
             noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
             onBuild={() => runBuild(startCity, keepIds, excludeIds)}
@@ -514,7 +519,7 @@ export default function RouteAssistantPage() {
             startRadiusKm={startRadiusKm}
             onWiderRadius={() => {
               // Провал часто = «груз есть, но дальше радиуса» — пробуем шире
-              const wider = startRadiusKm >= 500 ? 500 : startRadiusKm + 200
+              const wider = startRadiusKm >= 1200 ? 1200 : startRadiusKm + 200
               setStartRadiusKm(wider)
               runBuild(startCity, keepIds, excludeIds)
             }}
@@ -550,6 +555,8 @@ function SetupPhase({
   setDetourKm,
   startRadiusKm,
   setStartRadiusKm,
+  maxLegs,
+  setMaxLegs,
   pointsLoading,
   noStartPoint,
   onBuild,
@@ -568,6 +575,9 @@ function SetupPhase({
   /** Радиус поиска первого груза от базы, км */
   startRadiusKm: number
   setStartRadiusKm: (value: number) => void
+  /** Длина маршрута: максимум плеч */
+  maxLegs: number
+  setMaxLegs: (value: number) => void
   /** Точки городов ещё считаются — «по пути» пока не работает */
   pointsLoading: boolean
   /** Для выбранного города нет координат — только точное совпадение городов */
@@ -671,14 +681,15 @@ function SetupPhase({
         ) : null}
       </Card>
 
-      {/* Насколько далеко искать: выезд за первым грузом и «по пути» */}
+      {/* Насколько далеко искать и насколько длинный маршрут */}
       <Card>
-        <p className="text-[13px] font-medium text-foreground">Выезд за первым грузом</p>
+        <p className="text-[13px] font-medium text-foreground">Радиус поиска от базы</p>
         <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Насколько километров от базы ищем первый груз. Порожний выезд окупается ставкой — он уже учтён в прибыли.
+          Насколько километров от начала маршрута ищем первый груз. Грузов из вашего города нет —
+          помощник возьмёт ближайший в этом радиусе. Порожний выезд уже учтён в прибыли.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {[100, 200, 300, 500].map((value) => (
+          {[100, 200, 300, 500, 800, 1200].map((value) => (
             <button
               key={value}
               type="button"
@@ -690,6 +701,31 @@ function SetupPhase({
               }`}
             >
               {value} км
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-3.5 text-[13px] font-medium text-foreground">Длина маршрута</p>
+        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+          Сколько плеч максимум собирать. Чем длиннее — тем больше денег, но и дольше машина в пути.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[
+            { legs: 2, label: "2 плеча" },
+            { legs: 4, label: "4 плеча" },
+            { legs: 6, label: "6 плеч" },
+          ].map((option) => (
+            <button
+              key={option.legs}
+              type="button"
+              onClick={() => setMaxLegs(option.legs)}
+              className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                maxLegs === option.legs
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border text-foreground/90"
+              }`}
+            >
+              {option.label}
             </button>
           ))}
         </div>
@@ -899,14 +935,14 @@ function FailedPhase({
           <MapPin className="h-4 w-4" />
           Другой город
         </button>
-        {startRadiusKm < 500 ? (
+        {startRadiusKm < 1200 ? (
           <button
             type="button"
             onClick={onWiderRadius}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
           >
             <RouteIcon className="h-4 w-4" />
-            Искать шире ({Math.min(startRadiusKm + 200, 500)} км)
+            Искать шире ({Math.min(startRadiusKm + 200, 1200)} км)
           </button>
         ) : null}
         <button
@@ -1006,6 +1042,11 @@ function RoutePhase({
             уже учтено в прибыли.
           </p>
         ) : null}
+
+        {/* Длина рейса днями: логист планирует не километры, а смены */}
+        <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
+          В пути примерно {routeDays(route)} — с учётом погрузок и выгрузок
+        </p>
 
         {route.unprofitable ? (
           <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-2 text-[12.5px] leading-snug text-destructive">
@@ -1275,6 +1316,17 @@ function RoutePhase({
 // ---------------------------------------------------------------------------
 // Мелочи
 // ---------------------------------------------------------------------------
+
+/**
+ * Сколько дней займёт маршрут: ~450 км в день с погрузками-выгрузками.
+ * Ориентир для планировщика, а не обещание: точное время — после согласования.
+ */
+function routeDays(route: BuiltRoute): string {
+  const days = Math.max(1, Math.ceil(route.totalDistanceKm / 450))
+  if (days === 1) return "1 день"
+  if (days < 5) return `${days} дня`
+  return `${days} дней`
+}
 
 function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
