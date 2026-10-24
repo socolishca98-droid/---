@@ -754,80 +754,105 @@ function SetupPhase({
         ) : null}
       </Card>
 
-      {/* Насколько далеко искать и насколько длинный маршрут */}
+      {/* Насколько едем — главный рычаг, он на виду */}
       <Card>
-        <p className="text-[13px] font-medium text-foreground">Радиус поиска от базы</p>
+        <p className="text-[13px] font-medium text-foreground">Сколько едем</p>
         <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Насколько километров от начала маршрута ищем первый груз. Грузов из вашего города нет —
-          помощник возьмёт ближайший в этом радиусе. Порожний выезд уже учтён в прибыли.
+          Помощник набирает грузы, пока маршрут укладывается в это время: около 55 км/ч с грузом,
+          по 4 часа на каждую погрузку-выгрузку и ожидание дат загрузки. Чем дольше едем — тем
+          больше денег, но и больше смен в пути.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {[100, 200, 300, 500, 800, 1200].map((value) => (
+          {HOURS_STEPS.map((hours) => (
             <button
-              key={value}
+              key={hours}
               type="button"
-              onClick={() => setStartRadiusKm(value)}
-              className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
-                startRadiusKm === value
+              onClick={() => setMaxHours(hours)}
+              className={`min-h-[38px] rounded-md border px-3 text-[13px] active:opacity-70 ${
+                maxHours === hours
                   ? "border-primary/40 bg-primary/15 text-primary"
                   : "border-border text-foreground/90"
               }`}
             >
-              {value} км
-            </button>
-          ))}
-        </div>
-
-        <p className="mt-3.5 text-[13px] font-medium text-foreground">Сколько едем</p>
-        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Помощник набирает грузы, пока маршрут укладывается в это время: около 55 км/ч с грузом
-          и по 4 часа на каждую погрузку-выгрузку. Чем дольше едем — тем больше денег, но и больше
-          смен в пути.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {[
-            { hours: 24, label: "1 день" },
-            { hours: 48, label: "2 дня" },
-            { hours: 72, label: "3 дня" },
-            { hours: 120, label: "5 дней" },
-            { hours: 168, label: "неделя" },
-          ].map((option) => (
-            <button
-              key={option.hours}
-              type="button"
-              onClick={() => setMaxHours(option.hours)}
-              className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
-                maxHours === option.hours
-                  ? "border-primary/40 bg-primary/15 text-primary"
-                  : "border-border text-foreground/90"
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        <p className="mt-3.5 text-[13px] font-medium text-foreground">Грузы «по пути»</p>
-        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Насколько в стороне от маршрута берём следующие грузы — так цепочка не обрывается на одном плече.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {[50, 100, 150, 300].map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setDetourKm(value)}
-              className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
-                detourKm === value
-                  ? "border-primary/40 bg-primary/15 text-primary"
-                  : "border-border text-foreground/90"
-              }`}
-            >
-              {value} км
+              {hoursLabel(hours)}
             </button>
           ))}
         </div>
       </Card>
+
+      {/* Тонкая настройка: логист заходит сюда редко, поэтому свёрнуто */}
+      <Card>
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((value) => !value)}
+          className="flex min-h-[40px] w-full items-center justify-between gap-2 text-left active:opacity-70"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium text-foreground">Тонкая настройка</span>
+            <span className="mt-0.5 block text-[12px] text-muted-foreground">
+              радиус первого груза {startRadiusKm} км · грузы «по пути» {detourKm} км
+            </span>
+          </span>
+          {advancedOpen ? (
+            <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+        </button>
+
+        {advancedOpen ? (
+          <div className="mt-3 space-y-4 border-t border-border pt-3">
+            <div>
+              <p className="text-[13px] font-medium text-foreground">Радиус поиска от базы</p>
+              <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+                Насколько километров от начала маршрута ищем первый груз. Грузов из вашего города
+                нет — помощник возьмёт ближайший в этом радиусе. Порожний выезд уже учтён в прибыли.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[100, 200, 300, 500, 800, 1200].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStartRadiusKm(value)}
+                    className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                      startRadiusKm === value
+                        ? "border-primary/40 bg-primary/15 text-primary"
+                        : "border-border text-foreground/90"
+                    }`}
+                  >
+                    {value} км
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[13px] font-medium text-foreground">Грузы «по пути»</p>
+              <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+                Насколько в стороне от маршрута берём следующие грузы — так цепочка не обрывается на
+                одном плече.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[50, 100, 150, 300].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDetourKm(value)}
+                    className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                      detourKm === value
+                        ? "border-primary/40 bg-primary/15 text-primary"
+                        : "border-border text-foreground/90"
+                    }`}
+                  >
+                    {value} км
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
 
       {/* Что будет */}
       <Card className="border-primary/25 bg-primary/[0.06]">
