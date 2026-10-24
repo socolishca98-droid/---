@@ -123,7 +123,9 @@ export function shortCity(address?: string | null): string {
     /^(ул\.?|улица|проспект|пр-т|шоссе|переул(ок)?|проезд|д\.\s*\d|дом\b|строен(ие)?\b|стр\.|корпус\b|кв\.|владение)/i
   // «12», «12 к2», «корп. 3» — это не город, а дом
   const houseNumber = /^\d+([\s/\-].*)?$/i
-  const cityPrefix = /^(г\.?|город)\s*/i
+  // Только «г.» с точкой или слово «город»: иначе «Грушевская» теряла первую
+  // букву — префикс «г» без точки съедал её как сокращение
+  const cityPrefix = /^(г\.\s*|город\s+)/i
 
   const city = parts.find(
     (part) => !region.test(part) && !street.test(part) && !houseNumber.test(part),

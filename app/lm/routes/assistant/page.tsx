@@ -26,6 +26,7 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  Clock,
   ChevronUp,
   Loader2,
   MapPin,
@@ -103,8 +104,8 @@ export default function RouteAssistantPage() {
   const [detourKm, setDetourKm] = useState(150)
   /** Радиус поиска первого груза от базы, км: порожний выезд за грузом */
   const [startRadiusKm, setStartRadiusKm] = useState(300)
-  /** Длина маршрута: сколько плеч максимум собирать */
-  const [maxLegs, setMaxLegs] = useState(4)
+  /** Длина маршрута по времени: сколько часов едем (смены/дни) */
+  const [maxHours, setMaxHours] = useState(72)
   const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
   const [buildStep, setBuildStep] = useState(0)
   const [route, setRoute] = useState<BuiltRoute | null>(null)
@@ -261,7 +262,7 @@ export default function RouteAssistantPage() {
     if (buildTimer.current !== null) window.clearInterval(buildTimer.current)
   }, [])
 
-  function runBuild(start: string, keep: string[], exclude: string[]) {
+  function runBuild(start: string, keep: string[], exclude: string[], hoursLimit?: number) {
     if (!start.trim()) {
       toast.error("Укажите город, откуда едете")
       return
@@ -288,7 +289,7 @@ export default function RouteAssistantPage() {
         excludeIds: exclude,
         detourKm,
         startRadiusKm,
-        maxLegs,
+        maxHours: hoursLimit ?? maxHours,
         startPoint,
       })
       setRoute(built)
@@ -483,11 +484,11 @@ export default function RouteAssistantPage() {
             setDetourKm={setDetourKm}
             startRadiusKm={startRadiusKm}
             setStartRadiusKm={setStartRadiusKm}
-            maxLegs={maxLegs}
-            setMaxLegs={setMaxLegs}
+            maxHours={maxHours}
+            setMaxHours={setMaxHours}
             pointsLoading={pointsState.loading}
             noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
-            onBuild={() => runBuild(startCity, keepIds, excludeIds)}
+            onBuild={() => runBuild(startCity, keepIds, excludeIds, maxHours)}
           />
         ) : phase === "building" ? (
           <BuildingPhase step={buildStep} />
@@ -517,16 +518,22 @@ export default function RouteAssistantPage() {
             loads={loadsWithPoints}
             vehicles={vehicles}
             startRadiusKm={startRadiusKm}
+            maxHours={maxHours}
+            onMoreHours={() => {
+              const longer = nextHours(maxHours)
+              setMaxHours(longer)
+              runBuild(startCity, keepIds, excludeIds, longer)
+            }}
             onWiderRadius={() => {
               // Провал часто = «груз есть, но дальше радиуса» — пробуем шире
               const wider = startRadiusKm >= 1200 ? 1200 : startRadiusKm + 200
               setStartRadiusKm(wider)
-              runBuild(startCity, keepIds, excludeIds)
+              runBuild(startCity, keepIds, excludeIds, maxHours)
             }}
             onPickCity={(city) => {
               setStartCity(city)
               window.localStorage.setItem(START_CITY_KEY, city)
-              runBuild(city, keepIds, excludeIds)
+              runBuild(city, keepIds, excludeIds, maxHours)
             }}
             onOtherCity={() => setPhase("setup")}
             onRefresh={refreshAll}
@@ -555,8 +562,8 @@ function SetupPhase({
   setDetourKm,
   startRadiusKm,
   setStartRadiusKm,
-  maxLegs,
-  setMaxLegs,
+  maxHours,
+  setMaxHours,
   pointsLoading,
   noStartPoint,
   onBuild,
@@ -575,9 +582,9 @@ function SetupPhase({
   /** Радиус поиска первого груза от базы, км */
   startRadiusKm: number
   setStartRadiusKm: (value: number) => void
-  /** Длина маршрута: максимум плеч */
-  maxLegs: number
-  setMaxLegs: (value: number) => void
+  /** Длина маршрута по времени: лимит часов в пути */
+  maxHours: number
+  setMaxHours: (value: number) => void
   /** Точки городов ещё считаются — «по пути» пока не работает */
   pointsLoading: boolean
   /** Для выбранного города нет координат — только точное совпадение городов */
@@ -705,22 +712,26 @@ function SetupPhase({
           ))}
         </div>
 
-        <p className="mt-3.5 text-[13px] font-medium text-foreground">Длина маршрута</p>
+        <p className="mt-3.5 text-[13px] font-medium text-foreground">Сколько едем</p>
         <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Сколько плеч максимум собирать. Чем длиннее — тем больше денег, но и дольше машина в пути.
+          Помощник набирает грузы, пока маршрут укладывается в это время: около 55 км/ч с грузом
+          и по 4 часа на каждую погрузку-выгрузку. Чем дольше едем — тем больше денег, но и больше
+          смен в пути.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {[
-            { legs: 2, label: "2 плеча" },
-            { legs: 4, label: "4 плеча" },
-            { legs: 6, label: "6 плеч" },
+            { hours: 24, label: "1 день" },
+            { hours: 48, label: "2 дня" },
+            { hours: 72, label: "3 дня" },
+            { hours: 120, label: "5 дней" },
+            { hours: 168, label: "неделя" },
           ].map((option) => (
             <button
-              key={option.legs}
+              key={option.hours}
               type="button"
-              onClick={() => setMaxLegs(option.legs)}
+              onClick={() => setMaxHours(option.hours)}
               className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
-                maxLegs === option.legs
+                maxHours === option.hours
                   ? "border-primary/40 bg-primary/15 text-primary"
                   : "border-border text-foreground/90"
               }`}
@@ -835,15 +846,19 @@ function FailedPhase({
   onPickCity,
   onOtherCity,
   onRefresh,
+  maxHours,
+  onMoreHours,
 }: {
   startCity: string
   loads: BuilderLoad[]
   vehicles: BuilderVehicle[]
   startRadiusKm: number
+  maxHours: number
   onWiderRadius: () => void
   onPickCity: (city: string) => void
   onOtherCity: () => void
   onRefresh: () => void
+  onMoreHours: () => void
 }) {
   // Причина провала — из тех же данных, что и сборка
   const reason = useMemo(
@@ -853,8 +868,9 @@ function FailedPhase({
         loads,
         vehicles,
         fuelPriceRubPerL: 62,
+        maxHours,
       }),
-    [startCity, loads, vehicles],
+    [startCity, loads, vehicles, maxHours],
   )
 
   // Города, из которых маршрут СТРОИТСЯ прямо сейчас — первыми кандидатами
@@ -899,6 +915,11 @@ function FailedPhase({
                 · {reason.unprofitable} не окупаются после топлива
               </li>
             ) : null}
+            {reason.tooLong > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.tooLong} едут дольше выбранного срока
+              </li>
+            ) : null}
           </ul>
         ) : null}
       </Card>
@@ -935,6 +956,16 @@ function FailedPhase({
           <MapPin className="h-4 w-4" />
           Другой город
         </button>
+        {maxHours < 168 ? (
+          <button
+            type="button"
+            onClick={onMoreHours}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
+          >
+            <Clock className="h-4 w-4" />
+            Ехать дольше ({hoursLabel(nextHours(maxHours))})
+          </button>
+        ) : null}
         {startRadiusKm < 1200 ? (
           <button
             type="button"
@@ -1034,6 +1065,7 @@ function RoutePhase({
             label="Расстояние"
             value={route.totalDistanceKm > 0 ? `${route.totalDistanceKm} км` : "—"}
           />
+          <SummaryCell label="В пути" value={routeTimeText(route)} />
         </div>
 
         {route.returnDeadheadKm > 0 ? (
@@ -1045,7 +1077,7 @@ function RoutePhase({
 
         {/* Длина рейса днями: логист планирует не километры, а смены */}
         <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
-          В пути примерно {routeDays(route)} — с учётом погрузок и выгрузок
+          В пути {routeTimeText(route)} — с учётом дороги, погрузок и выгрузок
         </p>
 
         {route.unprofitable ? (
@@ -1317,15 +1349,37 @@ function RoutePhase({
 // Мелочи
 // ---------------------------------------------------------------------------
 
+/** Следующий шаг лимита времени: сутки → двое → трое → пятеро → неделя. */
+const HOURS_STEPS = [24, 48, 72, 120, 168]
+
+function nextHours(current: number): number {
+  const next = HOURS_STEPS.find((value) => value > current)
+  return next ?? 168
+}
+
+function hoursLabel(hours: number): string {
+  if (hours % 24 === 0) {
+    const days = hours / 24
+    if (days === 1) return "1 день"
+    if (days < 5) return `${days} дня`
+    return `${days} дней`
+  }
+  return `${hours} ч`
+}
+
 /**
- * Сколько дней займёт маршрут: ~450 км в день с погрузками-выгрузками.
+ * Сколько времени займёт маршрут — по часам, как его и планирует логист:
+ * дорога (~55 км/ч с грузом) + 4 часа на каждую погрузку-выгрузку + возврат.
  * Ориентир для планировщика, а не обещание: точное время — после согласования.
  */
-function routeDays(route: BuiltRoute): string {
-  const days = Math.max(1, Math.ceil(route.totalDistanceKm / 450))
-  if (days === 1) return "1 день"
-  if (days < 5) return `${days} дня`
-  return `${days} дней`
+function routeTimeText(route: BuiltRoute): string {
+  const hours = route.totalHours
+  if (!hours || hours <= 0) return "—"
+  if (hours < 24) return `${Math.round(hours)} ч`
+  const days = Math.round((hours / 24) * 10) / 10
+  if (days === 1) return `1 день (${Math.round(hours)} ч)`
+  if (days < 5) return `${days} дня (${Math.round(hours)} ч)`
+  return `${days} дней (${Math.round(hours)} ч)`
 }
 
 function SummaryCell({ label, value }: { label: string; value: string }) {

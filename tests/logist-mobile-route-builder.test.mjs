@@ -496,22 +496,79 @@ test("за пределами радиуса поиска первый груз 
   assert.equal(route, null)
 })
 
-// ── 19. Длина маршрута: maxLegs управляет числом плеч ──────────────────────
-test("длина маршрута ограничивает число плеч", () => {
+// ── 19. Длина маршрута считается по времени (maxHours) ─────────────────────
+test("длина маршрута ограничена временем в пути, а не числом плеч", () => {
   const loads = [
     load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000 }),
     load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000 }),
     load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000 }),
     load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000 }),
   ]
+  // Плечо «Москва → Воронеж»: 526/55 + 4 ч погрузки-выгрузки ≈ 13.6 ч
   const short = buildRoute({
-    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxLegs: 2,
+    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxHours: 24,
   })
   const long = buildRoute({
-    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxLegs: 6,
+    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxHours: 72,
   })
   assert.ok(short && long)
-  assert.equal(short.legs.length, 2, "короткий маршрут — 2 плеча")
-  assert.equal(long.legs.length, 4, "длинный маршрут — все 4 плеча")
+  assert.equal(short.legs.length, 2, "сутки — два плеча: 13.6 + 9.1 ч влезают, третье уже нет")
+  assert.equal(long.legs.length, 4, "трое суток — вся цепочка")
   assert.ok(long.totalRevenue > short.totalRevenue)
+  assert.ok(short.totalHours <= 24 + 9, "суточный маршрут плюс возврат домой")
+  assert.ok(long.totalHours > short.totalHours)
+  assert.ok(
+    Math.abs(short.legs[0].hours - 13.6) < 0.05,
+    `часы плеча = км/55 + 4 ч, получено ${short.legs[0].hours}`,
+  )
+})
+
+// ── 19b. Маршрут не длиннее выбранного срока — с дорогой домой ─────────────
+test("цепочка обрезается, если вместе с возвратом не влезает в срок", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const TAMBOV = { lat: 52.72, lng: 41.45 }
+  const SARATOV = { lat: 51.53, lng: 46.03 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: LIPETSK }),
+    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000, fromPoint: LIPETSK, toPoint: TAMBOV }),
+    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000, fromPoint: TAMBOV, toPoint: SARATOV }),
+  ]
+  // Плечи занимают 43.5 ч, возврат из Саратова — ещё ~14 ч: в 50 ч не влезает
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 50,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 3, "последнее плечо снято — маршрут не длиннее срока")
+  assert.ok(route.totalHours <= 50, `в пути ${route.totalHours} ч при лимите 50 ч`)
+  assert.ok(
+    route.reasons.some((line) => line.includes("не влезал в лимит времени")),
+    `причины объясняют обрезку: ${route.reasons.join(" | ")}`,
+  )
+})
+
+// ── 19c. Провал по времени объясняется словами ────────────────────────────
+test("если грузы есть, но едут дольше срока — провал объясняет это", () => {
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000 }),
+  ]
+  const reason = explainFailure({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 8,
+  })
+  assert.ok(reason)
+  assert.equal(reason.tooLong, 1, "плечо дольше 8 ч")
+  assert.ok(reason.headline.includes("срок"), `заголовок: ${reason.headline}`)
 })
