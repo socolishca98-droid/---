@@ -131,7 +131,10 @@ export async function searchExchange(
     const data: any = await res.json().catch(() => null)
     if (!data) break
 
-    if (page === 1) {
+    // Счётчики читаем с первой ПОЛУЧЕННОЙ страницы, а не с page === 1:
+    // при продолжении обхода (pageStart) первая страница другая, и без этого
+    // «всего по фильтру» показывалось бы нулём.
+    if (pages === 0) {
       totalItems = Number(data.totalItems) || 0
       rootCount = Number(data.rootCount) || 0
       flags.loadBoardsNotAvailable = data.loadBoardsNotAvailable
