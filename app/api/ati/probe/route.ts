@@ -32,7 +32,38 @@ export async function GET(request: NextRequest) {
     { name: "boards/my (свои)", url: `${ATI_API_BASE}/v2/boards/public/boards/my` },
   ]
 
-  const out: Record<string, unknown> = {}
+  // Разбор выдачи byboards: какие города в ней есть — наш сканер фильтрует
+  // только по городу отправления профиля и может выкидывать нужные грузы
+  const boardRes = await atiFetch(
+    `${ATI_API_BASE}/v1.0/loads/search/byboards`,
+    { headers: atiHeaders(ati.token), cache: "no-store", signal: AbortSignal.timeout(20_000) },
+    org.organizationId,
+  )
+  const boardText = await boardRes.text()
+  let boardStats: Record<string, unknown> = {}
+  try {
+    const rows: any[] = JSON.parse(boardText)
+    const from: Record<string, number> = {}
+    const to: Record<string, number> = {}
+    for (const row of rows) {
+      const f = row?.loading?.location?.city || row?.loading?.location?.cityName || "?"
+      const t = row?.unloading?.location?.city || row?.unloading?.location?.cityName || "?"
+      from[f] = (from[f] ?? 0) + 1
+      to[t] = (to[t] ?? 0) + 1
+    }
+    boardStats = {
+      total: rows.length,
+      fromTop: Object.entries(from).sort((a, b) => b[1] - a[1]).slice(0, 12),
+      toTop: Object.entries(to).sort((a, b) => b[1] - a[1]).slice(0, 12),
+      yaroslavlFrom: from["Ярославль"] ?? 0,
+      yaroslavlTo: to["Ярославль"] ?? 0,
+      sampleKeys: Object.keys(rows[0] ?? {}).slice(0, 25),
+    }
+  } catch (error) {
+    boardStats = { error: error instanceof Error ? error.message : String(error) }
+  }
+
+  const out: Record<string, unknown> = { byboardsCities: boardStats }
   for (const probe of probes) {
     try {
       const res = await atiFetch(
