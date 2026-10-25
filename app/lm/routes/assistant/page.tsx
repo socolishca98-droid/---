@@ -57,6 +57,7 @@ import {
   type BuilderLoad,
   type BuilderVehicle,
   type BuiltRoute,
+  type Point,
   type RouteVariant,
 } from "@/lib/logist-mobile/route-builder"
 import { normalizeCityKey } from "@/lib/logist-mobile/city-norm"
@@ -591,6 +592,7 @@ export default function RouteAssistantPage() {
             loads={loadsWithPoints}
             vehicles={vehicles}
             startRadiusKm={startRadiusKm}
+            startPoint={startPoint}
             maxHours={maxHours}
             onMoreHours={() => {
               const longer = nextHoursStep(maxHours)
@@ -944,6 +946,7 @@ function FailedPhase({
   loads,
   vehicles,
   startRadiusKm,
+  startPoint,
   onWiderRadius,
   onPickCity,
   onOtherCity,
@@ -955,6 +958,8 @@ function FailedPhase({
   loads: BuilderLoad[]
   vehicles: BuilderVehicle[]
   startRadiusKm: number
+  /** Точка базы — без неё «рядом» считается только по городу */
+  startPoint: Point | null
   maxHours: number
   onWiderRadius: () => void
   onPickCity: (city: string) => void
@@ -971,9 +976,29 @@ function FailedPhase({
         vehicles,
         fuelPriceRubPerL: 62,
         maxHours,
+        startRadiusKm,
+        startPoint,
       }),
-    [startCity, loads, vehicles, maxHours],
+    [startCity, loads, vehicles, maxHours, startRadiusKm, startPoint],
   )
+
+  /**
+   * Ближайший к базе груз со ставкой — из него строим, когда из самого
+   * города пусто. База «Москва», а грузы стоят в Ступино и Раменском:
+   * объяснять «грузов нет» — тупик, логист едет за ближайшим.
+   */
+  const nearestLoad = useMemo(() => {
+    if (!startPoint) return null
+    let best: { city: string; km: number } | null = null
+    for (const load of loads) {
+      if (load.status !== "new") continue
+      if ((load.priceWithNds ?? load.priceRub ?? 0) <= 0) continue
+      if (!load.fromPoint) continue
+      const km = haversineKm(startPoint, load.fromPoint)
+      if (!best || km < best.km) best = { city: shortCity(load.fromCity), km }
+    }
+    return best
+  }, [loads, startPoint])
 
   // Города, из которых маршрут СТРОИТСЯ прямо сейчас — первыми кандидатами
   const workingCities = useMemo(() => {
@@ -1025,6 +1050,29 @@ function FailedPhase({
           </ul>
         ) : null}
       </Card>
+
+      {/* Из своего города пусто, но рядом грузы — ведём строить от ближайшего */}
+      {reason && reason.loadsFromCity === 0 && reason.loadsNearbyPriced > 0 ? (
+        <Card className="border-primary/25 bg-primary/[0.06]">
+          <p className="text-[13px] font-medium text-foreground">Рядом с базой есть грузы</p>
+          <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
+            В радиусе {startRadiusKm} км — {reason.loadsNearbyPriced} со озвученной ставкой.
+            {nearestLoad
+              ? ` Ближайший — ${nearestLoad.city}, ≈ ${Math.round(nearestLoad.km)} км от базы.`
+              : ""}
+          </p>
+          {nearestLoad ? (
+            <button
+              type="button"
+              onClick={() => onPickCity(nearestLoad.city)}
+              className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+            >
+              <MapPin className="h-4 w-4" />
+              Строить от {nearestLoad.city}
+            </button>
+          ) : null}
+        </Card>
+      ) : null}
 
       {/* Откуда можно строить — один тап и маршрут строится оттуда */}
       {workingCities.length > 0 ? (

@@ -1292,6 +1292,16 @@ export interface FailureReason {
   city: string
   /** Сколько грузов биржи выходят из этого города */
   loadsFromCity: number
+  /**
+   * Грузы «рядом» — в радиусе поиска от базы, а не только из этого города.
+   *
+   * Зачем: база «Москва», а грузы стоят в Ступино, Раменском, Денисово.
+   * Объяснять «грузов из Москвы нет» — тупик: помощник строит из радиуса,
+   * значит и провал должен считаться по тому же радиусу.
+   */
+  loadsNearby: number
+  /** Из них со озвученной ставкой — реальные кандидаты */
+  loadsNearbyPriced: number
   /** Без озвученной ставки — нечем мерить выгоду */
   noPrice: number
   /** Не влезают ни в одну машину парка */
@@ -1315,6 +1325,10 @@ export function explainFailure(options: {
   minProfitPerKm?: number
   /** Лимит времени маршрута, часы — чтобы объяснить «дольше, чем выбрано» */
   maxHours?: number
+  /** Радиус поиска первого груза от базы, км — считаем «рядом» как сборщик */
+  startRadiusKm?: number
+  /** Точка базы: без неё «рядом» считаем только по городу */
+  startPoint?: Point | null
   now?: Date
 }): FailureReason | null {
   const city = options.startCity.trim()
@@ -1326,6 +1340,20 @@ export function explainFailure(options: {
 
   const key = normalizeCityKey(city)
   const fromCity = options.loads.filter((load) => normalizeCityKey(load.fromCity) === key)
+  // «Рядом» — ровно как считает сборщик: тот же город ИЛИ точка погрузки в
+  // радиусе поиска от базы. Иначе провал в Москве объясняется «грузов нет»,
+  // хотя в радиусе 300 км их больше сотни.
+  const radiusKm = options.startRadiusKm ?? 300
+  const nearby =
+    options.startPoint && radiusKm > 0
+      ? options.loads.filter(
+          (load) =>
+            load.status === "new" &&
+            load.fromPoint &&
+            haversineKm(options.startPoint as Point, load.fromPoint) <= radiusKm,
+        )
+      : []
+  const nearbyPriced = nearby.filter((load) => loadPrice(load) > 0).length
   const fitsSomeVehicle = (load: BuilderLoad) =>
     vehicles.length > 0 && vehicles.some((vehicle) => loadFitsVehicle(load, vehicle))
 
@@ -1362,7 +1390,10 @@ export function explainFailure(options: {
 
   let headline: string
   if (fromCity.length === 0) {
-    headline = `Из «${shortCity(city)}» грузов на бирже сейчас нет`
+    headline =
+      nearbyPriced > 0
+        ? `Из «${shortCity(city)}» прямо сейчас грузов нет, но рядом в радиусе ${radiusKm} км — ${nearbyPriced} со ставкой: постройте маршрут от ближайшего`
+        : `Из «${shortCity(city)}» и рядом (${radiusKm} км) грузов на бирже сейчас нет`
   } else if (noPrice === fromCity.length) {
     headline = `Из «${shortCity(city)}» есть грузы, но ставка нигде не озвучена`
   } else if (tooHeavy > 0 && tooHeavy + noPrice + overdue >= fromCity.length) {
@@ -1380,6 +1411,8 @@ export function explainFailure(options: {
   return {
     city: shortCity(city),
     loadsFromCity: fromCity.length,
+    loadsNearby: nearby.length,
+    loadsNearbyPriced: nearbyPriced,
     noPrice,
     tooHeavy,
     overdue,

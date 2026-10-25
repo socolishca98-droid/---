@@ -988,3 +988,76 @@ test("на предельном лимите подсказки роста не�
     `подсказка на предельном лимите не про время: ${route.growthHint}`,
   )
 })
+
+// ── 21. Провал не тупик: «рядом» считается по радиусу, как у сборщика ────
+// Живая биржа: база «Москва», грузов ИЗ Москвы — ноль, а в радиусе 300 км
+// — больше сотни. Объяснение «грузов из Москвы нет» оставляло логиста в
+// тупике, хотя помощник строит маршрут из радиуса.
+test("провал в городе без грузов ведёт строить от ближайшего", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const STUPINO = { lat: 54.9, lng: 38.0 }
+  const loads = [
+    load({ id: "a", fromCity: "Ступино", toCity: "Воронеж", distanceKm: 500, priceRub: 60000, fromPoint: STUPINO }),
+    load({ id: "b", fromCity: "Тверь", toCity: "Воронеж", distanceKm: 600, priceRub: 70000 }),
+  ]
+  const reason = explainFailure({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startRadiusKm: 300,
+    startPoint: MOSCOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.loadsFromCity, 0, "из самой Москвы грузов нет")
+  assert.equal(reason.loadsNearby, 1, "рядом — Ступино")
+  assert.equal(reason.loadsNearbyPriced, 1, "со ставкой")
+  assert.ok(
+    reason.headline.includes("рядом") && reason.headline.includes("300"),
+    `заголовок ведёт строить от ближайшего: ${reason.headline}`,
+  )
+})
+
+test("если рядом тоже пусто — говорим это прямо", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const NOVOSIBIRSK = { lat: 55.03, lng: 82.92 }
+  const loads = [
+    load({ id: "a", fromCity: "Новосибирск", toCity: "Омск", distanceKm: 600, priceRub: 70000, fromPoint: NOVOSIBIRSK }),
+  ]
+  const reason = explainFailure({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startRadiusKm: 300,
+    startPoint: MOSCOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.loadsNearby, 0)
+  assert.ok(
+    reason.headline.includes("рядом"),
+    `без грузов рядом не обещаем строить: ${reason.headline}`,
+  )
+})
+
+test("груз без ставки не считается кандидатом «рядом»", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const STUPINO = { lat: 54.9, lng: 38.0 }
+  const loads = [
+    load({ id: "a", fromCity: "Ступино", toCity: "Воронеж", distanceKm: 500, priceRub: 0, fromPoint: STUPINO }),
+  ]
+  const reason = explainFailure({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startRadiusKm: 300,
+    startPoint: MOSCOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.loadsNearby, 1, "груз рядом есть")
+  assert.equal(reason.loadsNearbyPriced, 0, "но ставки нет — строить не из чего")
+})
