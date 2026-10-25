@@ -16,7 +16,12 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { normalizeCityKey, sameCity } = require("../.test-build/lib/logist-mobile/city-norm.js")
+const {
+  normalizeCityKey,
+  sameCity,
+  cityDistrictKey,
+  samePlace,
+} = require("../.test-build/lib/logist-mobile/city-norm.js")
 
 test("тип населённого пункта снимается", () => {
   assert.equal(normalizeCityKey("Ворсино с. (Боровский р-н), Калужская область, Калужская область"), "ворсино")
@@ -54,4 +59,38 @@ test("пустые значения", () => {
   assert.equal(normalizeCityKey(null), "")
   assert.equal(sameCity("", "Москва"), false)
   assert.equal(sameCity(null, null), false)
+})
+
+// ── Городской округ: сёло округа — тот же город для машины ───────────────
+// Живая биржа: база «Домодедово», а груз везёт в «Константиново с.
+// (г.о. Домодедово)». По строке это разные города — помощник считал
+// порожний возврат 36 км и приезд домой на сутки позже, чем на самом деле.
+test("городской округ выделяется из скобок", () => {
+  assert.equal(cityDistrictKey("Константиново с. (г.о. Домодедово), Московская область"), "домодедово")
+  assert.equal(cityDistrictKey("Ступино г. (г.о. Ступино)"), "ступино")
+  // Район — не округ: Ворсино и Денисово в одном районе, но ехать надо
+  assert.equal(cityDistrictKey("Ворсино с. (Боровский р-н)"), "")
+  // «(регион)» — не округ, иначе склеятся все города
+  assert.equal(cityDistrictKey("Москва, Москва (регион)"), "")
+  assert.equal(cityDistrictKey("Москва"), "")
+})
+
+test("село своего округа — это дом", () => {
+  assert.equal(samePlace("Константиново с. (г.о. Домодедово)", "Домодедово"), true)
+  assert.equal(samePlace("Домодедово", "Константиново с. (г.о. Домодедово)"), true)
+  assert.equal(samePlace("Ступино г. (г.о. Ступино)", "Ступино"), true)
+  assert.equal(samePlace("Москва", "Москва (регион)"), true)
+})
+
+test("разные города одного района — не дом", () => {
+  assert.equal(samePlace("Ворсино с. (Боровский р-н)", "Денисово д. (Боровский р-н)"), false)
+  assert.equal(samePlace("Ворсино с. (Боровский р-н)", "Боровск"), false)
+  assert.equal(samePlace("Домодедово", "Москва"), false)
+  assert.equal(samePlace("Домодедово", "Химки"), false)
+})
+
+test("пустые значения не становятся одним местом", () => {
+  assert.equal(samePlace("", "Москва"), false)
+  assert.equal(samePlace(null, null), false)
+  assert.equal(samePlace("", ""), false)
 })

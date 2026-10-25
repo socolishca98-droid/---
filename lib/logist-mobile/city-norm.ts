@@ -55,6 +55,52 @@ export function normalizeCityKey(value?: string | null): string {
 }
 
 /**
+ * Городской округ из скобок: «г.о. Домодедово» из
+ * «Константиново с. (г.о. Домодедово)».
+ *
+ * Зачем: ATI пишет муниципалитет в скобках, и сёло этого округа — по
+ * факту тот же город для логиста. Машина, привезшая груз в Константиново,
+ * уже дома, если база — Домодедово. Без этого помощник считает порожний
+ * возврат 36 км и приезд домой на сутки позже, чем на самом деле.
+ *
+ * Берём ТОЛЬКО городской округ («г.о.»), не район («р-н»): Ворсино и
+ * Денисово — оба Боровского района, но это разные сёла, ехать между ними
+ * надо. «(регион)» не округ — иначе все города склеятся в одно место.
+ */
+export function cityDistrictKey(value?: string | null): string {
+  if (!value) return ""
+  const city = shortCity(value)
+  if (!city || city === "—") return ""
+  const match = city.match(/\(\s*г\.?\s*о\.?\s*([^)]+?)\s*\)/i)
+  if (!match) return ""
+  return match[1]
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[«»"'.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/**
+ * Одно ли это место для машины: тот же город ИЛИ тот же городской округ.
+ *
+ * «Домодедово» и «Константиново с. (г.о. Домодедово)» — одно место: база
+ * рядом, возврат домой не нужен. «Москва» и «Москва (регион)» — тоже.
+ */
+export function samePlace(a?: string | null, b?: string | null): boolean {
+  const ka = normalizeCityKey(a)
+  const kb = normalizeCityKey(b)
+  if (!ka || !kb) return false
+  if (ka === kb) return true
+  const da = cityDistrictKey(a)
+  const db = cityDistrictKey(b)
+  if (!da && !db) return false
+  if (da && da === kb) return true
+  if (db && db === ka) return true
+  return da !== "" && da === db
+}
+
+/**
  * Одинаковые ли это города (с нормализацией). Пустые не равны ничему.
  */
 export function sameCity(a?: string | null, b?: string | null): boolean {

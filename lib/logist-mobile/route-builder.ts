@@ -20,7 +20,7 @@
 // tests/logist-mobile-route-builder.test.mjs.
 
 import { estimateFuelL } from "../fleet/fuel"
-import { normalizeCityKey } from "./city-norm"
+import { normalizeCityKey, samePlace } from "./city-norm"
 import { formatCount, formatDateShort, formatMoney, plural, shortCity } from "./format"
 
 // ---------------------------------------------------------------------------
@@ -514,7 +514,7 @@ function buildChain(
      * неправдой: хвост потом снимали вслепую.
      */
     function backHomeHours(load: BuilderLoad): number {
-      if (normalizeCityKey(load.toCity) === normalizeCityKey(startCity)) return 0
+      if (samePlace(load.toCity, startCity)) return 0
       if (!startPoint || !load.toPoint) return 0
       return legHours(haversineKm(startPoint, load.toPoint), 0)
     }
@@ -954,7 +954,9 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     // звонком грузы не трогаем — логист уже договорился.
     while (legs.length > 1) {
       const last = legs[legs.length - 1]
-      const backHome = normalizeCityKey(last.load.toCity) === normalizeCityKey(effectiveStart)
+      // Домой = тот же город или тот же городской округ: «Константиново с.
+    // (г.о. Домодедово)» при базе «Домодедово» — это уже дом
+    const backHome = samePlace(last.load.toCity, effectiveStart)
       const back =
         backHome || !options.startPoint || !last.load.toPoint
           ? 0
@@ -972,7 +974,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     const totalDeadhead = legs.reduce((sum, leg) => sum + leg.deadheadKm, 0)
     const lastLeg = legs[legs.length - 1]
     const lastCity = shortCity(lastLeg.load.toCity)
-    const atHome = normalizeCityKey(lastLeg.load.toCity) === normalizeCityKey(effectiveStart)
+    const atHome = samePlace(lastLeg.load.toCity, effectiveStart)
 
     const route = finalize({
       legs,
