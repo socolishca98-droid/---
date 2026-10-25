@@ -67,6 +67,7 @@
     "../lib/ati/boards-mapping.ts",
     "../lib/ati/search-geo.ts",
     "../lib/ati/exchange-mapping.ts",
-    "../lib/ati/regions.ts"
+    "../lib/ati/regions.ts",
+    "../lib/ati/ati-city-regions.ts"
   ]
 }

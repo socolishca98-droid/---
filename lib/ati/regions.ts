@@ -12,6 +12,7 @@
 // регион, и он определяется её городом, а не списком из 28 городов.
 
 import { atiFetch, atiHeaders } from "./http"
+import { ATI_CITY_REGIONS, ATI_REGION_NAMES } from "./ati-city-regions"
 
 export type AtiRegion = {
   /** Идентификатор региона — его и принимает фильтр биржи */
@@ -58,11 +59,47 @@ export async function fetchAtiRegions(
 }
 
 /**
+ * Регион по названию города или самого региона — БЕЗ запроса к ATI.
+ *
+ * Первым делом смотрим выписанный справочник (199 городов из официального
+ * словаря ATI): он точный, мгновенный и не тратит лимит 10 запросов в
+ * секунду. Дальше — по началу слова, и только потом в интернет.
+ */
+export function findRegionByNameLocal(query: string): AtiRegion | null {
+  const q = normalize(query)
+  if (!q) return null
+
+  // 1. Город из справочника: «тула» -> Тульская область.
+  //    Сначала вся строка, потом первое слово — пользователи пишут и
+  //    «Ярославль», и «ЯРОСЛАВЛЬ, Ярославская область», и «Челябинск г.».
+  const head = q.split(" ")[0]
+  const direct = ATI_CITY_REGIONS[q] ?? ATI_CITY_REGIONS[head]
+  if (direct && ATI_REGION_NAMES[direct]) {
+    return { id: direct, name: ATI_REGION_NAMES[direct], clearName: clearOf(ATI_REGION_NAMES[direct]) }
+  }
+
+  // 2. Название региона: «Тульская область» / «Тульская»
+  const asName = Object.entries(ATI_REGION_NAMES).find(
+    ([id, name]) => normalize(name) === q || clearOf(name).toLowerCase() === q,
+  )
+  if (asName) {
+    const [id, name] = asName
+    return { id: Number(id), name, clearName: clearOf(name) }
+  }
+
+  return null
+}
+
+/** «Тульская область» -> «Тульская» */
+function clearOf(name: string): string {
+  return name.replace(/\s+(область|край|республика|автономная область|автономный округ)$/i, "").trim()
+}
+
+/**
  * Регион по названию города или самого региона.
  *
  * «Ярославль» → Ярославская область, «Челябинская область» → она же,
- * «Вологда» → Вологодская область. Сравнение по основе слова, поэтому
- * «Ярославская», «Ярославская область» и «Ярославль» дадут один регион.
+ * «Вологда» → Вологодская область.
  */
 export function findRegionByName(
   query: string,
@@ -70,6 +107,10 @@ export function findRegionByName(
 ): AtiRegion | null {
   const q = normalize(query)
   if (!q) return null
+
+  // 0. Выписанный справочник — точно и без запроса к ATI
+  const local = findRegionByNameLocal(query)
+  if (local) return local
 
   // 1. Точное совпадение названия региона
   const exact = regions.find((r) => normalize(r.name) === q || normalize(r.clearName) === q)
