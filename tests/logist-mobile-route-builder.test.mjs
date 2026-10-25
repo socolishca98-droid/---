@@ -537,7 +537,10 @@ test("плечо знает дату загрузки и когда машина
   assert.ok(route.homeAt.getTime() > route.departAt.getTime(), "домой позже выезда")
   // сутки ожидания даты загрузки + дорога туда-обратно — в пределах лимита
   assert.ok(route.totalHours > 0 && route.totalHours <= 72, `в пути ${route.totalHours} ч`)
-  assert.equal(route.legs[0].waitHours, 24, "сутки ждём даты загрузки")
+  // Ожидание — фактические часы от приезда до даты груза (выезд в 11:00,
+  // груз готов 26-го в 00:00): раньше тут были сутки «с запасом», и итог
+  // маршрута расходился с проверкой лимита
+  assert.equal(route.legs[0].waitHours, 13, "ждём ровно до даты загрузки")
 })
 
 test("груз, к дате загрузки которого не успеть, помечается риском", () => {
@@ -825,7 +828,7 @@ test("причина остановки называется по факту, а
       weightKg: 600,
       fromPoint: RAMENSKOE,
       toPoint: MOSCOW,
-      loadingDate: "2026-10-24T00:00:00.000Z",
+      loadingDate: "2026-10-25T00:00:00.000Z",
     }),
   ]
   const route = buildRoute({

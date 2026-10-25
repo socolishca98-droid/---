@@ -321,6 +321,11 @@ function loadDate(load: BuilderLoad): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+/** Дата загрузки как момент времени; груз без даты — «уже готов». */
+function loadMoment(load: BuilderLoad): Date {
+  return loadDate(load) ?? new Date(0)
+}
+
 /**
  * Когда машина реально выедет: сборы и документы — пара часов. Если уже
  * вечер, логист утром: узлы в пути лучше не планировать.
@@ -546,8 +551,15 @@ function buildChain(
       const totalKm = deadheadKm + loadedKm
       const hours = legHours(deadheadKm, loadedKm)
       // Ожидание даты загрузки — тоже время маршрута: логист договорился
-      // «еду трое суток», и пять суток простоя это нарушение
-      const waitHours = waitDays(load) * 24
+      // «еду трое суток», и пять суток простоя это нарушение.
+      // Считаем ФАКТИЧЕСКИЕ часы от приезда до даты груза — и в проверке
+      // бюджета, и в итоге маршрута. Раньше проверка брала сутки «с
+      // запасом», а итог — факт: маршрут вылезал за лимит (72.6 ч при
+      // лимите 72), а «дома ≈» врало на сутки.
+      const waitHours = Math.max(
+        0,
+        hoursBetween(arriveAt(clock + deadheadKm / AVG_DEADHEAD_KMH), loadMoment(load)),
+      )
       // Маршрут планируется по времени. Плечо не влезло — это ещё не конец:
       // следующий кандидат может быть короче или готов раньше, поэтому
       // запоминаем причину и пробуем дальше по списку.
@@ -833,7 +845,9 @@ export function buildRouteVariants(options: BuildRouteOptions): RouteVariant[] {
     variants.push({
       kind: plan.kind,
       label: plan.label,
-      hint: `${hoursLabel(plan.hours)} в пути`,
+      // Подпись — про ФАКТИЧЕСКОЕ время маршрута, а не про лимит: «3 дня в
+      // пути» над маршрутом на 20 ч — такая же ложь, как «в лимит уложились»
+      hint: `${hoursSpan(route.totalHours)} в пути`,
       hours: plan.hours,
       route,
     })
