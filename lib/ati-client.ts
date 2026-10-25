@@ -679,18 +679,33 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
     }
   }
 
-  // Возвращаем актуальные строки: и созданные, и обновлённые — интерфейсу
-  // нужны точки и источник, а не только счётчики.
+  // Возвращаем строку на КАЖДЫЙ входной груз, в исходном порядке.
+  // Возвращать только что созданные записи нельзя: при повторном поиске по
+  // уже собранному региону грузы все в кэше, и помощник получал бы пустой
+  // список — найденное пропадало прямо из ответа.
   const createdIds = uniqueCreate.map((row) => row.atiLoadId)
   const updatedIds = toUpdate.map((row) => row.id)
-  if (createdIds.length === 0 && updatedIds.length === 0) return []
-  const rows = await prisma.atiCache.findMany({
-    where: {
-      organizationId,
-      OR: [{ atiLoadId: { in: createdIds } }, { id: { in: updatedIds } }],
-    },
-  })
-  return rows.map((row: any) => decorateCacheRow(row))
+  const byAtiId = new Map<string, any>((existingRows as any[]).map((row) => [row.atiLoadId, row]))
+  const updatedById = new Map<string, any>()
+  if (createdIds.length > 0) {
+    // org-audit: ok — только что созданные строки своей организации
+    const created = await prisma.atiCache.findMany({
+      where: { organizationId, atiLoadId: { in: createdIds } },
+    })
+    for (const row of created as any[]) byAtiId.set(row.atiLoadId, row)
+  }
+  if (updatedIds.length > 0) {
+    const updated = await prisma.atiCache.findMany({ where: { id: { in: updatedIds } } })
+    for (const row of updated as any[]) updatedById.set(row.id, row)
+  }
+
+  const result: any[] = []
+  for (const item of rawLoads) {
+    const row = byAtiId.get(String(item.id))
+    if (!row) continue
+    result.push(decorateCacheRow(updatedById.get(row.id) ?? row))
+  }
+  return result
 }
 
 /**
