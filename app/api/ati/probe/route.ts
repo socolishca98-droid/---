@@ -73,7 +73,56 @@ export async function GET(request: NextRequest) {
     boardStats = { error: error instanceof Error ? error.message : String(error) }
   }
 
-  const out: Record<string, unknown> = { byboardsCities: boardStats }
+  // Радиусный поиск от Ярославля (57.6261, 39.8845): грузы, у которых точка
+  // погрузки ИЛИ выгрузки ближе N км — именно так ищет сайт ATI.
+  const YAR = { lat: 57.6261, lng: 39.8845 }
+  const km = (a: any, b: any): number => {
+    const R = 6371
+    const dLat = ((b.lat - a.lat) * Math.PI) / 180
+    const dLng = ((b.lng - a.lng) * Math.PI) / 180
+    const la1 = (a.lat * Math.PI) / 180
+    const la2 = (b.lat * Math.PI) / 180
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
+    return Math.round(2 * R * Math.asin(Math.sqrt(h)))
+  }
+  const boardRows: any[] = (() => {
+    try { return JSON.parse(boardText) } catch { return [] }
+  })()
+  const radiusMap = await resolveAtiCities(collectCityIds(boardRows))
+  const near: any[] = []
+  for (const row of boardRows) {
+    const sides = [
+      { side: "погрузка", loc: row?.Loading },
+      { side: "выгрузка", loc: row?.Unloading },
+    ]
+    for (const { side, loc } of sides) {
+      const lat = Number(loc?.Latitude)
+      const lng = Number(loc?.Longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+      if (lat === 0 && lng === 0) continue
+      const d = km(YAR, { lat, lng })
+      if (d <= 400) {
+        const cid = Number(loc?.CityId) || 0
+        const hit = cid ? radiusMap.get(cid) : undefined
+        near.push({
+          side,
+          km: d,
+          city: hit ? `${hit.name}, ${hit.region}` : cid ? `Город #${cid}` : "?",
+          id: String(row?.Id ?? "").slice(0, 12),
+          weight: Number(row?.Cargo?.Weight) || 0,
+          price: Number(row?.Payment?.SumWithNDS) || Number(row?.Payment?.RateSum) || 0,
+          distance: Number(row?.Distance) || 0,
+        })
+      }
+    }
+  }
+  const radiusStats = {
+    yaroslavlCityId: 88,
+    nearCount: near.length,
+    nearest: near.sort((a, b) => a.km - b.km).slice(0, 12),
+  }
+
+  const out: Record<string, unknown> = { byboardsCities: boardStats, yaroslavlRadius: radiusStats }
   for (const probe of probes) {
     try {
       const res = await atiFetch(
