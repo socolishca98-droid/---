@@ -191,5 +191,39 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 7. Что внутри encodedSearchContext и userFilter — там может быть
+  //    разбор города по названию, которым пользуется сам сайт
+  if (probe === "all" || probe === "context") {
+    try {
+      const res = await atiFetch(
+        `${EX}/loads/search`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            exclude_geo_dicts: true,
+            page: 1,
+            items_per_page: 1,
+            filter: { sorting_type: 2, from: { id: 88, type: 1, radius: 300, exact_only: false } },
+          }),
+        },
+        "probe3",
+      )
+      const data = await res.json()
+      const ctx = String(data?.encodedSearchContext ?? "")
+      let decoded = null
+      try {
+        decoded = JSON.parse(Buffer.from(ctx, "base64").toString("utf8"))
+      } catch {
+        decoded = ctx.slice(0, 200)
+      }
+      out["ctx:encoded"] = decoded
+      out["ctx:userFilter"] = data?.userFilter ?? null
+      out["ctx:firstLoadKeys"] = data?.loads?.[0] ? Object.keys(data.loads[0]) : []
+    } catch (e: any) {
+      out["ctx:error"] = e?.message
+    }
+  }
+
   return NextResponse.json(out)
 }
