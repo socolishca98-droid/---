@@ -28,6 +28,7 @@ import {
   mapExchangeLoad,
   type ExchangeMappedLoad,
 } from "./exchange-mapping"
+import { fetchAtiRegions, findRegionByName } from "./regions"
 
 /** Пауза между страницами, мс: правила ATI — не чаще 10 запросов в секунду. */
 const PAUSE_BETWEEN_PAGES_MS = 350
@@ -35,8 +36,14 @@ const PAUSE_BETWEEN_PAGES_MS = 350
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export type ExchangeSearchParams = {
-  /** id города ATI «откуда»; 0 — без фильтра */
+  /**
+   * id «откуда» в фильтре биржи. Это id РЕГИОНА, а не города: проверено
+   * живьём, from:{id:88} — это Ярославская область (грузы со всей области,
+   * потому радиус в фильтре и не влиял), from:{id:86} — Челябинская.
+   */
   fromCityId?: number | null
+  /** Название города базы — резолвится в регион через официальный словарь ATI */
+  fromCityName?: string | null
   toCityId?: number | null
   fromRadiusKm?: number
   toRadiusKm?: number
@@ -73,8 +80,23 @@ export async function searchExchange(
   organizationId: string,
   params: ExchangeSearchParams,
 ): Promise<ExchangeSearchResult> {
+  let fromCityId = Number(params.fromCityId) || 0
+
+  // Город задан названием — резолвим в РЕГИОН через официальный словарь ATI.
+  // Так живой поиск работает для любой организации, а не только для 28
+  // городов старого списка: у каждой компании свой регион базы.
+  if (!fromCityId && params.fromCityName) {
+    try {
+      const regions = await fetchAtiRegions(token, organizationId)
+      const region = findRegionByName(String(params.fromCityName), regions)
+      if (region) fromCityId = region.id
+    } catch (error) {
+      console.error("[searchExchange] не удалось определить регион:", error)
+    }
+  }
+
   const filter = buildExchangeFilter({
-    fromCityId: params.fromCityId,
+    fromCityId,
     toCityId: params.toCityId,
     fromRadiusKm: params.fromRadiusKm,
     toRadiusKm: params.toRadiusKm,

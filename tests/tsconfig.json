@@ -66,6 +66,7 @@
     "../lib/logist-mobile/route-builder.ts",
     "../lib/ati/boards-mapping.ts",
     "../lib/ati/search-geo.ts",
-    "../lib/ati/exchange-mapping.ts"
+    "../lib/ati/exchange-mapping.ts",
+    "../lib/ati/regions.ts"
   ]
 }

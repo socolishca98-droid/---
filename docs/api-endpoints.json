@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-25T20:55:45.619Z",
+  "generatedAt": "2026-10-25T21:32:19.991Z",
   "endpoints": [
     {
       "method": "GET",
@@ -124,11 +124,6 @@
     {
       "method": "GET",
       "route": "/api/ati/oauth/start",
-      "group": "ati"
-    },
-    {
-      "method": "POST",
-      "route": "/api/ati/probe4",
       "group": "ati"
     },
     {

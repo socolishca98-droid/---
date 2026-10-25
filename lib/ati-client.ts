@@ -479,6 +479,10 @@ async function exchangeManualSearch(
 
   const exchange = await searchExchange(token, organizationId, {
     fromCityId,
+    // Название — запасной путь: если id города не нашлось в старом списке,
+    // поиск резолвит город в РЕГИОН через официальный словарь ATI. Так
+    // живой поиск работает у организации с любой базой.
+    fromCityName: fromCityId ? null : fromName || null,
     toCityId,
     fromRadiusKm: Number(params?.fromRadius) || 0,
     toRadiusKm: Number(params?.toRadius) || 0,
