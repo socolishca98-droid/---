@@ -32,8 +32,10 @@ export async function GET(request: NextRequest) {
     { name: "boards/my (свои)", url: `${ATI_API_BASE}/v2/boards/public/boards/my` },
   ]
 
-  // Разбор выдачи byboards: какие города в ней есть — наш сканер фильтрует
-  // только по городу отправления профиля и может выкидывать нужные грузы
+  // Разбор выдачи byboards: в ответе только CityId — имена городов
+  // резолвим тем же резолвером, что и боевой сканер.
+  const { resolveAtiCities } = await import("@/lib/ati/ati-city-resolver")
+  const { collectCityIds } = await import("@/lib/ati/boards-mapping")
   const boardRes = await atiFetch(
     `${ATI_API_BASE}/v1.0/loads/search/byboards`,
     { headers: atiHeaders(ati.token), cache: "no-store", signal: AbortSignal.timeout(20_000) },
@@ -43,21 +45,29 @@ export async function GET(request: NextRequest) {
   let boardStats: Record<string, unknown> = {}
   try {
     const rows: any[] = JSON.parse(boardText)
+    const cities = await resolveAtiCities(collectCityIds(rows))
     const from: Record<string, number> = {}
     const to: Record<string, number> = {}
     for (const row of rows) {
-      const f = row?.loading?.location?.city || row?.loading?.location?.cityName || "?"
-      const t = row?.unloading?.location?.city || row?.unloading?.location?.cityName || "?"
+      const name = (id: any): string => {
+        const cid = Number(id) || 0
+        const hit = cid ? cities.get(cid) : undefined
+        return hit ? `${hit.name} (${cid})` : cid ? `Город #${cid}` : "?"
+      }
+      const f = name(row?.Loading?.CityId)
+      const t = name(row?.Unloading?.CityId)
       from[f] = (from[f] ?? 0) + 1
       to[t] = (to[t] ?? 0) + 1
     }
+    const yarFrom = Object.entries(from).filter(([k]) => k.startsWith("Ярославль")).reduce((a, [, v]) => a + v, 0)
+    const yarTo = Object.entries(to).filter(([k]) => k.startsWith("Ярославль")).reduce((a, [, v]) => a + v, 0)
     boardStats = {
       total: rows.length,
-      fromTop: Object.entries(from).sort((a, b) => b[1] - a[1]).slice(0, 12),
-      toTop: Object.entries(to).sort((a, b) => b[1] - a[1]).slice(0, 12),
-      yaroslavlFrom: from["Ярославль"] ?? 0,
-      yaroslavlTo: to["Ярославль"] ?? 0,
-      sampleKeys: Object.keys(rows[0] ?? {}).slice(0, 25),
+      yaroslavlFrom: yarFrom,
+      yaroslavlTo: yarTo,
+      fromTop: Object.entries(from).sort((a, b) => b[1] - a[1]).slice(0, 15),
+      toTop: Object.entries(to).sort((a, b) => b[1] - a[1]).slice(0, 15),
+      sampleKeys: Object.keys(rows[0] ?? {}).slice(0, 30),
     }
   } catch (error) {
     boardStats = { error: error instanceof Error ? error.message : String(error) }
