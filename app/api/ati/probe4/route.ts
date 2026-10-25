@@ -73,5 +73,23 @@ export async function POST(request: NextRequest) {
     out["regionSearch:chelyabinsk"] = { id: chel.Id, status: res.status, totalItems: total, sample }
   }
 
+  // Умеет ли словарь городов искать по названию?
+  for (const q of ["Вологда", "Кострома"]) {
+    const r = await atiFetch(
+      `${API}/dictionaries/cities?cityName=${encodeURIComponent(q)}`,
+      { headers: h },
+      org.organizationId,
+    )
+    const t = await r.text()
+    let n = null
+    let first = null
+    try {
+      const arr = JSON.parse(t)
+      n = Array.isArray(arr) ? arr.length : null
+      first = Array.isArray(arr) ? arr[0] : null
+    } catch {}
+    out[`citiesQuery:${q}`] = { status: r.status, count: n, first }
+  }
+
   return NextResponse.json(out)
 }
