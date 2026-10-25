@@ -5,7 +5,7 @@ import { requireStaffOrganization } from "@/lib/org"
 import { getActiveAtiToken } from "@/lib/ati/connection"
 import { atiFetch, atiHeaders } from "@/lib/ati/http"
 
-const API = "https://api.ati.su/webapi/v1.0"
+const API = "https://api.ati.su/v1.0"
 
 export async function POST(request: NextRequest) {
   const auth = await requireStaffAuth(request)
