@@ -225,5 +225,83 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 8. Какой тип словаря даёт официальный id (290 = Ярославль)?
+  //    В грузе geoCode = "2_290" (официальный словарь), в фильтре
+  //    fromGeo = "1_88" (словарь сайта). Ищем тип для официального.
+  if (probe === "all" || probe === "types") {
+    for (let type = 0; type <= 6; type += 1) {
+      try {
+        const res = await atiFetch(
+          `${EX}/loads/search`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              exclude_geo_dicts: true,
+              page: 1,
+              items_per_page: 1,
+              filter: {
+                sorting_type: 2,
+                from: { id: 290, type, radius: 300, exact_only: false },
+              },
+            }),
+          },
+          "probe3",
+        )
+        const text = await res.text()
+        let total = null
+        let city = null
+        let geoCode = null
+        try {
+          const parsed = JSON.parse(text)
+          total = parsed.totalItems
+          city = parsed?.loads?.[0]?.loading?.location?.city
+          geoCode = parsed?.loads?.[0]?.loading?.location?.geoCode
+        } catch {}
+        out[`type:${type}`] = { status: res.status, totalItems: total, city, geoCode, body: text.slice(0, 120) }
+      } catch (e: any) {
+        out[`type:${type}`] = { error: e?.message }
+      }
+    }
+  }
+
+  // 9. Принимает ли поиск имя города или префиксный geoCode
+  if (probe === "all" || probe === "byname2") {
+    const bodies: Array<[string, any]> = [
+      ["fromGeo", { sorting_type: 2, fromGeo: "1_88" }],
+      ["fromName", { sorting_type: 2, from: "Вологда" }],
+      ["fromNameObj", { sorting_type: 2, from: { name: "Вологда", type: 1, radius: 100 } }],
+    ]
+    for (const [label, filter] of bodies) {
+      try {
+        const res = await atiFetch(
+          `${EX}/loads/search`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              exclude_geo_dicts: true,
+              page: 1,
+              items_per_page: 1,
+              filter,
+            }),
+          },
+          "probe3",
+        )
+        const text = await res.text()
+        let total = null
+        let city = null
+        try {
+          const parsed = JSON.parse(text)
+          total = parsed.totalItems
+          city = parsed?.loads?.[0]?.loading?.location?.city
+        } catch {}
+        out[`byname2:${label}`] = { status: res.status, totalItems: total, city, body: text.slice(0, 150) }
+      } catch (e: any) {
+        out[`byname2:${label}`] = { error: e?.message }
+      }
+    }
+  }
+
   return NextResponse.json(out)
 }
