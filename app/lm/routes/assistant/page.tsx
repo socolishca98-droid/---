@@ -189,11 +189,41 @@ export default function RouteAssistantPage() {
   const [foundLoads, setFoundLoads] = useState<BuilderLoad[]>([])
   /** С какой страницы общей биржи продолжать сбор региона */
   const [harvestPage, setHarvestPage] = useState(1)
+  /**
+   * База СВОЕЙ организации (FleetSettings.baseAddress) — от неё собирается
+   * регион. Регион у каждой компании свой: у одной Ярославль, у другой
+   * Коломна, поэтому город берём из настроек организации, а не из памяти
+   * браузера и не из зашитого значения.
+   */
+  const [baseCity, setBaseCity] = useState("")
 
   // Город старта помним: логист обычно едет из одной базы
   useEffect(() => {
     const saved = window.localStorage.getItem(START_CITY_KEY)
     if (saved) setStartCity(saved)
+  }, [])
+
+  // База организации: в настройках автопарка указан адрес стоянки. Это и есть
+  // точка отсчёта для сбора региона и построения маршрутов. Если в настройках
+  // базы нет, помощник работает от того города, что ввёл логист.
+  useEffect(() => {
+    let alive = true
+    fetch("/api/fleet/settings", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const address = (data?.settings?.baseAddress ?? "").trim()
+        if (!alive || !address) return
+        setBaseCity(address)
+        // Город старта не задан — подставляем базу: у другой компании база
+        // будет своя, и маршрут всё равно начнётся от её стоянки.
+        setStartCity((prev) => (prev.trim() ? prev : address))
+      })
+      .catch(() => {
+        /* настройки недоступны — работаем от города, что ввёл логист */
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   // Биржа обновляется в фоне: скан ATI занимает больше минуты, и экран не
@@ -414,7 +444,10 @@ export default function RouteAssistantPage() {
    * база постепенно наполняется, а помощник строит из накопленного.
    */
   async function runHarvest() {
-    const from = searchFrom.trim() || startCity.trim()
+    // Откуда собирать регион: поле поиска → база организации → город старта.
+    // База организации главнее памяти браузера: у каждой компании свой
+    // регион, и собрать надо вокруг её стоянки.
+    const from = searchFrom.trim() || baseCity.trim() || startCity.trim()
     if (!from) {
       toast.error("Укажите город базы — от него и собираем регион")
       return
@@ -734,7 +767,11 @@ export default function RouteAssistantPage() {
           code?: string
         }>("/api/orders/from-cache", "POST", {
           cacheId: leg.load.id,
-          fetchContacts: true,
+          // fetchContacts НЕ передаём намеренно: ATI.SU делает замечания за
+          // автоматический сбор контактных данных. Телефон фрахтователя
+          // диспетчер добирает кнопкой «Узнать телефон», когда сам решит
+          // позвонить, — это отдельное осознанное действие, а не побочный
+          // эффект отправки маршрута.
         })
         if (result.ok && result.data?.order) {
           orderIds.push(result.data.order.id)
@@ -838,6 +875,7 @@ export default function RouteAssistantPage() {
               source: searchSource,
               setSource: setSearchSource,
               onHarvest: () => void runHarvest(),
+              baseCity,
             }}
           />
         ) : phase === "building" ? (
@@ -956,6 +994,7 @@ function LiveSearchCard({
   source,
   setSource,
   onHarvest,
+  baseCity,
 }: {
   from: string
   setFrom: (value: string) => void
@@ -979,6 +1018,8 @@ function LiveSearchCard({
   setSource: (value: "boards" | "exchange" | "both") => void
   /** Вытянуть биржу региона к себе в базу (общая биржа, несколько страниц) */
   onHarvest: () => void
+  /** База своей организации: от неё собирается регион */
+  baseCity: string
 }) {
   // Свёрнуто по умолчанию: помощник — про сборку маршрута, а поиск нужен,
   // когда грузов из своего города в бирже не нашлось.
@@ -1084,6 +1125,12 @@ function LiveSearchCard({
             поиск сайта loads.ati.su: все грузы биржи. «Всё» — оба источника сразу.
           </p>
         </div>
+
+        <p className="mt-2 text-[11.5px] leading-snug text-muted-foreground">
+          {baseCity.trim()
+            ? `Регион сбора — вокруг вашей базы: ${baseCity.trim()}. База берётся из настроек автопарка, у каждой компании своя.`
+            : "Регион сбора — вокруг города из поля «Откуда»."}
+        </p>
 
         <div className="flex gap-2">
           <button
@@ -1223,6 +1270,8 @@ function SetupPhase({
     setSource: (value: "boards" | "exchange" | "both") => void
     /** Вытянуть биржу региона к себе в базу */
     onHarvest: () => void
+    /** База своей организации: от неё собирается регион */
+    baseCity: string
   }
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
@@ -1297,6 +1346,7 @@ function SetupPhase({
         source={searchProps.source}
         setSource={searchProps.setSource}
         onHarvest={searchProps.onHarvest}
+        baseCity={searchProps.baseCity}
       />
 
       {/* Машина */}

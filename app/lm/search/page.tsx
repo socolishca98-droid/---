@@ -98,7 +98,13 @@ export default function LogistSearchPage() {
     const result = await apiSend<{ order?: { id: string }; message?: string; contacts?: { phone?: string | null } }>(
       "/api/orders/from-cache",
       "POST",
-      { cacheId: load.id, fetchContacts: true },
+      {
+        cacheId: load.id,
+        // fetchContacts НЕ передаём намеренно: ATI.SU делает замечания за
+        // автоматический сбор контактных данных. Телефон фрахтователя
+        // добирается отдельной кнопкой «Узнать телефон», когда логист сам
+        // решает звонить.
+      },
     )
     setTaking(null)
 
@@ -107,7 +113,9 @@ export default function LogistSearchPage() {
       return
     }
     const orderId = result.data?.order?.id
-    const phone = result.data?.contacts?.phone ?? load.contactPhone
+    // Телефона здесь может не быть: он не тянется автоматически. Если он
+    // уже был добыт кнопкой «Узнать телефон» раньше — он в грузе.
+    const phone = load.contactPhone ?? null
     toast.success(phone ? `Груз взят · тел. ${phone}` : "Груз взят в работу")
     if (orderId) router.push(`/lm/orders/${orderId}`)
   }

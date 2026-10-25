@@ -6,6 +6,12 @@
 // (у перевозчика из Ярославля — 0 грузов). Общая биржа через сайт отдаёт
 // 2 963 груза в радиусе 300 км от Ярославля, но с ДРУГОЙ формой ответа:
 // location.lat/lon вместо Latitude/Longitude, имя фирмы сразу в firm.name.
+//
+// ПРАВИЛО, которое нельзя нарушать: контактные данные (телефон, e-mail,
+// имя контактного лица) НЕ берём автоматически — ATI.SU за это делает
+// замечания. Из общей биржи берём только сведения о грузе и НАЗВАНИЕ
+// фрахтователя; телефон добирается отдельным действием пользователя
+// (кнопка «Узнать телефон», флаг fetchContacts). Тест ниже это стережет.
 
 import test from "node:test"
 import assert from "node:assert/strict"
@@ -165,4 +171,43 @@ test("buildExchangeFilter: без городов фильтр пустой, кр
 test("константы обхода страниц заданы", () => {
   assert.ok(EXCHANGE_ITEMS_PER_PAGE > 0)
   assert.ok(EXCHANGE_MAX_PAGES > 0)
+})
+
+
+// ATI.SU делает замечания за автоматический сбор контактов, поэтому в
+// маппинге биржи нет и не должно появиться полей с телефоном, почтой или
+// именем контактного лица — ни в самом грузе, ни во фрахтователе.
+test("из биржи не утекают контактные данные", () => {
+  const raw = JSON.parse(JSON.stringify(SAMPLE))
+  // В ответе биржи контактов нет, но если ATI начнёт их отдавать, маппинг
+  // не должен их пропускать.
+  raw.firm.phone = "+79001234567"
+  raw.firm.email = "firm@example.com"
+  raw.firm.contact = { name: "Иванов И.И.", phone: "+79007654321" }
+  raw.contactPhone = "+79005556677"
+  raw.loading.contactPhone = "+79009998811"
+
+  const load = mapExchangeLoad(raw)
+  const serialized = JSON.stringify(load)
+
+  for (const needle of [
+    "+79001234567",
+    "firm@example.com",
+    "Иванов",
+    "+79007654321",
+    "+79005556677",
+    "+79009998811",
+    "phone",
+    "email",
+    "contact",
+  ]) {
+    assert.ok(
+      !serialized.includes(needle),
+      `в маппинге биржи не должно быть «${needle}» — контакты только по кнопке «Узнать телефон»`,
+    )
+  }
+
+  // Фрахтователь — только id и название: по нему телефон добирают отдельно
+  assert.deepEqual(Object.keys(load.firm).sort(), ["id", "name"])
+  assert.equal(load.firm.name, SAMPLE.firm.name)
 })
