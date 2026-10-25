@@ -122,6 +122,11 @@ export async function searchExchange(
     requests += 1
 
     if (!res.ok) {
+      // Конец выборки, а не сбой: когда запрошена страница за последней,
+      // ATI отвечает 404 (а не пустым списком). Раньше это бросало ошибку и
+      // весь поиск обнулялся — диспетчер видел «0 грузов» при 85 реальных.
+      // Поэтому на глубине просто заканчиваем обход и отдаём собранное.
+      if (page > pageStart) break
       const reason = await res.text().catch(() => "")
       throw new Error(
         `Биржа ATI ответила ${res.status}${reason ? `: ${reason.slice(0, 160)}` : ""}`,
