@@ -148,9 +148,11 @@ export async function searchExchange(
       loads.push(mapped)
     }
 
-    // Страница неполная — дальше грузов по этому фильтру нет
-    if (rows.length < EXCHANGE_ITEMS_PER_PAGE) break
-    if (page < maxPages) await sleep(PAUSE_BETWEEN_PAGES_MS)
+    // Тариф ATI отдаёт около 10–12 грузов на страницу независимо от
+    // items_per_page, поэтому «неполная страница» ещё не значит «конец»:
+    // идём дальше, пока страница не окажется пустой.
+    if (rows.length === 0) break
+    if (page < pageStart + maxPages - 1) await sleep(PAUSE_BETWEEN_PAGES_MS)
   }
 
   return { loads, totalItems, rootCount, pages, requests, flags }

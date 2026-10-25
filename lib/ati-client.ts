@@ -662,12 +662,36 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
         },
       })
 
-      saved.push(created)
+      saved.push(decorateCacheRow(created))
     } catch (error) {
       console.error("[saveToCache] Error on item:", error)
     }
   }
   return saved
+}
+
+/**
+ * Строка кэша → удобный для интерфейса вид: точки погрузки/выгрузки и
+ * источник груза достаются из rawJson. Нужно, чтобы живой поиск отдавал
+ * грузы сразу пригодными для сборщика маршрутов, а не «сырой» json.
+ */
+function decorateCacheRow(row: any): any {
+  if (!row || typeof row !== "object") return row
+  let fromPoint = null
+  let toPoint = null
+  let source: "boards" | "exchange" = "boards"
+  if (typeof row.rawJson === "string" && row.rawJson.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(row.rawJson)
+      fromPoint = parsed.fromPoint ?? null
+      toPoint = parsed.toPoint ?? null
+      if (parsed.source === "exchange") source = "exchange"
+    } catch {
+      /* битый rawJson — отдаём без точек, это не ошибка */
+    }
+  }
+  const { rawJson: _rawJson, ...rest } = row
+  return { ...rest, fromPoint, toPoint, source }
 }
 
 // =============================================================================
