@@ -663,12 +663,29 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
     return true
   })
   if (uniqueCreate.length > 0) {
-    try {
-      // skipDuplicates не поддерживается схемой SQLite (каноничная схема
-      // проекта), а дубли внутри пачки мы уже отсекли сами.
-      await prisma.atiCache.createMany({ data: uniqueCreate })
-    } catch (error) {
-      console.error("[saveToCache] createMany:", error)
+    // Писать мелкими порциями и с падением на поштучную вставку: между нашим
+    // findMany и вставкой может вклиниться фоновый скан (кнопка «Собрать
+    // регион» и плановый обход ходят одновременно), тогда createMany падает
+    // на уникальном индексе [organizationId, atiLoadId] — и без этого
+    // fallback терялась бы ВСЯ пачка собранных грузов.
+    const CHUNK = 50
+    for (let i = 0; i < uniqueCreate.length; i += CHUNK) {
+      const chunk = uniqueCreate.slice(i, i + CHUNK)
+      try {
+        // skipDuplicates не поддерживается схемой SQLite (каноничная схема
+        // проекта), а дубли внутри пачки мы уже отсекли сами.
+        await prisma.atiCache.createMany({ data: chunk })
+      } catch (error) {
+        console.error("[saveToCache] createMany, порция поштучно:", error)
+        for (const row of chunk) {
+          try {
+            await prisma.atiCache.create({ data: row })
+          } catch (rowError) {
+            // Этот груз уже в базе — его создал параллельный скан, это норма
+            console.error("[saveToCache] груз уже в базе:", row.atiLoadId)
+          }
+        }
+      }
     }
   }
   for (const row of toUpdate) {

@@ -190,6 +190,13 @@ export default function RouteAssistantPage() {
   /** С какой страницы общей биржи продолжать сбор региона */
   const [harvestPage, setHarvestPage] = useState(1)
   /**
+   * Для какого города и радиуса собраны эти страницы. Сменили город или
+   * радиус — сбор начинается заново: иначе «Собрать регион» для другого
+   * города продолжал бы со страницы 21 и тихо пропускал первые 20 страниц,
+   * а грузы двух регионов смешивались бы в одном маршруте.
+   */
+  const [harvestScope, setHarvestScope] = useState("")
+  /**
    * База СВОЕЙ организации (FleetSettings.baseAddress) — от неё собирается
    * регион. Регион у каждой компании свой: у одной Ярославль, у другой
    * Коломна, поэтому город берём из настроек организации, а не из памяти
@@ -453,6 +460,18 @@ export default function RouteAssistantPage() {
       return
     }
 
+    // Другой город или радиус — начинаем сбор с первой страницы и очищаем
+    // набранное: грузы прошлого региона в этом маршруте не нужны (в кэше они
+    // остаются, ничего не теряется).
+    const scope = `${from}|${searchRadius}`
+    const freshStart = scope !== harvestScope
+    if (freshStart) {
+      setHarvestScope(scope)
+      setHarvestPage(1)
+      setFoundLoads([])
+    }
+    const startPage = freshStart ? 1 : harvestPage
+
     setSearchBusy(true)
     try {
       const res = await fetch(
@@ -481,7 +500,7 @@ export default function RouteAssistantPage() {
         fromGeo: { id: geo.id, name: geo.name, fullName: geo.fullName },
         fromRadius: searchRadius,
         maxPages: HARVEST_PAGES,
-        pageStart: harvestPage,
+        pageStart: startPage,
         filters: {},
       })
 
@@ -492,6 +511,7 @@ export default function RouteAssistantPage() {
 
       const collected = result.data.found ?? 0
       if (result.data.nextPageStart) setHarvestPage(result.data.nextPageStart)
+      else setHarvestPage(startPage + 1)
 
       // Собранное сразу отдаём сборщику — он строит из накопленного
       const rowsFound = result.data.loads ?? []
@@ -529,10 +549,13 @@ export default function RouteAssistantPage() {
         warning: null,
         totalItems: total,
       })
+      const inBuilder = freshStart ? collected : foundLoads.length + collected
       toast.success(
         collected > 0
-          ? `Собрано грузов: ${collected}. В базе помощника их уже ${foundLoads.length + collected}.`
-          : "На этой странице биржи новых грузов нет — нажмите ещё раз",
+          ? `Собрано грузов: ${collected}. Помощнику доступно ${inBuilder}.`
+          : freshStart
+            ? "По этому городу биржа грузов не отдала — попробуйте увеличить радиус"
+            : "На этой странице биржи новых грузов нет — нажмите ещё раз",
       )
       loadsState.reload()
     } finally {
@@ -585,6 +608,8 @@ export default function RouteAssistantPage() {
       bySource?: { boards: number; exchange: number }
       totalItems?: number
       geoWarning?: string | null
+      /** Ошибки отдельных источников: в режиме «Всё» один может не ответить */
+      errors?: string[]
       error?: string
     }>("/api/ati/scan", "POST", {
       manualMode: true,
@@ -603,11 +628,15 @@ export default function RouteAssistantPage() {
     }
 
     const foundCount = result.data.found ?? 0
+    // В режиме «Всё» источники независимы: если общая биржа не ответила,
+    // молча показать только число с площадок — обмануть диспетчера. Он
+    // должен знать, что второй источник не сработал.
+    const sourceErrors = (result.data.errors ?? []).filter(Boolean)
     setSearchResult({
       found: foundCount,
       byCity: result.data.matched?.byCity ?? 0,
       byRadius: result.data.matched?.byRadius ?? 0,
-      warning: result.data.geoWarning ?? null,
+      warning: [result.data.geoWarning, ...sourceErrors].filter(Boolean).join(" ") || null,
       bySource: result.data.bySource,
       totalItems: result.data.totalItems,
     })

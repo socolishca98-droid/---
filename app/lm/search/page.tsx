@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Database, Loader2, MapPin, Package, Phone, Search, Sparkles, X, Zap } from "lucide-react"
+import { Database, Loader2, MapPin, Package, Phone, PhoneCall, Search, Sparkles, X, Zap } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
@@ -92,6 +92,16 @@ export default function LogistSearchPage() {
   const [weightMax, setWeightMax] = useState("")
   const [scanning, setScanning] = useState(false)
   const [results, setResults] = useState<MobileAtiLoad[]>([])
+  /**
+   * Где искать один груз: площадки организации, общая биржа или оба сразу.
+   * Без этого экран показывал только площадки — по региону базы это 45
+   * грузов вместо 297, и взять груз с общей биржи было невозможно.
+   */
+  const [source, setSource] = useState<"boards" | "exchange" | "both">("both")
+  /** Сколько нашли с каждого источника и что биржа обещает по фильтру */
+  const [bySource, setBySource] = useState<{ boards: number; exchange: number } | null>(null)
+  const [totalItems, setTotalItems] = useState<number | null>(null)
+  const [searchWarning, setSearchWarning] = useState<string | null>(null)
 
   async function takeLoad(load: MobileAtiLoad) {
     setTaking(load.id)
@@ -133,6 +143,7 @@ export default function LogistSearchPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           manualMode: true,
+          source,
           fromGeo: { id: from.id, name: from.name, fullName: from.fullName, region: from.region },
           toGeo: to ? { id: to.id, name: to.name, fullName: to.fullName, region: to.region } : null,
           fromRadius: Number(fromRadius) || 100,
@@ -146,6 +157,11 @@ export default function LogistSearchPage() {
       const data = await res.json()
       if (data?.success) {
         setResults((data.loads ?? []) as MobileAtiLoad[])
+        setBySource(data.bySource ?? null)
+        setTotalItems(Number(data.totalItems) || null)
+        // Источники независимы: если общая биржа не ответила, молчать нельзя
+        const errs = (data.errors ?? []).filter(Boolean)
+        setSearchWarning(errs.length > 0 ? errs.join(" ") : null)
         toast.success(`Найдено: ${data.found ?? 0}`)
         void loadBase()
       } else if (data?.code === "ati_not_connected") {
@@ -283,6 +299,37 @@ export default function LogistSearchPage() {
           <Card className="space-y-3">
             <CityField label="Откуда" value={from} onChange={setFrom} placeholder="Город отправления" />
             <CityField label="Куда" value={to} onChange={setTo} placeholder="Любой город (можно не заполнять)" />
+
+            <div>
+              <p className="mb-1.5 text-[11.5px] text-muted-foreground">Где искать</p>
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    ["both", "Всё"],
+                    ["boards", "Площадки"],
+                    ["exchange", "Общая биржа"],
+                  ] as Array<["boards" | "exchange" | "both", string]>
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSource(value)}
+                    className={`min-h-[36px] flex-1 rounded-lg border text-[12.5px] active:opacity-70 ${
+                      source === value
+                        ? "border-primary/40 bg-primary/15 text-primary"
+                        : "border-border text-foreground/90"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
+                «Площадки» — организации, где мы участник. «Общая биржа» — все грузы ATI, как на
+                сайте. «Всё» — оба источника, дубли убираются.
+              </p>
+            </div>
+
             <div className="grid grid-cols-3 gap-2.5">
               <SmallField label="Радиус, км" value={fromRadius} onChange={setFromRadius} inputMode="numeric" />
               <SmallField label="Вес от, т" value={weightMin} onChange={setWeightMin} inputMode="decimal" />
@@ -297,9 +344,21 @@ export default function LogistSearchPage() {
             </ActionButton>
           </Card>
 
+          {searchWarning ? (
+            <p className="mb-2 rounded-xl border border-border bg-card px-3 py-2 text-[12px] leading-snug text-muted-foreground">
+              {searchWarning}
+            </p>
+          ) : null}
+
           {results.length > 0 ? (
             <>
               <SectionTitle title={`Найдено: ${results.length}`} />
+              {bySource ? (
+                <p className="px-1 text-[12px] leading-snug text-muted-foreground">
+                  с площадок {bySource.boards} · с общей биржи {bySource.exchange}
+                  {totalItems ? ` · всего по фильтру биржа обещает ${totalItems}` : ""}
+                </p>
+              ) : null}
               <div className="space-y-2.5">
                 {results.map((load) => (
                   <LoadCard key={load.id} load={load} busy={taking === load.id} onTake={() => void takeLoad(load)} />
@@ -339,7 +398,42 @@ function TabButton({
 }
 
 /** Одна карточка груза — общая для своей базы и живого поиска. */
-function LoadCard({ load, busy, onTake }: { load: MobileAtiLoad; busy: boolean; onTake: () => void }) {
+function LoadCard({
+  load,
+  busy,
+  onTake,
+}: {
+  load: MobileAtiLoad
+  busy: boolean
+  onTake: () => void
+}) {
+  // «Узнать телефон»: ATI отдаёт контакт фрахтователя отдельным запросом.
+  // Автоматически не тянем — ATI.SU делает замечания за сбор контактов,
+  // поэтому телефон только по нажатию диспетчера.
+  const [phoneBusy, setPhoneBusy] = useState(false)
+  const [phone, setPhone] = useState<string | null>(load.contactPhone ?? null)
+
+  async function askPhone() {
+    setPhoneBusy(true)
+    try {
+      const result = await apiSend<{ phone: string | null; name: string | null }>(
+        "/api/ati/loads/contacts",
+        "POST",
+        { cacheId: load.id },
+      )
+      if (result.ok && result.data?.phone) {
+        setPhone(result.data.phone)
+        toast.success(`Фрахтователь: ${result.data.phone}`)
+      } else {
+        toast.error(result.error ?? "Телефон не найден")
+      }
+    } catch {
+      toast.error("Не удалось получить телефон")
+    } finally {
+      setPhoneBusy(false)
+    }
+  }
+
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm p-4">
       <div className="flex items-start justify-between gap-3">
@@ -360,6 +454,12 @@ function LoadCard({ load, busy, onTake }: { load: MobileAtiLoad; busy: boolean; 
           .join(" · ")}
       </p>
 
+      {load.source ? (
+        <p className="mt-1 text-[11.5px] text-muted-foreground/80">
+          {load.source === "exchange" ? "Общая биржа ATI" : "Площадка организации"}
+        </p>
+      ) : null}
+
       {load.firmName || load.contactName ? (
         <p className="mt-1 flex items-center gap-1.5 truncate text-[12.5px] text-muted-foreground">
           <Phone className="h-3.5 w-3.5 shrink-0" />
@@ -376,15 +476,36 @@ function LoadCard({ load, busy, onTake }: { load: MobileAtiLoad; busy: boolean; 
         </p>
       ) : null}
 
-      <button
-        type="button"
-        onClick={onTake}
-        disabled={busy}
-        className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
-        Взять в работу
-      </button>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onTake}
+          disabled={busy}
+          className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+          Взять в работу
+        </button>
+        <button
+          type="button"
+          onClick={() => void askPhone()}
+          disabled={phoneBusy}
+          title="Показать телефон фрахтователя"
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border px-3 text-[13px] text-foreground active:opacity-70 disabled:opacity-50"
+        >
+          {phoneBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneCall className="h-4 w-4" />}
+          {phone ?? "Узнать телефон"}
+        </button>
+      </div>
+      {phone && phone !== "Узнать телефон" ? (
+        <a
+          href={`tel:${phone}`}
+          className="mt-2 flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-success/40 bg-success/10 text-[13.5px] font-medium text-success active:opacity-70"
+        >
+          <Phone className="h-4 w-4" />
+          Позвонить: {phone}
+        </a>
+      ) : null}
     </div>
   )
 }

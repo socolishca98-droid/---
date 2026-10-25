@@ -416,6 +416,11 @@ export interface MobileAtiLoad {
   loadingDate: string | null
   status: string
   note: string | null
+  /** Откуда груз: площадка организации или общая биржа */
+  source?: "boards" | "exchange"
+  /** Точки погрузки/выгрузки — для расчёта «по пути» */
+  fromPoint?: { lat: number; lng: number } | null
+  toPoint?: { lat: number; lng: number } | null
 }
 
 export interface MobileAtiStats {
