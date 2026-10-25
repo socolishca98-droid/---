@@ -6,6 +6,7 @@ import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 import { resolveAtiCities } from "./ati/ati-city-resolver"
 import { mapBoardsLoad, collectCityIds } from "./ati/boards-mapping"
 import { geocodeAddresses } from "./geo/geocode"
+import { searchExchange } from "./ati/exchange-client"
 import { loadMatchesGeo, type GeoQuery } from "./ati/search-geo"
 
 // Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
@@ -247,16 +248,76 @@ export async function scanAtiLoads(params?: any) {
     .map((city: any) => makeCityKey(city.name))
     .filter((key): key is string => Boolean(key))
 
+  // Источник грузов: "boards" — площадки организации (официальный API ATI),
+  // "exchange" — общая биржа (поиск сайта loads.ati.su), "both" — оба сразу.
+  // Источники независимы: один может не работать, второй продолжает.
+  const source: "boards" | "exchange" | "both" =
+    params?.source === "exchange" || params?.source === "both" ? params.source : "boards"
+
   try {
     // Ручной поиск
     if (params?.manualMode) {
+      if (source === "both") {
+        const [boardsResult, exchangeResult] = await Promise.all([
+          manualSearch(params, customFilters, token, organizationId).catch((error: any) => ({
+            success: false,
+            error: error?.message ?? "Площадки не ответили",
+          })),
+          exchangeManualSearch(params, customFilters, token, organizationId).catch((error: any) => ({
+            success: false,
+            error: error?.message ?? "Биржа не ответила",
+          })),
+        ])
+        const boardLoads: any[] = (boardsResult as any)?.loads ?? []
+        const exchangeLoads: any[] = (exchangeResult as any)?.loads ?? []
+        const seen = new Set(boardLoads.map((load: any) => String(load?.id)))
+        const merged = [...boardLoads, ...exchangeLoads.filter((load: any) => !seen.has(String(load?.id)))]
+        return {
+          success: Boolean((boardsResult as any)?.success || (exchangeResult as any)?.success),
+          count: merged.length,
+          found: merged.length,
+          loads: merged,
+          requests: 2,
+          // По какому источнику сколько нашли — интерфейс показывает это словами
+          bySource: {
+            boards: (boardsResult as any)?.found ?? 0,
+            exchange: (exchangeResult as any)?.found ?? 0,
+          },
+          errors: [
+            (boardsResult as any)?.error,
+            (exchangeResult as any)?.error,
+          ].filter(Boolean),
+        }
+      }
+      if (source === "exchange") {
+        return await exchangeManualSearch(params, customFilters, token, organizationId)
+      }
       return await manualSearch(params, customFilters, token, organizationId)
     }
 
     const boards = await fetchBoardIds(token, organizationId)
     const rawLoads = await fetchLoadsByBoards(token, organizationId)
     const cities = await resolveAtiCities(collectCityIds(rawLoads))
-    const loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
+    let loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
+
+    // Общая биржа в плановом скане: добираем грузы вокруг городов профиля,
+    // которых на площадках нет. Ошибка биржи не должна ронять скан площадок.
+    let exchangeFound = 0
+    if (source === "exchange" || source === "both") {
+      for (const cityId of profileCityIds.slice(0, 3)) {
+        try {
+          const exchange = await searchExchange(token, organizationId, {
+            fromCityId: cityId,
+            fromRadiusKm: Number(params?.radius) || 300,
+            maxPages: 4,
+          })
+          exchangeFound += exchange.loads.length
+          loads = loads.concat(exchange.loads as any[])
+        } catch (error) {
+          console.error("[scanAtiLoads] общая биржа не ответила:", error)
+        }
+      }
+    }
 
     const picked: any[] = []
     for (const load of loads) {
@@ -282,6 +343,7 @@ export async function scanAtiLoads(params?: any) {
       requests: 2,
       errors: 0,
       boards: boards.length,
+      exchangeFound,
     }
   } catch (e: any) {
     console.error("[scanAtiLoads] Fatal error:", e)
@@ -383,6 +445,85 @@ async function manualSearch(
   }
 }
 
+/**
+ * Живой поиск по ОБЩЕЙ бирже (тот же поиск, что на loads.ati.su).
+ *
+ * Отличие от manualSearch (площадки): город задаётся идентификатором ATI,
+ * гео-фильтр берёт на себя сайт — радиус работает по-настоящему, а не по
+ * совпадению названий. Ответ сразу с именем фрахтователя.
+ *
+ * Город запроса: id приходит из гео-подсказки (/api/ati/geo). Если id нет,
+ * пробуем найти его в справочнике городов по названию — иначе биржа не поймёт
+ * фильтр, и лучше сказать об этом словами, чем молча вернуть всю Россию.
+ */
+async function exchangeManualSearch(
+  params: any,
+  filters: ScanFilters,
+  token: string,
+  organizationId: string,
+) {
+  const fromId = Number(params?.fromCityId ?? params?.fromGeo?.id) || 0
+  const toId = Number(params?.toCityId ?? params?.toGeo?.id) || 0
+  const fromName = params?.fromGeo?.name || params?.fromGeo?.fullName || ""
+  const toName = params?.toGeo?.name || params?.toGeo?.fullName || ""
+
+  const fromCityId = fromId || findCityIdByName(fromName)
+  const toCityId = toId || findCityIdByName(toName)
+
+  if (!fromCityId && !toCityId) {
+    return {
+      success: false,
+      error: "Не удалось определить город для поиска по бирже — уточните его в подсказках",
+    }
+  }
+
+  const exchange = await searchExchange(token, organizationId, {
+    fromCityId,
+    toCityId,
+    fromRadiusKm: Number(params?.fromRadius) || 0,
+    toRadiusKm: Number(params?.toRadius) || 0,
+    maxPages: Number(params?.maxPages) || 20,
+    pageStart: Number(params?.pageStart) || 1,
+  })
+
+  const picked: any[] = []
+  for (const load of exchange.loads) {
+    if (addIfNew(load, filters)) picked.push(load)
+  }
+  const pageStartUsed = Math.max(1, Number(params?.pageStart) || 1)
+
+  const saved = await saveToCache(picked, organizationId)
+  return {
+    success: true,
+    count: saved.length,
+    found: picked.length,
+    loads: saved,
+    requests: exchange.requests,
+    source: "exchange" as const,
+    // Сколько грузов биржа обещает по этому фильтру — честный масштаб
+    totalItems: exchange.totalItems,
+    pages: exchange.pages,
+    // До какой страницы дошли — следующим нажатием идём глубже
+    nextPageStart: pageStartUsed + exchange.pages,
+    flags: exchange.flags,
+  }
+}
+
+/**
+ * id города ATI по названию — из того же справочника, что использует гео.
+ * Нужно, когда интерфейс прислал только текст («Ярославль»).
+ */
+function findCityIdByName(name: unknown): number | null {
+  const text = String(name ?? "").trim().toLowerCase()
+  if (!text) return null
+  const first = text.split(",")[0].trim()
+  const hit = CITIES.find((city: any) => {
+    const cityName = city.name.toLowerCase()
+    return cityName === first || cityName === text || cityName.startsWith(`${first} `)
+  })
+  return hit ? hit.atiId : null
+}
+
 // =============================================================================
 // СОХРАНЕНИЕ В КЭШ (без rawJson и без контактов)
 // =============================================================================
@@ -412,6 +553,19 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
             item.loading?.point || item.unloading?.point
               ? !existing.rawJson || !existing.rawJson.startsWith("{")
               : false
+          // Груз мог впервые прийти из общей биржи — дописываем источник,
+          // не затирая уже сохранённые точки.
+          let rawJsonPatch: string | undefined
+          if (item.source === "exchange" && existing.rawJson) {
+            try {
+              const parsed = JSON.parse(existing.rawJson)
+              if (parsed && typeof parsed === "object" && !parsed.source) {
+                rawJsonPatch = JSON.stringify({ ...parsed, source: "exchange" })
+              }
+            } catch {
+              /* битый rawJson — не трогаем */
+            }
+          }
           await prisma.atiCache.update({
             where: { id: existing.id },
             data: {
@@ -419,7 +573,7 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
               // Добор фрахтователя: в старых записях FirmId мог не сохраниться —
               // без него кнопка «Узнать телефон» не сработает
               firmId: existing.firmId ?? (item.firm?.id ? String(item.firm.id) : null),
-              rawJson: hasPoints ? pointsJson : undefined,
+              rawJson: hasPoints ? pointsJson : rawJsonPatch,
             },
           })
         }
@@ -498,6 +652,10 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
           rawJson: JSON.stringify({
             fromPoint: item.loading?.point ?? null,
             toPoint: item.unloading?.point ?? null,
+            // Откуда груз: общая биржа или площадка организации. Лежит в
+            // rawJson, чтобы не требовать миграции: помощник показывает
+            // источник словами, а фильтр «только биржа» работает и без колонки.
+            source: item.source === "exchange" ? "exchange" : "boards",
           }),
           scannedAt: now,
           expiresAt,

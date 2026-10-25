@@ -93,17 +93,21 @@ export async function GET(request: NextRequest) {
     const items = (result.items ?? []).map((row: any) => {
       let fromPoint = null
       let toPoint = null
+      // Откуда груз: общая биржа или площадка организации. Лежит в rawJson,
+      // чтобы не требовать миграции базы.
+      let source: "boards" | "exchange" = "boards"
       if (typeof row.rawJson === "string" && row.rawJson.startsWith("{")) {
         try {
           const parsed = JSON.parse(row.rawJson)
           fromPoint = parsed.fromPoint ?? null
           toPoint = parsed.toPoint ?? null
+          if (parsed.source === "exchange") source = "exchange"
         } catch {
           // битый rawJson — просто без точек, это не ошибка экрана
         }
       }
       const { rawJson: _rawJson, ...rest } = row
-      return { ...rest, fromPoint, toPoint }
+      return { ...rest, fromPoint, toPoint, source }
     })
 
     // Площадки организации: отдельным необязательным запросом. Не смогли

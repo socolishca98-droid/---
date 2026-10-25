@@ -31,6 +31,7 @@ import {
   Home,
   Loader2,
   MapPin,
+  Download,
   Info,
   Package,
   Phone,
@@ -85,6 +86,9 @@ const BUILD_STEPS = [
   "Проверяем, что маршрут в плюс…",
 ]
 
+/** Сколько страниц общей биржи вытягиваем за одно нажатие «Собрать регион». */
+const HARVEST_PAGES = 25
+
 const START_CITY_KEY = "assistant-start-city"
 
 export default function RouteAssistantPage() {
@@ -109,6 +113,8 @@ export default function RouteAssistantPage() {
       status: string
       fromPoint: { lat: number; lng: number } | null
       toPoint: { lat: number; lng: number } | null
+      /** Откуда груз: "boards" — площадка организации, "exchange" — общая биржа */
+      source?: "boards" | "exchange"
     }>
     refreshError: string | null
     stale: boolean
@@ -157,6 +163,10 @@ export default function RouteAssistantPage() {
   const [phones, setPhones] = useState<Record<string, string>>({})
   const [phoneBusy, setPhoneBusy] = useState<string | null>(null)
 
+  // Источник грузов: площадки организации (официальный API ATI), общая биржа
+  // (поиск сайта loads.ati.su) или оба сразу. Источники независимы.
+  const [searchSource, setSearchSource] = useState<"boards" | "exchange" | "both">("both")
+
   // ── Живой поиск по бирже: те же поля, что на сайте ATI ──
   // Логист на ATI ищет «откуда / куда / радиус». Раньше в программе это был
   // отдельный экран с обязательным «Откуда», а помощник читал только кэш —
@@ -171,7 +181,14 @@ export default function RouteAssistantPage() {
     byCity: number
     byRadius: number
     warning: string | null
+    bySource?: { boards: number; exchange: number }
+    totalItems?: number
   } | null>(null)
+  /** Грузы, найденные живым поиском: в кэш они тоже легли, но помощник
+   *  строит из них сразу — иначе он увидит только 300 свежих строк базы. */
+  const [foundLoads, setFoundLoads] = useState<BuilderLoad[]>([])
+  /** С какой страницы общей биржи продолжать сбор региона */
+  const [harvestPage, setHarvestPage] = useState(1)
 
   // Город старта помним: логист обычно едет из одной базы
   useEffect(() => {
@@ -213,6 +230,7 @@ export default function RouteAssistantPage() {
         // приоритетнее центра города из геокодера
         fromPoint: row.fromPoint ?? null,
         toPoint: row.toPoint ?? null,
+        source: row.source ?? "boards",
       })),
     [loadsState.data],
   )
@@ -284,15 +302,27 @@ export default function RouteAssistantPage() {
   )
   const cityPoints = pointsState.data?.points ?? null
 
-  /** Грузы с координатами городов — билдер умеет брать «по пути». */
+  /**
+   * Грузы с координатами городов — билдер умеет брать «по пути».
+   *
+   * Сюда же встраиваются грузы, найденные живым поиском по общей бирже:
+   * помощник читает кэш списком не больше 300 строк, а общая биржа отдаёт
+   * тысячи. Без слияния логист нашёл бы грузы, а сборщик их не увидел.
+   */
   const loadsWithPoints = useMemo<BuilderLoad[]>(() => {
-    if (!cityPoints) return loads
-    return loads.map((load) => ({
-      ...load,
-      fromPoint: load.fromPoint ?? cityPoints[normalizeCityKey(shortCity(load.fromCity))] ?? null,
-      toPoint: load.toPoint ?? cityPoints[normalizeCityKey(shortCity(load.toCity))] ?? null,
-    }))
-  }, [loads, cityPoints])
+    const withPoints = (list: BuilderLoad[]): BuilderLoad[] => {
+      if (!cityPoints) return list
+      return list.map((load) => ({
+        ...load,
+        fromPoint: load.fromPoint ?? cityPoints[normalizeCityKey(shortCity(load.fromCity))] ?? null,
+        toPoint: load.toPoint ?? cityPoints[normalizeCityKey(shortCity(load.toCity))] ?? null,
+      }))
+    }
+    if (foundLoads.length === 0) return withPoints(loads)
+    const seen = new Set(loads.map((load) => load.id))
+    const extra = foundLoads.filter((load) => !seen.has(load.id))
+    return withPoints([...loads, ...extra])
+  }, [loads, foundLoads, cityPoints])
 
   const startPoint = useMemo(() => {
     if (!startCity.trim()) return null
@@ -377,6 +407,107 @@ export default function RouteAssistantPage() {
   }
 
   /**
+   * «Собрать регион»: вытянуть грузы общей биржи вокруг базы к себе в базу.
+   *
+   * Общая биржа отдаёт страницами по ~12 грузов, поэтому одно нажатие —
+   * это пачка страниц. Следующее нажатие идёт глубже (harvestPage), так
+   * база постепенно наполняется, а помощник строит из накопленного.
+   */
+  async function runHarvest() {
+    const from = searchFrom.trim() || startCity.trim()
+    if (!from) {
+      toast.error("Укажите город базы — от него и собираем регион")
+      return
+    }
+
+    setSearchBusy(true)
+    try {
+      const res = await fetch(
+        `/api/ati/geo?q=${encodeURIComponent(from.split(",")[0].trim())}`,
+        { credentials: "include" },
+      )
+      const rows: Array<{ id: number; name: string; fullName: string }> = await res
+        .json()
+        .catch(() => [])
+      const geo = rows[0]
+      if (!geo) {
+        toast.error(`Город «${from}» не найден в справочнике ATI`)
+        return
+      }
+
+      const result = await apiSend<{
+        success?: boolean
+        found?: number
+        loads?: Array<Record<string, unknown>>
+        totalItems?: number
+        nextPageStart?: number
+        error?: string
+      }>("/api/ati/scan", "POST", {
+        manualMode: true,
+        source: "exchange",
+        fromGeo: { id: geo.id, name: geo.name, fullName: geo.fullName },
+        fromRadius: searchRadius,
+        maxPages: HARVEST_PAGES,
+        pageStart: harvestPage,
+        filters: {},
+      })
+
+      if (!result.ok || !result.data?.success) {
+        toast.error(result.data?.error || result.error || "Не удалось собрать регион")
+        return
+      }
+
+      const collected = result.data.found ?? 0
+      if (result.data.nextPageStart) setHarvestPage(result.data.nextPageStart)
+
+      // Собранное сразу отдаём сборщику — он строит из накопленного
+      const rowsFound = result.data.loads ?? []
+      if (rowsFound.length > 0) {
+        const mapped: BuilderLoad[] = rowsFound.map((row: any) => ({
+          id: String(row.id),
+          loadId: row.atiLoadId ?? null,
+          fromCity: row.routeFrom,
+          toCity: row.routeTo,
+          weightKg: row.weight,
+          volumeM3: row.volume,
+          cargoType: row.cargoType,
+          priceRub: row.price,
+          priceWithNds: row.vatIncluded ? row.price : null,
+          distanceKm: row.distance,
+          firmName: row.firmName,
+          contactPhone: row.contactPhone,
+          loadingDate: row.loadingDate,
+          status: row.status ?? "new",
+          fromPoint: row.fromPoint ?? null,
+          toPoint: row.toPoint ?? null,
+          source: row.source === "exchange" ? "exchange" : "boards",
+        }))
+        setFoundLoads((prev) => {
+          const seen = new Set(prev.map((load) => load.id))
+          return [...prev, ...mapped.filter((load) => !seen.has(load.id))]
+        })
+      }
+
+      const total = result.data.totalItems ?? 0
+      setSearchResult({
+        found: collected,
+        byCity: 0,
+        byRadius: 0,
+        warning: null,
+        totalItems: total,
+      })
+      toast.success(
+        collected > 0
+          ? `Собрано грузов: ${collected}. В базе помощника их уже ${foundLoads.length + collected}.`
+          : "На этой странице биржи новых грузов нет — нажмите ещё раз",
+      )
+      loadsState.reload()
+    } finally {
+      setSearchBusy(false)
+    }
+  }
+
+  /**
    * Живой поиск по бирже — те же поля, что на сайте ATI: Откуда, Куда, радиус.
    *
    * Найденные грузы скан кладёт в кэш организации, поэтому после поиска
@@ -392,16 +523,41 @@ export default function RouteAssistantPage() {
     }
 
     setSearchBusy(true)
+    // Город → id ATI: общей бирже нужен идентификатор, а не название.
+    // Подсказка берёт id из того же справочника, что использует сайт.
+    const resolveCity = async (name: string) => {
+      try {
+        const res = await fetch(
+          `/api/ati/geo?q=${encodeURIComponent(name.split(",")[0].trim())}`,
+          { credentials: "include" },
+        )
+        const rows: Array<{ id: number; name: string; fullName: string; region: string }> =
+          await res.json().catch(() => [])
+        const hit = rows[0]
+        return hit ? { id: hit.id, name: hit.name, fullName: hit.fullName, region: hit.region } : null
+      } catch {
+        return null
+      }
+    }
+    const [fromGeo, toGeo] = await Promise.all([
+      from ? resolveCity(from) : Promise.resolve(null),
+      to ? resolveCity(to) : Promise.resolve(null),
+    ])
+
     const result = await apiSend<{
       success?: boolean
       found?: number
+      loads?: Array<Record<string, unknown>>
       matched?: { byCity?: number; byRadius?: number }
+      bySource?: { boards: number; exchange: number }
+      totalItems?: number
       geoWarning?: string | null
       error?: string
     }>("/api/ati/scan", "POST", {
       manualMode: true,
-      fromGeo: from ? { name: from, fullName: from } : null,
-      toGeo: to ? { name: to, fullName: to } : null,
+      source: searchSource,
+      fromGeo: from ? (fromGeo ?? { name: from, fullName: from }) : null,
+      toGeo: to ? (toGeo ?? { name: to, fullName: to }) : null,
       fromRadius: searchRadius,
       toRadius: searchRadius,
       filters: {},
@@ -413,17 +569,49 @@ export default function RouteAssistantPage() {
       return
     }
 
-    const found = result.data.found ?? 0
+    const foundCount = result.data.found ?? 0
     setSearchResult({
-      found,
+      found: foundCount,
       byCity: result.data.matched?.byCity ?? 0,
       byRadius: result.data.matched?.byRadius ?? 0,
       warning: result.data.geoWarning ?? null,
+      bySource: result.data.bySource,
+      totalItems: result.data.totalItems,
     })
+
+    // Найденные грузы отдаём сборщику сразу: кэш помощник показывает
+    // списком до 300 строк, а общая биржа отдаёт тысячи.
+    const foundRows = result.data.loads ?? []
+    if (foundRows.length > 0) {
+      const mapped: BuilderLoad[] = foundRows.map((row: any) => ({
+        id: String(row.id),
+        loadId: row.atiLoadId ?? null,
+        fromCity: row.routeFrom,
+        toCity: row.routeTo,
+        weightKg: row.weight,
+        volumeM3: row.volume,
+        cargoType: row.cargoType,
+        priceRub: row.price,
+        priceWithNds: row.vatIncluded ? row.price : null,
+        distanceKm: row.distance,
+        firmName: row.firmName,
+        contactPhone: row.contactPhone,
+        loadingDate: row.loadingDate,
+        status: row.status ?? "new",
+        fromPoint: row.fromPoint ?? null,
+        toPoint: row.toPoint ?? null,
+        source: row.source === "exchange" ? "exchange" : "boards",
+      }))
+      setFoundLoads((prev) => {
+        const seen = new Set(prev.map((load) => load.id))
+        return [...prev, ...mapped.filter((load) => !seen.has(load.id))]
+      })
+    }
+
     toast.success(
-      found > 0
-        ? `Найдено грузов: ${found}. Они уже в бирже помощника.`
-        : "На площадках организации таких грузов нет",
+      foundCount > 0
+        ? `Найдено грузов: ${foundCount}. Они уже в бирже помощника.`
+        : "По этому фильтру грузов нет",
     )
     // Найденные грузы легли в кэш — перечитываем биржу, чтобы помощник
     // строил маршрут из них, а не из устаревшего списка.
@@ -647,6 +835,9 @@ export default function RouteAssistantPage() {
               busy: searchBusy,
               result: searchResult,
               onSearch: () => void runLiveSearch(),
+              source: searchSource,
+              setSource: setSearchSource,
+              onHarvest: () => void runHarvest(),
             }}
           />
         ) : phase === "building" ? (
@@ -762,6 +953,9 @@ function LiveSearchCard({
   result,
   onSearch,
   defaultFrom,
+  source,
+  setSource,
+  onHarvest,
 }: {
   from: string
   setFrom: (value: string) => void
@@ -770,9 +964,21 @@ function LiveSearchCard({
   radius: number
   setRadius: (value: number) => void
   busy: boolean
-  result: { found: number; byCity: number; byRadius: number; warning: string | null } | null
+  result: {
+    found: number
+    byCity: number
+    byRadius: number
+    warning: string | null
+    bySource?: { boards: number; exchange: number }
+    totalItems?: number
+  } | null
   onSearch: () => void
   defaultFrom: string
+  /** Где искать: площадки организации, общая биржа или оба источника */
+  source: "boards" | "exchange" | "both"
+  setSource: (value: "boards" | "exchange" | "both") => void
+  /** Вытянуть биржу региона к себе в базу (общая биржа, несколько страниц) */
+  onHarvest: () => void
 }) {
   // Свёрнуто по умолчанию: помощник — про сборку маршрута, а поиск нужен,
   // когда грузов из своего города в бирже не нашлось.
@@ -849,32 +1055,88 @@ function LiveSearchCard({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onSearch}
-          disabled={busy}
-          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
-        >
-          {busy ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Ищу на бирже…
-            </>
-          ) : (
-            <>
-              <Search className="h-4 w-4" />
-              Искать на бирже
-            </>
-          )}
-        </button>
+        <div>
+          <span className="text-[12px] text-muted-foreground">Где искать</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {(
+              [
+                ["both", "Всё"],
+                ["boards", "Площадки"],
+                ["exchange", "Общая биржа"],
+              ] as Array<["boards" | "exchange" | "both", string]>
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setSource(value)}
+                className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                  source === value
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-border text-foreground/90"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
+            «Площадки» — официальный API ATI: грузы организаций, где мы участник. «Общая биржа» —
+            поиск сайта loads.ati.su: все грузы биржи. «Всё» — оба источника сразу.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onSearch}
+            disabled={busy}
+            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
+          >
+            {busy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Ищу…
+              </>
+            ) : (
+              <>
+                <Search className="h-4 w-4" />
+                Искать
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onHarvest}
+            disabled={busy}
+            title="Вытянуть грузы общей биржи вокруг вашей базы к себе в базу"
+            className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border px-3 text-[13px] text-foreground active:opacity-70 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            Собрать регион
+          </button>
+        </div>
 
         {result ? (
           <div className="rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
             {result.found > 0 ? (
-              <p className="text-[12.5px] leading-snug text-foreground">
-                Найдено грузов: <b>{result.found}</b>. Совпало по городу: {result.byCity}, по радиусу:{" "}
-                {result.byRadius}. Они уже в бирже помощника — стройте маршрут.
-              </p>
+              <>
+                <p className="text-[12.5px] leading-snug text-foreground">
+                  Найдено грузов: <b>{result.found}</b>. Они уже в бирже помощника — стройте маршрут.
+                </p>
+                {result.bySource ? (
+                  <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+                    С площадок: {result.bySource.boards} · с общей биржи: {result.bySource.exchange}
+                    {result.totalItems
+                      ? ` · всего по фильтру биржа обещает ${result.totalItems}`
+                      : ""}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+                    По городу: {result.byCity} · по радиусу: {result.byRadius}
+                    {result.totalItems ? ` · всего по фильтру ${result.totalItems}` : ""}
+                  </p>
+                )}
+              </>
             ) : (
               <p className="text-[12.5px] leading-snug text-foreground">
                 На площадках организации таких грузов нет. Попробуйте увеличить радиус или убрать
@@ -884,7 +1146,7 @@ function LiveSearchCard({
             {result.warning ? (
               <p className="mt-1 text-[12px] leading-snug text-muted-foreground">{result.warning}</p>
             ) : null}
-          </div>
+            </div>
         ) : null}
       </div>
       ) : null}
@@ -947,8 +1209,20 @@ function SetupPhase({
     radius: number
     setRadius: (value: number) => void
     busy: boolean
-    result: { found: number; byCity: number; byRadius: number; warning: string | null } | null
+    result: {
+      found: number
+      byCity: number
+      byRadius: number
+      warning: string | null
+      bySource?: { boards: number; exchange: number }
+      totalItems?: number
+    } | null
     onSearch: () => void
+    /** Где искать: площадки организации, общая биржа или оба источника */
+    source: "boards" | "exchange" | "both"
+    setSource: (value: "boards" | "exchange" | "both") => void
+    /** Вытянуть биржу региона к себе в базу */
+    onHarvest: () => void
   }
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
@@ -1020,6 +1294,9 @@ function SetupPhase({
         result={searchProps.result}
         onSearch={searchProps.onSearch}
         defaultFrom={startCity}
+        source={searchProps.source}
+        setSource={searchProps.setSource}
+        onHarvest={searchProps.onHarvest}
       />
 
       {/* Машина */}
