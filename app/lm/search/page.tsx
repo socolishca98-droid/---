@@ -524,6 +524,7 @@ function CityField({
 }) {
   const [text, setText] = useState("")
   const [suggestions, setSuggestions] = useState<GeoCity[]>([])
+  const [loadingSuggest, setLoadingSuggest] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -533,12 +534,15 @@ function CityField({
       return
     }
     timerRef.current = setTimeout(async () => {
+      setLoadingSuggest(true)
       try {
         const res = await fetch(`/api/ati/geo?q=${encodeURIComponent(text.trim())}`)
         const data = await res.json()
         setSuggestions(Array.isArray(data) ? (data as GeoCity[]).slice(0, 6) : [])
       } catch {
         setSuggestions([])
+      } finally {
+        setLoadingSuggest(false)
       }
     }, 350)
     return () => {
@@ -593,6 +597,18 @@ function CityField({
             </button>
           ))}
         </div>
+      ) : null}
+
+      {/* Города нет в справочнике живого поиска. ATI принимает в фильтре
+          только числовой id своего словаря населённых пунктов, и по названию
+          город не резолвится никак — поэтому врать «ничего не найдено» нельзя,
+          надо сказать прямо и показать, где груз всё равно можно взять. */}
+      {!value && text.trim().length >= 3 && suggestions.length === 0 && !loadingSuggest ? (
+        <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
+          «{text.trim()}» нет в справочнике ATI для живого поиска — биржа принимает только
+          id своего словаря населённых пунктов и по названию город не ищет. Найдите груз во
+          вкладке «Своя база»: там поиск по любому названию, и брать груз можно так же.
+        </p>
       ) : null}
     </div>
   )
