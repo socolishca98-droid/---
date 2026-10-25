@@ -23,12 +23,15 @@ export async function POST(request: NextRequest) {
   const h = atiHeaders(ati.token)
 
   const tries: Array<[string, string]> = [
-    ["boards-firm-contacts", `${API}/firms/2465093/contacts`],
-    ["exchange-firm-contacts", `${API}/firms/26310/contacts`],
-    ["exchange-firm", `${API}/firms/26310`],
-    ["account", `${API}/account`],
-    ["users-me", `${API}/users/me`],
-    ["boards-list", `${API}/boards/list`],
+    ["dict-regions", `${API}/dictionaries/regions`],
+    ["regions", `${API}/regions`],
+    ["dict-geo", `${API}/dictionaries/geo`],
+    ["dict-cities", `${API}/dictionaries/cities`],
+    ["dict-all", `${API}/dictionaries`],
+    ["firm-contacts", `${API}/firms/2465093/contacts`],
+    ["firm-contact", `${API}/firms/2465093/contact`],
+    ["load-contacts", `${API}/loads/2465093/contacts`],
+    ["firms", `${API}/firms`],
   ]
   for (const [label, url] of tries) {
     try {
