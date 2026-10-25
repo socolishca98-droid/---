@@ -87,5 +87,46 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 3. СЫРОЙ груз общей биржи — все поля, включая возможные id городов
+  if (probe === "all" || probe === "raw") {
+    try {
+      const res = await atiFetch(
+        `${EX}/loads/search`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            exclude_geo_dicts: true,
+            page: 1,
+            items_per_page: 1,
+            filter: { sorting_type: 2, from: { id: 88, type: 1, radius: 300, exact_only: false } },
+          }),
+        },
+        "probe3",
+      )
+      const data = await res.json()
+      out["raw:load"] = data?.loads?.[0] ?? null
+      out["raw:topLevelKeys"] = data ? Object.keys(data) : []
+    } catch (e: any) {
+      out["raw:error"] = e?.message
+    }
+  }
+
+  // 4. Словарь городов на ОФИЦИАЛЬном api.ati.su
+  if (probe === "all" || probe === "officialdict") {
+    for (const path of [
+      "/webapi/v1.0/dictionaries/cities",
+      "/webapi/v1.0/dictionaries/cities?query=вол",
+    ]) {
+      try {
+        const res = await atiFetch(`https://api.ati.su${path}`, { method: "GET", headers }, "probe3")
+        const text = await res.text()
+        out[`official:${path}`] = { status: res.status, body: text.slice(0, 300) }
+      } catch (e: any) {
+        out[`official:${path}`] = { error: e?.message }
+      }
+    }
+  }
+
   return NextResponse.json(out)
 }
