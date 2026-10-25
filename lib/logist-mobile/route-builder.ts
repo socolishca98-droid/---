@@ -369,6 +369,135 @@ function legMoney(
   return { revenue, fuelLiters, fuelCostRub, profitRub }
 }
 
+/**
+ * Обратный груз домой — последнее плечо цепочки.
+ *
+ * Зачем: логист не возит пустую машину. Если на бирже есть груз из
+ * конечного города маршрута на базу (или в её округ), он и закрывает
+ * выезд — и прибыль выше на весь порожний возврат. Без обратки маршрут
+ * честно платит за возврат, но логист должен видеть, что обратка была
+ * возможна.
+ *
+ * Условия те же, что у любого плеча: влезает в машину, ставка озвучена,
+ * окупает пробег и укладывается в лимит времени. Возврат дома при этом
+ * нулевой — плечо заканчивается на базе.
+ */
+function findBackHomeLeg(input: {
+  legs: RouteLeg[]
+  pool: BuilderLoad[]
+  vehicle: BuilderVehicle
+  fuelPrice: number | null
+  /** База маршрута — цель обратки */
+  startCity: string
+  /** Город, где стоит машина сейчас — оттуда ищем обратку */
+  currentCity: string
+  currentPoint: Point | null
+  maxHours: number
+  minProfitPerKm: number
+  detourKm: number
+  keepIds: readonly string[]
+  /** Часы, уже занятые цепочкой */
+  clock: number
+  departAt: Date
+}): RouteLeg | null {
+  const {
+    legs,
+    pool,
+    vehicle,
+    fuelPrice,
+    startCity,
+    currentCity,
+    currentPoint,
+    maxHours,
+    minProfitPerKm,
+    detourKm,
+    keepIds,
+    clock,
+    departAt,
+  } = input
+  if (legs.length === 0) return null
+
+  const currentKey = normalizeCityKey(currentCity)
+  const used = new Set(legs.map((leg) => leg.load.id))
+  const usedFrom = new Set(legs.map((leg) => normalizeCityKey(leg.load.fromCity)))
+
+  const candidates = pool.filter((load) => {
+    if (used.has(load.id)) return false
+    if (!loadFitsVehicle(load, vehicle)) return false
+    if (loadPrice(load) <= 0) return false
+    if (usedFrom.has(normalizeCityKey(load.fromCity))) return false
+    // Обратка = груз, который везёт на базу (в её городской округ)
+    if (!samePlace(load.toCity, startCity)) return false
+    // Забираем там, где стоим: тот же город или рядом
+    if (normalizeCityKey(load.fromCity) === currentKey) return true
+    if (detourKm > 0 && currentPoint && load.fromPoint) {
+      return haversineKm(currentPoint, load.fromPoint) <= detourKm
+    }
+    return false
+  })
+
+  // Сначала согласованные, потом готовые к нашей дате, потом выгодные
+  const ordered = [...candidates].sort((a, b) => {
+    const aKeep = keepIds.includes(a.id) ? 0 : 1
+    const bKeep = keepIds.includes(b.id) ? 0 : 1
+    if (aKeep !== bKeep) return aKeep - bKeep
+    const aRate = loadRatePerKm(a) ?? -1
+    const bRate = loadRatePerKm(b) ?? -1
+    return bRate - aRate
+  })
+
+  const last = legs[legs.length - 1]
+  const lastPoint = last.load.toPoint ?? null
+
+  for (const load of ordered.slice(0, CANDIDATE_SCAN)) {
+    const sameCity = normalizeCityKey(load.fromCity) === currentKey
+    const deadheadKm =
+      sameCity || !currentPoint || !lastPoint || !load.fromPoint
+        ? 0
+        : haversineKm(currentPoint, load.fromPoint)
+    const loadedKm = Math.max(0, load.distanceKm ?? 0)
+    const totalKm = deadheadKm + loadedKm
+    if (totalKm <= 0) continue
+    const hours = legHours(deadheadKm, loadedKm)
+    // Обратка заканчивается дома — возврата нет, бюджет шага нулевой
+    if (clock + hours > maxHours) continue
+    const money = legMoney(load, totalKm, vehicle, fuelPrice)
+    if (money.revenue <= 0) continue
+    if (money.profitRub !== null && money.profitRub <= 0) continue
+    const perKm = (money.profitRub ?? money.revenue) / totalKm
+    if (perKm < minProfitPerKm) continue
+
+    const arriveHours = clock + deadheadKm / AVG_DEADHEAD_KMH
+    const etaAt = new Date(departAt.getTime() + arriveHours * 3600000)
+    const loadsAt = loadDate(load)
+    const lateRisk = loadsAt ? dayStart(etaAt) > dayStart(loadsAt) : false
+    // Ждать дату загрузки обратки — такое же время маршрута
+    const waitHours = loadsAt
+      ? Math.max(0, hoursBetween(etaAt, loadsAt))
+      : 0
+    if (clock + waitHours + hours > maxHours) continue
+
+    return {
+      load,
+      deadheadKm,
+      loadedKm,
+      profitPerKm: perKm,
+      byTheWay: !sameCity,
+      hours,
+      waitHours,
+      loadsAt,
+      etaAt,
+      lateRisk,
+      fuelLiters: money.fuelLiters,
+      fuelCostRub: money.fuelCostRub,
+      revenue: money.revenue,
+      profitRub: money.profitRub,
+      returnsHome: true,
+    }
+  }
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Почему цепочка остановилась
 // ---------------------------------------------------------------------------
@@ -465,15 +594,25 @@ function buildChain(
 
     // Порядок выбора — ровно как логист смотрит биржу, стоя в городе:
     //  1. согласованные звонком грузы — они в приоритете;
-    //  2. грузы, к дате загрузки которых успеваем: уехавший груз не купить
+    //  2. НЕ обратка на базу: груз, который везёт домой, первым плечом
+    //     бессмысленен — машина уедет из дома и вернётся, а потом опять
+    //     уедет. Обратка имеет смысл в КОНЦЕ маршрута, и её добирает
+    //     отдельный шаг. Поэтому на старте такой груз идёт в конец списка;
+    //  3. грузы, к дате загрузки которых успеваем: уехавший груз не купить
     //     никакой ставкой;
-    //  3. тот, кто готов раньше: простаивающая машина — потерянные деньги,
+    //  4. тот, кто готов раньше: простаивающая машина — потерянные деньги,
     //     поэтому маршрут двигается по календарю, а не прыгает по датам;
-    //  4. при равной готовности — самая высокая ставка за километр.
+    //  5. при равной готовности — самая высокая ставка за километр.
+    const firstLeg = legs.length === 0
     const ordered = [...candidates].sort((a, b) => {
       const aKeep = keepIds.includes(a.id) ? 0 : 1
       const bKeep = keepIds.includes(b.id) ? 0 : 1
       if (aKeep !== bKeep) return aKeep - bKeep
+      if (firstLeg) {
+        const aHome = samePlace(a.toCity, startCity) ? 1 : 0
+        const bHome = samePlace(b.toCity, startCity) ? 1 : 0
+        if (aHome !== bHome) return aHome - bHome
+      }
       const aLate = isLate(a) ? 1 : 0
       const bLate = isLate(b) ? 1 : 0
       if (aLate !== bLate) return aLate - bLate
@@ -967,6 +1106,30 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       if (keepIds.includes(last.load.id)) break
       legs.pop()
       trimmedByHours = true
+    }
+
+    // Обратный груз домой: машина не едет порожняком, если на бирже есть
+    // груз из конечного города на базу. Часы цепочки = сумма плеч с
+    // ожиданием — тем же счётчиком, что проверял бюджет.
+    const backLeg = findBackHomeLeg({
+      legs,
+      pool,
+      vehicle,
+      fuelPrice,
+      startCity: effectiveStart,
+      currentCity: legs[legs.length - 1].load.toCity,
+      currentPoint: legs[legs.length - 1].load.toPoint ?? null,
+      maxHours,
+      minProfitPerKm,
+      detourKm,
+      keepIds,
+      clock: legs.reduce((sum, leg) => sum + leg.hours + leg.waitHours, 0),
+      departAt,
+    })
+    if (backLeg) {
+      legs.push(backLeg)
+      // Обратка закрыла выезд — хвост снимать больше не нужно
+      trimmedByHours = false
     }
 
     const totalRevenue = legs.reduce((sum, leg) => sum + leg.revenue, 0)

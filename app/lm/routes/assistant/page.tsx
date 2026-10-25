@@ -28,6 +28,7 @@ import {
   ChevronDown,
   Clock,
   ChevronUp,
+  Home,
   Loader2,
   MapPin,
   Package,
@@ -1372,6 +1373,14 @@ function RoutePhase({
                       <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate">{shortCity(leg.load.toCity)}</span>
                     </p>
+
+                    {/* Обратка: груз везёт машину домой — порожнего возврата нет */}
+                    {leg.returnsHome ? (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-primary/12 px-1.5 py-0.5 text-[11.5px] font-medium text-primary">
+                        <Home className="h-3 w-3" />
+                        Обратка домой
+                      </p>
+                    ) : null}
 
                     {/* Компания и груз — отдельными строками, без склеек */}
                     <p className="mt-1 truncate text-[13px] text-foreground/90">

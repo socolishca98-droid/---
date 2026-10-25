@@ -1061,3 +1061,111 @@ test("груз без ставки не считается кандидатом 
   assert.equal(reason.loadsNearby, 1, "груз рядом есть")
   assert.equal(reason.loadsNearbyPriced, 0, "но ставки нет — строить не из чего")
 })
+
+// ── 22. Обратный груз домой: машина не едет порожняком ──────────────────
+// Логист не возит пустую машину. Если на бирже есть груз из конечного
+// города маршрута на базу — он и закрывает выезд, и прибыль выше на весь
+// порожний возврат.
+test("обратный груз на базу закрывает выезд", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: LIPETSK }),
+    load({ id: "back", fromCity: "Липецк", toCity: "Москва", distanceKm: 450, priceRub: 90000, fromPoint: LIPETSK, toPoint: MOSCOW }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 72,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 3, "обратка добавилась плечом")
+  assert.equal(route.legs[2].load.id, "back", "обратка — последним плечом")
+  assert.equal(route.legs[2].returnsHome, true, "плечо везёт домой")
+  assert.equal(route.returnDeadheadKm, 0, "порожнего возврата нет")
+  assert.equal(route.returnsHomeWithLoad, true)
+  assert.ok(
+    route.reasons.some((line) => line.includes("Возврат домой с грузом")),
+    `причины объясняют обратку: ${route.reasons.join(" | ")}`,
+  )
+})
+
+test("убыточная обратка не берётся — остаётся порожний возврат", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: LIPETSK }),
+    // 450 км за 3000 ₽ — топливо дороже ставки
+    load({ id: "back", fromCity: "Липецк", toCity: "Москва", distanceKm: 450, priceRub: 3000, fromPoint: LIPETSK, toPoint: MOSCOW }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 72,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 2, "обратка не добавилась")
+  assert.ok(route.returnDeadheadKm > 0, "возврат порожний — и это честно написано")
+  assert.equal(route.returnsHomeWithLoad, false)
+  assert.ok(
+    route.reasons.some((line) => line.includes("порожнем")),
+    `причины называют порожний возврат: ${route.reasons.join(" | ")}`,
+  )
+})
+
+test("обратка везёт домой и в свой городской округ", () => {
+  const BASE = { lat: 55.44, lng: 37.75 }
+  const HIMKI = { lat: 55.897, lng: 37.4293 }
+  const KONST = { lat: 55.4, lng: 37.72 }
+  const loads = [
+    load({ id: "a", fromCity: "Домодедово", toCity: "Химки", distanceKm: 133, priceRub: 16500, fromPoint: BASE, toPoint: HIMKI }),
+    load({ id: "back", fromCity: "Химки", toCity: "Константиново с. (г.о. Домодедово)", distanceKm: 40, priceRub: 12000, fromPoint: HIMKI, toPoint: KONST }),
+  ]
+  const route = buildRoute({
+    startCity: "Домодедово",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 48,
+    startPoint: BASE,
+  })
+  assert.ok(route)
+  assert.equal(route.returnDeadheadKm, 0, "Константиново — свой округ, возврата нет")
+  assert.equal(route.returnsHomeWithLoad, true)
+})
+
+test("обратка не берётся, если не влезает в лимит времени", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "back", fromCity: "Воронеж", toCity: "Москва", distanceKm: 526, priceRub: 120000, fromPoint: VORONEZH, toPoint: MOSCOW }),
+  ]
+  // 13.6 ч туда + дорога домой = 25.4 ч — влезает; обратка добавит ещё
+  // 13.6 ч, и лимит 26 ч будет нарушен
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 26,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 1, "обратка не влезла в срок")
+  assert.ok(route.totalHours <= route.maxHours, "лимит не нарушен")
+})
