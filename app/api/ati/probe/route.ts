@@ -26,6 +26,10 @@ export async function GET(request: NextRequest) {
     { name: "loads/search?from.city_id=88", url: `${ATI_API_BASE}/v1.0/loads/search?from.city_id=88&from.radius=300` },
     { name: "loads?to=88", url: `${ATI_API_BASE}/v1.0/loads?to=88` },
     { name: "loads/search/byboards (эталон)", url: `${ATI_API_BASE}/v1.0/loads/search/byboards` },
+    { name: "boards/list (публичные)", url: `${ATI_API_BASE}/v2/boards/public/boards/list` },
+    { name: "boards/canView (мои)", url: `${ATI_API_BASE}/v2/boards/public/boards/canView` },
+    { name: "boards/participating (участвую)", url: `${ATI_API_BASE}/v2/boards/public/boards/participating` },
+    { name: "boards/my (свои)", url: `${ATI_API_BASE}/v2/boards/public/boards/my` },
   ]
 
   const out: Record<string, unknown> = {}
