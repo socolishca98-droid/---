@@ -170,6 +170,15 @@ function normalizeLoadFromToCityKey(load: any): string | null {
  * ТОЛЬКО по персональным площадкам — документированное ограничение ATI.SU.
  */
 async function fetchBoardIds(token: string, organizationId: string): Promise<string[]> {
+  const boards = await fetchBoardInfo(token, organizationId)
+  return boards.map((board) => board.id)
+}
+
+/** Площадки организации с названиями — чтобы честно показать источник грузов. */
+export async function fetchBoardInfo(
+  token: string,
+  organizationId: string,
+): Promise<Array<{ id: string; name: string }>> {
   const res = await atiFetch(
     `${ATI_API_BASE}/v2/boards/public/boards/canView`,
     {
@@ -183,8 +192,11 @@ async function fetchBoardIds(token: string, organizationId: string): Promise<str
   const data: any = await res.json()
   const rows = Array.isArray(data) ? data : data?.boards ?? data?.items ?? []
   return rows
-    .map((board: any) => String(board?.id ?? board?.Id ?? ""))
-    .filter((id: string) => id.length > 0)
+    .map((board: any) => ({
+      id: String(board?.id ?? board?.Id ?? ""),
+      name: String(board?.name ?? board?.Name ?? "").trim(),
+    }))
+    .filter((board: { id: string }) => board.id.length > 0)
 }
 
 /**

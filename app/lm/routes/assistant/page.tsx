@@ -31,9 +31,11 @@ import {
   Home,
   Loader2,
   MapPin,
+  Info,
   Package,
   Phone,
   RefreshCw,
+  Search,
   Route as RouteIcon,
   Truck,
   X,
@@ -112,6 +114,15 @@ export default function RouteAssistantPage() {
     stale: boolean
     /** Сколько грузов всего в кэше организации — список отдаём частями */
     total: number
+    /**
+     * Откуда берём грузы: площадки ATI организации. API ATI.SU отдаёт только
+     * их — общий поиск по бирже (как на сайте loads.ati.su) через API закрыт.
+     * Показываем это словами, иначе логист решает, что программа сломана.
+     */
+    source?: {
+      boards: Array<{ id: string; name: string }>
+      note: string
+    }
   }>(user ? "/api/ati/loads?status=new&limit=300" : null)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
@@ -145,6 +156,22 @@ export default function RouteAssistantPage() {
   /** Телефоны фрахтователей, добытые кнопкой «Узнать телефон» */
   const [phones, setPhones] = useState<Record<string, string>>({})
   const [phoneBusy, setPhoneBusy] = useState<string | null>(null)
+
+  // ── Живой поиск по бирже: те же поля, что на сайте ATI ──
+  // Логист на ATI ищет «откуда / куда / радиус». Раньше в программе это был
+  // отдельный экран с обязательным «Откуда», а помощник читал только кэш —
+  // и для города без грузов в кэше помощник был пуст.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchFrom, setSearchFrom] = useState("")
+  const [searchTo, setSearchTo] = useState("")
+  const [searchRadius, setSearchRadius] = useState(300)
+  const [searchBusy, setSearchBusy] = useState(false)
+  const [searchResult, setSearchResult] = useState<{
+    found: number
+    byCity: number
+    byRadius: number
+    warning: string | null
+  } | null>(null)
 
   // Город старта помним: логист обычно едет из одной базы
   useEffect(() => {
@@ -347,6 +374,60 @@ export default function RouteAssistantPage() {
       build()
     }, 420)
     buildTimer.current = tick
+  }
+
+  /**
+   * Живой поиск по бирже — те же поля, что на сайте ATI: Откуда, Куда, радиус.
+   *
+   * Найденные грузы скан кладёт в кэш организации, поэтому после поиска
+   * перечитываем биржу: помощник строит из того же списка, что и на экране
+   * «биржа». Оба поля необязательны — можно искать только «Куда».
+   */
+  async function runLiveSearch() {
+    const from = searchFrom.trim()
+    const to = searchTo.trim()
+    if (!from && !to) {
+      toast.error("Укажите «Откуда» или «Куда» — как на сайте ATI")
+      return
+    }
+
+    setSearchBusy(true)
+    const result = await apiSend<{
+      success?: boolean
+      found?: number
+      matched?: { byCity?: number; byRadius?: number }
+      geoWarning?: string | null
+      error?: string
+    }>("/api/ati/scan", "POST", {
+      manualMode: true,
+      fromGeo: from ? { name: from, fullName: from } : null,
+      toGeo: to ? { name: to, fullName: to } : null,
+      fromRadius: searchRadius,
+      toRadius: searchRadius,
+      filters: {},
+    })
+    setSearchBusy(false)
+
+    if (!result.ok || !result.data?.success) {
+      toast.error(result.data?.error || result.error || "Поиск не удался")
+      return
+    }
+
+    const found = result.data.found ?? 0
+    setSearchResult({
+      found,
+      byCity: result.data.matched?.byCity ?? 0,
+      byRadius: result.data.matched?.byRadius ?? 0,
+      warning: result.data.geoWarning ?? null,
+    })
+    toast.success(
+      found > 0
+        ? `Найдено грузов: ${found}. Они уже в бирже помощника.`
+        : "На площадках организации таких грузов нет",
+    )
+    // Найденные грузы легли в кэш — перечитываем биржу, чтобы помощник
+    // строил маршрут из них, а не из устаревшего списка.
+    loadsState.reload()
   }
 
   /** Переключение варианта: тот же выезд, другой лимит часов — пересборка. */
@@ -555,6 +636,18 @@ export default function RouteAssistantPage() {
             pointsLoading={pointsState.loading}
             noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
             onBuild={() => runBuild(startCity, keepIds, excludeIds, maxHours)}
+            sourceNote={loadsState.data?.source?.note ?? null}
+            searchProps={{
+              from: searchFrom,
+              setFrom: setSearchFrom,
+              to: searchTo,
+              setTo: setSearchTo,
+              radius: searchRadius,
+              setRadius: setSearchRadius,
+              busy: searchBusy,
+              result: searchResult,
+              onSearch: () => void runLiveSearch(),
+            }}
           />
         ) : phase === "building" ? (
           <BuildingPhase step={buildStep} />
@@ -595,6 +688,7 @@ export default function RouteAssistantPage() {
             startRadiusKm={startRadiusKm}
             startPoint={startPoint}
             maxHours={maxHours}
+            sourceNote={loadsState.data?.source?.note ?? null}
             onMoreHours={() => {
               const longer = nextHoursStep(maxHours)
               setMaxHours(longer)
@@ -624,6 +718,180 @@ export default function RouteAssistantPage() {
 // Шаг 1. Куда едем
 // ---------------------------------------------------------------------------
 
+/**
+ * Откуда берём грузы — честная подпись.
+ *
+ * Логист сравнивает программу с сайтом ATI, где видны все грузы биржи.
+ * API ATI.SU отдаёт только грузы площадок организации, и это не наша
+ * прихоть — молчать об этом нельзя, иначе «программа не работает».
+ */
+function SourceNoteCard({ note, loadsCount }: { note: string | null; loadsCount: number }) {
+  if (!note) return null
+  return (
+    <Card>
+      <div className="flex items-start gap-2">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-foreground">Откуда берём грузы</p>
+          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">{note}</p>
+          <p className="mt-1.5 text-[12px] text-muted-foreground">
+            Сейчас в бирже помощника грузов: {loadsCount}.
+          </p>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * Живой поиск по бирже — те же поля, что на сайте ATI.
+ *
+ * Помощник строит маршрут из накопленной биржи, но если грузов из твоего
+ * города в ней нет, тупик недопустим: здесь можно спросить биржу прямо
+ * сейчас — «Откуда», «Куда», радиус. Найденные грузы ложатся в кэш, и
+ * помощник сразу строит из них.
+ */
+function LiveSearchCard({
+  from,
+  setFrom,
+  to,
+  setTo,
+  radius,
+  setRadius,
+  busy,
+  result,
+  onSearch,
+  defaultFrom,
+}: {
+  from: string
+  setFrom: (value: string) => void
+  to: string
+  setTo: (value: string) => void
+  radius: number
+  setRadius: (value: number) => void
+  busy: boolean
+  result: { found: number; byCity: number; byRadius: number; warning: string | null } | null
+  onSearch: () => void
+  defaultFrom: string
+}) {
+  // Свёрнуто по умолчанию: помощник — про сборку маршрута, а поиск нужен,
+  // когда грузов из своего города в бирже не нашлось.
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Card>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-[40px] w-full items-center justify-between gap-2 text-left active:opacity-70"
+      >
+        <span className="flex min-w-0 flex-1 items-start gap-2">
+          <Search className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium text-foreground">Поиск на бирже ATI</span>
+            <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
+              Как на сайте: город и радиус. Оба поля необязательны — можно искать только «Куда».
+            </span>
+          </span>
+        </span>
+        {open ? (
+          <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+
+      {open ? (
+      <div className="mt-3 space-y-2.5 border-t border-border pt-3">
+        <label className="block">
+          <span className="text-[12px] text-muted-foreground">Откуда (по умолчанию — ваша база)</span>
+          <div className="mt-1 flex items-center gap-2 rounded-xl border border-border bg-background px-3">
+            <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+              placeholder={defaultFrom || "Например: Вязники"}
+              className="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
+            />
+          </div>
+        </label>
+
+        <label className="block">
+          <span className="text-[12px] text-muted-foreground">Куда</span>
+          <div className="mt-1 flex items-center gap-2 rounded-xl border border-border bg-background px-3">
+            <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+              placeholder="Например: Ярославль"
+              className="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
+            />
+          </div>
+        </label>
+
+        <div>
+          <span className="text-[12px] text-muted-foreground">Радиус, км</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {[50, 100, 200, 300, 500].map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRadius(value)}
+                className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
+                  radius === value
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-border text-foreground/90"
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onSearch}
+          disabled={busy}
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Ищу на бирже…
+            </>
+          ) : (
+            <>
+              <Search className="h-4 w-4" />
+              Искать на бирже
+            </>
+          )}
+        </button>
+
+        {result ? (
+          <div className="rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
+            {result.found > 0 ? (
+              <p className="text-[12.5px] leading-snug text-foreground">
+                Найдено грузов: <b>{result.found}</b>. Совпало по городу: {result.byCity}, по радиусу:{" "}
+                {result.byRadius}. Они уже в бирже помощника — стройте маршрут.
+              </p>
+            ) : (
+              <p className="text-[12.5px] leading-snug text-foreground">
+                На площадках организации таких грузов нет. Попробуйте увеличить радиус или убрать
+                один из городов.
+              </p>
+            )}
+            {result.warning ? (
+              <p className="mt-1 text-[12px] leading-snug text-muted-foreground">{result.warning}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      ) : null}
+    </Card>
+  )
+}
+
 function SetupPhase({
   startCity,
   setStartCity,
@@ -643,6 +911,8 @@ function SetupPhase({
   pointsLoading,
   noStartPoint,
   onBuild,
+  sourceNote,
+  searchProps,
 }: {
   startCity: string
   setStartCity: (value: string) => void
@@ -666,6 +936,20 @@ function SetupPhase({
   /** Для выбранного города нет координат — только точное совпадение городов */
   noStartPoint: boolean
   onBuild: () => void
+  /** Честная подпись об источнике грузов (площадки ATI организации) */
+  sourceNote: string | null
+  /** Живой поиск по бирже — те же поля, что на сайте ATI */
+  searchProps: {
+    from: string
+    setFrom: (value: string) => void
+    to: string
+    setTo: (value: string) => void
+    radius: number
+    setRadius: (value: number) => void
+    busy: boolean
+    result: { found: number; byCity: number; byRadius: number; warning: string | null } | null
+    onSearch: () => void
+  }
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
   const driver = selected ? drivers.find((item) => item.vehicleId === selected.id) ?? null : null
@@ -720,6 +1004,23 @@ function SetupPhase({
           </div>
         ) : null}
       </Card>
+
+      {/* Откуда берём грузы — честно, без преувеличений */}
+      <SourceNoteCard note={sourceNote} loadsCount={usableLoadsCount} />
+
+      {/* Живой поиск по бирже: когда из своего города грузов нет */}
+      <LiveSearchCard
+        from={searchProps.from}
+        setFrom={searchProps.setFrom}
+        to={searchProps.to}
+        setTo={searchProps.setTo}
+        radius={searchProps.radius}
+        setRadius={searchProps.setRadius}
+        busy={searchProps.busy}
+        result={searchProps.result}
+        onSearch={searchProps.onSearch}
+        defaultFrom={startCity}
+      />
 
       {/* Машина */}
       <Card>
@@ -954,6 +1255,7 @@ function FailedPhase({
   onRefresh,
   maxHours,
   onMoreHours,
+  sourceNote,
 }: {
   startCity: string
   loads: BuilderLoad[]
@@ -967,6 +1269,8 @@ function FailedPhase({
   onOtherCity: () => void
   onRefresh: () => void
   onMoreHours: () => void
+  /** Честная подпись об источнике грузов — чтобы провал не выглядел поломкой */
+  sourceNote: string | null
 }) {
   // Причина провала — из тех же данных, что и сборка
   const reason = useMemo(
@@ -1018,6 +1322,9 @@ function FailedPhase({
 
   return (
     <div className="space-y-4">
+      {/* Сначала честно — откуда грузы: провал не должен выглядеть поломкой */}
+      <SourceNoteCard note={sourceNote} loadsCount={loads.length} />
+
       <Card className="border-warning/30 bg-warning/[0.06]">
         <p className="text-[16px] font-semibold text-foreground">Маршрут не собрался</p>
         <p className="mt-1 text-[13.5px] leading-snug text-foreground/90">{reason?.headline}</p>

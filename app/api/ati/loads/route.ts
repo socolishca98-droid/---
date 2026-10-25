@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireStaff } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
 import { getActiveAtiToken } from "@/lib/ati/connection"
-import { scanAtiLoads, getAtiCache } from "@/lib/ati-client"
+import { fetchBoardInfo, scanAtiLoads, getAtiCache } from "@/lib/ati-client"
 import { isProfileDue, parseProfileCities } from "@/lib/ati/scan-profile"
 import { markProfileScanned, getDueScanProfiles } from "@/lib/ati/scan-schedule"
 import { prisma } from "@/lib/prisma"
@@ -106,6 +106,18 @@ export async function GET(request: NextRequest) {
       return { ...rest, fromPoint, toPoint }
     })
 
+    // Площадки организации: отдельным необязательным запросом. Не смогли
+    // получить — не ошибка экрана, честную подпись просто не покажем.
+    let sourceBoards: Array<{ id: string; name: string }> = []
+    try {
+      const ati = await getActiveAtiToken(organizationId)
+      if (ati.ok) {
+        sourceBoards = await fetchBoardInfo(ati.token, organizationId)
+      }
+    } catch {
+      sourceBoards = []
+    }
+
     const freshScannedAt = refreshed ? new Date() : scannedAt
 
     return NextResponse.json({
@@ -117,6 +129,20 @@ export async function GET(request: NextRequest) {
       refreshError,
       /** Кэш устарел — клиент обновит биржу в фоне (POST на этот же путь) */
       stale: refreshError === "stale",
+      /**
+       * Источник грузов — честно, без преувеличений. API ATI.SU отдаёт грузы
+       * ТОЛЬКО с площадок, к которым подключена организация: общий поиск по
+       * бирже (как на сайте loads.ati.su) через API недоступен. Без этой
+       * подписи логист решает, что программа «не работает», хотя данные
+       * приходят именно оттуда, откуда ATI позволяет.
+       */
+      source: {
+        boards: sourceBoards,
+        note:
+          sourceBoards.length > 0
+            ? `Грузы приходят с ${sourceBoards.length === 1 ? "площадки ATI" : "площадок ATI"}, к которым подключена организация (${sourceBoards.map((b) => b.name || b.id).join(", ")}). Общий поиск по бирже через API ATI недоступен — на сайте ATI видны все грузы, здесь только грузы этих площадок.`
+            : "К организации не подключена ни одна площадка ATI — грузов нет. Попросите грузовладельца добавить вас на его площадку или вступите в открытую площадку на ati.su.",
+      },
       /** Профиль сканирования организации (города, интервал) — для шторки настроек */
       scanProfile: profile
         ? {
