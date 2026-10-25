@@ -128,5 +128,68 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 5. Другие формы фильтра «откуда»: вдруг принимается geoCode или город
+  if (probe === "all" || probe === "shapes") {
+    const shapes: Array<[string, any]> = [
+      ["geoCode", { geoCode: "2_290", type: 1, radius: 300, exact_only: false }],
+      ["geoCodeNoType", { geoCode: "2_290", radius: 300 }],
+      ["idString", { id: "2_290", type: 1, radius: 300, exact_only: false }],
+      ["cityId", { cityId: 290, type: 1, radius: 300, exact_only: false }],
+      ["type2", { id: 290, type: 2, radius: 300, exact_only: false }],
+      ["settlementId", { settlementId: 290, type: 1, radius: 300 }],
+    ]
+    for (const [label, from] of shapes) {
+      try {
+        const res = await atiFetch(
+          `${EX}/loads/search`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              exclude_geo_dicts: true,
+              page: 1,
+              items_per_page: 1,
+              filter: { sorting_type: 2, from },
+            }),
+          },
+          "probe3",
+        )
+        const text = await res.text()
+        let total = null
+        let city = null
+        try {
+          const parsed = JSON.parse(text)
+          total = parsed.totalItems
+          city = parsed?.loads?.[0]?.loading?.location?.city
+        } catch {}
+        out[`shape:${label}`] = { status: res.status, totalItems: total, city, body: text.slice(0, 160) }
+      } catch (e: any) {
+        out[`shape:${label}`] = { error: e?.message }
+      }
+    }
+  }
+
+  // 6. Подсказки городов по другим путям и базам
+  if (probe === "all" || probe === "suggest") {
+    const tries: Array<[string, string]> = [
+      ["loads:geosuggest", "https://loads.ati.su/webapi/v1.0/geosuggest?query=вол"],
+      ["loads:geo/suggest", "https://loads.ati.su/webapi/v1.0/geo/suggest?query=вол"],
+      ["loads:settlements", "https://loads.ati.su/webapi/v1.0/settlements?query=вол"],
+      ["loads:loads/geo", "https://loads.ati.su/webapi/v1.0/loads/geo?query=вол"],
+      ["loads:v2:cities", "https://loads.ati.su/webapi/v2.0/cities?query=вол"],
+      ["loads:api:cities", "https://loads.ati.su/api/cities?query=вол"],
+      ["api:geo", "https://api.ati.su/webapi/v1.0/geo/cities?query=вол"],
+    ]
+    for (const [label, url] of tries) {
+      try {
+        const res = await atiFetch(url, { method: "GET", headers }, "probe3")
+        const text = await res.text()
+        out[`sug:${label}`] = { status: res.status, body: text.slice(0, 200) }
+      } catch (e: any) {
+        out[`sug:${label}`] = { error: e?.message }
+      }
+    }
+  }
+
   return NextResponse.json(out)
 }
