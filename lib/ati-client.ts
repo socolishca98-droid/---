@@ -529,145 +529,168 @@ function findCityIdByName(name: unknown): number | null {
 // =============================================================================
 
 async function saveToCache(rawLoads: any[], organizationId: string): Promise<any[]> {
-  const saved: any[] = []
   const now = new Date()
+  if (rawLoads.length === 0) return []
+
+  // Один запрос вместо запроса на каждый груз: сбор региона тянет сотни
+  // грузов, и поштучный findFirst превращал сбор в трехминутное ожидание.
+  const ids = rawLoads.map((item) => String(item.id))
+  // org-audit: ok — строки ищутся в накопленной базе своей организации
+  const existingRows = await prisma.atiCache.findMany({
+    where: { organizationId, atiLoadId: { in: ids } },
+  })
+  const existingById = new Map(existingRows.map((row: any) => [row.atiLoadId, row]))
+
+  const toCreate: any[] = []
+  const toUpdate: any[] = []
 
   for (const item of rawLoads) {
+    const atiId = String(item.id)
+    const existing = existingById.get(atiId)
+    const isExchange = item.source === "exchange"
+
+    if (existing) {
+      // Обновляем только то, чего в записи ещё нет: точки, фрахтователь,
+      // источник. scannedAt трогаем только у «new» — как и раньше.
+      if (existing.status !== "new") continue
+      const pointsJson = JSON.stringify({
+        fromPoint: item.loading?.point ?? null,
+        toPoint: item.unloading?.point ?? null,
+        source: isExchange ? "exchange" : "boards",
+      })
+      const hasPoints = Boolean(item.loading?.point || item.unloading?.point)
+      const needsPoints = hasPoints && (!existing.rawJson || !existing.rawJson.startsWith("{"))
+      const needsFirm = !existing.firmId && item.firm?.id
+      let needsSource = false
+      if (isExchange && existing.rawJson) {
+        try {
+          const parsed = JSON.parse(existing.rawJson)
+          needsSource = !parsed || typeof parsed !== "object" || !parsed.source
+        } catch {
+          needsSource = true
+        }
+      }
+      if (!needsPoints && !needsFirm && !needsSource) continue
+
+      toUpdate.push({
+        id: existing.id,
+        scannedAt: now,
+        firmId: existing.firmId ?? (item.firm?.id ? String(item.firm.id) : null),
+        rawJson: needsPoints ? pointsJson : undefined,
+      })
+      continue
+    }
+
+    const locFrom = item.loading?.location
+    const locTo = item.unloading?.location
+    const fromCity = locFrom?.city || locFrom?.cityName || "N/A"
+    const fromRegion = locFrom?.region || locFrom?.region_name || ""
+    const toCity = locTo?.city || locTo?.cityName || "N/A"
+    const toRegion = locTo?.region || locTo?.region_name || ""
+    const routeFrom = fromRegion && fromCity !== "N/A" ? `${fromCity}, ${fromRegion}` : fromCity
+    const routeTo = toRegion && toCity !== "N/A" ? `${toCity}, ${toRegion}` : toCity
+    const fromKey = makeCityKey(routeFrom)
+    const toKey = makeCityKey(routeTo)
+
+    let price = 0
+    let priceType: "with_nds" | "without_nds" | "unknown" | null = null
+    if (item.rate) {
+      if (item.rate.priceNds) {
+        price = item.rate.priceNds
+        priceType = "with_nds"
+      } else if (item.rate.priceNoNds) {
+        price = item.rate.priceNoNds
+        priceType = "without_nds"
+      } else if (item.rate.price) {
+        price = item.rate.price
+        priceType = "unknown"
+      }
+    }
+
+    let loadingDate = new Date()
+    if (item.loading?.firstDate) {
+      const d = new Date(item.loading.firstDate)
+      if (!isNaN(d.getTime())) loadingDate = d
+    }
+
+    const distance = item.route?.distance || 0
+    const weight = item.load?.weight ? Math.round(item.load.weight * 1000) : 0
+    // TTL: 2 дня от даты загрузки
+    const ttlSource = loadingDate || now
+    const expiresAt = new Date(ttlSource.getTime() + 2 * 24 * 60 * 60 * 1000)
+
+    toCreate.push({
+      organizationId,
+      atiLoadId: atiId,
+      routeFrom,
+      routeFromId: fromKey,
+      routeTo,
+      routeToId: toKey,
+      distance,
+      weight,
+      volume: item.load?.volume || null,
+      cargoType: item.load?.cargoType || "Груз",
+      truckType: item.truck?.carTypes?.join(", ") || null,
+      loadingType: item.truck?.loadingTypes?.join(", ") || null,
+      price: Math.round(price),
+      priceType: priceType || undefined,
+      firmId: item.firm?.id ? String(item.firm.id) : null,
+      firmName: item.firm?.name || "Частник",
+      loadingDate,
+      status: "new",
+      contactName: null,
+      contactPhone: null,
+      note: null,
+      // Точные координаты точек погрузки/выгрузки: помощник берёт по ним
+      // грузы "по пути" (геокодер мелкие сёла не знает)
+      rawJson: JSON.stringify({
+        fromPoint: item.loading?.point ?? null,
+        toPoint: item.unloading?.point ?? null,
+        // Откуда груз: общая биржа или площадка организации.
+        source: isExchange ? "exchange" : "boards",
+      }),
+      scannedAt: now,
+      expiresAt,
+    })
+  }
+
+  // Новые грузы — одним запросом. Дубл внутри пачки (биржа иногда отдаёт
+  // один груз дважды) отсекаем по atiLoadId, иначе createMany упадёт.
+  const seen = new Set<string>()
+  const uniqueCreate = toCreate.filter((row) => {
+    if (seen.has(row.atiLoadId)) return false
+    seen.add(row.atiLoadId)
+    return true
+  })
+  if (uniqueCreate.length > 0) {
     try {
-      const atiId = String(item.id)
-
-      // org-audit: ok — строка ищется в накопленной базе своей организации
-      const existing = await prisma.atiCache.findFirst({
-        where: { organizationId, atiLoadId: atiId },
-      })
-      if (existing) {
-        // Обновляем только scannedAt для "new" записей
-        if (existing.status === "new") {
-          // Точки погрузки/выгрузки из груза: в старых записях их не было,
-          // а без них помощник не берёт грузы «по пути»
-          const pointsJson = JSON.stringify({
-            fromPoint: item.loading?.point ?? null,
-            toPoint: item.unloading?.point ?? null,
-          })
-          const hasPoints =
-            item.loading?.point || item.unloading?.point
-              ? !existing.rawJson || !existing.rawJson.startsWith("{")
-              : false
-          // Груз мог впервые прийти из общей биржи — дописываем источник,
-          // не затирая уже сохранённые точки.
-          let rawJsonPatch: string | undefined
-          if (item.source === "exchange" && existing.rawJson) {
-            try {
-              const parsed = JSON.parse(existing.rawJson)
-              if (parsed && typeof parsed === "object" && !parsed.source) {
-                rawJsonPatch = JSON.stringify({ ...parsed, source: "exchange" })
-              }
-            } catch {
-              /* битый rawJson — не трогаем */
-            }
-          }
-          await prisma.atiCache.update({
-            where: { id: existing.id },
-            data: {
-              scannedAt: now,
-              // Добор фрахтователя: в старых записях FirmId мог не сохраниться —
-              // без него кнопка «Узнать телефон» не сработает
-              firmId: existing.firmId ?? (item.firm?.id ? String(item.firm.id) : null),
-              rawJson: hasPoints ? pointsJson : rawJsonPatch,
-            },
-          })
-        }
-        saved.push(existing)
-        continue
-      }
-
-      const locFrom = item.loading?.location
-      const locTo = item.unloading?.location
-
-      const fromCity = locFrom?.city || locFrom?.cityName || "N/A"
-      const fromRegion = locFrom?.region || locFrom?.region_name || ""
-      const toCity = locTo?.city || locTo?.cityName || "N/A"
-      const toRegion = locTo?.region || locTo?.region_name || ""
-
-      const routeFrom =
-        fromRegion && fromCity !== "N/A" ? `${fromCity}, ${fromRegion}` : fromCity
-      const routeTo = toRegion && toCity !== "N/A" ? `${toCity}, ${toRegion}` : toCity
-
-      const fromKey = makeCityKey(routeFrom)
-      const toKey = makeCityKey(routeTo)
-
-      let price = 0
-      let priceType: "with_nds" | "without_nds" | "unknown" | null = null
-      if (item.rate) {
-        if (item.rate.priceNds) {
-          price = item.rate.priceNds
-          priceType = "with_nds"
-        } else if (item.rate.priceNoNds) {
-          price = item.rate.priceNoNds
-          priceType = "without_nds"
-        } else if (item.rate.price) {
-          price = item.rate.price
-          priceType = "unknown"
-        }
-      }
-
-      let loadingDate = new Date()
-      if (item.loading?.firstDate) {
-        const d = new Date(item.loading.firstDate)
-        if (!isNaN(d.getTime())) loadingDate = d
-      }
-
-      const distance = item.route?.distance || 0
-      const weight = item.load?.weight ? Math.round(item.load.weight * 1000) : 0
-
-      // TTL: 2 дня от даты загрузки
-      const ttlSource = loadingDate || now
-      const expiresAt = new Date(ttlSource.getTime() + 2 * 24 * 60 * 60 * 1000)
-
-      const created = await prisma.atiCache.create({
-        data: {
-          organizationId,
-          atiLoadId: atiId,
-          routeFrom,
-          routeFromId: fromKey,
-          routeTo,
-          routeToId: toKey,
-          distance,
-          weight,
-          volume: item.load?.volume || null,
-          cargoType: item.load?.cargoType || "Груз",
-          truckType: item.truck?.carTypes?.join(", ") || null,
-          loadingType: item.truck?.loadingTypes?.join(", ") || null,
-          price: Math.round(price),
-          priceType: priceType || undefined,
-          firmId: item.firm?.id ? String(item.firm.id) : null,
-          firmName: item.firm?.name || "Частник",
-          loadingDate,
-          status: "new",
-          contactName: null,
-          contactPhone: null,
-          note: null,
-          // Точные координаты точек погрузки/выгрузки: помощник берёт по ним
-          // грузы "по пути" (геокодер мелкие сёла не знает)
-          rawJson: JSON.stringify({
-            fromPoint: item.loading?.point ?? null,
-            toPoint: item.unloading?.point ?? null,
-            // Откуда груз: общая биржа или площадка организации. Лежит в
-            // rawJson, чтобы не требовать миграции: помощник показывает
-            // источник словами, а фильтр «только биржа» работает и без колонки.
-            source: item.source === "exchange" ? "exchange" : "boards",
-          }),
-          scannedAt: now,
-          expiresAt,
-        },
-      })
-
-      saved.push(decorateCacheRow(created))
+      // skipDuplicates не поддерживается схемой SQLite (каноничная схема
+      // проекта), а дубли внутри пачки мы уже отсекли сами.
+      await prisma.atiCache.createMany({ data: uniqueCreate })
     } catch (error) {
-      console.error("[saveToCache] Error on item:", error)
+      console.error("[saveToCache] createMany:", error)
     }
   }
-  return saved
+  for (const row of toUpdate) {
+    try {
+      await prisma.atiCache.update({ where: { id: row.id }, data: row })
+    } catch (error) {
+      console.error("[saveToCache] update:", error)
+    }
+  }
+
+  // Возвращаем актуальные строки: и созданные, и обновлённые — интерфейсу
+  // нужны точки и источник, а не только счётчики.
+  const createdIds = uniqueCreate.map((row) => row.atiLoadId)
+  const updatedIds = toUpdate.map((row) => row.id)
+  if (createdIds.length === 0 && updatedIds.length === 0) return []
+  const rows = await prisma.atiCache.findMany({
+    where: {
+      organizationId,
+      OR: [{ atiLoadId: { in: createdIds } }, { id: { in: updatedIds } }],
+    },
+  })
+  return rows.map((row: any) => decorateCacheRow(row))
 }
 
 /**
