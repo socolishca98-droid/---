@@ -21,7 +21,7 @@
 
 import { estimateFuelL } from "../fleet/fuel"
 import { normalizeCityKey } from "./city-norm"
-import { formatCount, formatMoney, shortCity } from "./format"
+import { formatCount, formatDateShort, formatMoney, plural, shortCity } from "./format"
 
 // ---------------------------------------------------------------------------
 // Вход
@@ -192,6 +192,8 @@ export interface BuiltRoute {
   totalDistanceKm: number
   /** Вся поездка в часах, включая возврат и погрузки/выгрузки */
   totalHours: number
+  /** Лимит времени, на который собирали маршрут, часы */
+  maxHours: number
   /** Когда машина выезжает по расчёту (сейчас + сборы) */
   departAt: Date
   /** Когда машина дома по расчёту — с учётом ожидания дат загрузки */
@@ -209,8 +211,34 @@ export interface BuiltRoute {
   unprofitable: boolean
   /** Не влезло/не подошло — с причинами, ничего не пропадает молча */
   excluded: ExcludedLoad[]
+  /**
+   * Что осталось на бирже — честный подсчёт.
+   *
+   * Зачем: счётчик «осталось 99» поверх 185 грузов — полуправда: почти все
+   * из них без ставки или с прошедшей датой. Логисту важно другое —
+   * сколько грузов реально могли бы взять, но не взяли.
+   */
+  leftover: LeftoverCounts
   /** Почему собрали именно так — для экрана */
   reasons: string[]
+  /** Что изменить, чтобы маршрут стал длиннее (иначе null) */
+  growthHint: string | null
+  /** На сколько часов поднять лимит, чтобы вchain встал следующий груз */
+  growthHours: number | null
+}
+
+/** Разбор «что осталось на бирже» по причинам — без двойного счёта. */
+export interface LeftoverCounts {
+  /** Подходят под машину и дату, но в маршрут не попали */
+  usable: number
+  /** Ставка не озвучена — нечем мерить выгоду */
+  noRate: number
+  /** Дата загрузки уже прошла */
+  pastDate: number
+  /** Не влезает в выбранную машину */
+  notFit: number
+  /** Уже не в бирже / исключены вами / маршрут неизвестен */
+  other: number
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +364,46 @@ function legMoney(
   return { revenue, fuelLiters, fuelCostRub, profitRub }
 }
 
+// ---------------------------------------------------------------------------
+// Почему цепочка остановилась
+// ---------------------------------------------------------------------------
+
+/**
+ * Точная причина, почему цепочка перестала расти.
+ *
+ * Зачем: экран «Почему собрал так» обязан говорить правду. Фраза «дальше
+ * грузы были, но маршрут не влезал в лимит времени» при маршруте на 11 ч
+ * из 48 ч — ложь: по ней логист не поймёт, что менять. Поэтому причина
+ * собирается по факту — не хватило часов, груз готов позже срока, ставка
+ * не окупает пробег, рядом ничего нет или из этих городов уже брали.
+ */
+export type ChainStopKind =
+  /** Не хватило часов лимита: дорога или ожидание даты загрузки */
+  | "hours"
+  /** Ставка не покрывает пробег и топливо */
+  | "profit"
+  /** Рядом грузы есть, но только из городов, где мы уже брали */
+  | "used-city"
+  /** В радиусе «по пути» грузов нет */
+  | "none"
+  /** Упёрлись в предел плеч на один выезд */
+  | "legs"
+
+export interface ChainStop {
+  kind: ChainStopKind
+  /** Груз, из-за которого встали — если он был */
+  load: BuilderLoad | null
+  /** Часы ожидания даты загрузки у этого груза */
+  waitHours: number
+  /** Часы дороги: подъезд к погрузке + само плечо */
+  hours: number
+}
+
+const EMPTY_STOP: ChainStop = { kind: "none", load: null, waitHours: 0, hours: 0 }
+
+/** Сколько кандидатов перебираем на шаг: биржа большая, хвост не важен. */
+const CANDIDATE_SCAN = 60
+
 /**
  * Цепочка под конкретную машину.
  *
@@ -357,9 +425,8 @@ function buildChain(
   maxHours: number,
   keepIds: readonly string[],
   departAt: Date,
-): { legs: RouteLeg[]; stoppedByHours: boolean } {
+): { legs: RouteLeg[]; stop: ChainStop } {
   const legs: RouteLeg[] = []
-  let stoppedByHours = false
   const used = new Set<string>()
   // Города, с которых уже забирали: машина не может трижды ездить «из точки
   // А в точку Б» — это три отдельные поездки, а не один маршрут. Поэтому
@@ -376,17 +443,20 @@ function buildChain(
   const radius = legs.length === 0 ? startRadiusKm : detourKm
 
   for (let step = 0; step < maxLegs; step += 1) {
-    // Кандидаты: город совпал ИЛИ груз в радиусе (если есть координаты)
-    const candidates = pool.filter((load) => {
+    // Рядом: город совпал ИЛИ груз в радиусе (если есть координаты)
+    const nearby = pool.filter((load) => {
       if (used.has(load.id)) return false
       if (!loadFitsVehicle(load, vehicle)) return false
-      if (usedFromKeys.has(normalizeCityKey(load.fromCity))) return false
       if (normalizeCityKey(load.fromCity) === currentKey) return true
       if (radius > 0 && currentPoint && load.fromPoint) {
         return haversineKm(currentPoint, load.fromPoint) <= radius
       }
       return false
     })
+    // Из городов, где уже забирали, не берём: это другая поездка, не цепочка
+    const candidates = nearby.filter(
+      (load) => !usedFromKeys.has(normalizeCityKey(load.fromCity)),
+    )
 
     // Порядок выбора — ровно как логист смотрит биржу, стоя в городе:
     //  1. согласованные звонком грузы — они в приоритете;
@@ -430,6 +500,20 @@ function buildChain(
       return new Date(departAt.getTime() + clockHours * 3600000)
     }
 
+    /**
+     * Дорога домой из города выгрузки кандидата, часы.
+     *
+     * Зачем в бюджете шага: маршрут обещан на N часов — значит, машина
+     * должна успеть вернуться на базу. Без этого проверка пропускала
+     * цепочку на 49 ч при лимите 48, а «уложились в лимит» становилось
+     * неправдой: хвост потом снимали вслепую.
+     */
+    function backHomeHours(load: BuilderLoad): number {
+      if (normalizeCityKey(load.toCity) === normalizeCityKey(startCity)) return 0
+      if (!startPoint || !load.toPoint) return 0
+      return legHours(haversineKm(startPoint, load.toPoint), 0)
+    }
+
     let best: {
       load: BuilderLoad
       money: ReturnType<typeof legMoney>
@@ -440,7 +524,19 @@ function buildChain(
       hours: number
       waitHours: number
     } | null = null
+    // Причина остановки на этом шаге — по факту, а не на глазок.
+    // Часы важнее ставки: «не хватило срока» логист исправит лимитом,
+    // а «низкая ставка» — только звонком фрахтователю.
+    let byHours: ChainStop | null = null
+    let byProfit: ChainStop | null = null
+    const noStop: ChainStop | null =
+      candidates.length === 0
+        ? { ...EMPTY_STOP, kind: nearby.length > 0 ? "used-city" : "none" }
+        : null
+    let scanned = 0
     for (const load of ordered) {
+      if (scanned >= CANDIDATE_SCAN) break
+      scanned += 1
       const sameCity = normalizeCityKey(load.fromCity) === currentKey
       const deadheadKm =
         sameCity || !currentPoint || !load.fromPoint
@@ -452,25 +548,35 @@ function buildChain(
       // Ожидание даты загрузки — тоже время маршрута: логист договорился
       // «еду трое суток», и пять суток простоя это нарушение
       const waitHours = waitDays(load) * 24
-      // Маршрут планируется по времени: если плечо (с ожиданием) не влезает
-      // в смены, дальше не набираем
-      if (clock + waitHours + hours > maxHours) {
-        stoppedByHours = true
-        break
+      // Маршрут планируется по времени. Плечо не влезло — это ещё не конец:
+      // следующий кандидат может быть короче или готов раньше, поэтому
+      // запоминаем причину и пробуем дальше по списку.
+      const backHours = backHomeHours(load)
+      if (clock + waitHours + hours + backHours > maxHours) {
+        // Запоминаем самого «дешёвого по часам» непрошедшего: объяснять
+        // будем именно ему — ближайший груз, который не влез в срок
+        if (byHours === null || waitHours + hours < byHours.waitHours + byHours.hours) {
+          byHours = { kind: "hours", load, waitHours, hours }
+        }
+        continue
       }
       const money = legMoney(load, totalKm, vehicle, fuelPrice)
-      if (money.revenue <= 0) continue
-      if (money.profitRub !== null && money.profitRub <= 0) continue
-      if (totalKm > 0) {
-        const perKm = money.profitRub !== null ? money.profitRub / totalKm : money.revenue / totalKm
-        if (perKm < minProfitPerKm) continue
+      const perKm =
+        totalKm > 0 ? (money.profitRub ?? money.revenue) / totalKm : money.revenue
+      const unprofitable =
+        money.revenue <= 0 ||
+        (money.profitRub !== null && money.profitRub <= 0) ||
+        (totalKm > 0 && perKm < minProfitPerKm)
+      if (unprofitable) {
+        byProfit ??= { kind: "profit", load, waitHours, hours }
+        continue
       }
       best = {
         load,
         money,
         deadheadKm,
         loadedKm,
-        profitPerKm: totalKm > 0 ? (money.profitRub ?? money.revenue) / totalKm : 0,
+        profitPerKm: perKm,
         byTheWay: !sameCity,
         hours,
         waitHours,
@@ -478,7 +584,12 @@ function buildChain(
       break
     }
 
-    if (!best) break
+    if (!best) {
+      if (legs.length >= maxLegs) {
+        return { legs, stop: { ...EMPTY_STOP, kind: "legs" } }
+      }
+      return { legs, stop: byHours ?? byProfit ?? noStop ?? EMPTY_STOP }
+    }
 
     // ЕТА погрузки: выезд + часы в пути. Если фрахтователь назвал дату
     // загрузки позже — стоим и ждём, часы ожидания тоже идут в маршрут.
@@ -516,7 +627,8 @@ function buildChain(
     currentPoint = best.load.toPoint ?? currentPoint
   }
 
-  return { legs, stoppedByHours }
+  // Перебрали все плеча — больше на один выезд не берём
+  return { legs, stop: { ...EMPTY_STOP, kind: "legs" } }
 }
 
 // ---------------------------------------------------------------------------
@@ -598,6 +710,69 @@ export function hoursLabel(hours: number): string {
     return `${days} дней`
   }
   return `${hours} ч`
+}
+
+/**
+ * Часы словами, как их планирует логист: «11 ч», «2 дня 5 ч».
+ *
+ * Зачем: на экране рядом стоят «занял» и «осталось» — их надо читать
+ * одинаково, иначе сравнение не работает.
+ */
+export function hoursSpan(hours: number): string {
+  const rounded = Math.round(hours)
+  if (rounded <= 0) return "0 ч"
+  if (rounded < 24) return `${rounded} ч`
+  const days = Math.floor(rounded / 24)
+  const rest = rounded % 24
+  if (rest === 0) return hoursLabel(rounded)
+  return `${days} ${plural(days, ["день", "дня", "дней"])} ${rest} ч`
+}
+
+/**
+ * Расстояния считаем по прямой между точками грузов — реальный пробег
+ * больше. Это оценка, и на экране она должна быть помечена как оценка.
+ */
+export const DISTANCE_NOTE =
+  "Километры — по прямой между точками грузов: реальный пробег обычно на 15–20% больше"
+
+/**
+ * Почему цепочка перестала расти — по одному-двум предложениями на причину.
+ *
+ * Правило простое: каждая строка должна быть проверяемой. «Дальше грузы
+ * были, но маршрут не влезал в лимит времени» — непроверяемая и часто
+ * ложная, поэтому вместо неё — какой груз, когда готов и сколько ждать.
+ */
+function stopReasons(stop: ChainStop, maxHours: number, detourKm: number, legs: number): string[] {
+  const limitText = `лимит ${maxHours} ч`
+  switch (stop.kind) {
+    case "hours": {
+      const load = stop.load
+      const where = load
+        ? `Ближайший груз по пути — ${shortCity(load.fromCity)} → ${shortCity(load.toCity)}`
+        : "Дальше по пути грузы были"
+      const date = load?.loadingDate ? formatDateShort(load.loadingDate) : null
+      if (stop.waitHours >= 12) {
+        const ready = date ? `, готов к загрузке ${date}` : ""
+        return [
+          `${where}${ready}: ждать ${hoursSpan(stop.waitHours)} — с ним выезд вышел бы за ${limitText}`,
+        ]
+      }
+      return [
+        `${where}, но плечо ${hoursSpan(stop.hours)} плюс дорога домой — в ${limitText} уже не влезало`,
+      ]
+    }
+    case "profit":
+      return ["Дальше по пути были грузы, но ставка не покрывала пробег и топливо"]
+    case "used-city":
+      return [
+        "Дальше грузы были только из городов, где мы уже забирали: с одной точки берём один груз",
+      ]
+    case "legs":
+      return [`Маршрут уже ${legs} ${pluralLegs(legs)} — столько хватает на один выезд`]
+    case "none":
+    default:
+      return [`Дальше в радиусе ${detourKm} км грузов «по пути» не нашлось`]
+  }
 }
 
 /** Следующий шаг лимита времени: 24 → 48 → 72 → 120 → 168. */
@@ -756,7 +931,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     )
     const legs = chain.legs
     if (legs.length === 0) continue
-    let stoppedByHours = chain.stoppedByHours
+    const stop = chain.stop
     let trimmedByHours = false
 
     // Маршрут обещан на N часов — считаем с дорогой домой. Если цепочка
@@ -806,7 +981,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       minProfitPerKm,
       detourKm,
       maxHours,
-      stoppedByHours,
+      stop,
       trimmedByHours,
     })
     if (!route) continue
@@ -846,8 +1021,8 @@ interface FinalizeInput {
   minProfitPerKm: number
   detourKm: number
   maxHours: number
-  /** Цепочка оборвалась по времени: ещё были грузы, но маршрут не влезал */
-  stoppedByHours: boolean
+  /** Почему цепочка перестала расти — точная причина, а не «грузы были» */
+  stop: ChainStop
   /** Хвост цепочки сняли: с дорогой домой маршрут не влезал в лимит */
   trimmedByHours: boolean
 }
@@ -931,6 +1106,22 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     excluded.push({ load, reason })
   }
 
+  // Остаток биржи — по причинам, без двойного счёта: excluded = отсеянные
+  // до цепочки + грузы пула, которые не взяли. Поэтому «пригодные» считаем
+  // из пула, а причины — из финального списка.
+  const notUsed = pool.filter((load) => !usedIds.has(load.id))
+  const usable = notUsed.filter((load) => loadFitsVehicle(load, vehicle)).length
+  const countReason = (pattern: RegExp) =>
+    excluded.filter((item) => pattern.test(item.reason)).length
+  const leftover: LeftoverCounts = {
+    usable,
+    noRate: countReason(/ставка не озвучена/),
+    pastDate: countReason(/дата загрузки прошла/),
+    notFit: notUsed.length - usable,
+    other:
+      excluded.length - usable - (notUsed.length - usable) - countReason(/ставка не озвучена/) - countReason(/дата загрузки прошла/),
+  }
+
   const reasons: string[] = []
   if (!startFromCity) {
     reasons.push(`Город старта не указан — начали от самого выгодного груза в ${shortCity(effectiveStart)}`)
@@ -971,12 +1162,25 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       `Обратно в ${shortCity(effectiveStart)} — порожним пробегом; точное расстояние посчитает навигатор`,
     )
   }
-  const days = Math.round((maxHours / 24) * 10) / 10
-  reasons.push(
-    maxHours >= 24
-      ? `Маршрут на ${days} дн. (${Math.round(maxHours)} ч) — в лимит уложились`
-      : `Маршрут на ${Math.round(maxHours)} ч — в лимит уложились`,
-  )
+  // Время — честно: сколько заняли и сколько осталось. «В лимит уложились»
+  // на маршруте из 11 ч при лимите 48 ч звучит как насмешка над логистом.
+  const restHours = Math.round((maxHours - totalHours) * 10) / 10
+  const busyText = hoursSpan(totalHours)
+  const limitText = `лимит ${maxHours} ч`
+  if (input.trimmedByHours) {
+    reasons.push(`Маршрут занял ${busyText} при ${limitText}: лимит исчерпан, хвост сняли`)
+  } else if (restHours > 0) {
+    reasons.push(
+      `Маршрут занял ${busyText} при ${limitText} — осталось ${hoursSpan(restHours)}`,
+    )
+  } else {
+    reasons.push(`Маршрут занял ${busyText} при ${limitText} — лимит выбран полностью`)
+  }
+  // Дисклеймер по расстояниям: точки грузов соединяем по прямой, а не по
+  // дорогам. Молчать об этом — значит врать про километры и прибыль.
+  if (totalDistanceKm > 0) {
+    reasons.push(DISTANCE_NOTE)
+  }
   if (waitHoursTotal >= 12) {
     reasons.push(
       `Ожидание дат загрузки: ${Math.round(waitHoursTotal)} ч — грузы готовы к разным числам`,
@@ -987,12 +1191,11 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       `По датам: ${formatCount(lateRiskLegs, ["плечо", "плеча", "плеч"])} с риском не успеть к загрузке — уточните дату при звонке`,
     )
   }
-  if (input.stoppedByHours) {
-    reasons.push("Дальше грузы были, но маршрут не влезал в лимит времени")
-  }
   if (input.trimmedByHours) {
-    reasons.push("Последние плечи сняли: с дорогой домой маршрут не влезал в лимит")
+    reasons.push("Последние плечи сняли: с дорогой домой маршрут не влезал в лимит времени")
   }
+  // Почему цепочка встала — словами по факту, а не «грузы были»
+  reasons.push(...stopReasons(input.stop, maxHours, input.detourKm, legs.length))
   if (needsFuelSetup) {
     reasons.push("У машины не заполнен расход топлива — прибыль не посчитана")
   } else if (vehicle.fuelEstimated) {
@@ -1006,6 +1209,28 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   const path = [shortCity(effectiveStart)]
   for (const leg of legs) path.push(shortCity(leg.load.toCity))
 
+  // Подсказка «как ехать длиннее» — только когда она правда поможет.
+  // Маршрут встал на дате загрузки → поднять лимит; встал на пустоте →
+  // расширить радиус. Всё остальное — не наша забота.
+  let growthHint: string | null = null
+  let growthHours: number | null = null
+  const stopLoad = input.stop.load
+  if (input.stop.kind === "hours" && stopLoad) {
+    const longer = nextHoursStep(maxHours)
+    if (longer > maxHours) {
+      growthHours = longer
+      const date = stopLoad.loadingDate ? formatDateShort(stopLoad.loadingDate) : null
+      const ready = date ? ` (готов ${date})` : ""
+      growthHint =
+        `Следующий груз${ready}: ${shortCity(stopLoad.fromCity)} → ${shortCity(stopLoad.toCity)}. ` +
+        `Чтобы взять его, поставьте срок ${hoursLabel(longer)} (${longer} ч) — помощник доберёт его в цепочку.`
+    }
+  } else if (input.stop.kind === "none" && legs.length > 0) {
+    growthHint =
+      `В радиусе ${input.detourKm} км от маршрута грузов не нашлось. ` +
+      "Увеличьте радиус «грузы по пути» в тонкой настройке — цепочка станет длиннее."
+  }
+
   return {
     id: `route:${legs.map((leg) => leg.load.id).join("-")}`,
     startCity: shortCity(effectiveStart),
@@ -1017,6 +1242,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     returnsHomeWithLoad,
     totalDistanceKm,
     totalHours,
+    maxHours,
     departAt,
     homeAt,
     lateRiskLegs,
@@ -1027,7 +1253,10 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     needsFuelSetup,
     unprofitable: totalProfitRub !== null && totalProfitRub < 0,
     excluded,
+    leftover,
     reasons,
+    growthHint,
+    growthHours,
   }
 }
 

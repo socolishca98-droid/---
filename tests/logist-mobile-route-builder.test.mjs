@@ -26,6 +26,7 @@ const {
   buildRouteVariants,
   departTime,
   hoursLabel,
+  hoursSpan,
   loadPrice,
   loadRatePerKm,
   routeMapPoints,
@@ -774,8 +775,13 @@ test("цепочка обрезается, если вместе с возвра
   assert.equal(route.legs.length, 3, "последнее плечо снято — маршрут не длиннее срока")
   assert.ok(route.totalHours <= 50, `в пути ${route.totalHours} ч при лимите 50 ч`)
   assert.ok(
-    route.reasons.some((line) => line.includes("не влезал в лимит времени")),
+    route.reasons.some((line) => /не влезал|не влезало|лимит/.test(line)),
     `причины объясняют обрезку: ${route.reasons.join(" | ")}`,
+  )
+  // Время — честно: сколько заняли и сколько осталось, а не «уложились»
+  assert.ok(
+    route.reasons.some((line) => line.startsWith("Маршрут занял")),
+    `причины показывают занятое время: ${route.reasons.join(" | ")}`,
   )
 })
 
@@ -795,4 +801,187 @@ test("если грузы есть, но едут дольше срока — п
   assert.ok(reason)
   assert.equal(reason.tooLong, 1, "плечо дольше 8 ч")
   assert.ok(reason.headline.includes("срок"), `заголовок: ${reason.headline}`)
+})
+
+// ── 20. Объяснения не врут: «Почему собрал так» ──────────────────────────
+// Живой прогон на бирже (185 грузов, Домодедово, 48 ч, машина 5 т) показал:
+// маршрут на 11 ч при лимите 48 ч сопровождался фразой «дальше грузы были,
+// но маршрут не влезал в лимит времени». Это ложь — и по ней логист не
+// понимает, что менять. Ниже — проверка, что причину теперь говорят по
+// факту, а цифры совпадают с маршрутом.
+test("причина остановки называется по факту, а не «грузы были»", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const HIMKI = { lat: 55.897, lng: 37.4293 }
+  const RAMENSKOE = { lat: 55.567, lng: 38.227 }
+  const loads = [
+    load({ id: "a", fromCity: "Домодедово", toCity: "Химки", distanceKm: 54, priceRub: 16500, weightKg: 5000, fromPoint: MOSCOW, toPoint: HIMKI }),
+    // Груз «по пути» из Химок: готов только послезавтра — ждать двое суток
+    load({
+      id: "b",
+      fromCity: "Раменское",
+      toCity: "Москва",
+      distanceKm: 51,
+      priceRub: 22700,
+      weightKg: 600,
+      fromPoint: RAMENSKOE,
+      toPoint: MOSCOW,
+      loadingDate: "2026-10-24T00:00:00.000Z",
+    }),
+  ]
+  const route = buildRoute({
+    startCity: "Домодедово",
+    loads,
+    vehicles: [vehicle({ capacity: 5000, volume: 30, fuelConsumptionPer100: 18 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 48,
+    detourKm: 150,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 1, "второе плечо не влезает в срок вместе с ожиданием")
+  const lines = route.reasons.join(" | ")
+  assert.ok(
+    !lines.includes("Дальше грузы были, но маршрут не влезал в лимит времени"),
+    `не должно было быть старой лживой строки: ${lines}`,
+  )
+  assert.ok(
+    lines.includes("Ближайший груз по пути — Раменское → Москва"),
+    `причина называет груз: ${lines}`,
+  )
+  assert.ok(lines.includes("ждать"), `причина называет ожидание: ${lines}`)
+  assert.ok(
+    lines.includes("лимит 48 ч"),
+    `причина называет лимит: ${lines}`,
+  )
+  // Время — честно: сколько заняли и сколько осталось
+  assert.ok(
+    lines.includes(`Маршрут занял ${Math.round(route.totalHours)} ч`),
+    `время маршрута в причинах: ${lines}`,
+  )
+  assert.ok(lines.includes("осталось"), `остаток лимита в причинах: ${lines}`)
+  assert.equal(route.growthHours, 72, "подсказка поднимает лимит на следующий шаг")
+  assert.ok(route.growthHint?.includes("Раменское"), `подсказка роста: ${route.growthHint}`)
+})
+
+test("маршрут не вылезает за лимит времени — с дорогой домой", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: LIPETSK }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 48,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 2, "оба плеча влезают в двое суток с дорогой домой")
+  assert.ok(
+    route.totalHours <= route.maxHours,
+    `в пути ${route.totalHours} ч при лимите ${route.maxHours} ч`,
+  )
+  assert.ok(
+    route.reasons.some((line) => line.startsWith("Маршрут занял")),
+    `причины показывают занятое время: ${route.reasons.join(" | ")}`,
+  )
+})
+
+test("длинный груз не влез — берём более короткий, а не останавливаем цепочку", () => {
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const loads = [
+    // Выгоднее за километр, но ехать 526 км — в 24 ч вместе с возвратом не влезает
+    load({ id: "long", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 250000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    // Короче и дешевле за километр, но в лимит укладывается
+    load({ id: "short", fromCity: "Москва", toCity: "Липецк", distanceKm: 280, priceRub: 40000, fromPoint: MOSCOW, toPoint: LIPETSK }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 24,
+    startPoint: MOSCOW,
+  })
+  assert.ok(route)
+  assert.equal(route.legs.length, 1, "цепочка не пустая")
+  assert.equal(route.legs[0].load.id, "short", "взяли груз, который влезает в срок")
+})
+
+test("«осталось на бирже» считает пригодные грузы, а не всё подряд", () => {
+  const loads = [
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 52000 }),
+    // Влезает в машину, ставка есть, дата свежая — но не взяли: другое направление
+    load({ id: "b", fromCity: "Казань", toCity: "Уфа", distanceKm: 500, priceRub: 90000 }),
+    // Без ставки — в «пригодные» не идёт
+    load({ id: "c", fromCity: "Тула", toCity: "Орёл", distanceKm: 300, priceRub: 0 }),
+    // Не влезает в машину
+    load({ id: "d", fromCity: "Курск", toCity: "Белгород", distanceKm: 150, priceRub: 30000, weightKg: 25000 }),
+  ]
+  const route = buildRoute({
+    startCity: "Москва",
+    loads,
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(route)
+  assert.equal(route.leftover.usable, 1, "только Казань → Уфа подошёл бы, но не взятый")
+  assert.equal(route.leftover.noRate, 1, "один груз без ставки")
+  assert.equal(route.leftover.notFit, 1, "один не влезает в машину")
+  assert.equal(
+    route.leftover.usable + route.leftover.notFit + route.leftover.noRate + route.leftover.pastDate + route.leftover.other,
+    route.excluded.length,
+    "счётчики сходятся с полным списком отложенных",
+  )
+})
+
+test("расстояния помечены как оценка по прямой", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 52000 })],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(route)
+  assert.ok(
+    route.reasons.some((line) => line.includes("по прямой")),
+    `причины помечают оценки: ${route.reasons.join(" | ")}`,
+  )
+})
+
+test("часы словами: 11 ч, 1 день, 2 дня 1 ч", () => {
+  assert.equal(hoursSpan(11), "11 ч")
+  assert.equal(hoursSpan(24), "1 день")
+  assert.equal(hoursSpan(25), "1 день 1 ч")
+  assert.equal(hoursSpan(49), "2 дня 1 ч")
+  assert.equal(hoursSpan(48), "2 дня")
+  assert.equal(hoursSpan(0), "0 ч")
+})
+
+test("на предельном лимите подсказки роста нет — выше 168 ч не уехать", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 52000 })],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 168,
+  })
+  assert.ok(route)
+  assert.equal(route.growthHours, null, "расти некуда — выше 168 ч лимита нет")
+  assert.ok(
+    route.growthHint === null || route.growthHint.includes("радиус"),
+    `подсказка на предельном лимите не про время: ${route.growthHint}`,
+  )
 })

@@ -49,7 +49,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || "new"
-    const limit = Math.min(Number(searchParams.get("limit")) || 50, 100)
+    // Помощник сборки просит всю биржу организации: осмотренные 100 из 185
+    // грузов — это половина правды в «что осталось на бирже»
+    const limit = Math.min(Number(searchParams.get("limit")) || 50, 300)
     const search = searchParams.get("search") || undefined
     const minPricePerKm = searchParams.get("minPricePerKm") || undefined
 

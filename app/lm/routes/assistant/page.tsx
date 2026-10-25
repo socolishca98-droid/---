@@ -50,6 +50,7 @@ import {
   haversineKm,
   HOURS_STEPS,
   hoursLabel,
+  hoursSpan,
   nextHoursStep,
   prevHoursStep,
   routeMapPoints,
@@ -107,7 +108,9 @@ export default function RouteAssistantPage() {
     }>
     refreshError: string | null
     stale: boolean
-  }>(user ? "/api/ati/loads?status=new&limit=100" : null)
+    /** Сколько грузов всего в кэше организации — список отдаём частями */
+    total: number
+  }>(user ? "/api/ati/loads?status=new&limit=300" : null)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
@@ -244,7 +247,7 @@ export default function RouteAssistantPage() {
       cities.add(shortCity(load.fromCity))
       cities.add(shortCity(load.toCity))
     }
-    return [...cities].slice(0, 40).join(",")
+    return [...cities].slice(0, 60).join(",")
   }, [usableLoads])
 
   const pointsState = useJsonApi<{ points: Record<string, { lat: number; lng: number } | null> }>(
@@ -575,6 +578,12 @@ export default function RouteAssistantPage() {
             variants={variants}
             activeVariant={variantIndex}
             onSelectVariant={selectVariant}
+            loadsScanned={loads.length}
+            loadsTotal={loadsState.data?.total ?? loads.length}
+            onMoreHours={(hours) => {
+              setMaxHours(hours)
+              runBuild(startCity, keepIds, excludeIds, hours, true)
+            }}
           />
         ) : (
           <FailedPhase
@@ -1109,6 +1118,9 @@ function RoutePhase({
   variants,
   activeVariant,
   onSelectVariant,
+  loadsScanned,
+  loadsTotal,
+  onMoreHours,
 }: {
   route: BuiltRoute
   calls: Record<string, CallStatus>
@@ -1125,6 +1137,11 @@ function RoutePhase({
   variants: RouteVariant[]
   activeVariant: number
   onSelectVariant: (index: number) => void
+  /** Сколько грузов биржи осмотрел помощник и сколько их всего в кэше */
+  loadsScanned: number
+  loadsTotal: number
+  /** Пересобрать маршрут с бóльшим лимитом времени */
+  onMoreHours: (hours: number) => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
@@ -1165,9 +1182,12 @@ function RoutePhase({
           <SummaryCell label="Плеч" value={String(route.legs.length)} />
           <SummaryCell
             label="Расстояние"
-            value={route.totalDistanceKm > 0 ? `${route.totalDistanceKm} км` : "—"}
+            value={route.totalDistanceKm > 0 ? `≈ ${route.totalDistanceKm} км` : "—"}
           />
-          <SummaryCell label="В пути" value={routeTimeText(route)} />
+          <SummaryCell
+            label="В пути"
+            value={`${routeTimeText(route)} из ${route.maxHours} ч`}
+          />
           <SummaryCell
             label="На км"
             value={route.profitPerKm !== null ? `${formatMoney(route.profitPerKm)} ₽` : "—"}
@@ -1215,15 +1235,36 @@ function RoutePhase({
 
         {route.returnDeadheadKm > 0 ? (
           <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
-            В конце — возврат в {route.path[0]}: {route.returnDeadheadKm} км порожнем, топливо на него
+            В конце — возврат в {route.path[0]}: ≈ {route.returnDeadheadKm} км порожнем, топливо на него
             уже учтено в прибыли.
           </p>
         ) : null}
 
         {/* Длина рейса днями: логист планирует не километры, а смены */}
         <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
-          В пути {routeTimeText(route)} — с учётом дороги, погрузок и выгрузок
+          В пути {routeTimeText(route)} из лимита {route.maxHours} ч — с учётом дороги,
+          погрузок, выгрузок, ожидания дат и возврата на базу
+          {routeRestHours(route) > 0
+            ? `, осталось ${hoursSpan(routeRestHours(route))}`
+            : ", лимит выбран полностью"}
         </p>
+
+        {/* Что сделать, чтобы маршрут стал длиннее — по факту причины */}
+        {route.growthHint ? (
+          <div className="mt-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 py-2.5">
+            <p className="text-[12.5px] leading-snug text-foreground/90">{route.growthHint}</p>
+            {route.growthHours ? (
+              <button
+                type="button"
+                onClick={() => onMoreHours(route.growthHours as number)}
+                className="mt-2 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground active:opacity-70"
+              >
+                <Clock className="h-4 w-4" />
+                Пересобрать на {hoursLabel(route.growthHours)}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {route.unprofitable ? (
           <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-2 text-[12.5px] leading-snug text-destructive">
@@ -1290,7 +1331,7 @@ function RoutePhase({
                       {leg.load.cargoType ? ` · ${leg.load.cargoType}` : ""}
                     </p>
                     <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                      {leg.loadedKm > 0 ? `${leg.loadedKm} км` : "расстояние неизвестно"}
+                      {leg.loadedKm > 0 ? `≈ ${leg.loadedKm} км` : "расстояние неизвестно"}
                       {leg.hours > 0 ? ` · ≈ ${Math.round(leg.hours)} ч в пути` : ""}
                       {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
                     </p>
@@ -1342,7 +1383,7 @@ function RoutePhase({
 
                     {leg.deadheadKm > 0 ? (
                       <p className="mt-1 text-[12px] text-muted-foreground">
-                        +{leg.deadheadKm} км подъезда к погрузке — учтено в прибыли плеча
+                        +≈ {leg.deadheadKm} км подъезда к погрузке — учтено в прибыли плеча
                       </p>
                     ) : null}
 
@@ -1464,11 +1505,33 @@ function RoutePhase({
           onClick={() => setDetailsOpen((value) => !value)}
           className="flex min-h-[40px] w-full items-center justify-between rounded-xl px-1 text-[13px] font-medium text-foreground/80 active:opacity-70"
         >
-          Что осталось на бирже ({route.excluded.length})
+          Что осталось на бирже ({route.leftover.usable})
           {detailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
         {detailsOpen ? (
           <div className="mt-2 space-y-1.5">
+            {/* Сколько чего: «осталось 99» — полуправда, если почти все без ставки */}
+            <p className="px-1 text-[12.5px] leading-snug text-muted-foreground">
+              {route.leftover.usable > 0
+                ? `${route.leftover.usable} ${formatCount(route.leftover.usable, ["груз", "груза", "грузов"])} подходят под машину и дату, но в маршрут не попали`
+                : "Грузов, которые подошли бы под машину и дату, не осталось"}
+              {route.leftover.noRate > 0
+                ? ` · ${route.leftover.noRate} без озвученной ставки`
+                : ""}
+              {route.leftover.pastDate > 0
+                ? ` · ${route.leftover.pastDate} с прошедшей датой загрузки`
+                : ""}
+              {route.leftover.notFit > 0
+                ? ` · ${route.leftover.notFit} не влезает в эту машину`
+                : ""}
+            </p>
+            {/* Счётчик выше — про осмотренные грузы, а не про всю биржу */}
+            {loadsScanned < loadsTotal ? (
+              <p className="px-1 text-[12.5px] leading-snug text-muted-foreground">
+                В расчёте — {loadsScanned} груза из {loadsTotal} на бирже: помощник смотрит
+                свежие записи кэша.
+              </p>
+            ) : null}
             {route.excluded.length === 0 ? (
               <p className="px-1 text-[12.5px] text-muted-foreground">Все грузы биржи уже в маршруте.</p>
             ) : (
@@ -1663,6 +1726,11 @@ function CallSheet({
  * дорога (~55 км/ч с грузом) + 4 часа на каждую погрузку-выгрузку + возврат.
  * Ориентир для планировщика, а не обещание: точное время — после согласования.
  */
+/** Сколько часов лимита осталось незанятыми — для честной строки про срок. */
+function routeRestHours(route: BuiltRoute): number {
+  return Math.round((route.maxHours - route.totalHours) * 10) / 10
+}
+
 function routeTimeText(route: BuiltRoute): string {
   const hours = route.totalHours
   if (!hours || hours <= 0) return "—"
