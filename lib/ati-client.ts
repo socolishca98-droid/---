@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma"
 import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 import { resolveAtiCities } from "./ati/ati-city-resolver"
 import { mapBoardsLoad, collectCityIds } from "./ati/boards-mapping"
+import { geocodeAddresses } from "./geo/geocode"
+import { loadMatchesGeo, type GeoQuery } from "./ati/search-geo"
 
 // Токен больше не глобальный: каждая организация подключает СВОЙ аккаунт
 // ATI.SU (своя подписка, свои площадки, свои лимиты), токен передаётся
@@ -247,8 +249,15 @@ export async function scanAtiLoads(params?: any) {
     const picked: any[] = []
     for (const load of loads) {
       if (cityKeys.length > 0) {
-        const key = normalizeLoadFromToCityKey(load)
-        if (!key || !cityKeys.includes(key)) continue
+        const fromKey = normalizeLoadFromToCityKey(load)
+        const toKey = normalizeLoadToCityKey(load)
+        // Город профиля — это и «откуда», и «куда»: груз, который везёт домой
+        // в город базы, маршруту нужен не меньше, чем груз из базы. Раньше
+        // матчился только город отправления, и обратка в кэш не попадала.
+        const hit =
+          (fromKey !== null && cityKeys.includes(fromKey)) ||
+          (toKey !== null && cityKeys.includes(toKey))
+        if (!hit) continue
       }
       if (addIfNew(load, customFilters)) picked.push(load)
     }
@@ -281,6 +290,15 @@ function normalizeLoadToCityKey(load: any): string | null {
  * Ручной поиск: те же грузы площадок организации + фильтры по городу
  * погрузки/выгрузки и параметрам (цена, вес, расстояние) по ответу.
  */
+/**
+ * Живой поиск по площадкам: «Откуда / Куда / радиус / вес».
+ *
+ * Гео-фильтр — как на сайте ATI: точное совпадение города ИЛИ попадание
+ * точки груза в радиус от центра запрошенного города. Раньше работало
+ * только точное совпадение, и запрос «Ярославль» не находил груз,
+ * выгружающийся в Корюково (8 км от Ярославля), — город в грузе назван
+ * иначе. Радиус из интерфейса при этом молча игнорировался.
+ */
 async function manualSearch(
   params: any,
   filters: ScanFilters,
@@ -289,20 +307,46 @@ async function manualSearch(
 ) {
   const fromCityKey = normalizeGeoToCityKey(params.fromGeo)
   const toCityKey = normalizeGeoToCityKey(params.toGeo)
+  const fromRadiusKm = Math.max(0, Number(params.fromRadius) || 0)
+  const toRadiusKm = Math.max(0, Number(params.toRadius) || 0)
+
+  // Центры городов запроса: без них радиус не с чем сравнивать. Геокодер
+  // общий, с постоянным кэшем (GeoCache) — повторный вопрос бесплатный.
+  const geoName = (geo: any): string | null => {
+    if (!geo) return null
+    const name = geo.fullName || geo.name || null
+    return name ? String(name).trim() : null
+  }
+  const fromName = geoName(params.fromGeo)
+  const toName = geoName(params.toGeo)
+  const geoQueries = [fromName, toName].filter((v): v is string => Boolean(v))
+  const geoPoints =
+    geoQueries.length > 0 ? await geocodeAddresses(geoQueries) : new Map<string, { lat: number; lng: number } | null>()
+  const centerOf = (name: string | null) =>
+    name ? geoPoints.get(name) ?? null : null
+
+  const fromQuery: GeoQuery = {
+    cityKey: fromCityKey,
+    center: centerOf(fromName),
+    radiusKm: fromRadiusKm,
+  }
+  const toQuery: GeoQuery = {
+    cityKey: toCityKey,
+    center: centerOf(toName),
+    radiusKm: toRadiusKm,
+  }
 
   const rawLoads = await fetchLoadsByBoards(token, organizationId)
   const cities = await resolveAtiCities(collectCityIds(rawLoads))
   const loads = rawLoads.map((load) => mapBoardsLoad(load, cities))
   const allLoads: any[] = []
+  let byCity = 0
+  let byRadius = 0
   for (const load of loads) {
-    if (fromCityKey) {
-      const loadFromKey = normalizeLoadFromToCityKey(load)
-      if (!loadFromKey || loadFromKey !== fromCityKey) continue
-    }
-    if (toCityKey) {
-      const loadToKey = normalizeLoadToCityKey(load)
-      if (!loadToKey || loadToKey !== toCityKey) continue
-    }
+    const match = loadMatchesGeo(load, fromQuery, toQuery)
+    if (!match.ok) continue
+    if (match.fromReason === "city" || match.toReason === "city") byCity += 1
+    else byRadius += 1
     if (addIfNew(load, filters)) allLoads.push(load)
   }
 
@@ -313,6 +357,15 @@ async function manualSearch(
     found: allLoads.length,
     loads: saved,
     requests: 1,
+    // Честная расшифровка выдачи: сколько нашли по городу, сколько — по радиусу
+    matched: { byCity, byRadius },
+    // Центр не нашёлся — радиус не применился, и это надо сказать словами
+    geoWarning:
+      fromRadiusKm > 0 && !fromQuery.center
+        ? "Не удалось определить центр города «Откуда» — радиус не применился"
+        : toRadiusKm > 0 && !toQuery.center
+          ? "Не удалось определить центр города «Куда» — радиус не применился"
+          : null,
   }
 }
 
