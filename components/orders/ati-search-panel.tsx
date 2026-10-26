@@ -439,17 +439,21 @@ export function AtiSearchPanel() {
           return [...prev, ...incoming.filter((item) => !seen.has(item.id))]
         })
         const exhausted = Boolean(data.exhausted)
+        // Продолжение не возвращает счётчики (страниц не было) — поэтому
+        // «обещанное» число берём из прошлого ответа, иначе оно бы пропало
+        // с экрана именно в тот момент, когда мы про него и говорим.
+        const promised = data.totalItems ?? searchMeta?.totalItems ?? null
         if (exhausted) {
           setDeepEnd(
             `Биржа отдала всё, что показывает по этому фильтру: ${searchResults.length} грузов. ` +
-              `Обещанные ${data.totalItems ?? "?"} — её собственная оценка, дальше она страницы не отдаёт.`,
+              `Обещанные ${promised ?? "?"} — её собственная оценка, дальше она страницы не отдаёт.`,
           )
         }
-        setSearchMeta({
-          totalItems: data.totalItems ?? null,
-          bySource: data.bySource ?? null,
+        setSearchMeta((prev) => ({
+          totalItems: promised ?? prev?.totalItems ?? null,
+          bySource: data.bySource ?? prev?.bySource ?? null,
           nextPageStart: exhausted ? null : data.nextPageStart ?? null,
-        })
+        }))
         toast.success(
           pageStart
             ? `Показано ещё: ${incoming.length}`

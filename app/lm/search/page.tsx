@@ -182,16 +182,19 @@ export default function LogistSearchPage() {
         setBySource(data.bySource ?? null)
         // Попросили продолжение — биржа не отдала ничего: значит страницы
         // кончились. Говорим это словами, а не показываем кнопку, которая
-        // вернёт пустоту.
-        if (pageStart && incoming.length === 0) {
+        // вернёт пустоту. Счётчики продолжение не приносит, поэтому
+        // «обещанное» число берём из прошлого ответа.
+        const ended = Boolean(pageStart && incoming.length === 0)
+        const promised = data.totalItems ?? searchMeta?.totalItems ?? null
+        if (ended) {
           setDeepEnd(
-            `Биржа отдала всё, что показывает по этому фильтру. Обещанные ${data.totalItems ?? "?"} — её оценка, дальше страницы не отдаёт.`,
+            `Биржа отдала всё, что показывает по этому фильтру. Обещанные ${promised ?? "?"} — её оценка, дальше страницы не отдаёт.`,
           )
         }
-        setSearchMeta({
-          totalItems: data.totalItems ?? null,
-          nextPageStart: pageStart && incoming.length === 0 ? null : data.nextPageStart ?? null,
-        })
+        setSearchMeta((prev) => ({
+          totalItems: promised ?? prev?.totalItems ?? null,
+          nextPageStart: ended ? null : data.nextPageStart ?? null,
+        }))
         // Источники независимы: если общая биржа не ответила, молчать нельзя
         const errs = (data.errors ?? []).filter(Boolean)
         setSearchWarning(errs.length > 0 ? errs.join(" ") : null)
