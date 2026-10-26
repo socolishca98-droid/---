@@ -79,6 +79,24 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+/**
+ * Сколько страниц общей биржи обходить на один город в плановом скане.
+ *
+ * Режимы «Быстрый / Обычный / Глубокий» раньше не влияли ни на что: поле
+ * mode приходило с экрана и молча игнорировалось, все три режима собирали
+ * одинаково (живой замер: fast и deep дали count=195 и «с биржи 0»).
+ *
+ * Биржа отдаёт примерно по 12 грузов на страницу, поэтому:
+ *   быстрый — 2 страницы (~24 груза на город), обычный — 4, глубокий — 12.
+ * Потолок EXCHANGE_MAX_PAGES (20) не превышаем, пауза между страницами
+ * держит темп в рамках правил ATI (10 запросов в секунду).
+ */
+function pagesForMode(mode: unknown): number {
+  if (mode === "fast") return 2
+  if (mode === "deep") return 12
+  return 4
+}
+
 function filterLoad(item: any, filters: ScanFilters): boolean {
   const distance = item.route?.distance || 0
   const weight = item.load?.weight ? Math.round(item.load.weight * 1000) : 0
@@ -251,8 +269,18 @@ export async function scanAtiLoads(params?: any) {
   // Источник грузов: "boards" — площадки организации (официальный API ATI),
   // "exchange" — общая биржа (поиск сайта loads.ati.su), "both" — оба сразу.
   // Источники независимы: один может не работать, второй продолжает.
+  // Источник грузов. Раньше значение по умолчанию было "boards" — и плановый
+  // сборщик (и cron, и кнопка «Собрать») никогда не смотрел на общую биржу:
+  // в базе организации оставались только её площадки. Живой замер кнопки
+  // «Собрать»: «собрано 195», с биржи 0, новых грузов 0 — при том что биржа
+  // по региону базы отдаёт тысячи. Ручной поиск по умолчанию остаётся на
+  // площадках: его запускает человек кнопкой, и источник он выбирает сам.
   const source: "boards" | "exchange" | "both" =
-    params?.source === "exchange" || params?.source === "both" ? params.source : "boards"
+    params?.source === "exchange" || params?.source === "both"
+      ? params.source
+      : params?.manualMode
+        ? "boards"
+        : "both"
 
   try {
     // Ручной поиск
@@ -274,7 +302,11 @@ export async function scanAtiLoads(params?: any) {
         const merged = [...boardLoads, ...exchangeLoads.filter((load: any) => !seen.has(String(load?.id)))]
         return {
           success: Boolean((boardsResult as any)?.success || (exchangeResult as any)?.success),
-          count: merged.length,
+          // Новых грузов может быть меньше, чем показано: часть уже лежит в
+          // базе с прошлых поисков. Считаем честно — иначе экран снова
+          // начнёт называть «сохранённым» то, что было сохранено давно.
+          count: ((boardsResult as any)?.count ?? 0) + ((exchangeResult as any)?.count ?? 0),
+          updated: ((boardsResult as any)?.updated ?? 0) + ((exchangeResult as any)?.updated ?? 0),
           found: merged.length,
           loads: merged,
           requests: 2,
@@ -318,7 +350,7 @@ export async function scanAtiLoads(params?: any) {
           const exchange = await searchExchange(token, organizationId, {
             fromCityId: cityId,
             fromRadiusKm: Number(params?.radius) || 300,
-            maxPages: 4,
+            maxPages: pagesForMode(params?.mode),
           })
           exchangeFound += exchange.loads.length
           loads = loads.concat(exchange.loads as any[])
@@ -344,10 +376,14 @@ export async function scanAtiLoads(params?: any) {
       if (addIfNew(load, customFilters)) picked.push(load)
     }
 
-    const saved = await saveToCache(picked, organizationId)
+    const { rows: saved, created, updated } = await saveToCache(picked, organizationId)
     return {
       success: true,
-      count: saved.length,
+      // count — сколько НОВЫХ грузов легло в базу. Раньше здесь было
+      // saved.length, то есть все найденные строки, включая уже собранные:
+      // экран рапортовал «собрано 195», хотя новых было 0.
+      count: created,
+      updated,
       found: picked.length,
       requests: 2,
       errors: 0,
@@ -433,10 +469,11 @@ async function manualSearch(
     if (addIfNew(load, filters)) allLoads.push(load)
   }
 
-  const saved = await saveToCache(allLoads, organizationId)
+  const { rows: saved, created, updated } = await saveToCache(allLoads, organizationId)
   return {
     success: true,
-    count: saved.length,
+    count: created,
+    updated,
     found: allLoads.length,
     loads: saved,
     requests: 1,
@@ -510,10 +547,11 @@ async function exchangeManualSearch(
   // результатом. Биржа обещает totalItems, но страницы отдаёт не все.
   const exhausted = pageStartUsed > 1 && exchange.loads.length === 0
 
-  const saved = await saveToCache(picked, organizationId)
+  const { rows: saved, created, updated } = await saveToCache(picked, organizationId)
   return {
     success: true,
-    count: saved.length,
+    count: created,
+    updated,
     found: picked.length,
     loads: saved,
     requests: exchange.requests,
@@ -547,9 +585,12 @@ function findCityIdByName(name: unknown): number | null {
 // СОХРАНЕНИЕ В КЭШ (без rawJson и без контактов)
 // =============================================================================
 
-async function saveToCache(rawLoads: any[], organizationId: string): Promise<any[]> {
+async function saveToCache(
+  rawLoads: any[],
+  organizationId: string,
+): Promise<{ rows: any[]; created: number; updated: number }> {
   const now = new Date()
-  if (rawLoads.length === 0) return []
+  if (rawLoads.length === 0) return { rows: [], created: 0, updated: 0 }
 
   // Один запрос вместо запроса на каждый груз: сбор региона тянет сотни
   // грузов, и поштучный findFirst превращал сбор в трехминутное ожидание.
@@ -741,7 +782,7 @@ async function saveToCache(rawLoads: any[], organizationId: string): Promise<any
     if (!row) continue
     result.push(decorateCacheRow(updatedById.get(row.id) ?? row))
   }
-  return result
+  return { rows: result, created: toCreate.length, updated: toUpdate.length }
 }
 
 /**

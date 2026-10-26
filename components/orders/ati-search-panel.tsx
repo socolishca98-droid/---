@@ -492,6 +492,7 @@ export function AtiSearchPanel() {
         body: JSON.stringify({
           manualMode: false,
           mode: harvestMode,
+          source: "both",
           filters: { minDistance: 50 },
         }),
       })
@@ -502,13 +503,18 @@ export function AtiSearchPanel() {
         code?: string
         found?: number
         count?: number
+        updated?: number
       }
 
       if (data.success) {
+        // count — сколько НОВЫХ грузов легло в базу. Раньше сюда попадало
+        // число всех найденных строк, и сборщик рапортовал «сохранено 195»,
+        // когда новых грузов было ноль.
+        const added = data.count ?? 0
         toast.success(
-          `✅ Готово! Найдено: ${data.found ?? 0}, сохранено: ${
-            data.count ?? 0
-          }`,
+          added > 0
+            ? `✅ Готово! Найдено: ${data.found ?? 0}, новых: ${added}, обновлено: ${data.updated ?? 0}`
+            : `Новых грузов нет: проверено ${data.found ?? 0}, всё уже в базе`,
           { duration: 5000 },
         )
         void loadDatabase()

@@ -59,10 +59,19 @@ export async function markProfileScanned(
   })
 }
 
-/** Параметры скана для профиля: города, радиус и фильтры. */
+/**
+ * Параметры скана для профиля: города, радиус, фильтры и источник.
+ *
+ * source: "both" — и площадки организации, и общая биржа. Без этого плановый
+ * скан (и cron, и кнопка «Собрать») смотрел только на площадки организации:
+ * живой замер дал «с биржи 0» при 45 грузах на площадках, хотя биржа по
+ * региону базы отдаёт тысячи. Источники независимы — если биржа не ответит,
+ * площадки всё равно соберутся.
+ */
 export function scanParamsForProfile(profile: ScanProfileRow, mode: string) {
   return {
     mode,
+    source: "both" as const,
     cityIds: parseProfileCities(profile.cities),
     radius: Number(profile.radius) > 0 ? Number(profile.radius) : 100,
     filters: buildProfileFilters(profile),

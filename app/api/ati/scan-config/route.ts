@@ -21,6 +21,7 @@ import { requireOrganization, scopedWhere } from "@/lib/org"
 import { prisma } from "@/lib/prisma"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
+import { cityIdsFromBaseAddress, parseProfileCities } from "@/lib/ati/scan-profile"
 
 export const dynamic = "force-dynamic"
 
@@ -47,17 +48,48 @@ export async function GET(request: NextRequest) {
     // и не понимает почему. Особенно это биёт по новой компании: она
     // зарегистрировалась, а профиль заводили только сидом. Поэтому лечим
     // на чтении, а не просим человека искать настройку.
+    // Профиль есть, а городов в нём нет — лечим на чтении.
+    //
+    // Такие профили уже созданы: автосоздание раньше писало cities: [], и
+    // плановый сборщик у таких организаций не фильтровал грузы по региону
+    // базы и не искал по общей бирже. Живой замер: профиль «Основной
+    // (Ярославль. Ул. Докучалова 12)» с городами [] — «Собрать» давало
+    // «собрано 195», с биржи 0, новых 0.
+    if (profiles.length > 0) {
+      const settingsForHeal = await prisma.fleetSettings.findFirst({
+        where: { organizationId: org.organizationId },
+        select: { baseAddress: true },
+      })
+      const healCities = cityIdsFromBaseAddress(settingsForHeal?.baseAddress)
+      if (healCities.length > 0) {
+        for (const profile of profiles) {
+          if (parseProfileCities(profile.cities).length > 0) continue
+          if (!profile.isActive) continue
+          const healed = await prisma.atiScanConfig.update({
+            where: { id: profile.id },
+            data: { cities: JSON.stringify(healCities) },
+          })
+          profiles = profiles.map((row) => (row.id === healed.id ? healed : row))
+        }
+      }
+    }
+
     if (profiles.length === 0) {
       const settings = await prisma.fleetSettings.findFirst({
         where: { organizationId: org.organizationId },
         select: { baseAddress: true },
       })
       const base = (settings?.baseAddress ?? "").trim()
+      // Города профиля — из адреса базы. Раньше здесь был пустой список, и
+      // плановый сборщик не фильтровал грузы по региону базы и не искал по
+      // общей бирже: в кэш организации шли Москва, Калужская и Алтай, а
+      // кнопка «Собрать» отчитывалась «собрано 195» при нуле новых грузов.
+      const baseCities = cityIdsFromBaseAddress(base)
       const profile = await prisma.atiScanConfig.create({
         data: {
           organizationId: org.organizationId,
           name: base ? `Основной профиль (${base.split(",")[0].trim()})` : "Основной профиль",
-          cities: JSON.stringify([]),
+          cities: JSON.stringify(baseCities),
           minWeight: null,
           truckTypes: "any",
           // 5 минут — максимум, который позволяют правила ATI и лимиты токена

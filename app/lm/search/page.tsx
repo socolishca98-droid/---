@@ -218,11 +218,26 @@ export default function LogistSearchPage() {
       const res = await fetch("/api/ati/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ manualMode: false, mode: harvestMode, filters: { minDistance: 50 } }),
+        body: JSON.stringify({
+          manualMode: false,
+          mode: harvestMode,
+          source: "both",
+          filters: { minDistance: 50 },
+        }),
       })
       const data = await res.json()
       if (data?.success) {
-        toast.success(`Собрано: ${data.found ?? 0}, сохранено: ${data.count ?? 0}`)
+        // Честный итог сбора: найдено / легло новых / обновлено. Раньше экран
+        // писал «сохранено: 195», считая все найденные строки, — и при нуле
+        // новых грузов выглядело как удачная сборка.
+        const found = data.found ?? 0
+        const added = data.count ?? 0
+        const refreshed = data.updated ?? 0
+        toast.success(
+          added > 0
+            ? `Собрано: найдено ${found}, новых ${added}, обновлено ${refreshed}`
+            : `Новых грузов нет: проверено ${found}, всё уже в базе`,
+        )
         void loadBase()
       } else if (data?.code === "ati_not_connected") {
         toast.error("Аккаунт ATI.SU не подключён")
