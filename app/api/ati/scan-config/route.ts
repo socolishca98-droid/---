@@ -35,10 +35,39 @@ export async function GET(request: NextRequest) {
   if (!org.ok) return org.response
 
   try {
-    const profiles = await prisma.atiScanConfig.findMany({
+    let profiles = await prisma.atiScanConfig.findMany({
       where: scopedWhere(org.organizationId, {}),
       orderBy: { createdAt: "asc" },
     })
+
+    // Профиля нет — создаём сами из базы организации.
+    //
+    // Зачем: без профиля экран биржи не знает, когда пора обновиться, и
+    // автообновление молча не работает — организация видит устаревшие грузы
+    // и не понимает почему. Особенно это биёт по новой компании: она
+    // зарегистрировалась, а профиль заводили только сидом. Поэтому лечим
+    // на чтении, а не просим человека искать настройку.
+    if (profiles.length === 0) {
+      const settings = await prisma.fleetSettings.findFirst({
+        where: { organizationId: org.organizationId },
+        select: { baseAddress: true },
+      })
+      const base = (settings?.baseAddress ?? "").trim()
+      const profile = await prisma.atiScanConfig.create({
+        data: {
+          organizationId: org.organizationId,
+          name: base ? `Основной профиль (${base.split(",")[0].trim()})` : "Основной профиль",
+          cities: JSON.stringify([]),
+          minWeight: null,
+          truckTypes: "any",
+          // 5 минут — максимум, который позволяют правила ATI и лимиты токена
+          autoScanInterval: 5,
+          isActive: true,
+        },
+      })
+      profiles = [profile]
+    }
+
     return NextResponse.json({ success: true, profiles })
   } catch (error) {
     console.error("[ATI ScanConfig] ошибка чтения:", error)
