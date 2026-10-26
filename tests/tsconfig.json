@@ -4,6 +4,12 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "baseUrl": "..",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
     "lib": [
       "ES2022",
       "DOM"
@@ -68,6 +74,8 @@
     "../lib/ati/search-geo.ts",
     "../lib/ati/exchange-mapping.ts",
     "../lib/ati/regions.ts",
-    "../lib/ati/ati-city-regions.ts"
+    "../lib/ati/ati-city-regions.ts",
+    "../lib/geo/nominatim.ts",
+    "../lib/ati/base-region.ts"
   ]
 }

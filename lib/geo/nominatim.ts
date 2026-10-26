@@ -30,11 +30,99 @@ const NOMINATIM = "https://nominatim.openstreetmap.org/search"
 
 /** Сокращения, которые геокодер не переваривает в начале адреса. */
 const REGION_NOISE =
-  /^[^,]*\b(обл\.|область|край|респ\.|республика|АО|автономный округ)\b[.,]?\s*/i
+  /^[^,]*(обл\.|область|край|респ\.|республика|АО|автономный округ)(?![a-zа-яё])[.,]?\s*/i
+
+/**
+ * Служебные приставки в части адреса: «г. Тулун», «ул. Ленина 5», «д. 4».
+ *
+ * Зачем: геокодер на них спотыкается. Замер: «г. Тулун, ул. Ленина 5» он
+ * понял как «улица Ленина, 5» и нашёл её в ОМСКЕ — регион вышел «Омская
+ * область» вместо Иркутской. Тот же адрес без приставок — «Тулун, Ленина 5» —
+ * он разбирает правильно. Поэтому приставки снимаем и пробуем такой вариант
+ * адреса первым.
+ */
+const PART_NOISE =
+  /^(г|город|гор|пос|поселок|пос\u0451лок|село|с|д|дом|кв|квартира|квартал|ул|улица|пр-?кт?|проспект|пр-?т|пер|переулок|ш|шоссе|рф|россия|российская\s+федерация)\.?(?![a-zа-яё])[\s.]*/i
+
+/** Часть адреса, которая является улицей или домом — это не город. */
+const STREET_PART =
+  /^(ул|улица|пр-?кт?|проспект|пр-?т|пер|переулок|ш|шоссе|д|дом|кв|квартира|квартал)\.?(?![a-zа-яё])/i
+
+/** Часть адреса, которая является регионом или страной — это не город. */
+const REGION_PART =
+  /^(обл|область|край|респ|республика|ао|автономная\s+область|автономный\s+округ|федеральный\s+округ|рф|россия)\.?(?![a-zа-яё])/i
+
+/** Адрес без служебных приставок: «г. Тулун, ул. Ленина 5» -> «Тулун, Ленина 5». */
+function cleanAddress(address: string): string {
+  return address
+    .split(",")
+    .map((part) => part.trim().replace(PART_NOISE, "").trim())
+    .filter(Boolean)
+    .join(", ")
+}
+
+/**
+ * Города, названные в адресе. Нужны для проверки: геокодер может найти ту же
+ * улицу в другом городе, и регион выйдет чужой. Если город из адреса не
+ * совпал с разобранным местом — результат не берём.
+ */
+function cityTokens(address: string): string[] {
+  return address
+    .split(/[,;]/)
+    .map((part) => part.trim())
+    .filter(
+      (part) =>
+        part.length >= 3 &&
+        !STREET_PART.test(part) &&
+        !REGION_PART.test(part) &&
+        !/^\d/.test(part),
+    )
+    .map((part) => part.replace(PART_NOISE, "").trim())
+    .filter((part) => part.length >= 3)
+}
+
+/** Первое слово названия — с ним и сравниваем («Ярославская обл.» -> «Ярославская»). */
+function firstWord(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\u0451/g, "\u0435")
+    .replace(/[^a-z\u0430-\u044f0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)[0]
+}
+
+/** Совпал ли геокодер с городом из запроса. */
+function labelHasCity(row: any, cities: string[]): boolean {
+  const label = String(row?.display_name ?? "")
+    .toLowerCase()
+    .replace(/\u0451/g, "\u0435")
+  if (!label) return false
+  return cities.some((city) => {
+    const needle = firstWord(city)
+    return needle.length >= 4 && label.includes(needle)
+  })
+}
+
+/**
+ * Пауза между обращениями к геокодеру.
+ *
+ * Зачем: он отвечает «429 Too many requests», если стучать часто. Мы и так
+ * бережно (один адрес базы на организацию, результат в кэше процесса), но
+ * перебор вариантов адреса — это несколько запросов подряд, и на таком
+ * переборе лимит достигался. Поэтому между запросами держим паузу.
+ */
+let lastCallAt = 0
+
+async function pace(): Promise<void> {
+  const wait = 1100 - (Date.now() - lastCallAt)
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+  lastCallAt = Date.now()
+}
 
 async function nominatim(query: string, limit: number): Promise<any[]> {
   const q = query.trim()
   if (q.length < 3) return []
+  await pace()
   try {
     const url =
       `${NOMINATIM}?format=json&limit=${limit}` +
@@ -107,7 +195,15 @@ function regionPartOf(base: string): string | null {
  */
 function addressVariants(address: string): string[] {
   const base = address.replace(/\s+/g, " ").trim()
-  const out: string[] = [base]
+  const out: string[] = []
+
+  // Без «г.», «ул.», «д.» — таким вариантом и начинаем: замер показал, что
+  // сырой адрес с приставками геокодер понимает как улицу и находит её в
+  // другом городе («г. Тулун, ул. Ленина 5» -> Омск), а очищенный — верно.
+  const cleaned = cleanAddress(base)
+  if (cleaned && cleaned !== base) out.push(cleaned)
+
+  out.push(base)
 
   // Без «Ярославская обл.» и подобного в начале — геокодер его не любит
   const withoutRegion = base.replace(REGION_NOISE, "").trim()
@@ -194,6 +290,7 @@ export async function regionOfPlace(query: string): Promise<string | null> {
   if (key.length < 3) return null
   if (REGION_CACHE.has(key)) return REGION_CACHE.get(key) ?? null
 
+  const cities = cityTokens(query)
   let found: string | null = null
   for (const variant of addressVariants(query)) {
     const rows = await nominatim(variant, 3)
@@ -201,10 +298,15 @@ export async function regionOfPlace(query: string): Promise<string | null> {
       const address = row?.address ?? {}
       // state — для области/края/республики, region — запасной вариант
       const candidate = address.state || address.region || null
-      if (candidate) {
-        found = String(candidate).trim() || null
-        break
-      }
+      if (!candidate) continue
+      const region = String(candidate).trim()
+      if (!region) continue
+      // Город в адресе назван, а геокодер вернул другое место — это чужая
+      // улица с тем же названием. Такой регион не берём: лучше «не знаю»,
+      // чем отправить сборщик в чужой регион.
+      if (cities.length && !labelHasCity(row, cities)) continue
+      found = region
+      break
     }
     if (found) break
   }

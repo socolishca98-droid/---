@@ -46,6 +46,18 @@ test("регион базы считается для любого адреса,
   assert.match(BASE, /regionFromText/, "регион ищем и в подписи места")
 })
 
+test("адрес с приставками «г.», «ул.» не уводит регион в чужой город", () => {
+  // Замер геокодера: «г. Тулун, ул. Ленина 5» он разобрал как «улица Ленина, 5»
+  // и нашёл её в ОМСКЕ — регион вышел «Омская область» вместо Иркутской.
+  // Тот же адрес без приставок — «Тулун, Ленина 5» — он понимает верно.
+  assert.match(GEO, /function cleanAddress/, "приставки адреса должны сниматься")
+  assert.match(GEO, /function cityTokens/, "город из адреса должен выделяться")
+  assert.match(GEO, /function labelHasCity/, "нужна проверка, что геокодер попал в свой город")
+  assert.match(GEO, /if \(cities\.length && !labelHasCity\(row, cities\)\) continue/,
+    "чужая улица с тем же названием не должна давать регион")
+  assert.match(GEO, /await pace\(\)/, "к геокодеру обращаемся с паузой — иначе 429")
+})
+
 test("профиль сканирования получает города через этот резолвер", () => {
   assert.match(CONFIG, /regionOfBaseAddress\(base\)/, "автосоздание профиля считает регион для любого города")
   assert.match(CONFIG, /regionOfBaseAddress\(settingsForHeal\?\.baseAddress\)/, "лечение пустого профиля тоже")
