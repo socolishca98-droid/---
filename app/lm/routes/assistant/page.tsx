@@ -328,6 +328,39 @@ export default function RouteAssistantPage() {
     return [...cities].slice(0, 60).join(",")
   }, [usableLoads])
 
+  /**
+   * Контакты фрахтователей, показанные по нажатию.
+   *
+   * ATI.SU запрещает автоматизированный сбор контактной информации
+   * (пользовательское соглашение, п. 3.2.1.7). Поэтому телефон не тянется
+   * сам: диспетчер нажимает кнопку — уходит один запрос официальным методом
+   * API, ровно как он сам нажимает «показать» на сайте ATI.
+   */
+  const [phones, setPhones] = useState<Record<string, string>>({})
+  const [contactBusy, setContactBusy] = useState<string | null>(null)
+
+  async function fetchPhone(loadId: string) {
+    setContactBusy(loadId)
+    try {
+      const result = await apiSend<{ phone: string | null; name: string | null }>(
+        "/api/ati/loads/contacts",
+        "POST",
+        { cacheId: loadId },
+      )
+      if (result.ok && result.data?.phone) {
+        setPhones((prev) => ({ ...prev, [loadId]: result.data?.phone as string }))
+        loadsState.reload()
+        toast.success("Контакт фрахтователя получен")
+      } else {
+        toast.error(result.error ?? "ATI не отдала контакт")
+      }
+    } catch {
+      toast.error("Не удалось получить контакт")
+    } finally {
+      setContactBusy(null)
+    }
+  }
+
   const pointsState = useJsonApi<{ points: Record<string, { lat: number; lng: number } | null> }>(
     user && pointsQuery ? `/api/ati/cities/points?cities=${encodeURIComponent(pointsQuery)}` : null,
   )
@@ -969,6 +1002,9 @@ export default function RouteAssistantPage() {
           <RoutePhase
             route={route}
             calls={calls}
+            phones={phones}
+            contactBusy={contactBusy}
+            onFetchPhone={(loadId) => void fetchPhone(loadId)}
             keepIds={keepIds}
             onCall={markCall}
             onRemove={removeLoad}
@@ -1932,6 +1968,9 @@ function FailedPhase({
 function RoutePhase({
   route,
   calls,
+  phones,
+  contactBusy,
+  onFetchPhone,
   keepIds,
   onCall,
   onRemove,
@@ -1963,6 +2002,10 @@ function RoutePhase({
   loadsTotal: number
   /** Пересобрать маршрут с бóльшим лимитом времени */
   onMoreHours: (hours: number) => void
+  /** Контакты фрахтователей, показанные по нажатию диспетчера */
+  phones: Record<string, string>
+  contactBusy: string | null
+  onFetchPhone: (loadId: string) => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [whyOpen, setWhyOpen] = useState(false)
@@ -2112,7 +2155,9 @@ function RoutePhase({
       <CallSheet
         route={route}
         calls={calls}
-
+        phones={phones}
+        contactBusy={contactBusy}
+        onFetchPhone={onFetchPhone}
         onCall={onCall}
       />
 
@@ -2122,7 +2167,7 @@ function RoutePhase({
         <div className="space-y-3">
           {route.legs.map((leg, index) => {
             const status = calls[leg.load.id] ?? "pending"
-            const phone = telHref(leg.load.contactPhone)
+            const phone = telHref(phones[leg.load.id] ?? leg.load.contactPhone)
             return (
               <Card key={leg.load.id}>
                 <div className="flex items-start gap-3">
@@ -2224,18 +2269,22 @@ function RoutePhase({
                           <Phone className="h-3.5 w-3.5" />
                           Позвонить
                         </a>
-                      ) : leg.load.firmUrl ? (
-                        <a
-                          href={leg.load.firmUrl}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          title="Телефон фрахтователя виден в паспорте фирмы на ATI"
-                          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-3 text-[13px] font-medium text-white active:opacity-70"
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onFetchPhone(leg.load.id)}
+                          disabled={contactBusy === leg.load.id}
+                          title="Показать контакт фрахтователя — один запрос в ATI по вашему нажатию"
+                          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-3 text-[13px] font-medium text-white active:opacity-70 disabled:opacity-50"
                         >
-                          <Phone className="h-3.5 w-3.5" />
-                          Телефон в ATI
-                        </a>
-                      ) : null}
+                          {contactBusy === leg.load.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Phone className="h-3.5 w-3.5" />
+                          )}
+                          Контакты
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -2436,11 +2485,18 @@ const RouteChainMapLazy = dynamic(
 function CallSheet({
   route,
   calls,
+  phones,
+  contactBusy,
+  onFetchPhone,
   onCall,
 }: {
   route: BuiltRoute
   calls: Record<string, CallStatus>
   onCall: (loadId: string, status: CallStatus) => void
+  /** Контакты фрахтователей, показанные по нажатию диспетчера */
+  phones: Record<string, string>
+  contactBusy: string | null
+  onFetchPhone: (loadId: string) => void
 }) {
   const agreed = route.legs.filter((leg) => calls[leg.load.id] === "agreed").length
   return (
@@ -2458,7 +2514,7 @@ function CallSheet({
       <div className="mt-2.5 space-y-1.5">
         {route.legs.map((leg, index) => {
           const status = calls[leg.load.id] ?? "pending"
-          const phone = telHref(leg.load.contactPhone)
+          const phone = telHref(phones[leg.load.id] ?? leg.load.contactPhone)
           return (
             <div
               key={leg.load.id}
@@ -2493,16 +2549,20 @@ function CallSheet({
                   {status === "agreed" ? "Ещё раз" : "Звонить"}
                 </a>
               ) : leg.load.firmUrl ? (
-                <a
-                  href={leg.load.firmUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title="Телефон фрахтователя виден в паспорте фирмы на ATI"
-                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-2.5 text-[12.5px] font-medium text-white active:opacity-70"
+                <button
+                  type="button"
+                  onClick={() => onFetchPhone(leg.load.id)}
+                  disabled={contactBusy === leg.load.id}
+                  title="Показать контакт фрахтователя — один запрос в ATI по вашему нажатию"
+                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-2.5 text-[12.5px] font-medium text-white active:opacity-70 disabled:opacity-50"
                 >
-                  <Phone className="h-3.5 w-3.5" />
-                  Телефон в ATI
-                </a>
+                  {contactBusy === leg.load.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Phone className="h-3.5 w-3.5" />
+                  )}
+                  Контакты
+                </button>
               ) : null}
               <button
                 type="button"
