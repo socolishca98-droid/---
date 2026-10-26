@@ -287,6 +287,14 @@ export async function scanAtiLoads(params?: any) {
             (boardsResult as any)?.error,
             (exchangeResult as any)?.error,
           ].filter(Boolean),
+          // Масштаб выдачи со стороны биржи: сколько грузов ATI обещает по
+          // такому фильтру и до какой страницы мы дошли. Без этого экран
+          // показывал «Найдено: 106» и молчал, что по фильтру их 187, —
+          // то есть приписывал себе полноту выдачи, которой нет. Сам сайт
+          // ATI такое число всегда показывает, и мы будем тоже.
+          totalItems: (exchangeResult as any)?.totalItems ?? null,
+          pages: (exchangeResult as any)?.pages ?? null,
+          nextPageStart: (exchangeResult as any)?.nextPageStart ?? null,
         }
       }
       if (source === "exchange") {

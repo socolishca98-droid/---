@@ -29,6 +29,7 @@ import {
   Package,
   Building2,
   Phone,
+  PhoneCall,
   X,
   ChevronLeft,
   ChevronRight,
@@ -205,9 +206,36 @@ export function AtiSearchPanel() {
   const [fromGeo, setFromGeo] = useState<GeoOption | null>(null)
   const [fromRadius, setFromRadius] = useState("50")
   const [toGeo, setToGeo] = useState<GeoOption | null>(null)
-  const [toRadius, setToRadius] = useState("0")
+  // Радиус «куда» по умолчанию +100 км, как на телефоне: с «Точно» живой
+  // поиск показывал только грузы, выгружающиеся ровно в выбранном городе, и
+  // компания из Ярославля не видела груз в Набережных Челнах.
+  const [toRadius, setToRadius] = useState("100")
   const [weightMin, setWeightMin] = useState("")
   const [weightMax, setWeightMax] = useState("")
+  /**
+   * Где искать: площадки организации, общая биржа или оба источника.
+   *
+   * Десктопный поиск не отправлял source вообще — запрос уходил только на
+   * площадки организации, а грузы общей биржи (те самые сотни вариантов,
+   * которые видны на ati.su) не попадали в выдачу. На живом замере
+   * «Ярославль → Казань»: без source — 0 грузов, с source — 106.
+   */
+  const [source, setSource] = useState<"boards" | "exchange" | "both">("both")
+  /** Масштаб выдачи со стороны ATI: сколько грузов обещает фильтр и дошли ли мы до конца */
+  const [searchMeta, setSearchMeta] = useState<{
+    totalItems: number | null
+    bySource: { boards: number; exchange: number } | null
+    nextPageStart: number | null
+  } | null>(null)
+  /**
+   * Контакты фрахтователя — ТОЛЬКО по нажатию на карточку, официальным
+   * методом ATI (GET /v1.0/firms/{id}/contacts/summary). Автоматически не
+   * собираются: за это ATI.SU делает замечания (соглашение, п. 3.2.1.7).
+   */
+  const [rowContacts, setRowContacts] = useState<
+    Record<string, { phone: string | null; name: string | null; email: string | null }>
+  >({})
+  const [contactBusyId, setContactBusyId] = useState<string | null>(null)
 
   // Данные
   const [searchResults, setSearchResults] = useState<LoadItem[]>([])
@@ -336,14 +364,17 @@ export function AtiSearchPanel() {
   ])
 
   // ==================== ПОИСК ПО ATI (ручной) ====================
-  const handleSearch = async (): Promise<void> => {
+  const handleSearch = async (pageStart?: number): Promise<void> => {
     if (!fromGeo) {
       toast.error("Выберите город отправления")
       return
     }
 
     setScanning(true)
-    setSearchResults([])
+    // «Показать ещё» дописывает к тому, что уже на экране: страницы биржи
+    // отдают примерно по 12 грузов, и один заход показывает только первую
+    // двадцатку. Первый поиск — список с нуля.
+    if (!pageStart) setSearchResults([])
 
     try {
       const res = await fetch("/api/ati/scan", {
@@ -351,6 +382,7 @@ export function AtiSearchPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           manualMode: true,
+          source,
           fromGeo: {
             id: fromGeo.id,
             name: fromGeo.name,
@@ -367,6 +399,8 @@ export function AtiSearchPanel() {
             : null,
           fromRadius: Number(fromRadius),
           toRadius: Number(toRadius),
+          // С какой страницы биржи продолжать — только для «Показать ещё»
+          pageStart: pageStart ?? undefined,
           filters: {
             minWeight: Number(weightMin) * 1000 || undefined,
             maxWeight: Number(weightMax) * 1000 || undefined,
@@ -381,11 +415,28 @@ export function AtiSearchPanel() {
         loads?: LoadItem[]
         found?: number
         count?: number
+        totalItems?: number | null
+        bySource?: { boards: number; exchange: number } | null
+        nextPageStart?: number | null
       }
 
       if (data.success) {
-        setSearchResults(data.loads || [])
-        toast.success(`Найдено: ${data.found || 0}, сохранено: ${data.count}`)
+        const incoming = data.loads || []
+        setSearchResults((prev) => {
+          if (!pageStart) return incoming
+          const seen = new Set(prev.map((item) => item.id))
+          return [...prev, ...incoming.filter((item) => !seen.has(item.id))]
+        })
+        setSearchMeta({
+          totalItems: data.totalItems ?? null,
+          bySource: data.bySource ?? null,
+          nextPageStart: data.nextPageStart ?? null,
+        })
+        toast.success(
+          pageStart
+            ? `Показано ещё: ${incoming.length}`
+            : `Найдено: ${data.found || 0}, сохранено: ${data.count}`,
+        )
         void loadStats()
       } else if (data.code === "ati_not_connected") {
         setAtiConnected(false)
@@ -471,7 +522,10 @@ export function AtiSearchPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cacheId: load.id,
-          fetchContacts: true,
+          // fetchContacts НЕ передаём намеренно: контакты фрахтователя
+          // берёт только кнопка «Контакты» на карточке, когда человек сам
+          // решает звонить. ATI.SU делает замечания за автоматический сбор
+          // контактных данных (соглашение, п. 3.2.1.7).
         }),
       })
 
@@ -525,6 +579,47 @@ export function AtiSearchPanel() {
     } finally {
       setLoadingContact(false)
     }
+  }
+
+  /**
+   * «Контакты» на карточке груза — один запрос в ATI по нажатию человека.
+   *
+   * Ровно как кнопка «показать» на самом ATI: телефон фрахтователя не
+   * собирается сам и не показывается до нажатия. Ответ кэшируется в грузе,
+   * повторное нажатие ATI уже не дёргает.
+   */
+  const askContacts = async (
+    cacheId: string,
+  ): Promise<{ phone: string | null; name: string | null; email: string | null } | null> => {
+    setContactBusyId(cacheId)
+    try {
+      const res = await fetch("/api/ati/loads/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cacheId }),
+      })
+      const data = (await res.json()) as {
+        phone?: string | null
+        name?: string | null
+        email?: string | null
+        error?: string
+      }
+      if (res.ok && data.phone) {
+        const shown = {
+          phone: data.phone ?? null,
+          name: data.name ?? null,
+          email: data.email ?? null,
+        }
+        setRowContacts((prev) => ({ ...prev, [cacheId]: shown }))
+        return shown
+      }
+      toast.error(data.error || "ATI не отдала контакт")
+    } catch {
+      toast.error("Не удалось получить контакт")
+    } finally {
+      setContactBusyId(null)
+    }
+    return null
   }
 
   // Очистка фильтров
@@ -675,6 +770,36 @@ export function AtiSearchPanel() {
                   </div>
                 </div>
 
+                <div className="lg:col-span-12">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold">Где искать:</span>
+                    {(
+                      [
+                        ["both", "Всё"],
+                        ["boards", "Площадки"],
+                        ["exchange", "Общая биржа"],
+                      ] as Array<["boards" | "exchange" | "both", string]>
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSource(value)}
+                        className={`min-h-[34px] rounded-md border px-3 text-[13px] transition-colors ${
+                          source === value
+                            ? "border-primary/40 bg-primary/15 text-primary"
+                            : "border-border text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <span className="text-xs text-muted-foreground">
+                      «Площадки» — организации, где мы участник. «Общая биржа» —
+                      все грузы ATI, как на сайте ati.su.
+                    </span>
+                  </div>
+                </div>
+
                 <div className="lg:col-span-2">
                   <Button
                     size="lg"
@@ -696,14 +821,53 @@ export function AtiSearchPanel() {
 
           <div className="space-y-3">
             {searchResults.length > 0 ? (
-              searchResults.map((load: any) => (
-                <LoadCard
-                  key={load.id}
-                  load={load}
-                  onTake={() => void handleTakeLoad(load)}
-                  taken={takenIds.has(load.id)}
-                />
-              ))
+              <>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <span>
+                    Показано: <span className="font-bold text-foreground">{searchResults.length}</span>
+                  </span>
+                  {searchMeta?.bySource ? (
+                    <span>
+                      с площадок {searchMeta.bySource.boards}, с общей биржи{" "}
+                      {searchMeta.bySource.exchange}
+                    </span>
+                  ) : null}
+                  {searchMeta?.totalItems ? (
+                    <span>
+                      ATI обещает по такому фильтру:{" "}
+                      <span className="font-bold text-foreground">{searchMeta.totalItems}</span>
+                    </span>
+                  ) : null}
+                </div>
+                {searchResults.map((load: any) => (
+                  <LoadCard
+                    key={load.id}
+                    load={load}
+                    onTake={() => void handleTakeLoad(load)}
+                    taken={takenIds.has(load.id)}
+                    contact={rowContacts[load.id] ?? null}
+                    contactBusy={contactBusyId === load.id}
+                    onContacts={() => void askContacts(load.id)}
+                  />
+                ))}
+                {searchMeta?.nextPageStart && searchMeta.totalItems &&
+                searchResults.length < searchMeta.totalItems ? (
+                  <div className="flex justify-center pt-1">
+                    <Button
+                      variant="outline"
+                      disabled={scanning}
+                      onClick={() => void handleSearch(searchMeta.nextPageStart ?? undefined)}
+                    >
+                      {scanning ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      Показать ещё — биржа отдаёт страницами примерно по 12 грузов
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             ) : (
               !scanning && (
                 <div className="text-center text-muted-foreground py-16 bg-muted/30 rounded-lg">
@@ -918,7 +1082,10 @@ export function AtiSearchPanel() {
                     key={load.id}
                     load={load}
                     onTake={() => void handleTakeLoad(load)}
-                  taken={takenIds.has(load.id)}
+                    taken={takenIds.has(load.id)}
+                    contact={rowContacts[load.id] ?? null}
+                    contactBusy={contactBusyId === load.id}
+                    onContacts={() => void askContacts(load.id)}
                   />
                 ))}
               </div>
@@ -1003,7 +1170,7 @@ export function AtiSearchPanel() {
             <div className="py-8 flex flex-col items-center gap-4">
               <TruckLoader className="text-primary" />
               <p className="text-sm text-muted-foreground">
-                Получаем контакты...
+                Создаём заказ на этапе «Поиск»...
               </p>
             </div>
           ) : (
@@ -1049,15 +1216,53 @@ export function AtiSearchPanel() {
                 <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Phone className="h-5 w-5 text-green-500" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm text-muted-foreground">
                         Телефон
                       </p>
-                      <p className="font-mono text-lg font-bold">
-                        {contactInfo.phone ||
-                          "Не указан — смотрите на ATI.su"}
-                      </p>
+                      {contactInfo.phone ? (
+                        <a
+                          href={`tel:${contactInfo.phone}`}
+                          className="font-mono text-lg font-bold text-green-700 dark:text-green-400 hover:underline"
+                        >
+                          {contactInfo.phone}
+                        </a>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Скрыт до нажатия — как на ATI.su
+                        </p>
+                      )}
                     </div>
+                    {!contactInfo.phone && selectedLoad && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={contactBusyId === selectedLoad.id}
+                        onClick={() => {
+                          if (!selectedLoad) return
+                          // Показанный контакт сразу виден в диалоге: берём
+                          // его из ответа, а не из состояния — замыкание на
+                          // момент нажатия ещё не знает о новой записи.
+                          void askContacts(selectedLoad.id).then((shown) => {
+                            if (shown?.phone) {
+                              setContactInfo({
+                                phone: shown.phone,
+                                name: shown.name,
+                                firmName: contactInfo?.firmName ?? selectedLoad.firmName,
+                                firmId: contactInfo?.firmId ?? selectedLoad.firmId,
+                              })
+                            }
+                          })
+                        }}
+                      >
+                        {contactBusyId === selectedLoad.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PhoneCall className="h-4 w-4" />
+                        )}
+                        Показать контакты
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -1102,16 +1307,25 @@ function LoadCard({
   load,
   onTake,
   taken = false,
+  contact,
+  contactBusy = false,
+  onContacts,
 }: {
   load: LoadItem
   onTake: () => void
   /** Груз уже взят нашей организацией в работу (заказ создан). */
   taken?: boolean
+  /** Контакт фрахтователя, показанный по нажатию кнопки «Контакты» */
+  contact?: { phone: string | null; name: string | null; email: string | null } | null
+  contactBusy?: boolean
+  /** Показать контакты: один запрос в ATI по нажатию человека */
+  onContacts?: () => void
 }) {
   const pricePerKm =
     load.distance > 0 && load.price > 0
       ? Math.round(load.price / load.distance)
       : 0
+  const knownPhone = contact?.phone ?? load.contactPhone ?? null
 
   return (
     <Card className="hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary">
@@ -1186,6 +1400,38 @@ function LoadCard({
             ) : (
               <Button onClick={onTake}>Взять в работу</Button>
             )}
+            {onContacts ? (
+              <Button
+                variant="outline"
+                onClick={onContacts}
+                disabled={contactBusy || Boolean(knownPhone)}
+                title="Показать контакт фрахтователя — один запрос в ATI по вашему нажатию, как кнопка «показать» на ati.su"
+              >
+                {contactBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PhoneCall className="h-4 w-4" />
+                )}
+                {knownPhone ? "Контакты есть" : "Контакты"}
+              </Button>
+            ) : null}
+            {knownPhone ? (
+              <a
+                href={`tel:${knownPhone}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-green-500/30 bg-green-500/10 px-2.5 py-1.5 text-sm font-medium text-green-700 dark:text-green-400 hover:underline"
+              >
+                <Phone className="h-3.5 w-3.5" />
+                {knownPhone}
+              </a>
+            ) : null}
+            {contact?.email ? (
+              <a
+                href={`mailto:${contact.email}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:underline"
+              >
+                {contact.email}
+              </a>
+            ) : null}
           </div>
         </div>
 

@@ -100,6 +100,15 @@ export default function LogistSearchPage() {
   const [source, setSource] = useState<"boards" | "exchange" | "both">("both")
   /** Сколько нашли с каждого источника и что биржа обещает по фильтру */
   const [bySource, setBySource] = useState<{ boards: number; exchange: number } | null>(null)
+  /**
+   * Масштаб выдачи со стороны ATI: сколько грузов биржа обещает по фильтру
+   * и до какой страницы мы дошли. Без этого экран показывал «Найдено: 106»
+   * и молчал, что по фильтру их 187, — то есть врал о полноте выдачи.
+   */
+  const [searchMeta, setSearchMeta] = useState<{
+    totalItems: number | null
+    nextPageStart: number | null
+  } | null>(null)
   const [searchWarning, setSearchWarning] = useState<string | null>(null)
 
   async function takeLoad(load: MobileAtiLoad) {
@@ -129,13 +138,15 @@ export default function LogistSearchPage() {
     if (orderId) router.push(`/lm/orders/${orderId}`)
   }
 
-  async function runLiveSearch() {
+  async function runLiveSearch(pageStart?: number) {
     if (!from) {
       toast.error("Выберите город отправления")
       return
     }
     setScanning(true)
-    setResults([])
+    // «Показать ещё» дописывает к экрану: биржа отдаёт страницами примерно
+    // по 12 грузов, один заход показывает только первую двадцатку.
+    if (!pageStart) setResults([])
     try {
       const res = await fetch("/api/ati/scan", {
         method: "POST",
@@ -147,6 +158,8 @@ export default function LogistSearchPage() {
           toGeo: to ? { id: to.id, name: to.name, fullName: to.fullName, region: to.region } : null,
           fromRadius: Number(fromRadius) || 100,
           toRadius: Number(fromRadius) || 100,
+          // С какой страницы биржи продолжать — только для «Показать ещё»
+          pageStart: pageStart ?? undefined,
           filters: {
             minWeight: Number(weightMin) * 1000 || undefined,
             maxWeight: Number(weightMax) * 1000 || undefined,
@@ -155,8 +168,14 @@ export default function LogistSearchPage() {
       })
       const data = await res.json()
       if (data?.success) {
-        setResults((data.loads ?? []) as MobileAtiLoad[])
+        const incoming = ((data.loads ?? []) as MobileAtiLoad[])
+        setResults((prev) => {
+          if (!pageStart) return incoming
+          const seen = new Set(prev.map((item) => item.id))
+          return [...prev, ...incoming.filter((item) => !seen.has(item.id))]
+        })
         setBySource(data.bySource ?? null)
+        setSearchMeta({ totalItems: data.totalItems ?? null, nextPageStart: data.nextPageStart ?? null })
         // Источники независимы: если общая биржа не ответила, молчать нельзя
         const errs = (data.errors ?? []).filter(Boolean)
         setSearchWarning(errs.length > 0 ? errs.join(" ") : null)
@@ -357,11 +376,27 @@ export default function LogistSearchPage() {
                     : `Найдено: ${results.length}`
                 }
               />
+              {searchMeta?.totalItems ? (
+                <p className="-mt-1 px-1 text-[12.5px] text-muted-foreground">
+                  ATI обещает по такому фильтру {searchMeta.totalItems} — показано {results.length}
+                </p>
+              ) : null}
               <div className="space-y-2.5">
                 {results.map((load) => (
                   <LoadCard key={load.id} load={load} busy={taking === load.id} onTake={() => void takeLoad(load)} />
                 ))}
               </div>
+              {searchMeta?.nextPageStart && searchMeta.totalItems && results.length < searchMeta.totalItems ? (
+                <ActionButton
+                  tone="default"
+                  full
+                  onClick={() => void runLiveSearch(searchMeta.nextPageStart ?? undefined)}
+                  disabled={scanning}
+                >
+                  {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  Показать ещё
+                </ActionButton>
+              ) : null}
             </>
           ) : null}
         </div>
