@@ -21,26 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  ChevronDown,
-  Clock,
-  ChevronUp,
-  Home,
-  Loader2,
-  MapPin,
-  Download,
-  Info,
-  Package,
-  Phone,
-  RefreshCw,
-  Search,
-  Route as RouteIcon,
-  Truck,
-  X,
-} from "lucide-react"
+import { AlertTriangle, ArrowRight, Building2, Check, ChevronDown, ChevronUp, Clock, Download, Home, Info, Loader2, MapPin, Package, Phone, RefreshCw, Route as RouteIcon, Search, Truck, X } from "lucide-react"
 
 import dynamic from "next/dynamic"
 
@@ -204,6 +185,8 @@ export default function RouteAssistantPage() {
    * браузера и не из зашитого значения.
    */
   const [baseCity, setBaseCity] = useState("")
+  /** Координаты стоянки организации — из них считаем, какие города ближе */
+  const [basePoint, setBasePoint] = useState<{ lat: number; lng: number } | null>(null)
 
   // Город старта помним: логист обычно едет из одной базы
   useEffect(() => {
@@ -220,11 +203,19 @@ export default function RouteAssistantPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const address = (data?.settings?.baseAddress ?? "").trim()
-        if (!alive || !address) return
-        setBaseCity(address)
-        // Город старта не задан — подставляем базу: у другой компании база
-        // будет своя, и маршрут всё равно начнётся от её стоянки.
-        setStartCity((prev) => (prev.trim() ? prev : address))
+        if (alive && address) {
+          setBaseCity(address)
+          // Город старта не задан — подставляем базу: у другой компании база
+          // будет своя, и маршрут всё равно начнётся от её стоянки.
+          setStartCity((prev) => (prev.trim() ? prev : address))
+        }
+        // Координаты стоянки. Без них близость городов не посчитать —
+        // подсказки останутся просто списком без километража.
+        const lat = Number(data?.settings?.baseLat)
+        const lng = Number(data?.settings?.baseLng)
+        if (alive && Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
+          setBasePoint({ lat, lng })
+        }
       })
       .catch(() => {
         /* настройки недоступны — работаем от города, что ввёл логист */
@@ -314,14 +305,15 @@ export default function RouteAssistantPage() {
   )
 
   /** Города погрузки на бирже — быстрый выбор базы, если своей нет в списке. */
-  const topFromCities = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const load of usableLoads) {
-      const city = shortCity(load.fromCity)
-      counts.set(city, (counts.get(city) ?? 0) + 1)
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
-  }, [usableLoads])
+  /**
+   * Города погрузки, где сейчас есть грузы.
+   *
+   * Сортировка — ОТ БАЗЫ ОРГАНИЗАЦИИ: сначала ближние. Раньше шли по числу
+   * грузов, и вверху оказывался случайный город с биржи, а не тот, куда
+   * логисту реально ехать. Теперь первый чипс — ближайший к стоянке.
+   */
+
+
 
   // ── Координаты городов биржи: нужны, чтобы брать грузы «по пути» ──
   // Без них цепочка строится только по точному совпадению городов, а на
@@ -340,6 +332,82 @@ export default function RouteAssistantPage() {
     user && pointsQuery ? `/api/ati/cities/points?cities=${encodeURIComponent(pointsQuery)}` : null,
   )
   const cityPoints = pointsState.data?.points ?? null
+
+  /**
+   * Точка базы для расчёта близости городов.
+   *
+   * Сначала координаты из настроек автопарка — там стоит сам адрес стоянки,
+   * они точные. Если их нет, берём координаты города базы из геокодера:
+   * лучше примерные, чем никаких — иначе подсказки останутся списком без
+   * километража и пользователь не поймёт, что ближе.
+   */
+  const basePointForSort = useMemo<{ lat: number; lng: number } | null>(() => {
+    if (basePoint) return basePoint
+    const city = (baseCity.trim() || startCity.trim()).trim()
+    if (!city || !cityPoints) return null
+    return cityPoints[normalizeCityKey(shortCity(city))] ?? null
+  }, [basePoint, baseCity, startCity, cityPoints])
+
+  /**
+   * Грузы, отсортированные от базы организации: сначала ближние.
+   * Показываем на первом экране — иначе пользователь видит только названия
+   * городов и спрашивает «где заказы?». Это и есть заказы.
+   */
+  const nearestLoads = useMemo(() => {
+    const origin = basePointForSort
+    const withKm = usableLoads.map((load) => {
+      const point = load.fromPoint ?? null
+      const km =
+        origin && point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+          ? haversineKm(origin, point)
+          : null
+      return { load, km }
+    })
+    withKm.sort((a, b) => {
+      if (a.km !== null && b.km !== null) return a.km - b.km
+      if (a.km !== null) return -1
+      if (b.km !== null) return 1
+      return (b.load.priceRub ?? 0) - (a.load.priceRub ?? 0)
+    })
+    return withKm.slice(0, 6)
+  }, [usableLoads, basePointForSort])
+
+  /**
+   * Города погрузки, где сейчас есть грузы.
+   *
+   * Сортировка — ОТ БАЗЫ ОРГАНИЗАЦИИ: сначала ближние. Раньше шли по числу
+   * грузов, и вверху оказывался случайный город с биржи, а не тот, куда
+   * логисту реально ехать. Теперь первый чипс — ближайший к стоянке.
+   */
+  const topFromCities = useMemo(() => {
+    const origin = basePointForSort
+    // Сколько грузов в каждом городе
+    const counts = new Map<string, number>()
+    for (const load of usableLoads) {
+      const city = shortCity(load.fromCity)
+      if (city) counts.set(city, (counts.get(city) ?? 0) + 1)
+    }
+    // Километраж от базы до города погрузки
+    const rows: Array<{ city: string; count: number; km: number | null }> = []
+    for (const [city, count] of counts) {
+      const load = usableLoads.find((item) => shortCity(item.fromCity) === city)
+      const point = load?.fromPoint ?? null
+      const km =
+        origin && point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+          ? Math.round(haversineKm(origin, point))
+          : null
+      rows.push({ city, count, km })
+    }
+    rows.sort((a, b) => {
+      if (a.km !== null && b.km !== null) return a.km - b.km
+      if (a.km !== null) return -1
+      if (b.km !== null) return 1
+      return b.count - a.count
+    })
+    return rows.slice(0, 6)
+  }, [usableLoads, basePointForSort])
+
+
 
   /**
    * Грузы с координатами городов — билдер умеет брать «по пути».
@@ -861,6 +929,8 @@ export default function RouteAssistantPage() {
               window.localStorage.setItem(START_CITY_KEY, value)
             }}
             topFromCities={topFromCities}
+            nearestLoads={nearestLoads}
+            baseCity={baseCity}
             vehicles={freeVehicles}
             allVehiclesBusy={freeVehicles.length === 0 && vehicles.length > 0}
             vehicleId={vehicleId}
@@ -1217,6 +1287,8 @@ function SetupPhase({
   startCity,
   setStartCity,
   topFromCities,
+  nearestLoads,
+  baseCity,
   vehicles,
   allVehiclesBusy,
   vehicleId,
@@ -1237,7 +1309,11 @@ function SetupPhase({
 }: {
   startCity: string
   setStartCity: (value: string) => void
-  topFromCities: Array<[string, number]>
+  topFromCities: Array<{ city: string; count: number; km: number | null }>
+  /** Ближайшие к базе грузы — «заказы», которые видит пользователь */
+  nearestLoads: Array<{ load: BuilderLoad; km: number | null }>
+  /** База своей организации из настроек автопарка */
+  baseCity: string
   vehicles: BuilderVehicle[]
   allVehiclesBusy: boolean
   vehicleId: string
@@ -1308,6 +1384,22 @@ function SetupPhase({
           />
         </div>
 
+        {/* База СВОЕЙ организации. У каждой компании адрес свой, и маршрут
+            обязан начинаться от её стоянки, а не от города по умолчанию. */}
+        {baseCity.trim() ? (
+          <p className="mt-2 flex items-start gap-1.5 text-[12px] leading-snug text-muted-foreground">
+            <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Ваша база из настроек: <span className="text-foreground">{baseCity.trim()}</span>. Сбор
+              и маршрут идут от неё.
+            </span>
+          </p>
+        ) : (
+          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+            Адрес базы не указан в настройках автопарка — помощник строит от введённого города.
+          </p>
+        )}
+
         {pointsLoading ? (
           <p className="mt-2 text-[12px] text-muted-foreground">Считаю расстояния между городами биржи…</p>
         ) : noStartPoint ? (
@@ -1319,26 +1411,66 @@ function SetupPhase({
 
         {topFromCities.length > 0 ? (
           <div className="mt-2.5">
-            <p className="text-[12px] text-muted-foreground">Города погрузки на бирже:</p>
+            <p className="text-[12px] text-muted-foreground">
+              Грузы есть вот в этих городах — ближе к вашей базе:
+            </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {topFromCities.map(([city, count]) => (
+              {topFromCities.map((row) => (
                 <button
-                  key={city}
+                  key={row.city}
                   type="button"
-                  onClick={() => setStartCity(city)}
+                  onClick={() => setStartCity(row.city)}
                   className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
-                    startCity === city
+                    startCity === row.city
                       ? "border-primary/40 bg-primary/15 text-primary"
                       : "border-border text-foreground/90"
                   }`}
                 >
-                  {city} · {count}
+                  {row.city}
+                  {row.km !== null ? ` · ${row.km} км` : ` · ${row.count} груз(а)`}
                 </button>
               ))}
             </div>
           </div>
         ) : null}
       </Card>
+
+      {/* Грузы на бирже — те самые «заказы». Без этого списка пользователь
+          видит только названия городов и спрашивает «где заказы?». */}
+      {nearestLoads.length > 0 ? (
+        <Card>
+          <p className="text-[13px] font-medium text-foreground">
+            Грузы на бирже — ближе к вашей базе
+          </p>
+          <div className="mt-2 divide-y divide-border">
+            {nearestLoads.map(({ load, km }) => (
+              <div key={load.id} className="flex items-center gap-2 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">
+                    {shortCity(load.fromCity)} → {shortCity(load.toCity)}
+                  </p>
+                  <p className="truncate text-[11.5px] text-muted-foreground">
+                    {[
+                      km !== null ? `${Math.round(km)} км от базы` : null,
+                      load.weightKg ? `${Math.round(load.weightKg / 1000)} т` : null,
+                      load.loadingDate ? `с ${formatDateShort(load.loadingDate)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <p className="shrink-0 text-[13px] font-semibold text-success">
+                  {formatMoney(load.priceRub)}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
+            Это грузы, где сейчас можно строить. Нажмите «Собрать маршрут» — помощник сложит их в
+            цепочку от вашей базы.
+          </p>
+        </Card>
+      ) : null}
 
       {/* Откуда берём грузы — честно, без преувеличений */}
       <SourceNoteCard note={sourceNote} loadsCount={usableLoadsCount} />
