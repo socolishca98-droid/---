@@ -175,6 +175,45 @@ function toItems(rows: any[], limit: number): GeoItem[] {
 }
 
 /**
+ * Регион места по его адресу — из разобранного ответа геокодера
+ * (address.state / address.region).
+ *
+ * Зачем: свой словарь городов покрывает 199 городов, в основном областные
+ * центры. Замер: «Ярославль» → Ярославская область, «Биробиджан» → Еврейская
+ * АО, но «Тулун», «Кировск», «Надым», «Оханск» → ничего. Для организации из
+ * такого города не определялся ни регион сбора, ни фильтр помощника.
+ * Геокодер знает все регионы, поэтому его ответ и закрывает пробел.
+ *
+ * Кэш в памяти процесса: адрес базы не меняется, а к геокодеру стоит
+ * обращаться бережно.
+ */
+const REGION_CACHE = new Map<string, string | null>()
+
+export async function regionOfPlace(query: string): Promise<string | null> {
+  const key = String(query ?? "").trim().toLowerCase()
+  if (key.length < 3) return null
+  if (REGION_CACHE.has(key)) return REGION_CACHE.get(key) ?? null
+
+  let found: string | null = null
+  for (const variant of addressVariants(query)) {
+    const rows = await nominatim(variant, 3)
+    for (const row of rows) {
+      const address = row?.address ?? {}
+      // state — для области/края/республики, region — запасной вариант
+      const candidate = address.state || address.region || null
+      if (candidate) {
+        found = String(candidate).trim() || null
+        break
+      }
+    }
+    if (found) break
+  }
+
+  REGION_CACHE.set(key, found)
+  return found
+}
+
+/**
  * Подсказки мест по адресу. Если точный адрес не нашёлся — пробуем упрощённые
  * варианты, поэтому результат есть почти всегда (хотя бы центр города).
  */

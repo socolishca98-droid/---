@@ -6,7 +6,7 @@ import { scanAtiLoads } from "@/lib/ati-client"
 import { getActiveAtiToken } from "@/lib/ati/connection"
 import { prisma } from "@/lib/prisma"
 import { scanParamsForProfile } from "@/lib/ati/scan-schedule"
-import { cityIdsFromBaseAddress } from "@/lib/ati/scan-profile"
+import { regionOfBaseAddress } from "@/lib/ati/base-region"
 
 export async function POST(request: NextRequest) {
   const __auth = await requireStaffAuth(request);
@@ -42,7 +42,12 @@ export async function POST(request: NextRequest) {
             where: { organizationId: __org.organizationId },
             select: { baseAddress: true },
           })
-          cityIds = cityIdsFromBaseAddress(settings?.baseAddress)
+          // Города профиля пусты, а в словаре города базы может не быть
+          // («Тулун», «Кировск», «Надым» — в словаре 199 городов, в основном
+          // областные центры). Тогда регион берём через геокодера: он знает
+          // все 95 регионов, и организация из любого города получит свой.
+          const baseRegion = await regionOfBaseAddress(settings?.baseAddress)
+          cityIds = baseRegion ? [baseRegion.id] : []
         }
         scanBody = {
           ...body,

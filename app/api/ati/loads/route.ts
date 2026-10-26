@@ -22,6 +22,7 @@ import { getActiveAtiToken } from "@/lib/ati/connection"
 import { fetchBoardInfo, scanAtiLoads, getAtiCache } from "@/lib/ati-client"
 import { isProfileDue, parseProfileCities } from "@/lib/ati/scan-profile"
 import { markProfileScanned, getDueScanProfiles } from "@/lib/ati/scan-schedule"
+import { regionOfBaseAddress } from "@/lib/ati/base-region"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -124,6 +125,22 @@ export async function GET(request: NextRequest) {
 
     const freshScannedAt = refreshed ? new Date() : scannedAt
 
+    // Регион базы организации — помощник отфильтровывает по нему грузы, иначе
+    // компания из Тулуна увидит груз из Новосибирска. Раньше регион искали в
+    // браузере по своему словарю из 199 городов, и для «Тулуна», «Кировска»,
+    // «Надыма» фильтр молча выключался. Теперь регион приходит с сервера:
+    // словарь городов → геокодер → все 95 регионов.
+    let baseRegion: { id: number; name: string } | null = null
+    try {
+      const settings = await prisma.fleetSettings.findFirst({
+        where: { organizationId },
+        select: { baseAddress: true },
+      })
+      baseRegion = await regionOfBaseAddress(settings?.baseAddress)
+    } catch {
+      baseRegion = null
+    }
+
     return NextResponse.json({
       success: true,
       ...result,
@@ -147,6 +164,8 @@ export async function GET(request: NextRequest) {
             ? `Грузы берём из двух мест. Площадки ATI, к которым подключена организация (${sourceBoards.map((b) => b.name || b.id).join(", ")}) — официальный API. И общая биржа через поиск loads.ati.su — там все грузы ATI, как на сайте. Источник виден у каждого груза, искать можно по одному или по обоим сразу.`
             : "К организации не подключена ни одна площадка ATI, поэтому грузы идут только из общей биржи (поиск loads.ati.su). Чтобы появились и грузы площадок, попросите грузовладельца добавить вас на его площадку.",
       },
+      /** Регион базы: по нему помощник оставляет только свои грузы */
+      baseRegion,
       /** Профиль сканирования организации (города, интервал) — для шторки настроек */
       scanProfile: profile
         ? {

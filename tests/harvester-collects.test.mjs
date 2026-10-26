@@ -33,7 +33,11 @@ test("профиль получает города из адреса базы, �
     /cities: JSON\.stringify\(baseCities\)/,
     "автосоздание профиля должно писать города базы, иначе скан без фильтра по региону",
   )
-  assert.match(CONFIG, /cityIdsFromBaseAddress/, "адрес базы должен превращаться в города профиля")
+  assert.match(
+    CONFIG,
+    /regionOfBaseAddress\(base\)/,
+    "адрес базы должен превращаться в города профиля — для любого города, не только из словаря",
+  )
   assert.match(
     CONFIG,
     /parseProfileCities\(profile\.cities\)\.length > 0\) continue/,
@@ -74,7 +78,7 @@ test("«собрано» считается по новым грузам, а н�
 test("скан без городов профиля берёт регион из адреса базы", () => {
   assert.match(
     SCAN_ROUTE,
-    /cityIds = cityIdsFromBaseAddress\(settings\?\.baseAddress\)/,
+    /regionOfBaseAddress\(settings\?\.baseAddress\)/,
     "пустой профиль не должен отправлять сборщика «во всю страну»",
   )
   assert.match(SCAN_ROUTE, /scanParamsForProfile/, "плановый сбор должен брать настройки из профиля организации")

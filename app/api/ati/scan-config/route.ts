@@ -21,7 +21,8 @@ import { requireOrganization, scopedWhere } from "@/lib/org"
 import { prisma } from "@/lib/prisma"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
-import { cityIdsFromBaseAddress, parseProfileCities } from "@/lib/ati/scan-profile"
+import { parseProfileCities } from "@/lib/ati/scan-profile"
+import { regionOfBaseAddress } from "@/lib/ati/base-region"
 
 export const dynamic = "force-dynamic"
 
@@ -60,7 +61,8 @@ export async function GET(request: NextRequest) {
         where: { organizationId: org.organizationId },
         select: { baseAddress: true },
       })
-      const healCities = cityIdsFromBaseAddress(settingsForHeal?.baseAddress)
+      const healedRegion = await regionOfBaseAddress(settingsForHeal?.baseAddress)
+      const healCities = healedRegion ? [healedRegion.id] : []
       if (healCities.length > 0) {
         for (const profile of profiles) {
           if (parseProfileCities(profile.cities).length > 0) continue
@@ -84,7 +86,10 @@ export async function GET(request: NextRequest) {
       // плановый сборщик не фильтровал грузы по региону базы и не искал по
       // общей бирже: в кэш организации шли Москва, Калужская и Алтай, а
       // кнопка «Собрать» отчитывалась «собрано 195» при нуле новых грузов.
-      const baseCities = cityIdsFromBaseAddress(base)
+      // Город базы может быть не в своём словаре (199 городов) — тогда
+      // регион определяет геокодер, он знает все 95 регионов.
+      const baseRegion = await regionOfBaseAddress(base)
+      const baseCities = baseRegion ? [baseRegion.id] : []
       const profile = await prisma.atiScanConfig.create({
         data: {
           organizationId: org.organizationId,

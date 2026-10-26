@@ -105,6 +105,13 @@ export default function RouteAssistantPage() {
     /** Сколько грузов всего в кэше организации — список отдаём частями */
     total: number
     /**
+     * Регион базы организации — по нему отфильтровываем грузы. Считает
+     * сервер: словарь городов, а если города в нём нет — геокодер. В браузере
+     * такой возможности не было, и для «Тулуна», «Кировска», «Надыма» фильтр
+     * молча выключался, показывая грузы со всей страны.
+     */
+    baseRegion?: { id: number; name: string } | null
+    /**
      * Откуда берём грузы: площадки ATI организации. API ATI.SU отдаёт только
      * их — общий поиск по бирже (как на сайте loads.ati.su) через API закрыт.
      * Показываем это словами, иначе логист решает, что программа сломана.
@@ -303,6 +310,11 @@ export default function RouteAssistantPage() {
    * регион базы: у каждой компании он свой.
    */
   const baseRegionName = useMemo(() => {
+    // Регион с сервера — он считается для любого адреса базы (словарь городов,
+    // затем геокодер). Свой словарь в браузере остаётся запасным путём: если
+    // сервер ещё не ответил, фильтр уже работает.
+    const fromServer = loadsState.data?.baseRegion?.name
+    if (fromServer) return fromServer
     if (!baseCity.trim()) return null
     try {
       const region = findRegionByNameLocal(baseCity)
@@ -310,7 +322,7 @@ export default function RouteAssistantPage() {
     } catch {
       return null
     }
-  }, [baseCity])
+  }, [baseCity, loadsState.data?.baseRegion?.name])
 
   /**
    * Грузы, пригодные для цепочки, — ТОЛЬКО региона базы.
