@@ -122,7 +122,26 @@ export default function MobileSettingsPage() {
     const found = await searchPlaces(address, 4)
     setSearching(false)
     setSuggestions(found)
-    if (found.length === 0) toast.error("Подсказок не нашлось — введите координаты вручную")
+    if (found.length === 0) {
+      // Не тупик: точного дома геокодер может не знать — предложим город,
+      // его он находит почти всегда. Лучше центр населённого пункта, чем
+      // «введите координаты вручную» и человек без базы.
+      const parts = address.split(",").map((part) => part.trim()).filter(Boolean)
+      const city = parts[parts.length - 1]
+      if (city) {
+        const fallback = await searchPlaces(city, 3)
+        if (fallback.length > 0) {
+          setSuggestions(fallback)
+          toast("Точного дома не нашли — показываю город", {
+            description: "База будет в центре населённого пункта",
+          })
+          return
+        }
+      }
+      toast.error("Адрес не узнал ни геокодер, ни мы", {
+        description: "Введите координаты вручную — их видно в любых картах",
+      })
+    }
   }
 
   const pickPlace = (item: GeoItem) => {
@@ -226,7 +245,14 @@ export default function MobileSettingsPage() {
                       className="flex min-h-[48px] w-full items-start gap-2 border-b border-border px-3 py-2.5 text-left text-[13.5px] text-foreground last:border-b-0 active:opacity-70"
                     >
                       <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="line-clamp-2">{item.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block line-clamp-2">{item.label}</span>
+                        {item.precision === "city" ? (
+                          <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                            только населённый пункт — точка будет в его центре
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                   ))}
                 </div>
