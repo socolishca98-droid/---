@@ -849,7 +849,10 @@ export async function getAtiCache(params: any) {
   const total = await prisma.atiCache.count({ where })
 
   return {
-    items: sliced,
+    // Каждую строку оформляем: точки погрузки/выгрузки, источник и ссылка
+    // на паспорт фирмы. Без этого интерфейс не знает ни откуда груз, ни
+    // где смотреть телефон фрахтователя.
+    items: sliced.map((row: any) => decorateCacheRow(row)),
     total,
     limit,
     offset,
