@@ -236,6 +236,13 @@ export function AtiSearchPanel() {
     Record<string, { phone: string | null; name: string | null; email: string | null }>
   >({})
   const [contactBusyId, setContactBusyId] = useState<string | null>(null)
+  /**
+   * Биржа отдала всё, что показывает по фильтру. Живой замер «Ярославль →
+   * Казань»: ATI обещает 188 грузов, а страницы кончаются на 11-й — 106
+   * уникальных. Кнопка «Показать далее» в этот момент возвращает пустоту,
+   * поэтому экран говорит это словами, а не молчит.
+   */
+  const [deepEnd, setDeepEnd] = useState<string | null>(null)
 
   // Данные
   const [searchResults, setSearchResults] = useState<LoadItem[]>([])
@@ -374,7 +381,10 @@ export function AtiSearchPanel() {
     // «Показать ещё» дописывает к тому, что уже на экране: страницы биржи
     // отдают примерно по 12 грузов, и один заход показывает только первую
     // двадцатку. Первый поиск — список с нуля.
-    if (!pageStart) setSearchResults([])
+    if (!pageStart) {
+      setSearchResults([])
+      setDeepEnd(null)
+    }
 
     try {
       const res = await fetch("/api/ati/scan", {
@@ -418,6 +428,7 @@ export function AtiSearchPanel() {
         totalItems?: number | null
         bySource?: { boards: number; exchange: number } | null
         nextPageStart?: number | null
+        exhausted?: boolean
       }
 
       if (data.success) {
@@ -427,10 +438,17 @@ export function AtiSearchPanel() {
           const seen = new Set(prev.map((item) => item.id))
           return [...prev, ...incoming.filter((item) => !seen.has(item.id))]
         })
+        const exhausted = Boolean(data.exhausted)
+        if (exhausted) {
+          setDeepEnd(
+            `Биржа отдала всё, что показывает по этому фильтру: ${searchResults.length} грузов. ` +
+              `Обещанные ${data.totalItems ?? "?"} — её собственная оценка, дальше она страницы не отдаёт.`,
+          )
+        }
         setSearchMeta({
           totalItems: data.totalItems ?? null,
           bySource: data.bySource ?? null,
-          nextPageStart: data.nextPageStart ?? null,
+          nextPageStart: exhausted ? null : data.nextPageStart ?? null,
         })
         toast.success(
           pageStart
@@ -850,6 +868,9 @@ export function AtiSearchPanel() {
                     onContacts={() => void askContacts(load.id)}
                   />
                 ))}
+                {deepEnd ? (
+                  <p className="px-1 text-[13px] text-muted-foreground">{deepEnd}</p>
+                ) : null}
                 {searchMeta?.nextPageStart && searchMeta.totalItems &&
                 searchResults.length < searchMeta.totalItems ? (
                   <div className="flex justify-center pt-1">

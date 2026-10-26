@@ -295,6 +295,7 @@ export async function scanAtiLoads(params?: any) {
           totalItems: (exchangeResult as any)?.totalItems ?? null,
           pages: (exchangeResult as any)?.pages ?? null,
           nextPageStart: (exchangeResult as any)?.nextPageStart ?? null,
+          exhausted: Boolean((exchangeResult as any)?.exhausted),
         }
       }
       if (source === "exchange") {
@@ -503,6 +504,11 @@ async function exchangeManualSearch(
     if (addIfNew(load, filters)) picked.push(load)
   }
   const pageStartUsed = Math.max(1, Number(params?.pageStart) || 1)
+  // Попросили продолжение, а биржа не отдала ни одного груза — значит
+  // страницы кончились. Без этого признака экран показывает кнопку
+  // «Показать ещё», которая возвращает пустоту, и выдаёт это за результат
+  // результатом. Биржа обещает totalItems, но страницы отдаёт не все.
+  const exhausted = pageStartUsed > 1 && exchange.loads.length === 0
 
   const saved = await saveToCache(picked, organizationId)
   return {
@@ -517,6 +523,7 @@ async function exchangeManualSearch(
     pages: exchange.pages,
     // До какой страницы дошли — следующим нажатием идём глубже
     nextPageStart: pageStartUsed + exchange.pages,
+    exhausted,
     flags: exchange.flags,
   }
 }

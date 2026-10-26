@@ -109,6 +109,8 @@ export default function LogistSearchPage() {
     totalItems: number | null
     nextPageStart: number | null
   } | null>(null)
+  /** Биржа отдала всё, что показывает по фильтру — дальше кнопка не поможет */
+  const [deepEnd, setDeepEnd] = useState<string | null>(null)
   const [searchWarning, setSearchWarning] = useState<string | null>(null)
 
   async function takeLoad(load: MobileAtiLoad) {
@@ -146,7 +148,10 @@ export default function LogistSearchPage() {
     setScanning(true)
     // «Показать ещё» дописывает к экрану: биржа отдаёт страницами примерно
     // по 12 грузов, один заход показывает только первую двадцатку.
-    if (!pageStart) setResults([])
+    if (!pageStart) {
+      setResults([])
+      setDeepEnd(null)
+    }
     try {
       const res = await fetch("/api/ati/scan", {
         method: "POST",
@@ -175,7 +180,18 @@ export default function LogistSearchPage() {
           return [...prev, ...incoming.filter((item) => !seen.has(item.id))]
         })
         setBySource(data.bySource ?? null)
-        setSearchMeta({ totalItems: data.totalItems ?? null, nextPageStart: data.nextPageStart ?? null })
+        // Попросили продолжение — биржа не отдала ничего: значит страницы
+        // кончились. Говорим это словами, а не показываем кнопку, которая
+        // вернёт пустоту.
+        if (pageStart && incoming.length === 0) {
+          setDeepEnd(
+            `Биржа отдала всё, что показывает по этому фильтру. Обещанные ${data.totalItems ?? "?"} — её оценка, дальше страницы не отдаёт.`,
+          )
+        }
+        setSearchMeta({
+          totalItems: data.totalItems ?? null,
+          nextPageStart: pageStart && incoming.length === 0 ? null : data.nextPageStart ?? null,
+        })
         // Источники независимы: если общая биржа не ответила, молчать нельзя
         const errs = (data.errors ?? []).filter(Boolean)
         setSearchWarning(errs.length > 0 ? errs.join(" ") : null)
@@ -386,6 +402,9 @@ export default function LogistSearchPage() {
                   <LoadCard key={load.id} load={load} busy={taking === load.id} onTake={() => void takeLoad(load)} />
                 ))}
               </div>
+              {deepEnd ? (
+                <p className="px-1 text-[12px] leading-snug text-muted-foreground">{deepEnd}</p>
+              ) : null}
               {searchMeta?.nextPageStart && searchMeta.totalItems && results.length < searchMeta.totalItems ? (
                 <ActionButton
                   tone="default"
