@@ -122,6 +122,9 @@ type OrderRecord = {
   assignedDriverId: string | null
   assignedVehicleId: string | null
   atiCacheId: string | null
+  /** Контакт фрахтователя ATI — только после нажатия «Показать контакты» */
+  contactPhone?: string | null
+  contactName?: string | null
   source: string | null
   takenAt: string | Date | null
   takenById: string | null
@@ -191,7 +194,35 @@ export function OrderProcess({
   /** Вызывается после любого успешного изменения (списки можно обновить). */
   onChanged?: () => void
 }) {
+  const [shownContact, setShownContact] = useState<string | null>(null)
+  const [contactsBusy, setContactsBusy] = useState(false)
   const [order, setOrder] = useState<OrderRecord | null>(null)
+
+  /**
+   * Показать контакт фрахтователя ATI — по нажатию.
+   *
+   * ATI.SU запрещает автоматизированный сбор контактной информации
+   * (пользовательское соглашение, п. 3.2.1.7), поэтому телефон не тянется сам:
+   * уходит один запрос официальным методом API, ровно как диспетчер сам
+   * нажимает «показать» на сайте ATI.
+   */
+  async function showContacts(cacheId: string) {
+    setContactsBusy(true)
+    try {
+      const response = await fetch("/api/ati/loads/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cacheId }),
+      })
+      const data = await response.json().catch(() => null)
+      setShownContact(response.ok && data?.phone ? String(data.phone) : null)
+    } catch {
+      setShownContact(null)
+    } finally {
+      setContactsBusy(false)
+    }
+  }
   const [entries, setEntries] = useState<FeedEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -597,6 +628,34 @@ export function OrderProcess({
                 Вернуть в базу
               </Button>
             )}
+
+            {order.atiCacheId ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={contactsBusy}
+                  onClick={() => void showContacts(order.atiCacheId as string)}
+                  title="Показать контакт фрахтователя — один запрос в ATI по вашему нажатию"
+                >
+                  {contactsBusy ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Phone className="h-4 w-4 mr-1.5" />
+                  )}
+                  {shownContact ? shownContact : "Показать контакты"}
+                </Button>
+                {shownContact ? (
+                  <a
+                    href={`tel:${shownContact}`}
+                    className="inline-flex h-9 items-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-700 dark:text-emerald-400"
+                  >
+                    <Phone className="h-4 w-4 mr-1.5" />
+                    Позвонить
+                  </a>
+                ) : null}
+              </>
+            ) : null}
           </div>
 
           {!closed && nextStatuses.length > 0 && (

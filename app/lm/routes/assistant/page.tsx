@@ -29,6 +29,7 @@ import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
+import { findRegionByNameLocal } from "@/lib/ati/regions"
 import {
   buildRouteVariants,
   explainFailure,
@@ -292,9 +293,45 @@ export default function RouteAssistantPage() {
   )
 
   /** Грузы, которые вообще могут поехать: свежие, со ставкой, известный маршрут. */
+  /**
+   * Регион базы организации — из него берём грузы.
+   *
+   * Зачем: в кэше копится биржа со всей страны (в моих замерах — 1290 грузов,
+   * из них 105 Московской области и 58 Калужской, а Ярославской — НОЛЬ).
+   * Помощник, читая кэш как есть, предлагает груз из Новосибирска компании
+   * из Ярославля — «через всю страну проехать надо». Поэтому берём только
+   * регион базы: у каждой компании он свой.
+   */
+  const baseRegionName = useMemo(() => {
+    if (!baseCity.trim()) return null
+    try {
+      const region = findRegionByNameLocal(baseCity)
+      return region?.name ?? null
+    } catch {
+      return null
+    }
+  }, [baseCity])
+
+  /**
+   * Грузы, пригодные для цепочки, — ТОЛЬКО региона базы.
+   *
+   * Если регион определить не удалось (адрес базы не заполнен), показываем
+   * всё как раньше: лучше больше грузов, чем пустой экран.
+   */
+  const regionLoads = useMemo(() => {
+    if (!baseRegionName) return loads
+    const inRegion = loads.filter((load) => {
+      const from = String(load.fromCity ?? "")
+      return from.includes(baseRegionName.replace(/\s+(область|край|республика).*$/, ""))
+    })
+    // В своем регионе грузов нет — не показываем чужие как свои. Экран честно
+    // скажет, что регион нужно собрать.
+    return inRegion
+  }, [loads, baseRegionName])
+
   const usableLoads = useMemo(
     () =>
-      loads.filter(
+      regionLoads.filter(
         (load) =>
           load.status === "new" &&
           (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
@@ -964,6 +1001,10 @@ export default function RouteAssistantPage() {
             topFromCities={topFromCities}
             nearestLoads={nearestLoads}
             baseCity={baseCity}
+            baseRegionName={baseRegionName}
+            regionEmpty={baseRegionName !== null && regionLoads.length === 0}
+            onHarvestRegion={() => void runHarvest()}
+            harvestBusy={searchBusy}
             vehicles={freeVehicles}
             allVehiclesBusy={freeVehicles.length === 0 && vehicles.length > 0}
             vehicleId={vehicleId}
@@ -1325,6 +1366,10 @@ function SetupPhase({
   topFromCities,
   nearestLoads,
   baseCity,
+  baseRegionName,
+  regionEmpty,
+  onHarvestRegion,
+  harvestBusy,
   vehicles,
   allVehiclesBusy,
   vehicleId,
@@ -1350,6 +1395,13 @@ function SetupPhase({
   nearestLoads: Array<{ load: BuilderLoad; km: number | null }>
   /** База своей организации из настроек автопарка */
   baseCity: string
+  /** Регион базы — из него берём грузы */
+  baseRegionName: string | null
+  /** В своём регионе грузов нет — надо собрать */
+  regionEmpty: boolean
+  /** Собрать биржу региона к себе в базу */
+  onHarvestRegion: () => void
+  harvestBusy: boolean
   vehicles: BuilderVehicle[]
   allVehiclesBusy: boolean
   vehicleId: string
@@ -1505,6 +1557,32 @@ function SetupPhase({
             Это грузы, где сейчас можно строить. Нажмите «Собрать маршрут» — помощник сложит их в
             цепочку от вашей базы.
           </p>
+        </Card>
+      ) : null}
+
+      {/* В своём регионе грузов нет — не тупик, а кнопка «собрать регион» */}
+      {regionEmpty ? (
+        <Card className="border-primary/25 bg-primary/[0.06]">
+          <p className="text-[13px] font-medium text-foreground">
+            В {baseRegionName ?? "вашем регионе"} грузов в базе пока нет
+          </p>
+          <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
+            Помощник берёт грузы только из вашего региона — компании из Ярославля не нужен груз из
+            Новосибирска. Соберите биржу региона: помощник запросит её у ATI и сложит к себе.
+          </p>
+          <button
+            type="button"
+            onClick={onHarvestRegion}
+            disabled={harvestBusy}
+            className="mt-2.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
+          >
+            {harvestBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Package className="h-4 w-4" />
+            )}
+            {harvestBusy ? "Собираю биржу региона…" : `Собрать биржу ${baseRegionName ?? "региона"}`}
+          </button>
         </Card>
       ) : null}
 
