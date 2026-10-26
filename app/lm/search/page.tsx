@@ -100,7 +100,6 @@ export default function LogistSearchPage() {
   const [source, setSource] = useState<"boards" | "exchange" | "both">("both")
   /** Сколько нашли с каждого источника и что биржа обещает по фильтру */
   const [bySource, setBySource] = useState<{ boards: number; exchange: number } | null>(null)
-  const [totalItems, setTotalItems] = useState<number | null>(null)
   const [searchWarning, setSearchWarning] = useState<string | null>(null)
 
   async function takeLoad(load: MobileAtiLoad) {
@@ -158,7 +157,6 @@ export default function LogistSearchPage() {
       if (data?.success) {
         setResults((data.loads ?? []) as MobileAtiLoad[])
         setBySource(data.bySource ?? null)
-        setTotalItems(Number(data.totalItems) || null)
         // Источники независимы: если общая биржа не ответила, молчать нельзя
         const errs = (data.errors ?? []).filter(Boolean)
         setSearchWarning(errs.length > 0 ? errs.join(" ") : null)
@@ -352,13 +350,13 @@ export default function LogistSearchPage() {
 
           {results.length > 0 ? (
             <>
-              <SectionTitle title={`Найдено: ${results.length}`} />
-              {bySource ? (
-                <p className="px-1 text-[12px] leading-snug text-muted-foreground">
-                  с площадок {bySource.boards} · с общей биржи {bySource.exchange}
-                  {totalItems ? ` · всего по фильтру биржа обещает ${totalItems}` : ""}
-                </p>
-              ) : null}
+              <SectionTitle
+                title={
+                  bySource && bySource.boards + bySource.exchange !== results.length
+                    ? `Найдено: ${results.length} — с площадок ${bySource.boards}, с биржи ${bySource.exchange}`
+                    : `Найдено: ${results.length}`
+                }
+              />
               <div className="space-y-2.5">
                 {results.map((load) => (
                   <LoadCard key={load.id} load={load} busy={taking === load.id} onTake={() => void takeLoad(load)} />
@@ -407,33 +405,6 @@ function LoadCard({
   busy: boolean
   onTake: () => void
 }) {
-  // «Узнать телефон»: ATI отдаёт контакт фрахтователя отдельным запросом.
-  // Автоматически не тянем — ATI.SU делает замечания за сбор контактов,
-  // поэтому телефон только по нажатию диспетчера.
-  const [phoneBusy, setPhoneBusy] = useState(false)
-  const [phone, setPhone] = useState<string | null>(load.contactPhone ?? null)
-
-  async function askPhone() {
-    setPhoneBusy(true)
-    try {
-      const result = await apiSend<{ phone: string | null; name: string | null }>(
-        "/api/ati/loads/contacts",
-        "POST",
-        { cacheId: load.id },
-      )
-      if (result.ok && result.data?.phone) {
-        setPhone(result.data.phone)
-        toast.success(`Фрахтователь: ${result.data.phone}`)
-      } else {
-        toast.error(result.error ?? "Телефон не найден")
-      }
-    } catch {
-      toast.error("Не удалось получить телефон")
-    } finally {
-      setPhoneBusy(false)
-    }
-  }
-
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm p-4">
       <div className="flex items-start justify-between gap-3">
@@ -486,26 +457,19 @@ function LoadCard({
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
           Взять в работу
         </button>
-        <button
-          type="button"
-          onClick={() => void askPhone()}
-          disabled={phoneBusy}
-          title="Показать телефон фрахтователя"
-          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border px-3 text-[13px] text-foreground active:opacity-70 disabled:opacity-50"
-        >
-          {phoneBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneCall className="h-4 w-4" />}
-          {phone ?? "Узнать телефон"}
-        </button>
+        {load.firmUrl ? (
+          <a
+            href={load.firmUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="Телефон фрахтователя виден в паспорте фирмы на ATI"
+            className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border px-3 text-[13px] text-foreground active:opacity-70"
+          >
+            <PhoneCall className="h-4 w-4" />
+            Фирма в ATI
+          </a>
+        ) : null}
       </div>
-      {phone && phone !== "Узнать телефон" ? (
-        <a
-          href={`tel:${phone}`}
-          className="mt-2 flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-success/40 bg-success/10 text-[13.5px] font-medium text-success active:opacity-70"
-        >
-          <Phone className="h-4 w-4" />
-          Позвонить: {phone}
-        </a>
-      ) : null}
     </div>
   )
 }

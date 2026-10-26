@@ -418,6 +418,12 @@ export interface MobileAtiLoad {
   note: string | null
   /** Откуда груз: площадка организации или общая биржа */
   source?: "boards" | "exchange"
+  /**
+   * Ссылка на «Паспорт фирмы» в ATI — там телефон фрахтователя виден.
+   * ATI API контакты не отдаёт и ругает за их автоматический сбор, поэтому
+   * телефон логист смотрит на самом ATI.
+   */
+  firmUrl?: string | null
   /** Точки погрузки/выгрузки — для расчёта «по пути» */
   fromPoint?: { lat: number; lng: number } | null
   toPoint?: { lat: number; lng: number } | null

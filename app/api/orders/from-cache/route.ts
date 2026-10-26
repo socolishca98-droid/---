@@ -25,7 +25,6 @@ import { linkOrderToClientByName } from "@/lib/clients/service"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
 import { normalizeOrderStatus, orderStageOf, orderStatusLabel } from "@/lib/orders/stages"
-import { fetchFirmContacts } from "@/lib/ati/contacts"
 import { getActiveAtiToken } from "@/lib/ati/connection"
 
 export const dynamic = "force-dynamic"
@@ -134,31 +133,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Контакты добираем живым запросом к ATI только по явному флагу: это
-    // обращение во внешнюю систему, по умолчанию оно не выполняется. Запрос
-    // идёт с токеном ОРГАНИЗАЦИИ (её аккаунт, её лимиты); без подключения
-    // контакты просто останутся пустыми.
-    let contactPhone: string | null = cache.contactPhone || null
-    let contactName: string | null = cache.contactName || null
-    let contactEmail: string | null = null
-    if (body.fetchContacts === true && cache.firmId && (!contactPhone || !contactName)) {
-      try {
-        const ati = await getActiveAtiToken(org.organizationId)
-        const fetched = await fetchFirmContacts(cache.firmId, ati.ok ? ati.token : null, org.organizationId)
-        contactPhone = contactPhone || fetched.phone || null
-        contactName = contactName || fetched.name || null
-        contactEmail = fetched.email || null
-        if (contactPhone || contactName) {
-          await prisma.atiCache.updateMany({
-            where: { id: cache.id, organizationId: org.organizationId },
-            data: { contactPhone, contactName },
-          })
-        }
-      } catch (error) {
-        // живой ATI недоступен — груз всё равно можно взять в работу
-        console.error("[orders/from-cache] контакты не получены:", error)
-      }
-    }
+    // Контактов фрахтователя у нас нет и быть не должно: ATI API их не отдаёт
+    // (проверено — /firms/{id}, /firms/{id}/contacts, /loads/{id}/contacts все
+    // 404), а за автоматический сбор контактов ATI.SU делает замечания.
+    // Телефон фрахтователя логист смотрит в «Паспорте фирмы» на самом ATI —
+    // ссылка на него есть в карточке груза (firmUrl).
+    const contactPhone: string | null = cache.contactPhone || null
+    const contactName: string | null = cache.contactName || null
+    const contactEmail: string | null = null
 
     const loadingDate = cache.loadingDate instanceof Date ? cache.loadingDate : null
     const created = await prisma.order.create({

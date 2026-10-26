@@ -109,6 +109,8 @@ export default function RouteAssistantPage() {
       vatIncluded: boolean
       loadingDate: string | null
       firmName: string | null
+      /** Ссылка на паспорт фирмы в ATI — там телефон фрахтователя */
+      firmUrl?: string | null
       contactPhone: string | null
       status: string
       fromPoint: { lat: number; lng: number } | null
@@ -160,8 +162,7 @@ export default function RouteAssistantPage() {
   const [excludeIds, setExcludeIds] = useState<string[]>([])
   const [refreshing, setRefreshing] = useState(false)
   /** Телефоны фрахтователей, добытые кнопкой «Узнать телефон» */
-  const [phones, setPhones] = useState<Record<string, string>>({})
-  const [phoneBusy, setPhoneBusy] = useState<string | null>(null)
+
 
   // Источник грузов: площадки организации (официальный API ATI), общая биржа
   // (поиск сайта loads.ati.su) или оба сразу. Источники независимы.
@@ -260,6 +261,7 @@ export default function RouteAssistantPage() {
         priceWithNds: row.vatIncluded ? row.price : null,
         distanceKm: row.distance,
         firmName: row.firmName,
+        firmUrl: row.firmUrl ?? null,
         contactPhone: row.contactPhone,
         loadingDate: row.loadingDate,
         status: row.status,
@@ -533,6 +535,7 @@ export default function RouteAssistantPage() {
           priceWithNds: row.vatIncluded ? row.price : null,
           distanceKm: row.distance,
           firmName: row.firmName,
+          firmUrl: row.firmUrl ?? null,
           contactPhone: row.contactPhone,
           loadingDate: row.loadingDate,
           status: row.status ?? "new",
@@ -662,6 +665,7 @@ export default function RouteAssistantPage() {
         priceWithNds: row.vatIncluded ? row.price : null,
         distanceKm: row.distance,
         firmName: row.firmName,
+        firmUrl: row.firmUrl ?? null,
         contactPhone: row.contactPhone,
         loadingDate: row.loadingDate,
         status: row.status ?? "new",
@@ -705,29 +709,6 @@ export default function RouteAssistantPage() {
       // показывает вчерашнюю биржу
       if (route) runBuild(startCity, keepIds, excludeIds, route ? variants[variantIndex]?.hours : undefined)
     }, 800)
-  }
-
-  /** «Узнать телефон»: ATI отдаёт контакт фрахтователя отдельным запросом. */
-  async function fetchPhone(loadId: string) {
-    setPhoneBusy(loadId)
-    try {
-      const result = await apiSend<{ phone: string | null; name: string | null }>(
-        "/api/ati/loads/contacts",
-        "POST",
-        { cacheId: loadId },
-      )
-      if (result.ok && result.data?.phone) {
-        setPhones((prev) => ({ ...prev, [loadId]: result.data?.phone as string }))
-        loadsState.reload()
-        toast.success(`Фрахтователь: ${result.data.phone}`)
-      } else {
-        toast.error(result.error ?? "Телефон не найден")
-      }
-    } catch {
-      toast.error("Не удалось получить телефон")
-    } finally {
-      setPhoneBusy(null)
-    }
   }
 
   /** Отказ фрахтователя: убираем груз и пересобираем, согласованные остаются. */
@@ -919,9 +900,6 @@ export default function RouteAssistantPage() {
             route={route}
             calls={calls}
             keepIds={keepIds}
-            phones={phones}
-            phoneBusy={phoneBusy}
-            onFetchPhone={(loadId) => void fetchPhone(loadId)}
             onCall={markCall}
             onRemove={removeLoad}
             onRebuild={() => {
@@ -1823,9 +1801,6 @@ function RoutePhase({
   route,
   calls,
   keepIds,
-  phones,
-  phoneBusy,
-  onFetchPhone,
   onCall,
   onRemove,
   onRebuild,
@@ -1842,9 +1817,6 @@ function RoutePhase({
   route: BuiltRoute
   calls: Record<string, CallStatus>
   keepIds: string[]
-  phones: Record<string, string>
-  phoneBusy: string | null
-  onFetchPhone: (loadId: string) => void
   onCall: (loadId: string, status: CallStatus) => void
   onRemove: (loadId: string) => void
   onRebuild: () => void
@@ -2008,9 +1980,7 @@ function RoutePhase({
       <CallSheet
         route={route}
         calls={calls}
-        phones={phones}
-        phoneBusy={phoneBusy}
-        onFetchPhone={onFetchPhone}
+
         onCall={onCall}
       />
 
@@ -2020,7 +1990,7 @@ function RoutePhase({
         <div className="space-y-3">
           {route.legs.map((leg, index) => {
             const status = calls[leg.load.id] ?? "pending"
-            const phone = telHref(phones[leg.load.id] ?? leg.load.contactPhone)
+            const phone = telHref(leg.load.contactPhone)
             return (
               <Card key={leg.load.id}>
                 <div className="flex items-start gap-3">
@@ -2122,21 +2092,18 @@ function RoutePhase({
                           <Phone className="h-3.5 w-3.5" />
                           Позвонить
                         </a>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => onFetchPhone(leg.load.id)}
-                          disabled={phoneBusy === leg.load.id}
-                          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-3 text-[13px] font-medium text-white active:opacity-70 disabled:opacity-50"
+                      ) : leg.load.firmUrl ? (
+                        <a
+                          href={leg.load.firmUrl}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          title="Телефон фрахтователя виден в паспорте фирмы на ATI"
+                          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-3 text-[13px] font-medium text-white active:opacity-70"
                         >
-                          {phoneBusy === leg.load.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Phone className="h-3.5 w-3.5" />
-                          )}
-                          Узнать телефон
-                        </button>
-                      )}
+                          <Phone className="h-3.5 w-3.5" />
+                          Телефон в ATI
+                        </a>
+                      ) : null}
 
                       <button
                         type="button"
@@ -2337,16 +2304,10 @@ const RouteChainMapLazy = dynamic(
 function CallSheet({
   route,
   calls,
-  phones,
-  phoneBusy,
-  onFetchPhone,
   onCall,
 }: {
   route: BuiltRoute
   calls: Record<string, CallStatus>
-  phones: Record<string, string>
-  phoneBusy: string | null
-  onFetchPhone: (loadId: string) => void
   onCall: (loadId: string, status: CallStatus) => void
 }) {
   const agreed = route.legs.filter((leg) => calls[leg.load.id] === "agreed").length
@@ -2365,7 +2326,7 @@ function CallSheet({
       <div className="mt-2.5 space-y-1.5">
         {route.legs.map((leg, index) => {
           const status = calls[leg.load.id] ?? "pending"
-          const phone = telHref(phones[leg.load.id] ?? leg.load.contactPhone)
+          const phone = telHref(leg.load.contactPhone)
           return (
             <div
               key={leg.load.id}
@@ -2399,21 +2360,18 @@ function CallSheet({
                   <Phone className="h-3.5 w-3.5" />
                   {status === "agreed" ? "Ещё раз" : "Звонить"}
                 </a>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onFetchPhone(leg.load.id)}
-                  disabled={phoneBusy === leg.load.id}
-                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-2.5 text-[12.5px] font-medium text-white active:opacity-70 disabled:opacity-50"
+              ) : leg.load.firmUrl ? (
+                <a
+                  href={leg.load.firmUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title="Телефон фрахтователя виден в паспорте фирмы на ATI"
+                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-[#1f6f3f] px-2.5 text-[12.5px] font-medium text-white active:opacity-70"
                 >
-                  {phoneBusy === leg.load.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Phone className="h-3.5 w-3.5" />
-                  )}
-                  Телефон
-                </button>
-              )}
+                  <Phone className="h-3.5 w-3.5" />
+                  Телефон в ATI
+                </a>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onCall(leg.load.id, "agreed")}

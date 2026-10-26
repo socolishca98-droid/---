@@ -750,16 +750,24 @@ function decorateCacheRow(row: any): any {
     }
   }
   const { rawJson: _rawJson, ...rest } = row
-  return { ...rest, fromPoint, toPoint, source }
+  return { ...rest, fromPoint, toPoint, source, firmUrl: atiFirmUrl(rest.firmId) }
 }
 
-// =============================================================================
-// ПОЛУЧЕНИЕ КОНТАКТОВ ФИРМЫ (ТОЛЬКО ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ)
-// =============================================================================
-// Реализация живёт в lib/ati/contacts.ts — модуле без Prisma, чтобы его можно
-// было импортировать из роутов, не тянущих клиент базы.
-export { fetchFirmContacts } from "./ati/contacts"
-export type { FirmContacts } from "./ati/contacts"
+/**
+ * Ссылка на «Паспорт фирмы» в ATI — там телефон фрахтователя виден.
+ *
+ * Зачем ссылка, а не телефон в интерфейсе: ATI.SU делает замечания за
+ * автоматический сбор контактных данных, и API контакты фрахтователя не
+ * отдаёт (проверено: /firms/{id}, /firms/{id}/contacts, /loads/{id}/contacts
+ * — все 404). Поэтому телефон логист смотрит на самом ATI, куда его
+ * авторизованным пускает. Ссылка честная и всегда рабочая, в отличие от
+ * кнопки, которая отвечала 502.
+ */
+export function atiFirmUrl(firmId: unknown): string | null {
+  const id = String(firmId ?? "").trim()
+  if (!id) return null
+  return `https://ati.su/firms/${id}/info`
+}
 
 // =============================================================================
 // ПОИСК ПО ЛОКАЛЬНОЙ БАЗЕ
