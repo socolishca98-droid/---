@@ -239,6 +239,42 @@ test("обраткой считается груз в свой регион, а 
   assert.ok((route.totalProfitRub ?? 0) > 0)
 })
 
+test("обратка закрывает выезд даже когда груз дальше детура — по дороге домой", () => {
+  // Живой замер: маршрут из Ярославля кончался в Липецке с 559 км порожняка.
+  // Груз «Липецк -> Ярославль» не брался: детур 150 км, а до погрузки машина
+  // стоит почти там же. Но эти 559 км машина проедет в любом случае — вопрос
+  // только, с грузом или пустой. Погрузку обратки ищем в радиусе дороги домой.
+  const P = {
+    Ярославль: { lat: 57.6261, lng: 39.8845 },
+    Ростов: { lat: 47.2357, lng: 39.7015 },
+    Липецк: { lat: 52.6031, lng: 39.5709 },
+    Воронеж: { lat: 51.6720, lng: 39.1843 },
+  }
+  const loads = [
+    load({ id: "out", fromCity: "Ярославль", toCity: "Ростов", distanceKm: 1100, priceRub: 150000, weightKg: 18000, fromPoint: P.Ярославль, toPoint: P.Ростов }),
+    load({ id: "back", fromCity: "Липецк", toCity: "Ярославль", distanceKm: 400, priceRub: 60000, weightKg: 18000, fromPoint: P.Липецк, toPoint: P.Ярославль }),
+  ]
+  const route = buildRoute({
+    startCity: "Ярославль",
+    startPoint: P.Ярославль,
+    loads,
+    vehicles: [vehicle({ id: "fura", plate: "A421VS750", capacity: 20000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 48,
+    detourKm: 150,
+  })
+
+  assert.ok(route)
+  assert.equal(route.legs.length, 2, "обратка должна закрыть выезд")
+  assert.equal(route.legs[1].load.id, "back")
+  // Плечо обратки помечено: на экране это «по дороге домой», а не «по пути»
+  assert.equal(route.legs[1].homeLeg, true)
+  // Подъезд к погрузке больше детура, но не больше дороги домой из Ростова
+  assert.ok(route.legs[1].deadheadKm > 150, `подъезд ${Math.round(route.legs[1].deadheadKm)} км`)
+  assert.equal(route.returnsHomeWithLoad, true, "машина доезжает домой с грузом")
+})
+
 // ── 6. keepIds сохраняются ────────────────────────────────────────────────
 test("согласованные грузы (keepIds) остаются в маршруте при пересборке", () => {
   const loads = [

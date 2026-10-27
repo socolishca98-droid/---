@@ -962,16 +962,20 @@ export default function RouteAssistantPage() {
     //    попадает никогда: он из чужого региона. А биржа по такому условию
     //    отдаёт десятки грузов — «Московская область → Ярославская область»
     //    ответила 39 грузами, из них Серпухов → Ярославль за 60 000 ₽.
-    // Радиус «откуда» у поиска обратки шире детура: справочник ATI знает не
-    // все поселения и часто отдаёт не точку, а регион («Среднесибирский п.» →
-    // «Новосибирская область»). При радиусе 150 от областного центра груз
-    // «Барнаул → Новосибирск» (195 км от центра, 44 км от машины) в выдачу не
-    // попадает, и машина едет домой порожняком. Берём радиус первого плеча.
+    // Радиус «откуда» у поиска обратки — максимум из детура, радиуса первого
+    // плеча и дороги домой. Три причины:
+    //   * справочник ATI знает не все поселения и отдаёт регион
+    //     («Среднесибирский п.» → «Новосибирская область») — при радиусе 150
+    //     от областного центр груз «Барнаул → Новосибирск» не находится;
+    //   * машина и так поедет домой пустой, поэтому груз по дороге домой
+    //     берём даже дальше детура: 559 км порожняка vs 559 км с грузом.
+    const homeKm = Math.round(route.returnDeadheadKm ?? 0)
+    const fromRadius = Math.max(detourKm, startRadiusKm, homeKm)
     const scanBody = (extra: Record<string, unknown>) => ({
       manualMode: true,
       source: "exchange",
       fromGeo: { id: geo.id, name: geo.name, fullName: geo.fullName },
-      fromRadius: Math.max(detourKm, startRadiusKm),
+      fromRadius,
       maxPages: EXTEND_PAGES,
       pageStart: 1,
       filters: {},
@@ -2833,14 +2837,16 @@ function RoutePhase({
                       ) : null}
                       {leg.byTheWay ? (
                         <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-foreground/80">
-                          по пути
+                          {leg.homeLeg ? "по дороге домой" : "по пути"}
                         </span>
                       ) : null}
                     </div>
 
                     {leg.deadheadKm > 0 ? (
                       <p className="mt-1 text-[12px] text-muted-foreground">
-                        +≈ {leg.deadheadKm} км подъезда к погрузке — учтено в прибыли плеча
+                        {leg.homeLeg
+                          ? `+≈ ${leg.deadheadKm} км до погрузки по дороге домой — машина всё равно ехала в эту сторону`
+                          : `+≈ ${leg.deadheadKm} км подъезда к погрузке — учтено в прибыли плеча`}
                       </p>
                     ) : null}
 

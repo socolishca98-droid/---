@@ -162,6 +162,12 @@ export interface RouteLeg {
   /** Груз «по пути»: город погрузки не совпал, но рядом с маршрутом */
   byTheWay: boolean
   /**
+   * Плечо закрывает выезд — обратка. Отличается от «по пути»: машина всё
+   * равно едет домой, поэтому забирать груз можно и дальше детура. На экране
+   * такое плечо подписано «по дороге домой», а не «по пути».
+   */
+  homeLeg?: boolean
+  /**
    * Когда машина по расчёту доедет до погрузки. Ориентир: выезд сейчас,
    * ~60 км/ч порожним и ~55 км/ч с грузом.
    */
@@ -443,6 +449,14 @@ function findBackHomeLeg(input: {
   const currentKey = normalizeCityKey(currentCity)
   const used = new Set(legs.map((leg) => leg.load.id))
   const usedFrom = new Set(legs.map((leg) => normalizeCityKey(leg.load.fromCity)))
+  // Дорога домой от точки, где стоит машина. Она всё равно будет — значит,
+  // груз можно забирать и дальше детура, лишь бы он был ПО ПУТИ домой.
+  // Живой замер: маршрут заканчивался в Липецке с 559 км порожняка, а груз
+  // «Липецк → Ярославль» не брался, потому что детур 150 км. Машина проедет
+  // эти 559 км в любом случае — question только в том, с грузом или пустой.
+  const homeKm =
+    startPoint && currentPoint ? haversineKm(startPoint, currentPoint) : 0
+  const pickupRadiusKm = Math.max(detourKm, homeKm)
 
   const candidates = pool.filter((load) => {
     if (used.has(load.id)) return false
@@ -459,10 +473,10 @@ function findBackHomeLeg(input: {
       if (homeRadiusKm <= 0 || !startPoint || !load.toPoint) return false
       if (haversineKm(startPoint, load.toPoint) > homeRadiusKm) return false
     }
-    // Забираем там, где стоим: тот же город или рядом
+    // Забираем там, где стоим: тот же город, рядом (детур) или по дороге домой
     if (normalizeCityKey(load.fromCity) === currentKey) return true
-    if (detourKm > 0 && currentPoint && load.fromPoint) {
-      return haversineKm(currentPoint, load.fromPoint) <= detourKm
+    if (pickupRadiusKm > 0 && currentPoint && load.fromPoint) {
+      return haversineKm(currentPoint, load.fromPoint) <= pickupRadiusKm
     }
     return false
   })
@@ -522,6 +536,7 @@ function findBackHomeLeg(input: {
       loadedKm,
       profitPerKm: perKm,
       byTheWay: !sameCity,
+      homeLeg: true,
       hours,
       waitHours,
       loadsAt,
