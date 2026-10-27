@@ -1197,19 +1197,29 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     })
     if (!route) continue
 
-    // Лучший маршрут — тот, который больше зарабатывает за час времени
-    // машины: поездка ограничена сроком, а не километражем. Раньше выбор шёл
-    // по «₽/км», и короткий рейс побеждал длинный: на Новосибирске
-    // помощник брал 317 км на 18 872 ₽ вместо 3118 км на 152 888 ₽.
-    // При равной часовой ставке — больше денег всего, затем плотнее км.
-    const score = (item: BuiltRoute): number =>
-      item.profitPerHour ?? item.profitPerKm ?? -1
+    // Лучший маршрут — тот, который приносит больше денег за ВЫБРАННЫЙ СРОК.
+    // Лимит часов уже учтён: цепочка вместе с порожним возвратом обрезается
+    // под него, поэтому все варианты сравнимы «сколько заработаем за поездку».
+    //
+    // Раньше выбор шёл по «₽/км», и короткий рейс побеждал длинный: на
+    // Новосибирске помощник брал 10-тонную фуру с одним плечом 317 км на
+    // 18 872 ₽ (59 ₽/км) вместо 20-тонной с двумя плечами 3118 км на
+    // 152 888 ₽ (49 ₽/км). По деньгам за поездку разница в восемь раз.
+    // «₽/км» и «₽/час» остались показателями на экране — по ним логист
+    // смотрит на плотность рейса, но выбор идёт по прибыли поездки.
+    const money = (item: BuiltRoute): number | null =>
+      item.totalProfitRub !== null
+        ? item.totalProfitRub
+        : item.totalRevenue > 0
+          ? item.totalRevenue
+          : null
     if (
       bestRoute === null ||
-      score(route) > score(bestRoute) ||
-      (score(route) === score(bestRoute) &&
-        (route.totalRevenue > bestRoute.totalRevenue ||
-          (route.totalRevenue === bestRoute.totalRevenue &&
+      money(route) === null ||
+      (money(bestRoute) !== null && money(route)! > money(bestRoute)!) ||
+      (money(route) === money(bestRoute) &&
+        ((route.profitPerHour ?? -1) > (bestRoute.profitPerHour ?? -1) ||
+          ((route.profitPerHour ?? -1) === (bestRoute.profitPerHour ?? -1) &&
             (route.profitPerKm ?? -1) > (bestRoute.profitPerKm ?? -1))))
     ) {
       bestRoute = route

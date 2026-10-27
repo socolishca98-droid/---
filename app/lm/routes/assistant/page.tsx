@@ -250,6 +250,17 @@ export default function RouteAssistantPage() {
    *  строит из них сразу — иначе он увидит только 300 свежих строк базы. */
   const [foundLoads, setFoundLoads] = useState<BuilderLoad[]>([])
   /**
+   * Что стало с додобором грузов «по пути» — для экрана.
+   *
+   * Зачем: додобор мог не сработать (справочник ATI не узнал поселение, биржа
+   * не ответила, доступ приостановлен). Без подписи помощник говорил «в
+   * радиусе 150 км грузов не нашлось» — а грузы могли быть, просто мы их не
+   * увидели. Живой замер: ATI отвечала 401 на поиск по бирже, и маршрут
+   * оставался из одного плеча с объяснением «грузов по пути не нашлось».
+   * Причина должна быть названа словом.
+   */
+  const [extendNote, setExtendNote] = useState<string | null>(null)
+  /**
    * Те же грузы в ref — накопительно.
    *
    * Зачем: додобор срабатывает до двух раз за сборку. Второй додобор берёт
@@ -900,7 +911,12 @@ export default function RouteAssistantPage() {
       (await lookupAtiPlace(city)) ??
       (region ? await lookupAtiPlace(region) : null) ??
       (serverRegionRoot ? await lookupAtiPlace(serverRegionRoot) : null)
-    if (!geo) return
+    if (!geo) {
+      setExtendNote(
+        `Справочник ATI не узнал «${city}» — грузы рядом добрать нечем. Маршрут собран из грузов вашей базы.`,
+      )
+      return
+    }
 
     const result = await apiSend<{
       success?: boolean
@@ -916,10 +932,20 @@ export default function RouteAssistantPage() {
       pageStart: 1,
       filters: {},
     })
-    if (!result.ok || !result.data?.success) return
+    if (!result.ok || !result.data?.success) {
+      setExtendNote(
+        `Биржа ATI не отдала грузы рядом с ${geo.name}: ${result.data?.error ?? "нет связи"}. Маршрут собран только из грузов вашей базы.`,
+      )
+      return
+    }
 
     const rowsFound = result.data.loads ?? []
-    if (rowsFound.length === 0) return
+    if (rowsFound.length === 0) {
+      setExtendNote(
+        `В радиусе ${detourKm} км от ${geo.name} биржа отдала грузы, но все без ставки или не по нашей специализации.`,
+      )
+      return
+    }
     const mapped: BuilderLoad[] = rowsFound.map((row: any) => ({
       id: String(row.id),
       loadId: row.atiLoadId ?? null,
@@ -951,6 +977,7 @@ export default function RouteAssistantPage() {
     const added = withPoints.filter((load) => !seen.has(load.id))
     foundLoadsRef.current = [...foundLoadsRef.current, ...added]
     setFoundLoads(foundLoadsRef.current)
+    setExtendNote(null)
     toast(`Добрал грузы рядом с ${geo.name} — пересобираю маршрут`, {
       description: `Биржа отдала ${result.data.found ?? rowsFound.length} грузов вокруг точки, где стоит машина`,
     })
@@ -1446,6 +1473,7 @@ export default function RouteAssistantPage() {
             onSelectVariant={selectVariant}
             loadsScanned={loads.length}
             loadsTotal={loadsState.data?.total ?? loads.length}
+            extendNote={extendNote}
             onMoreHours={(hours) => {
               setMaxHours(hours)
               runBuild(startCity, keepIds, excludeIds, hours, true)
@@ -2450,6 +2478,7 @@ function RoutePhase({
   onSelectVariant,
   loadsScanned,
   loadsTotal,
+  extendNote,
   onMoreHours,
 }: {
   route: BuiltRoute
@@ -2469,6 +2498,8 @@ function RoutePhase({
   loadsTotal: number
   /** Пересобрать маршрут с бóльшим лимитом времени */
   onMoreHours: (hours: number) => void
+  /** Что стало с додобором грузов «по пути» — показываем, если он не сработал */
+  extendNote: string | null
   /** Контакты фрахтователей, показанные по нажатию диспетчера */
   phones: Record<string, string>
   contactBusy: string | null
@@ -2586,6 +2617,13 @@ function RoutePhase({
             ? `, осталось ${hoursSpan(routeRestHours(route))}`
             : ", лимит выбран полностью"}
         </p>
+
+        {/* Честная подпись о додоборе: почему цепочка не выросла */}
+        {extendNote ? (
+          <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-[12.5px] leading-snug text-foreground/90">
+            {extendNote}
+          </p>
+        ) : null}
 
         {/* Что сделать, чтобы маршрут стал длиннее — по факту причины */}
         {route.growthHint ? (
