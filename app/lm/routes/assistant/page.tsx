@@ -2598,7 +2598,7 @@ function RoutePhase({
           {route.totalProfitRub !== null ? (
             <>
               {route.totalProfitRub < 0 ? "−" : "+"}
-              {formatMoney(Math.abs(route.totalProfitRub))} ₽
+              {formatMoney(Math.abs(route.totalProfitRub))}
             </>
           ) : (
             "Прибыль не посчитана"
@@ -2611,10 +2611,10 @@ function RoutePhase({
         ) : null}
 
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-primary/15 pt-3">
-          <SummaryCell label="Выручка" value={`${formatMoney(route.totalRevenue)} ₽`} />
+          <SummaryCell label="Выручка" value={formatMoney(route.totalRevenue)} />
           <SummaryCell
             label="Топливо"
-            value={route.totalFuelCostRub !== null ? `≈ ${formatMoney(route.totalFuelCostRub)} ₽` : "—"}
+            value={route.totalFuelCostRub !== null ? `≈ ${formatMoney(route.totalFuelCostRub)}` : "—"}
           />
           <SummaryCell label="Плеч" value={String(route.legs.length)} />
           <SummaryCell
@@ -2627,14 +2627,14 @@ function RoutePhase({
           />
           <SummaryCell
             label="На км"
-            value={route.profitPerKm !== null ? `${formatMoney(route.profitPerKm)} ₽` : "—"}
+            value={route.profitPerKm !== null ? formatMoney(route.profitPerKm) : "—"}
           />
           {/* По чему выбирается машина: маршрут ограничен сроком, значит главный
               показатель — прибыль за ЧАС времени машины. Показываем рядом с
               «на км», чтобы выбор был виден, а не только посчитан. */}
           <SummaryCell
             label="В час"
-            value={route.profitPerHour !== null ? `${formatMoney(route.profitPerHour)} ₽` : "—"}
+            value={route.profitPerHour !== null ? formatMoney(route.profitPerHour) : "—"}
           />
         </div>
 
@@ -2669,7 +2669,7 @@ function RoutePhase({
                 >
                   <span className="block text-[13px] font-medium">{variant.label}</span>
                   <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {variant.hint} · {formatMoney(variant.route.totalProfitRub ?? 0)} ₽
+                    {variant.hint} · {formatMoney(variant.route.totalProfitRub ?? 0)}
                   </span>
                 </button>
               ))}
@@ -2818,7 +2818,7 @@ function RoutePhase({
                     {/* Деньги плеча */}
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="text-[14px] font-semibold tabular-nums text-foreground">
-                        {formatMoney(leg.revenue)} ₽
+                        {formatMoney(leg.revenue)}
                       </span>
                       {leg.profitRub !== null ? (
                         <span
@@ -2827,7 +2827,7 @@ function RoutePhase({
                           }`}
                         >
                           прибыль {leg.profitRub >= 0 ? "+" : "−"}
-                          {formatMoney(Math.abs(leg.profitRub))} ₽
+                          {formatMoney(Math.abs(leg.profitRub))}
                         </span>
                       ) : null}
                       {leg.returnsHome ? (
@@ -3015,7 +3015,7 @@ function RoutePhase({
                   </div>
                   {load.priceRub ? (
                     <span className="shrink-0 text-[12.5px] tabular-nums text-foreground/90">
-                      {formatMoney(load.priceRub)} ₽
+                      {formatMoney(load.priceRub)}
                     </span>
                   ) : null}
                 </div>
