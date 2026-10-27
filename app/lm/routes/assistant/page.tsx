@@ -447,7 +447,7 @@ export default function RouteAssistantPage() {
           shortCity(load.fromCity) !== "—" &&
           shortCity(load.toCity) !== "—",
       ),
-    [loads],
+    [regionLoads],
   )
 
   /** Города погрузки на бирже — быстрый выбор базы, если своей нет в списке. */
@@ -567,11 +567,18 @@ export default function RouteAssistantPage() {
         toPoint: load.toPoint ?? cityPoints[normalizeCityKey(shortCity(load.toCity))] ?? null,
       }))
     }
-    if (foundLoads.length === 0) return withPoints(loads)
-    const seen = new Set(loads.map((load) => load.id))
+    // Пул цепочки — ТОЛЬКО регион базы (плюс додобранные «по пути»).
+    //
+    // Живой замер: здесь стоял `loads` — все 300 грузов кэша со всей страны.
+    // Для базы «Ярославль» помощник уводил машину на 275 км порожняком в
+    // Домодедово и брал груз оттуда, хотя в своём регионе грузы были. Это не
+    // «больше вариантов», а нарушение правила: объём сбора — регион базы из
+    // настроек организации, а не вся Россия.
+    if (foundLoads.length === 0) return withPoints(usableLoads)
+    const seen = new Set(usableLoads.map((load) => load.id))
     const extra = foundLoads.filter((load) => !seen.has(load.id))
-    return withPoints([...loads, ...extra])
-  }, [loads, foundLoads, cityPoints])
+    return withPoints([...usableLoads, ...extra])
+  }, [usableLoads, foundLoads, cityPoints])
 
   /**
    * Города погрузки, где сейчас есть грузы.

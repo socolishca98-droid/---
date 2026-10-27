@@ -207,6 +207,38 @@ test("машина выбирается по прибыли за час, а не
   assert.ok((route.profitPerKm ?? 0) < (route.profitPerHour ?? 0))
 })
 
+// ── 5в. Обратка: груз в свой регион закрывает выезд ───────────────────────
+test("обраткой считается груз в свой регион, а не только в сам город базы", () => {
+  // Живой замер: пул помощника фильтруется по РЕГИОНУ БАЗИ и смотрит на город
+  // ПОГРУЗКИ, поэтому груз «Домодедово → Рыбинск» (Рыбинск — тот же регион, что
+  // и база Ярославль) в пул не попадает. Без него маршрут заканчивался 400 км
+  // порожняком, хотя биржа отдаёт десятки грузов «откуда стоим → куда база».
+  const P = {
+    Ярославль: { lat: 57.6261, lng: 39.8845 },
+    Домодедово: { lat: 55.4417, lng: 37.7542 },
+    Рыбинск: { lat: 58.0447, lng: 38.8581 },
+  }
+  const loads = [
+    load({ id: "out", fromCity: "Ярославль", toCity: "Домодедово", distanceKm: 400, priceRub: 60000, weightKg: 18000, fromPoint: P.Ярославль, toPoint: P.Домодедово }),
+    load({ id: "back", fromCity: "Домодедово", toCity: "Рыбинск", distanceKm: 300, priceRub: 40000, weightKg: 18000, fromPoint: P.Домодедово, toPoint: P.Рыбинск }),
+  ]
+  const route = buildRoute({
+    startCity: "Ярославль",
+    startPoint: P.Ярославль,
+    loads,
+    vehicles: [vehicle({ id: "fura", plate: "A421VS750", capacity: 20000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+
+  assert.ok(route)
+  assert.equal(route.legs.length, 2, "плечо домой должно закрыть выезд")
+  assert.equal(route.legs[1].load.id, "back")
+  // До базы осталось 80 км — это честный порожний остаток, а не 400 км
+  assert.ok(route.returnDeadheadKm > 0 && route.returnDeadheadKm < 150, `остаток ${Math.round(route.returnDeadheadKm)} км`)
+  assert.ok((route.totalProfitRub ?? 0) > 0)
+})
+
 // ── 6. keepIds сохраняются ────────────────────────────────────────────────
 test("согласованные грузы (keepIds) остаются в маршруте при пересборке", () => {
   const loads = [
