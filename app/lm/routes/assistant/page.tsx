@@ -249,6 +249,20 @@ export default function RouteAssistantPage() {
   /** Грузы, найденные живым поиском: в кэш они тоже легли, но помощник
    *  строит из них сразу — иначе он увидит только 300 свежих строк базы. */
   const [foundLoads, setFoundLoads] = useState<BuilderLoad[]>([])
+  /**
+   * Те же грузы в ref — накопительно.
+   *
+   * Зачем: додобор срабатывает до двух раз за сборку. Второй додобор берёт
+   * биржу вокруг новой точки, и его пересборка должна видеть грузы ПЕРВОГО
+   * додобора. Живой замер: после второго додобора маршрут снова стал из
+   * одного плеча — груз «Домодедово → Петрозаводск» пропал из пула, потому
+   * что состояние foundLoads ещё не обновилось, а в пересборку уходил только
+   * свежий список.
+   */
+  const foundLoadsRef = useRef<BuilderLoad[]>([])
+  useEffect(() => {
+    foundLoadsRef.current = foundLoads
+  }, [foundLoads])
   /** С какой страницы общей биржи продолжать сбор региона */
   const [harvestPage, setHarvestPage] = useState(1)
   /**
@@ -933,16 +947,23 @@ export default function RouteAssistantPage() {
       fromPoint: load.fromPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.fromCity))] ?? null,
       toPoint: load.toPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.toCity))] ?? null,
     }))
-    setFoundLoads((prev) => {
-      const seen = new Set(prev.map((load) => load.id))
-      return [...prev, ...withPoints.filter((load) => !seen.has(load.id))]
-    })
+    const seen = new Set(foundLoadsRef.current.map((load) => load.id))
+    const added = withPoints.filter((load) => !seen.has(load.id))
+    foundLoadsRef.current = [...foundLoadsRef.current, ...added]
+    setFoundLoads(foundLoadsRef.current)
     toast(`Добрал грузы рядом с ${geo.name} — пересобираю маршрут`, {
       description: `Биржа отдала ${result.data.found ?? rowsFound.length} грузов вокруг точки, где стоит машина`,
     })
     // Пересборка сохраняет уже собранные плечи: они согласованы или просто
     // выбраны, и терять их из-за додобора нельзя.
-    runBuild(startCity, route.legs.map((leg) => leg.load.id), excludeIds, route.maxHours, true, withPoints)
+    runBuild(
+      startCity,
+      route.legs.map((leg) => leg.load.id),
+      excludeIds,
+      route.maxHours,
+      true,
+      foundLoadsRef.current,
+    )
   }
 
   /**
