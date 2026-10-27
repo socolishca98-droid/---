@@ -41,6 +41,8 @@ const REQUEST_TIMEOUT_MS = 4000
  * В тестах выставляется в ноль (GEOCODE_PAUSE_MS=0), чтобы прогон не ждал зря.
  */
 const PAUSE_BETWEEN_REQUESTS_MS = Number(process.env.GEOCODE_PAUSE_MS ?? 1000)
+/** Пауза перед повтором, если геокодер ответил «слишком часто». */
+const RETRY_PAUSE_MS = Number(process.env.GEOCODE_RETRY_PAUSE_MS ?? 2500)
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -122,7 +124,7 @@ async function geocodeYandex(address: string): Promise<Coordinates | null> {
   }
 }
 
-async function geocodeNominatim(address: string): Promise<Coordinates | null> {
+async function geocodeNominatimOnce(address: string): Promise<Coordinates | null> {
   const query = /росси/i.test(address) ? address : `${address}, Россия`
 
   try {
@@ -136,6 +138,14 @@ async function geocodeNominatim(address: string): Promise<Coordinates | null> {
       headers: { "User-Agent": USER_AGENT, "Accept-Language": "ru" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
+    // 429/503 — «слишком часто». Живой замер: пачки точек считаются
+    // параллельно, и часть ответов приходила именно так — города молча
+    // оставались без координат (Омск, Абакан, Улан-Удэ). Один повтор с
+    // паузой их возвращает.
+    if (response.status === 429 || response.status === 503) {
+      await sleep(RETRY_PAUSE_MS)
+      return geocodeNominatimOnce(address)
+    }
     if (!response.ok) return null
 
     const data = await response.json()
@@ -152,6 +162,11 @@ async function geocodeNominatim(address: string): Promise<Coordinates | null> {
     console.error("[geocode] ошибка запроса к Nominatim:", error)
     return null
   }
+}
+
+/** Nominatim с одним повтором на «слишком часто». */
+async function geocodeNominatim(address: string): Promise<Coordinates | null> {
+  return geocodeNominatimOnce(address)
 }
 
 /**
