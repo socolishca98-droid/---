@@ -73,6 +73,13 @@ const POINTS_PARALLEL = 2
  * Сколько раз помощник может сам добрать грузы «по пути» за одну сборку.
  * Ограничение от бесконечного цикла: добрали — пересобрали — снова добрали.
  */
+/**
+ * Сколько ждать расчёта точек городов перед сборкой, мс.
+ * Точки считаются пачками по шесть адресов: на биржевом регионе это
+ * несколько минут. Дольше двух с половиной минут ждать нельзя — лучше
+ * собрать маршрут по точному совпадению городов, чем не собрать вовсе.
+ */
+const POINTS_WAIT_MS = 150_000
 const MAX_AUTO_EXTEND = 2
 /**
  * Сколько страниц биржи тянем при додоборе грузов «по пути». Меньше, чем при
@@ -491,11 +498,19 @@ export default function RouteAssistantPage() {
    * 60 городов, из которых геокодер успевал отсчитать 12: живой замер для
    * базы «Нижний Новгород» — у 108 грузов из 119 точек не было, грузы «по
    * пути» не работали вовсе, маршрут собирался в одно плечо. Теперь просим
-   * все города пачками по 12, четыре пачки за раз; постоянный кэш координат
+   * все города пачками по 6, по две пачки за раз; постоянный кэш координат
    * делает второй и следующие заходы мгновенными.
    */
   const [cityPoints, setCityPoints] = useState<Record<string, { lat: number; lng: number } | null> | null>(null)
   const [pointsLoading, setPointsLoading] = useState(false)
+  /**
+   * Тот же признак в ref: сборка маршрута — обычная функция, ей нужно
+   * свежее значение, а не то, что было на момент создания замыкания.
+   */
+  const pointsLoadingRef = useRef(false)
+  useEffect(() => {
+    pointsLoadingRef.current = pointsLoading
+  }, [pointsLoading])
   useEffect(() => {
     if (!user || cityList.length === 0) {
       setCityPoints(null)
@@ -687,7 +702,18 @@ export default function RouteAssistantPage() {
       return
     }
 
-    const build = () => {
+    const build = async () => {
+      // Пока геокодер считает расстояния между городами, строить рано:
+      // без точек «по пути» не считается, и маршрут выходит из одного
+      // плеча. Живой прогон: нажали через 50 секунд после открытия экрана —
+      // одно плечо на 706 км; через две с половиной минуты — три плеча на
+      // 1344 км. Логист нажал кнопку и готов подождать, поэтому ждём
+      // точки, но не бесконечно.
+      const startedAt = Date.now()
+      while (pointsLoadingRef.current && Date.now() - startedAt < POINTS_WAIT_MS) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500))
+      }
+
       // Сборщику отдаём ГОРОД базы, а не полный адрес. Ключ города он
       // считает через shortCity + normalizeCityKey: «Ярославль. Ул.
       // Докучалова 12» превращается в «ярославль ул докучалова 12» и не
@@ -725,7 +751,7 @@ export default function RouteAssistantPage() {
     }
 
     if (instant) {
-      build()
+      void build()
       return
     }
 
@@ -742,7 +768,7 @@ export default function RouteAssistantPage() {
       }
       window.clearInterval(tick)
       buildTimer.current = null
-      build()
+      void build()
     }, 420)
     buildTimer.current = tick
   }
