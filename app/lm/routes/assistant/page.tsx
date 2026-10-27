@@ -2523,6 +2523,13 @@ function RoutePhase({
             label="На км"
             value={route.profitPerKm !== null ? `${formatMoney(route.profitPerKm)} ₽` : "—"}
           />
+          {/* По чему выбирается машина: маршрут ограничен сроком, значит главный
+              показатель — прибыль за ЧАС времени машины. Показываем рядом с
+              «на км», чтобы выбор был виден, а не только посчитан. */}
+          <SummaryCell
+            label="В час"
+            value={route.profitPerHour !== null ? `${formatMoney(route.profitPerHour)} ₽` : "—"}
+          />
         </div>
 
         {/* Когда выезжаем и когда дома — план поездки, а не только деньги */}

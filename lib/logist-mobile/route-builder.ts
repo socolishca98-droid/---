@@ -211,6 +211,18 @@ export interface BuiltRoute {
   totalProfitRub: number | null
   /** Прибыль на километр всего маршрута */
   profitPerKm: number | null
+  /**
+   * Прибыль на ЧАС всего маршрута — главный показатель выбора машины.
+   *
+   * Поездка ограничена временем («сколько едем»), поэтому актив диспетчера —
+   * часы машины, а не километры. Живой замер на Новосибирске: помощник
+   * выбирал 10-тонную фуру с одним плечом 317 км и прибылью 18 872 ₽
+   * (59 ₽/км) вместо 20-тонной с двумя плечами 3118 км и 152 888 ₽
+   * (49 ₽/км). По деньгам за час — 1 054 против ~3 000 ₽/ч: выбор был
+   * заведомо худшим, просто «₽/км» сравнивает короткий и длинный рейс
+   * как равные.
+   */
+  profitPerHour: number | null
   /** Прибыль нечем посчитать: у машины не заполнен расход топлива */
   needsFuelSetup: boolean
   /** Маршрут в убыток — отправлять только осознанно */
@@ -1185,10 +1197,20 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     })
     if (!route) continue
 
+    // Лучший маршрут — тот, который больше зарабатывает за час времени
+    // машины: поездка ограничена сроком, а не километражем. Раньше выбор шёл
+    // по «₽/км», и короткий рейс побеждал длинный: на Новосибирске
+    // помощник брал 317 км на 18 872 ₽ вместо 3118 км на 152 888 ₽.
+    // При равной часовой ставке — больше денег всего, затем плотнее км.
+    const score = (item: BuiltRoute): number =>
+      item.profitPerHour ?? item.profitPerKm ?? -1
     if (
       bestRoute === null ||
-      (route.profitPerKm ?? -1) > (bestRoute.profitPerKm ?? -1) ||
-      (route.profitPerKm === bestRoute.profitPerKm && route.totalRevenue > bestRoute.totalRevenue)
+      score(route) > score(bestRoute) ||
+      (score(route) === score(bestRoute) &&
+        (route.totalRevenue > bestRoute.totalRevenue ||
+          (route.totalRevenue === bestRoute.totalRevenue &&
+            (route.profitPerKm ?? -1) > (bestRoute.profitPerKm ?? -1))))
     ) {
       bestRoute = route
     }
@@ -1281,6 +1303,8 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   const totalProfitRub = totalFuelCostRub !== null ? totalRevenue - totalFuelCostRub : null
   const profitPerKm =
     totalProfitRub !== null && totalDistanceKm > 0 ? Math.round(totalProfitRub / totalDistanceKm) : null
+  const profitPerHour =
+    totalProfitRub !== null && totalHours > 0 ? Math.round(totalProfitRub / totalHours) : null
   const needsFuelSetup = vehicle.fuelConsumptionPer100 == null || vehicle.fuelConsumptionPer100 <= 0
 
   // Что осталось за бортом — с причинами. Сначала отсеянные до цепочки
@@ -1449,6 +1473,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     totalFuelCostRub,
     totalProfitRub,
     profitPerKm,
+    profitPerHour,
     needsFuelSetup,
     unprofitable: totalProfitRub !== null && totalProfitRub < 0,
     excluded,
