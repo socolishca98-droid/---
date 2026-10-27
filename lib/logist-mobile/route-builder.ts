@@ -1421,12 +1421,25 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       `Первый груз в ${firstLeg.deadheadKm} км от базы — порожний выезд учтён в прибыли`,
     )
   }
-  const byTheWay = legs.filter((leg) => leg.byTheWay).length
+  // «По пути» и «по дороге домой» — разные правила, и врать между ними нельзя:
+  // обратку берём с погрузкой дальше детура, потому что машина всё равно едет
+  // домой. Раньше оба плеча попадали в одну строку «в пределах 150 км», и
+  // объяснение врало.
+  const byTheWay = legs.filter((leg) => leg.byTheWay && !leg.homeLeg).length
   if (byTheWay > 0) {
     reasons.push(
       `${formatCount(byTheWay, ["груз", "груза", "грузов"])} ${
         byTheWay === 1 ? "взят" : "взяты"
       } «по пути» — в пределах ${input.detourKm} км от маршрута`,
+    )
+  }
+  const homeLegs = legs.filter((leg) => leg.homeLeg)
+  if (homeLegs.length > 0) {
+    const farKm = Math.round(Math.max(...homeLegs.map((leg) => leg.deadheadKm)))
+    reasons.push(
+      `${formatCount(homeLegs.length, ["груз", "груза", "грузов"])} закрыл${
+        homeLegs.length === 1 ? "" : "и"
+      } выезд — погрузка по дороге домой, до ${farKm} км: машина всё равно ехала в эту сторону`,
     )
   }
   if (totalDeadhead > 0) {

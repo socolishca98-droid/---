@@ -2830,11 +2830,6 @@ function RoutePhase({
                           {formatMoney(Math.abs(leg.profitRub))}
                         </span>
                       ) : null}
-                      {leg.returnsHome ? (
-                        <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                          домой с грузом
-                        </span>
-                      ) : null}
                       {leg.byTheWay ? (
                         <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-foreground/80">
                           {leg.homeLeg ? "по дороге домой" : "по пути"}
