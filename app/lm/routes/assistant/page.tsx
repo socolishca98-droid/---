@@ -685,8 +685,17 @@ export default function RouteAssistantPage() {
     }
 
     const build = () => {
+      // Сборщику отдаём ГОРОД базы, а не полный адрес. Ключ города он
+      // считает через shortCity + normalizeCityKey: «Ярославль. Ул.
+      // Докучалова 12» превращается в «ярославль ул докучалова 12» и не
+      // совпадает ни с одним грузом «Ярославль, Ярославская область».
+      // Живой замер: помощник с базой из настроек organisation отвечал
+      // «грузов на бирже сейчас нет», хотя грузов из Ярославля было 92.
+      // Точный адрес нужен только для координат — они приходят отдельно
+      // (startPoint), а стыковка идёт по названию города.
+      const startPlace = shortCity(start) || start.trim()
       const built = buildRouteVariants({
-        startCity: start.trim(),
+        startCity: startPlace,
         loads: loadsWithPoints,
         vehicles,
         fuelPriceRubPerL: 62,
@@ -1343,7 +1352,7 @@ export default function RouteAssistantPage() {
           />
         ) : (
           <FailedPhase
-            startCity={startCity}
+            startCity={shortCity(startCity) || startCity}
             loads={loadsWithPoints}
             vehicles={vehicles}
             startRadiusKm={startRadiusKm}
