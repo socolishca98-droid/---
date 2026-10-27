@@ -206,6 +206,8 @@ export default function RouteAssistantPage() {
   const [maxHours, setMaxHours] = useState(72)
   const [phase, setPhase] = useState<"setup" | "building" | "route" | "sending">("setup")
   const [buildStep, setBuildStep] = useState(0)
+  /** Идёт сборка, но она ждёт расчёта точек городов — экран об этом говорит. */
+  const [waitingPoints, setWaitingPoints] = useState(false)
   /**
    * Варианты одного выезда: «как выбрано», «больше денег», «быстрее домой».
    * Логист выбирает сам — помощник не решает за него.
@@ -757,8 +759,10 @@ export default function RouteAssistantPage() {
 
     setPhase("building")
     setBuildStep(0)
+    setWaitingPoints(false)
 
     // Анимация построения: шаги с задержкой, затем результат
+    const startedAt = Date.now()
     let step = 0
     const tick = window.setInterval(() => {
       step += 1
@@ -766,8 +770,18 @@ export default function RouteAssistantPage() {
         setBuildStep(step)
         return
       }
+      // Точки городов ещё считаются. Без них «по пути» не считается и
+      // маршрут выйдет из одного плеча, поэтому не показываем результат
+      // заранее: шаги идут по кругу, а подписью честно говорим, чего ждём.
+      // Ждём не бесконечно — сборщик сам прекратит ждать через POINTS_WAIT_MS.
+      if (pointsLoadingRef.current && Date.now() - startedAt < POINTS_WAIT_MS) {
+        setWaitingPoints(true)
+        setBuildStep(step % BUILD_STEPS.length)
+        return
+      }
       window.clearInterval(tick)
       buildTimer.current = null
+      setWaitingPoints(false)
       void build()
     }, 420)
     buildTimer.current = tick
@@ -1349,7 +1363,7 @@ export default function RouteAssistantPage() {
             }}
           />
         ) : phase === "building" ? (
-          <BuildingPhase step={buildStep} />
+          <BuildingPhase step={buildStep} waitingPoints={waitingPoints} />
         ) : variants.length > 0 && route ? (
           <RoutePhase
             route={route}
@@ -2101,13 +2115,19 @@ function SetupPhase({
 // Шаг 2. Анимация построения
 // ---------------------------------------------------------------------------
 
-function BuildingPhase({ step }: { step: number }) {
+function BuildingPhase({ step, waitingPoints }: { step: number; waitingPoints?: boolean }) {
   return (
     <div className="pt-10">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/15">
         <RouteIcon className="h-8 w-8 animate-pulse text-primary" />
       </div>
       <p className="mt-4 text-center text-[16px] font-semibold text-foreground">Строим маршрут</p>
+      {waitingPoints ? (
+        <p className="mx-auto mt-2 max-w-[280px] text-center text-[12.5px] leading-snug text-muted-foreground">
+          Считаю расстояния между городами биржи — без них не видно грузы «по
+          пути», а маршрут вышел бы из одного плеча.
+        </p>
+      ) : null}
       <ul className="mx-auto mt-5 max-w-[280px] space-y-2.5">
         {BUILD_STEPS.map((text, index) => {
           const done = index < step
