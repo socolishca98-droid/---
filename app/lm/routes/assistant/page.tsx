@@ -574,64 +574,7 @@ export default function RouteAssistantPage() {
     return cityPoints[normalizeCityKey(city)] ?? null
   }, [basePoint, baseCity, startCity, cityPoints])
 
-  /**
-   * Грузы, отсортированные от базы организации: сначала ближние.
-   * Показываем на первом экране — иначе пользователь видит только названия
-   * городов и спрашивает «где заказы?». Это и есть заказы.
-   */
-  const nearestLoads = useMemo(() => {
-    const origin = basePointForSort
-    const withKm = usableLoads.map((load) => {
-      const point = load.fromPoint ?? null
-      const km =
-        origin && point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
-          ? haversineKm(origin, point)
-          : null
-      return { load, km }
-    })
-    withKm.sort((a, b) => {
-      if (a.km !== null && b.km !== null) return a.km - b.km
-      if (a.km !== null) return -1
-      if (b.km !== null) return 1
-      return (b.load.priceRub ?? 0) - (a.load.priceRub ?? 0)
-    })
-    return withKm.slice(0, 6)
-  }, [usableLoads, basePointForSort])
 
-  /**
-   * Города погрузки, где сейчас есть грузы.
-   *
-   * Сортировка — ОТ БАЗЫ ОРГАНИЗАЦИИ: сначала ближние. Раньше шли по числу
-   * грузов, и вверху оказывался случайный город с биржи, а не тот, куда
-   * логисту реально ехать. Теперь первый чипс — ближайший к стоянке.
-   */
-  const topFromCities = useMemo(() => {
-    const origin = basePointForSort
-    // Сколько грузов в каждом городе
-    const counts = new Map<string, number>()
-    for (const load of usableLoads) {
-      const city = shortCity(load.fromCity)
-      if (city) counts.set(city, (counts.get(city) ?? 0) + 1)
-    }
-    // Километраж от базы до города погрузки
-    const rows: Array<{ city: string; count: number; km: number | null }> = []
-    for (const [city, count] of counts) {
-      const load = usableLoads.find((item) => shortCity(item.fromCity) === city)
-      const point = load?.fromPoint ?? null
-      const km =
-        origin && point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
-          ? Math.round(haversineKm(origin, point))
-          : null
-      rows.push({ city, count, km })
-    }
-    rows.sort((a, b) => {
-      if (a.km !== null && b.km !== null) return a.km - b.km
-      if (a.km !== null) return -1
-      if (b.km !== null) return 1
-      return b.count - a.count
-    })
-    return rows.slice(0, 6)
-  }, [usableLoads, basePointForSort])
 
 
 
@@ -656,6 +599,73 @@ export default function RouteAssistantPage() {
     const extra = foundLoads.filter((load) => !seen.has(load.id))
     return withPoints([...loads, ...extra])
   }, [loads, foundLoads, cityPoints])
+
+  /**
+   * Города погрузки, где сейчас есть грузы.
+   *
+   * Километраж считаем по грузам С ТОЧКАМИ (loadsWithPoints): у сырых грузов
+   * точек нет, и живой замер показывал чипсы «Ярославль · 91 груз(а)» без
+   * расстояния — сортировка по близости молча не работала.
+   *
+   * Сортировка — ОТ БАЗЫ ОРГАНИЗАЦИИ: сначала ближние. Раньше шли по числу
+   * грузов, и вверху оказывался случайный город с биржи, а не тот, куда
+   * логисту реально ехать. Теперь первый чипс — ближайший к стоянке.
+   */
+  /**
+   * Грузы, отсортированные от базы организации: сначала ближние.
+   * Показываем на первом экране — иначе пользователь видит только названия
+   * городов и спрашивает «где заказы?». Это и есть заказы.
+   *
+   * Считаем по грузам С ТОЧКАМИ (loadsWithPoints): у сырых грузов точек нет,
+   * и живой замер показывал список без километража — сортировка по близости
+   * молча не работала.
+   */
+  const nearestLoads = useMemo(() => {
+    const origin = basePointForSort
+    const withKm = loadsWithPoints.map((load) => {
+      const point = load.fromPoint ?? null
+      const km =
+        origin && point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+          ? haversineKm(origin, point)
+          : null
+      return { load, km }
+    })
+    withKm.sort((a, b) => {
+      if (a.km !== null && b.km !== null) return a.km - b.km
+      if (a.km !== null) return -1
+      if (b.km !== null) return 1
+      return (b.load.priceRub ?? 0) - (a.load.priceRub ?? 0)
+    })
+    return withKm.slice(0, 6)
+  }, [loadsWithPoints, basePointForSort])
+
+  const topFromCities = useMemo(() => {
+    const origin = basePointForSort
+    // Сколько грузов в каждом городе
+    const counts = new Map<string, number>()
+    for (const load of loadsWithPoints) {
+      const city = shortCity(load.fromCity)
+      if (city) counts.set(city, (counts.get(city) ?? 0) + 1)
+    }
+    // Километраж от базы до города погрузки
+    const rows: Array<{ city: string; count: number; km: number | null }> = []
+    for (const [city, count] of counts) {
+      const load = loadsWithPoints.find((item) => shortCity(item.fromCity) === city)
+      const point = load?.fromPoint ?? null
+      const km =
+        origin && point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+          ? Math.round(haversineKm(origin, point))
+          : null
+      rows.push({ city, count, km })
+    }
+    rows.sort((a, b) => {
+      if (a.km !== null && b.km !== null) return a.km - b.km
+      if (a.km !== null) return -1
+      if (b.km !== null) return 1
+      return b.count - a.count
+    })
+    return rows.slice(0, 6)
+  }, [loadsWithPoints, basePointForSort])
 
   const startPoint = useMemo(() => {
     if (!startCity.trim()) return null
