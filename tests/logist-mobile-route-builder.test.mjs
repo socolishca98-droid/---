@@ -356,6 +356,67 @@ test("с координатами «по пути» продолжает цеп�
   assert.ok(second.deadheadKm > 0, "подъезд к погрузке посчитан")
 })
 
+// ── 14b. Радиус «по пути» — на КАЖДОМ шаге, не только на первом ──────────
+test("«по пути» ограничено своим радиусом: 300 км годится первому плечу, второму — нет", () => {
+  // Живой замер для базы «Ярославль»: радиус считался один раз ДО цикла, и
+  // условие «первое плечо» срабатывало на всех шагах. Цепочка из шести плеч
+  // шла с прыжками по 292, 252 и 271 км — при выставленных «по пути» 150 км.
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "a", fromCity: "Москва", toCity: "Рязань", distanceKm: 200, priceRub: 60000,
+        fromPoint: { lat: 55.7558, lng: 37.6173 }, toPoint: { lat: 54.6296, lng: 39.7417 },
+      }),
+      // Владимир ~190 км от Рязани: в радиус поиска первого груза (300)
+      // попадает, в «по пути» (150) — нет. Взять его вторым плечом — значит
+      // соврать про «по пути».
+      load({
+        id: "b", fromCity: "Владимир", toCity: "Нижний Новгород", distanceKm: 450, priceRub: 120000,
+        fromPoint: { lat: 56.1290, lng: 40.4066 }, toPoint: { lat: 56.3269, lng: 44.0059 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 150,
+    startRadiusKm: 300,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+  })
+
+  assert.ok(route, "первое плечо из Рязани берём — 190 км от базы в пределах радиуса поиска")
+  assert.equal(route.legs.length, 1, "второе плечо из Владимира не берём: 190 км больше «по пути» 150 км")
+  assert.ok(route.legs[0].deadheadKm <= 300, "пробег первого плеча в пределах радиуса поиска")
+})
+
+test("тот же груз берётся, когда «по пути» его покрывает", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "a", fromCity: "Москва", toCity: "Рязань", distanceKm: 200, priceRub: 60000,
+        fromPoint: { lat: 55.7558, lng: 37.6173 }, toPoint: { lat: 54.6296, lng: 39.7417 },
+      }),
+      // Коломна ~115 км от Рязани — в «по пути» 150 км попадает
+      load({
+        id: "b", fromCity: "Коломна", toCity: "Владимир", distanceKm: 250, priceRub: 70000,
+        fromPoint: { lat: 55.0794, lng: 38.7536 }, toPoint: { lat: 56.1290, lng: 40.4066 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 150,
+    startRadiusKm: 300,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+  })
+
+  assert.ok(route)
+  assert.equal(route.legs.length, 2, "цепочка продолжается грузом «по пути»")
+  assert.ok(route.legs[1].byTheWay, "плечо помечено «по пути»")
+  assert.ok(route.legs[1].deadheadKm > 0 && route.legs[1].deadheadKm <= 150, "подъезд в пределах «по пути»")
+})
+
 // ── 15. Возврат домой: порожний пробег входит в расходы ──────────────────
 test("порожний возврат домой учитывается в километраже и прибыли", () => {
   const route = buildRoute({
@@ -764,7 +825,9 @@ test("цепочка обрезается, если вместе с возвра
     load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000, fromPoint: LIPETSK, toPoint: TAMBOV }),
     load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000, fromPoint: TAMBOV, toPoint: SARATOV }),
   ]
-  // Плечи занимают 43.5 ч, возврат из Саратова — ещё ~14 ч: в 50 ч не влезает
+  // Плечи занимают 43.5 ч, возврат из Саратова — ещё ~14 ч: в 50 ч не влезает.
+  // detourKm: 0 — проверяем именно срок: цепочка здесь идёт по точному
+  // совпадению городов, и радиус «по пути» к смыслу теста не относится.
   const route = buildRoute({
     startCity: "Москва",
     loads,
@@ -772,6 +835,7 @@ test("цепочка обрезается, если вместе с возвра
     fuelPriceRubPerL: FUEL,
     now: NOW,
     maxHours: 50,
+    detourKm: 0,
     startPoint: MOSCOW,
   })
   assert.ok(route)

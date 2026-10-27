@@ -10,8 +10,12 @@
 // повторный вопрос о том же городе базу не трогает. Города без координат
 // возвращаются как null — помощник тогда решает по названию города.
 //
-// Города приходят уже короткими («Подольск»), а не полными адресами:
-// биржа пишет «Подольск, Московская область», лишнее режет вызывающий.
+// Города приходят короткими («Подольск») в `cities` или полными адресами
+// биржи («Шарапово д. (Новомосковский административный округ), Московская
+// область») в `places` — через «|», потому что внутри адреса есть запятые.
+// Полный адрес важен: ATI пишет точки как «Среднесибирский п.», и без
+// региона геокодер находит одноимённое село в другом крае. В ответе ключ —
+// короткое название города, чтобы вызывающему было удобно искать.
 
 import { NextRequest, NextResponse } from "next/server"
 
@@ -19,11 +23,15 @@ import { requireStaffAuth } from "@/lib/api-auth"
 import { requireStaffOrganization } from "@/lib/org"
 import { geocodeAddresses } from "@/lib/geo/geocode"
 import { normalizeCityKey } from "@/lib/logist-mobile/city-norm"
+import { shortCity } from "@/lib/logist-mobile/format"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
-/** Сколько городов максимум геокодируем за один запрос. */
+/**
+ * Сколько адресов максимум геокодируем за один запрос. Ограничение
+ * геокодера: 12 адресов за вызов, иначе хвост молча остаётся без точек.
+ */
 const MAX_CITIES = 40
 
 export async function GET(request: NextRequest) {
@@ -39,15 +47,23 @@ export async function GET(request: NextRequest) {
     .map((value) => value.trim())
     .filter(Boolean)
     .slice(0, MAX_CITIES)
+  // Полные адреса биржи: разделитель «|», внутри адреса запятые
+  const places = (searchParams.get("places") ?? "")
+    .split("|")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, MAX_CITIES)
+
+  const targets = [...cities, ...places]
 
   const points: Record<string, { lat: number; lng: number } | null> = {}
-  if (cities.length === 0) return NextResponse.json({ points })
+  if (targets.length === 0) return NextResponse.json({ points })
 
   try {
-    const resolved = await geocodeAddresses(cities)
-    for (const city of cities) {
-      const point = resolved.get(city) ?? null
-      points[normalizeCityKey(city)] = point ? { lat: point.lat, lng: point.lng } : null
+    const resolved = await geocodeAddresses(targets)
+    for (const target of targets) {
+      const point = resolved.get(target) ?? null
+      points[normalizeCityKey(shortCity(target))] = point ? { lat: point.lat, lng: point.lng } : null
     }
     return NextResponse.json({ points })
   } catch (error) {

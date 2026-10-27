@@ -6,7 +6,9 @@
 //   1. сначала смотрим постоянный кэш в таблице GeoCache (адрес → координаты) —
 //      он общий для всей платформы, потому что это справочные данные о городах,
 //      а не данные организации;
-//   2. если адреса нет — спрашиваем координаты. Приоритет у Яндекс.Геокодера
+//   2. если адреса нет — спрашиваем координаты (сначала «как написано»,
+//      потом «только населенный пункт»: ATI пишет «Среднесибирский п.», а
+//      геокодер такую запись не понимает). Приоритет у Яндекс.Геокодера
 //      (если задан YANDEX_GEOCODER_API_KEY): российские адреса он знает лучше,
 //      и лимит 1 запрос/сек Nominatim сильно тормозит оптимизатор. Без ключа —
 //      Nominatim (OpenStreetMap), результат кладётся в GeoCache, чтобы
@@ -20,6 +22,7 @@
 // идентификаторами, без координат.
 
 import { prisma } from "@/lib/prisma"
+import { plainPlace } from "@/lib/geo/nominatim"
 
 export type Coordinates = { lat: number; lng: number }
 
@@ -152,6 +155,23 @@ async function geocodeNominatim(address: string): Promise<Coordinates | null> {
 }
 
 /**
+ * Варианты одного адреса для геокодера — от точного к грубому.
+ *
+ * Зачем второй вариант: точки ATI приходят как «Шелангер п. (Звениговский
+ * р-н), Республика Марий Эл». Геокодер такую запись не переваривает (замер:
+ * ноль ответов), а «Шелангер, Республика Марий Эл» — находит. Регион в
+ * строке оставляем: без него голое «Шарапово» уводит в Псковскую область,
+ * где есть одноимённое село.
+ */
+function addressVariants(address: string): string[] {
+  const base = address.replace(/\s+/g, " ").trim()
+  const plain = plainPlace(base)
+  const out = [base]
+  if (plain && plain !== base) out.push(plain)
+  return out.filter((value, index) => value.length >= 3 && out.indexOf(value) === index)
+}
+
+/**
  * Один сетевой запрос координат. Сначала Яндекс (если ключ есть), затем
  * Nominatim: провайдер может отдать null, и тогда пробуем следующий.
  * Возвращает ещё и источник, чтобы интерфейс показывал правду.
@@ -159,11 +179,13 @@ async function geocodeNominatim(address: string): Promise<Coordinates | null> {
 async function geocodeRemote(
   address: string,
 ): Promise<{ coords: Coordinates | null; source: GeocodeSource }> {
-  const yandex = await geocodeYandex(address)
-  if (yandex) return { coords: yandex, source: "yandex" }
+  for (const variant of addressVariants(address)) {
+    const yandex = await geocodeYandex(variant)
+    if (yandex) return { coords: yandex, source: "yandex" }
 
-  const nominatim = await geocodeNominatim(address)
-  if (nominatim) return { coords: nominatim, source: "nominatim" }
+    const nominatim = await geocodeNominatim(variant)
+    if (nominatim) return { coords: nominatim, source: "nominatim" }
+  }
 
   return { coords: null, source: "none" }
 }

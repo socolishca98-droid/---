@@ -57,6 +57,24 @@ import {
   telHref,
 } from "@/lib/logist-mobile/format"
 
+/**
+ * Сколько городов просим у геокодера за один запрос и сколько запросов
+ * одновременно. 12 — потолок самого геокодера за один вызов; четыре пачки
+ * за раз укладываются в десяток секунд и не долбят сервис.
+ */
+const POINTS_BATCH = 12
+const POINTS_PARALLEL = 4
+/**
+ * Сколько раз помощник может сам добрать грузы «по пути» за одну сборку.
+ * Ограничение от бесконечного цикла: добрали — пересобрали — снова добрали.
+ */
+const MAX_AUTO_EXTEND = 2
+/**
+ * Сколько страниц биржи тянем при додоборе грузов «по пути». Меньше, чем при
+ * сборе региона: нужен только груз вокруг точки, а не вся область.
+ */
+const EXTEND_PAGES = 3
+
 /** Статус договорённости с фрахтователем по конкретному грузу. */
 type CallStatus = "pending" | "agreed" | "declined"
 
@@ -76,6 +94,46 @@ const START_CITY_KEY = "assistant-start-city"
 export default function RouteAssistantPage() {
   const router = useRouter()
   const { user } = useStaffSession()
+
+  /**
+   * База СВОЕЙ организации (FleetSettings.baseAddress) — от неё собирается
+   * регион. Регион у каждой компании свой: у одной Ярославль, у другой
+   * Коломна, поэтому город берём из настроек организации, а не из памяти
+   * браузера и не из зашитого значения.
+   */
+  const [baseCity, setBaseCity] = useState("")
+  /** Координаты стоянки организации — из них считаем, какие города ближе */
+  const [basePoint, setBasePoint] = useState<{ lat: number; lng: number } | null>(null)
+
+  /**
+   * Корень названия региона базы: «Ярославская», «Нижегородская».
+   *
+   * Зачем: кэш организации копится со всей страны — свой регион и чужие.
+   * Помощник обязан строить из грузов СВОЕГО региона. Живой замер: собрали
+   * биржу Нижегородской и Новосибирской областей, а база осталась в
+   * Ярославле — в «свежих 300» её грузов не осталось вовсе, и помощник
+   * честно ответил «Маршрут не собрался». Теперь грузы просим по региону.
+   *
+   * Свой словарь считает регион сразу (199 городов); города вне словаря
+   * («Тулун», «Кировск», «Надым») досчитывает сервер — его ответ приходит
+   * в том же запросе полем baseRegion.
+   */
+  const regionRootFromBase = useMemo(() => {
+    const text = baseCity.trim()
+    if (!text) return null
+    try {
+      const region = findRegionByNameLocal(text)
+      return region ? region.name.replace(/\s+(область|край|республика).*$/, "") : null
+    } catch {
+      return null
+    }
+  }, [baseCity])
+  /** Регион, посчитанный сервером — для адреса, которого нет в словаре. */
+  const [serverRegionRoot, setServerRegionRoot] = useState<string | null>(null)
+  const regionRoot = serverRegionRoot ?? regionRootFromBase
+  const loadsUrl = user
+    ? `/api/ati/loads?status=new&limit=300${regionRoot ? `&search=${encodeURIComponent(regionRoot)}` : ""}`
+    : null
 
   const loadsState = useJsonApi<{
     items: Array<{
@@ -120,7 +178,7 @@ export default function RouteAssistantPage() {
       boards: Array<{ id: string; name: string }>
       note: string
     }
-  }>(user ? "/api/ati/loads?status=new&limit=300" : null)
+  }>(loadsUrl)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
@@ -186,16 +244,6 @@ export default function RouteAssistantPage() {
    * а грузы двух регионов смешивались бы в одном маршруте.
    */
   const [harvestScope, setHarvestScope] = useState("")
-  /**
-   * База СВОЕЙ организации (FleetSettings.baseAddress) — от неё собирается
-   * регион. Регион у каждой компании свой: у одной Ярославль, у другой
-   * Коломна, поэтому город берём из настроек организации, а не из памяти
-   * браузера и не из зашитого значения.
-   */
-  const [baseCity, setBaseCity] = useState("")
-  /** Координаты стоянки организации — из них считаем, какие города ближе */
-  const [basePoint, setBasePoint] = useState<{ lat: number; lng: number } | null>(null)
-
   // Город старта помним: логист обычно едет из одной базы
   useEffect(() => {
     const saved = window.localStorage.getItem(START_CITY_KEY)
@@ -309,6 +357,15 @@ export default function RouteAssistantPage() {
    * из Ярославля — «через всю страну проехать надо». Поэтому берём только
    * регион базы: у каждой компании он свой.
    */
+  // Сервер считает регион для ЛЮБОГО адреса базы (словарь городов, затем
+  // геокодер) — для города вне словаре грузы иначе не отфильтровать.
+  useEffect(() => {
+    const name = loadsState.data?.baseRegion?.name
+    if (!name) return
+    const root = name.replace(/\s+(область|край|республика).*$/, "")
+    setServerRegionRoot((prev) => (prev === root ? prev : root))
+  }, [loadsState.data])
+
   const baseRegionName = useMemo(() => {
     // Регион с сервера — он считается для любого адреса базы (словарь городов,
     // затем геокодер). Свой словарь в браузере остаётся запасным путём: если
@@ -368,13 +425,23 @@ export default function RouteAssistantPage() {
   // Без них цепочка строится только по точному совпадению городов, а на
   // бирже один город пишут по-разному и «стыков» мало — маршрут оборвётся
   // на одном плече. Точки тянем один раз на все города грузов.
-  const pointsQuery = useMemo(() => {
-    const cities = new Set<string>()
+  /**
+   * Адреса всех грузов помощника — точки нужны каждому, не только первым.
+   *
+   * Собираем ПОЛНЫЕ строки биржи («Шарапово д. (Новомосковский
+   * административный округ), Московская область»), а не короткие названия:
+   * геокодер по полному адресу находит нужный населённый пункт, а по
+   * короткому либо не находит ничего («Среднесибирский п.» — ноль ответов),
+   * либо находит одноимённое село в другом крае («Шарапово д.» без области
+   * уводит в Псковскую). Ключ в ответе — короткое название города.
+   */
+  const cityList = useMemo(() => {
+    const places = new Set<string>()
     for (const load of usableLoads) {
-      cities.add(shortCity(load.fromCity))
-      cities.add(shortCity(load.toCity))
+      if (load.fromCity && load.fromCity !== "—") places.add(load.fromCity)
+      if (load.toCity && load.toCity !== "—") places.add(load.toCity)
     }
-    return [...cities].slice(0, 60).join(",")
+    return [...places]
   }, [usableLoads])
 
   /**
@@ -410,10 +477,65 @@ export default function RouteAssistantPage() {
     }
   }
 
-  const pointsState = useJsonApi<{ points: Record<string, { lat: number; lng: number } | null> }>(
-    user && pointsQuery ? `/api/ati/cities/points?cities=${encodeURIComponent(pointsQuery)}` : null,
-  )
-  const cityPoints = pointsState.data?.points ?? null
+  /**
+   * Точки городов биржи — порциями.
+   *
+   * Зачем порциями: геокодер отдаёт не больше 12 адресов за запрос (правила
+   * сервиса — не чаще одного запроса в секунду), а адресов у биржи больше
+   * сотни. Раньше помощник просил точки одним списком и видел только первые
+   * 60 городов, из которых геокодер успевал отсчитать 12: живой замер для
+   * базы «Нижний Новгород» — у 108 грузов из 119 точек не было, грузы «по
+   * пути» не работали вовсе, маршрут собирался в одно плечо. Теперь просим
+   * все города пачками по 12, четыре пачки за раз; постоянный кэш координат
+   * делает второй и следующие заходы мгновенными.
+   */
+  const [cityPoints, setCityPoints] = useState<Record<string, { lat: number; lng: number } | null> | null>(null)
+  const [pointsLoading, setPointsLoading] = useState(false)
+  useEffect(() => {
+    if (!user || cityList.length === 0) {
+      setCityPoints(null)
+      setPointsLoading(false)
+      return
+    }
+    let alive = true
+    const controller = new AbortController()
+    setPointsLoading(true)
+    const batches: string[][] = []
+    for (let index = 0; index < cityList.length; index += POINTS_BATCH) {
+      batches.push(cityList.slice(index, index + POINTS_BATCH))
+    }
+    void (async () => {
+      const merged: Record<string, { lat: number; lng: number } | null> = {}
+      for (let index = 0; index < batches.length; index += POINTS_PARALLEL) {
+        const wave = batches.slice(index, index + POINTS_PARALLEL)
+        const answers = await Promise.all(
+          wave.map(async (batch) => {
+            try {
+              const res = await fetch(
+                `/api/ati/cities/points?places=${encodeURIComponent(batch.join("|"))}`,
+                { credentials: "include", cache: "no-store", signal: controller.signal },
+              )
+              if (!res.ok) return {}
+              const data = await res.json()
+              return (data?.points ?? {}) as Record<string, { lat: number; lng: number } | null>
+            } catch {
+              return {}
+            }
+          }),
+        )
+        for (const answer of answers) Object.assign(merged, answer)
+        if (alive) setCityPoints({ ...merged })
+      }
+      if (alive) {
+        setCityPoints({ ...merged })
+        setPointsLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+      controller.abort()
+    }
+  }, [user, cityList])
 
   /**
    * Точка базы для расчёта близости городов.
@@ -530,6 +652,8 @@ export default function RouteAssistantPage() {
   // Таймер анимации живёт в ref: если логист ушёл с экрана mid-анимации,
   // интервал гасится — иначе он стучится в размонтированный компонент.
   const buildTimer = useRef<number | null>(null)
+  /** Сколько раз автододобор грузов «по пути» уже срабатывал в этой сборке. */
+  const autoExtendRef = useRef(0)
   useEffect(() => () => {
     if (buildTimer.current !== null) window.clearInterval(buildTimer.current)
   }, [])
@@ -546,6 +670,11 @@ export default function RouteAssistantPage() {
     hoursLimit?: number,
     instant = false,
   ) {
+    // Своя сборка — свой счётчик додоборов: иначе одна автоматическая
+    // догрузка «съедала» бы попытки всех следующих нажатий. Пересборку после
+    // додобора (instant) не считаем новой сборкой — иначе счётчик обнулялся
+    // бы и додобор пошёл бы по кругу.
+    if (!instant) autoExtendRef.current = 0
     if (!start.trim()) {
       toast.error("Укажите город, откуда едете")
       return
@@ -569,7 +698,14 @@ export default function RouteAssistantPage() {
       setPhase("route")
       if (built.length === 0) {
         toast.error("Из этого города не собралось ни одного окупаемого плеча")
+        return
       }
+      // Цепочка оборвалась, а срок не выбран — хватаем грузы рядом с той
+      // точкой, где машина стоит, и пересобираем. Без этого маршрут из
+      // любого города собирался в одно плечо: в своём регионе грузов «по
+      // пути» почти не бывает, зато биржа рядом с машиной их отдаёт.
+      const stalled = built[0]?.route
+      if (stalled && canExtend(stalled)) void extendAlongRoute(stalled)
     }
 
     if (instant) {
@@ -593,6 +729,127 @@ export default function RouteAssistantPage() {
       build()
     }, 420)
     buildTimer.current = tick
+  }
+
+  /**
+   * Есть ли смысл добрать грузы «по пути»: цепочка короткая, срок не выбран,
+   * машина не дома. Если маршрут уже уперся в лимит часов или в кап плечей —
+   * додобор ничего не даст, только лишний запрос к бирже.
+   */
+  function canExtend(route: BuiltRoute): boolean {
+    if (autoExtendRef.current >= MAX_AUTO_EXTEND) return false
+    if (route.legs.length === 0 || route.legs.length >= 8) return false
+    if (route.returnsHomeWithLoad) return false
+    if (route.totalHours + 3 >= route.maxHours) return false
+    const city = shortCity(route.legs[route.legs.length - 1]?.load.toCity)
+    return Boolean(city) && city !== "—"
+  }
+
+  /** Регион из адреса груза: «Тула, Тульская область» -> «Тульская область». */
+  function regionOfAddress(address: string): string | null {
+    const parts = String(address ?? "")
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+    return parts.find((part) => /(область|край|республика|АО|автономн)/i.test(part)) ?? null
+  }
+
+  /**
+   * Город или регион в справочнике ATI. Биржа принимает в фильтре только
+   * числовой id своего словаря, по названию город не резолвится.
+   */
+  async function lookupAtiPlace(
+    name: string,
+  ): Promise<{ id: number; name: string; fullName?: string } | null> {
+    const clean = name.split(",")[0].trim()
+    if (!clean) return null
+    try {
+      const res = await fetch(`/api/ati/geo?q=${encodeURIComponent(clean)}`, { credentials: "include" })
+      const rows: Array<{ id: number; name: string; fullName: string }> = await res.json().catch(() => [])
+      return rows[0] ?? null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Добрать грузы вокруг точки, где стоит машина, и пересобрать маршрут.
+   *
+   * Зачем: помощник строит цепочку из грузов СВОЕГО региона, а выгрузился
+   * может быть в любом — там свои грузы, своих «по пути» в кэше нет. Живой
+   * замер для базы «Новосибирск»: маршрут на трое суток = одно плечо
+   * Новосибирск -> Домодедово, хотя в Домодедове биржа отдаёт грузы и
+   * дальше. Поэтому спрашиваем биржу вокруг текущей точки (радиус «по
+   * пути») и пересобираем, сохранив уже собранные плечи.
+   */
+  async function extendAlongRoute(route: BuiltRoute) {
+    const place = route.legs[route.legs.length - 1]?.load.toCity ?? ""
+    const city = shortCity(place)
+    if (!city || city === "—") return
+    autoExtendRef.current += 1
+
+    // Справочник ATI знает не все поселения: «Шелангер п. (Звениговский р-н)»
+    // он не находит, зато находит «Республику Марий Эл» — а она написана в
+    // том же адресе груза. Живой замер для базы «Нижний Новгород»: маршрут
+    // кончался в Шелангере и обрывался, потому что город не резолвился.
+    // Поэтому пробуем город, затем регион из того же адреса, и напоследок —
+    // регион базы: машина обычно ещё в своих краях («Среднесибирский п.» не
+    // знает никто, а Новосибирская область — в справочнике).
+    const region = regionOfAddress(place)
+    const geo =
+      (await lookupAtiPlace(city)) ??
+      (region ? await lookupAtiPlace(region) : null) ??
+      (serverRegionRoot ? await lookupAtiPlace(serverRegionRoot) : null)
+    if (!geo) return
+
+    const result = await apiSend<{
+      success?: boolean
+      found?: number
+      loads?: Array<Record<string, unknown>>
+      error?: string
+    }>("/api/ati/scan", "POST", {
+      manualMode: true,
+      source: "exchange",
+      fromGeo: { id: geo.id, name: geo.name, fullName: geo.fullName },
+      fromRadius: detourKm,
+      maxPages: EXTEND_PAGES,
+      pageStart: 1,
+      filters: {},
+    })
+    if (!result.ok || !result.data?.success) return
+
+    const rowsFound = result.data.loads ?? []
+    if (rowsFound.length === 0) return
+    const mapped: BuilderLoad[] = rowsFound.map((row: any) => ({
+      id: String(row.id),
+      loadId: row.atiLoadId ?? null,
+      fromCity: row.routeFrom,
+      toCity: row.routeTo,
+      weightKg: row.weight,
+      volumeM3: row.volume,
+      cargoType: row.cargoType,
+      priceRub: row.price,
+      priceWithNds: row.vatIncluded ? row.price : null,
+      distanceKm: row.distance,
+      firmName: row.firmName,
+      firmUrl: row.firmUrl ?? null,
+      contactPhone: row.contactPhone,
+      loadingDate: row.loadingDate,
+      status: row.status ?? "new",
+      fromPoint: row.fromPoint ?? null,
+      toPoint: row.toPoint ?? null,
+      source: row.source === "exchange" ? "exchange" : "boards",
+    }))
+    setFoundLoads((prev) => {
+      const seen = new Set(prev.map((load) => load.id))
+      return [...prev, ...mapped.filter((load) => !seen.has(load.id))]
+    })
+    toast(`Добрал грузы рядом с ${geo.name} — пересобираю маршрут`, {
+      description: `Биржа отдала ${result.data.found ?? rowsFound.length} грузов вокруг точки, где стоит машина`,
+    })
+    // Пересборка сохраняет уже собранные плечи: они согласованы или просто
+    // выбраны, и терять их из-за додобора нельзя.
+    runBuild(startCity, route.legs.map((leg) => leg.load.id), excludeIds, route.maxHours, true)
   }
 
   /**
@@ -1029,7 +1286,7 @@ export default function RouteAssistantPage() {
             setStartRadiusKm={setStartRadiusKm}
             maxHours={maxHours}
             setMaxHours={setMaxHours}
-            pointsLoading={pointsState.loading}
+            pointsLoading={pointsLoading}
             noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
             onBuild={() => runBuild(startCity, keepIds, excludeIds, maxHours)}
             sourceNote={loadsState.data?.source?.note ?? null}
@@ -2491,8 +2748,8 @@ function RoutePhase({
             {/* Счётчик выше — про осмотренные грузы, а не про всю биржу */}
             {loadsScanned < loadsTotal ? (
               <p className="px-1 text-[12.5px] leading-snug text-muted-foreground">
-                В расчёте — {loadsScanned} груза из {loadsTotal} на бирже: помощник смотрит
-                свежие записи кэша.
+                В расчёте — {loadsScanned} груза из {loadsTotal} вашего региона: помощник
+                смотрит свежие записи кэша.
               </p>
             ) : null}
             {route.excluded.length === 0 ? (
