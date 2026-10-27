@@ -54,6 +54,7 @@ import {
   formatMoney,
   formatWeightKg,
   shortCity,
+  cityOfAddress,
   telHref,
 } from "@/lib/logist-mobile/format"
 
@@ -551,9 +552,9 @@ export default function RouteAssistantPage() {
    */
   const basePointForSort = useMemo<{ lat: number; lng: number } | null>(() => {
     if (basePoint) return basePoint
-    const city = (baseCity.trim() || startCity.trim()).trim()
+    const city = cityOfAddress(baseCity) || cityOfAddress(startCity)
     if (!city || !cityPoints) return null
-    return cityPoints[normalizeCityKey(shortCity(city))] ?? null
+    return cityPoints[normalizeCityKey(city)] ?? null
   }, [basePoint, baseCity, startCity, cityPoints])
 
   /**
@@ -641,13 +642,15 @@ export default function RouteAssistantPage() {
 
   const startPoint = useMemo(() => {
     if (!startCity.trim()) return null
+    const city = cityOfAddress(startCity)
+    if (!city) return null
     // 1. Центр города из геокодера
-    const fromGeocoder = cityPoints?.[normalizeCityKey(shortCity(startCity))] ?? null
+    const fromGeocoder = cityPoints?.[normalizeCityKey(city)] ?? null
     if (fromGeocoder) return fromGeocoder
     // 2. Геокодер не знает город — берём точку погрузки любого груза из
     //    этого города: она и есть точка в городе, точнее центра не нужно
     const anyLoad = loadsWithPoints.find(
-      (load) => load.fromPoint && normalizeCityKey(shortCity(load.fromCity)) === normalizeCityKey(shortCity(startCity)),
+      (load) => load.fromPoint && normalizeCityKey(shortCity(load.fromCity)) === normalizeCityKey(city),
     )
     return anyLoad?.fromPoint ?? null
   }, [cityPoints, startCity, loadsWithPoints])
@@ -693,7 +696,7 @@ export default function RouteAssistantPage() {
       // «грузов на бирже сейчас нет», хотя грузов из Ярославля было 92.
       // Точный адрес нужен только для координат — они приходят отдельно
       // (startPoint), а стыковка идёт по названию города.
-      const startPlace = shortCity(start) || start.trim()
+      const startPlace = cityOfAddress(start) || start.trim()
       const built = buildRouteVariants({
         startCity: startPlace,
         loads: loadsWithPoints,
@@ -1352,7 +1355,7 @@ export default function RouteAssistantPage() {
           />
         ) : (
           <FailedPhase
-            startCity={shortCity(startCity) || startCity}
+            startCity={cityOfAddress(startCity) || startCity}
             loads={loadsWithPoints}
             vehicles={vehicles}
             startRadiusKm={startRadiusKm}
@@ -2182,7 +2185,7 @@ function FailedPhase({
       counts.set(city, (counts.get(city) ?? 0) + 1)
     }
     return [...counts.entries()]
-      .filter(([city]) => city !== shortCity(startCity))
+      .filter(([city]) => city !== cityOfAddress(startCity))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
   }, [loads, startCity])

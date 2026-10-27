@@ -13,6 +13,7 @@ import { createRequire } from "node:module"
 const require = createRequire(import.meta.url)
 const {
   shortCity,
+  cityOfAddress,
   shortRef,
   formatMoney,
   formatWeightKg,
@@ -87,4 +88,22 @@ test("адрес превращается в ссылку на навигато�
   assert.ok(route.includes("rtt=auto"))
   assert.equal(routeMapsHref("Москва", null), null)
   assert.equal(routeMapsHref(null, "Калуга"), null)
+})
+
+// ── Город из адреса базы ─────────────────────────────────────────────────
+//
+// Настройки автопарка хранят адрес стоянки так, как его ввёл человек:
+// «Ярославль. Ул. Докучалова 12». Запятых в такой строке нет, shortCity
+// возвращает её целиком — и ключ города «ярославль ул докучалова 12» не
+// совпадает ни с одним грузом «Ярославль, Ярославская область». Живой
+// прогон на превью: помощник с такой базой показывал 92 груза из Ярославля,
+// а кнопка «Построить маршрут» отвечала «грузов на бирже сейчас нет».
+test("cityOfAddress выделяет город из адреса, записанного через точки", () => {
+  assert.equal(cityOfAddress("Ярославль. Ул. Докучалова 12"), "Ярославль")
+  assert.equal(cityOfAddress("Дзержинск. Пр-т Чкалова 1"), "Дзержинск")
+  assert.equal(cityOfAddress("г. Тулун, ул. Ленина 5"), "Тулун")
+  assert.equal(cityOfAddress("Нижний Новгород, ул. Большая Покровская 1"), "Нижний Новгород")
+  assert.equal(cityOfAddress("Москва"), "Москва")
+  assert.equal(cityOfAddress(""), "")
+  assert.equal(cityOfAddress(null), "")
 })
