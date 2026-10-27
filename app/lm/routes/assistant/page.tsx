@@ -614,14 +614,20 @@ export default function RouteAssistantPage() {
     return rows.slice(0, 6)
   }, [loadsWithPoints, basePointForSort])
 
+  /**
+   * Список берём из грузов кэша и додобранных — но НЕ из loadsWithPoints.
+   * Живой замер: со списком от loadsWithPoints точки не досчитывались никогда:
+   * эффект точек ставил cityPoints -> пересобирался loadsWithPoints ->
+   * менялся cityList -> эффект точек запускался заново. Круг.
+   */
   const cityList = useMemo(() => {
     const places = new Set<string>()
-    for (const load of loadsWithPoints) {
+    for (const load of [...usableLoads, ...foundLoads]) {
       if (load.fromCity && load.fromCity !== "—") places.add(load.fromCity)
       if (load.toCity && load.toCity !== "—") places.add(load.toCity)
     }
     return [...places]
-  }, [loadsWithPoints])
+  }, [usableLoads, foundLoads])
 
   useEffect(() => {
     if (!user || cityList.length === 0) {
@@ -656,10 +662,12 @@ export default function RouteAssistantPage() {
           }),
         )
         for (const answer of answers) Object.assign(merged, answer)
-        if (alive) setCityPoints({ ...merged })
+        // Доливаем к уже посчитанным, а не заменяем: после додобора список
+        // городов растёт, и прежние точки не должны пропадать из состояния.
+        if (alive) setCityPoints((prev) => ({ ...(prev ?? {}), ...merged }))
       }
       if (alive) {
-        setCityPoints({ ...merged })
+        setCityPoints((prev) => ({ ...(prev ?? {}), ...merged }))
         setPointsLoading(false)
       }
     })()
