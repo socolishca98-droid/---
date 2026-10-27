@@ -449,14 +449,6 @@ export default function RouteAssistantPage() {
    * либо находит одноимённое село в другом крае («Шарапово д.» без области
    * уводит в Псковскую). Ключ в ответе — короткое название города.
    */
-  const cityList = useMemo(() => {
-    const places = new Set<string>()
-    for (const load of usableLoads) {
-      if (load.fromCity && load.fromCity !== "—") places.add(load.fromCity)
-      if (load.toCity && load.toCity !== "—") places.add(load.toCity)
-    }
-    return [...places]
-  }, [usableLoads])
 
   /**
    * Контакты фрахтователей, показанные по нажатию.
@@ -513,51 +505,6 @@ export default function RouteAssistantPage() {
   useEffect(() => {
     pointsLoadingRef.current = pointsLoading
   }, [pointsLoading])
-  useEffect(() => {
-    if (!user || cityList.length === 0) {
-      setCityPoints(null)
-      setPointsLoading(false)
-      return
-    }
-    let alive = true
-    const controller = new AbortController()
-    setPointsLoading(true)
-    const batches: string[][] = []
-    for (let index = 0; index < cityList.length; index += POINTS_BATCH) {
-      batches.push(cityList.slice(index, index + POINTS_BATCH))
-    }
-    void (async () => {
-      const merged: Record<string, { lat: number; lng: number } | null> = {}
-      for (let index = 0; index < batches.length; index += POINTS_PARALLEL) {
-        const wave = batches.slice(index, index + POINTS_PARALLEL)
-        const answers = await Promise.all(
-          wave.map(async (batch) => {
-            try {
-              const res = await fetch(
-                `/api/ati/cities/points?places=${encodeURIComponent(batch.join("|"))}`,
-                { credentials: "include", cache: "no-store", signal: controller.signal },
-              )
-              if (!res.ok) return {}
-              const data = await res.json()
-              return (data?.points ?? {}) as Record<string, { lat: number; lng: number } | null>
-            } catch {
-              return {}
-            }
-          }),
-        )
-        for (const answer of answers) Object.assign(merged, answer)
-        if (alive) setCityPoints({ ...merged })
-      }
-      if (alive) {
-        setCityPoints({ ...merged })
-        setPointsLoading(false)
-      }
-    })()
-    return () => {
-      alive = false
-      controller.abort()
-    }
-  }, [user, cityList])
 
   /**
    * Точка базы для расчёта близости городов.
@@ -667,6 +614,61 @@ export default function RouteAssistantPage() {
     return rows.slice(0, 6)
   }, [loadsWithPoints, basePointForSort])
 
+  const cityList = useMemo(() => {
+    const places = new Set<string>()
+    for (const load of loadsWithPoints) {
+      if (load.fromCity && load.fromCity !== "—") places.add(load.fromCity)
+      if (load.toCity && load.toCity !== "—") places.add(load.toCity)
+    }
+    return [...places]
+  }, [loadsWithPoints])
+
+  useEffect(() => {
+    if (!user || cityList.length === 0) {
+      setCityPoints(null)
+      setPointsLoading(false)
+      return
+    }
+    let alive = true
+    const controller = new AbortController()
+    setPointsLoading(true)
+    const batches: string[][] = []
+    for (let index = 0; index < cityList.length; index += POINTS_BATCH) {
+      batches.push(cityList.slice(index, index + POINTS_BATCH))
+    }
+    void (async () => {
+      const merged: Record<string, { lat: number; lng: number } | null> = {}
+      for (let index = 0; index < batches.length; index += POINTS_PARALLEL) {
+        const wave = batches.slice(index, index + POINTS_PARALLEL)
+        const answers = await Promise.all(
+          wave.map(async (batch) => {
+            try {
+              const res = await fetch(
+                `/api/ati/cities/points?places=${encodeURIComponent(batch.join("|"))}`,
+                { credentials: "include", cache: "no-store", signal: controller.signal },
+              )
+              if (!res.ok) return {}
+              const data = await res.json()
+              return (data?.points ?? {}) as Record<string, { lat: number; lng: number } | null>
+            } catch {
+              return {}
+            }
+          }),
+        )
+        for (const answer of answers) Object.assign(merged, answer)
+        if (alive) setCityPoints({ ...merged })
+      }
+      if (alive) {
+        setCityPoints({ ...merged })
+        setPointsLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+      controller.abort()
+    }
+  }, [user, cityList])
+
   const startPoint = useMemo(() => {
     if (!startCity.trim()) return null
     const city = cityOfAddress(startCity)
@@ -703,6 +705,11 @@ export default function RouteAssistantPage() {
     exclude: string[],
     hoursLimit?: number,
     instant = false,
+    /**
+     * Грузы, додобранные прямо сейчас. Состояние (foundLoads) обновляется
+     * асинхронно, и без явной передачи пересборка увидела бы старый список.
+     */
+    extraLoads: BuilderLoad[] = [],
   ) {
     // Своя сборка — свой счётчик додоборов: иначе одна автоматическая
     // догрузка «съедала» бы попытки всех следующих нажатий. Пересборку после
@@ -735,9 +742,14 @@ export default function RouteAssistantPage() {
       // Точный адрес нужен только для координат — они приходят отдельно
       // (startPoint), а стыковка идёт по названию города.
       const startPlace = cityOfAddress(start) || start.trim()
+      // Живой замер: додобор дважды отвечал 200 и по 39 грузов, а маршрут
+      // оставался из одного плеча — пересборка шла по прошлому списку.
+      const seen = new Set(loadsWithPoints.map((load) => load.id))
+      const extra = extraLoads.filter((load) => !seen.has(load.id))
+      const pool = extra.length > 0 ? [...loadsWithPoints, ...extra] : loadsWithPoints
       const built = buildRouteVariants({
         startCity: startPlace,
-        loads: loadsWithPoints,
+        loads: pool,
         vehicles,
         fuelPriceRubPerL: 62,
         keepIds: keep,
@@ -906,16 +918,23 @@ export default function RouteAssistantPage() {
       toPoint: row.toPoint ?? null,
       source: row.source === "exchange" ? "exchange" : "boards",
     }))
+    // Точки городов додобранных грузов: без них «по пути» от новой точки
+    // не считается, и цепочка снова оборвётся на одном плече.
+    const withPoints = mapped.map((load) => ({
+      ...load,
+      fromPoint: load.fromPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.fromCity))] ?? null,
+      toPoint: load.toPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.toCity))] ?? null,
+    }))
     setFoundLoads((prev) => {
       const seen = new Set(prev.map((load) => load.id))
-      return [...prev, ...mapped.filter((load) => !seen.has(load.id))]
+      return [...prev, ...withPoints.filter((load) => !seen.has(load.id))]
     })
     toast(`Добрал грузы рядом с ${geo.name} — пересобираю маршрут`, {
       description: `Биржа отдала ${result.data.found ?? rowsFound.length} грузов вокруг точки, где стоит машина`,
     })
     // Пересборка сохраняет уже собранные плечи: они согласованы или просто
     // выбраны, и терять их из-за додобора нельзя.
-    runBuild(startCity, route.legs.map((leg) => leg.load.id), excludeIds, route.maxHours, true)
+    runBuild(startCity, route.legs.map((leg) => leg.load.id), excludeIds, route.maxHours, true, withPoints)
   }
 
   /**
