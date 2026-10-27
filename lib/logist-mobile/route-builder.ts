@@ -1497,7 +1497,13 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   }
   if (keepIds.length > 0) {
     const kept = legs.filter((leg) => keepIds.includes(leg.load.id)).length
-    if (kept > 0) reasons.push(`Согласованные грузы сохранены: ${kept}`)
+    // Формулировка по факту: в keepIds попадают и грузы, по которым логист
+    // позвонил, и плечи, которые пересборка после додобора просто сохраняет.
+    // Живой экран писал «Согласованные грузы сохранены: 2» на чистой странице,
+    // где никто ничего не согласовывал, — это та же «частичная ложь» внизу.
+    if (kept > 0) {
+      reasons.push(`Плечи, уже бывшие в маршруте, сохранены при пересборке: ${kept}`)
+    }
   }
 
   const path = [shortCity(effectiveStart)]

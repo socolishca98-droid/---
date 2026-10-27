@@ -577,7 +577,31 @@ export default function RouteAssistantPage() {
     if (foundLoads.length === 0) return withPoints(usableLoads)
     const seen = new Set(usableLoads.map((load) => load.id))
     const extra = foundLoads.filter((load) => !seen.has(load.id))
-    return withPoints([...usableLoads, ...extra])
+    // Один и тот же груз приходит из двух мест — из кэша региона и из живой
+    // выдачи биржи — с РАЗНЫМИ id. Живой замер: в блоке «Что осталось на
+    // бирже» одна и та же «Ступино → Красногорск» от частника без ставки
+    // светилась дважды, и логист звонил бы дважды. Склеиваем по подписи
+    // груза: маршрут + ставка + пробег + фирма. Расходится хоть в одном
+    // поле — считаем разными, выдумывать нельзя.
+    const fingerprint = (load: BuilderLoad): string => {
+      if (load.loadId && load.loadId !== "null") return `ati:${load.loadId}`
+      return [
+        normalizeCityKey(shortCity(load.fromCity)),
+        normalizeCityKey(shortCity(load.toCity)),
+        load.priceWithNds ?? load.priceRub ?? 0,
+        load.distanceKm ?? 0,
+        (load.firmName ?? "").trim().toLowerCase(),
+      ].join("|")
+    }
+    const seenPrint = new Set<string>()
+    const unique: BuilderLoad[] = []
+    for (const load of [...usableLoads, ...extra]) {
+      const key = fingerprint(load)
+      if (seenPrint.has(key)) continue
+      seenPrint.add(key)
+      unique.push(load)
+    }
+    return withPoints(unique)
   }, [usableLoads, foundLoads, cityPoints])
 
   /**
@@ -2972,16 +2996,25 @@ function RoutePhase({
             {/* Сколько чего: «осталось 99» — полуправда, если почти все без ставки */}
             <p className="px-1 text-[12.5px] leading-snug text-muted-foreground">
               {route.leftover.usable > 0
-                ? `${route.leftover.usable} ${formatCount(route.leftover.usable, ["груз", "груза", "грузов"])} подходят под машину и дату, но в маршрут не попали`
+                ? `${formatCount(route.leftover.usable, ["груз", "груза", "грузов"])} подошли бы под машину, со ставкой и датой, но в цепочку не встали`
                 : "Грузов, которые подошли бы под машину и дату, не осталось"}
-              {route.leftover.noRate > 0
-                ? ` · ${route.leftover.noRate} без озвученной ставки`
-                : ""}
-              {route.leftover.pastDate > 0
-                ? ` · ${route.leftover.pastDate} с прошедшей датой загрузки`
-                : ""}
-              {route.leftover.notFit > 0
-                ? ` · ${route.leftover.notFit} не влезает в эту машину`
+              {/* Причины из другой выборки: это грузы, отсеянные ещё до цепочки */}
+              {[route.leftover.noRate, route.leftover.pastDate, route.leftover.notFit].some(
+                (value) => value > 0,
+              )
+                ? ` · ещё в регионе: ${[
+                    route.leftover.noRate > 0
+                      ? `${route.leftover.noRate} без озвученной ставки`
+                      : null,
+                    route.leftover.pastDate > 0
+                      ? `${route.leftover.pastDate} с прошедшей датой загрузки`
+                      : null,
+                    route.leftover.notFit > 0
+                      ? `${route.leftover.notFit} не влезает в эту машину`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}`
                 : ""}
             </p>
             {/* Счётчик выше — про осмотренные грузы, а не про всю биржу */}
