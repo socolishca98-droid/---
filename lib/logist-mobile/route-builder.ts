@@ -410,6 +410,9 @@ function findBackHomeLeg(input: {
   /** Город, где стоит машина сейчас — оттуда ищем обратку */
   currentCity: string
   currentPoint: Point | null
+  /** Точка базы и радиус «дома»: обраткой считается и груз в свой регион */
+  startPoint: Point | null
+  homeRadiusKm: number
   maxHours: number
   minProfitPerKm: number
   detourKm: number
@@ -426,6 +429,8 @@ function findBackHomeLeg(input: {
     startCity,
     currentCity,
     currentPoint,
+    startPoint,
+    homeRadiusKm,
     maxHours,
     minProfitPerKm,
     detourKm,
@@ -444,8 +449,16 @@ function findBackHomeLeg(input: {
     if (!loadFitsVehicle(load, vehicle)) return false
     if (loadPrice(load) <= 0) return false
     if (usedFrom.has(normalizeCityKey(load.fromCity))) return false
-    // Обратка = груз, который везёт на базу (в её городской округ)
-    if (!samePlace(load.toCity, startCity)) return false
+    // Обратка = груз, который везёт домой: в город базы, в её городской округ
+    // или хотя бы в её регион. Живой замер: груза точно «в город базы» рядом
+    // с точкой почти не бывает — пул помощника фильтруется по городу
+    // ПОГРУЗКИ, поэтому «домой» везут из чужих регионов и часто не в сам
+    // город, а в его область. Требовать только точный город — значит ехать
+    // порожняком: маршруты заканчивались на 151–1401 км пустого пробега.
+    if (!samePlace(load.toCity, startCity)) {
+      if (homeRadiusKm <= 0 || !startPoint || !load.toPoint) return false
+      if (haversineKm(startPoint, load.toPoint) > homeRadiusKm) return false
+    }
     // Забираем там, где стоим: тот же город или рядом
     if (normalizeCityKey(load.fromCity) === currentKey) return true
     if (detourKm > 0 && currentPoint && load.fromPoint) {
@@ -477,8 +490,16 @@ function findBackHomeLeg(input: {
     const totalKm = deadheadKm + loadedKm
     if (totalKm <= 0) continue
     const hours = legHours(deadheadKm, loadedKm)
-    // Обратка заканчивается дома — возврата нет, бюджет шага нулевой
-    if (clock + hours > maxHours) continue
+    // Дорога домой от точки выгрузки. Груз в САМ город базы — возврата нет,
+    // но груз «в свой регион» его не отменяет: до базы ещё доехать. Живой
+    // замер: без этого маршрут на сутки выходил на 24.6 ч при лимите 24 —
+    // плечо взяли «домой», а 15 км до базы в бюджет не положили.
+    const backHome = samePlace(load.toCity, startCity)
+    const backHours =
+      backHome || !startPoint || !load.toPoint
+        ? 0
+        : legHours(haversineKm(startPoint, load.toPoint), 0)
+    if (clock + hours + backHours > maxHours) continue
     const money = legMoney(load, totalKm, vehicle, fuelPrice)
     if (money.revenue <= 0) continue
     if (money.profitRub !== null && money.profitRub <= 0) continue
@@ -493,7 +514,7 @@ function findBackHomeLeg(input: {
     const waitHours = loadsAt
       ? Math.max(0, hoursBetween(etaAt, loadsAt))
       : 0
-    if (clock + waitHours + hours > maxHours) continue
+    if (clock + waitHours + hours + backHours > maxHours) continue
 
     return {
       load,
@@ -510,7 +531,10 @@ function findBackHomeLeg(input: {
       fuelCostRub: money.fuelCostRub,
       revenue: money.revenue,
       profitRub: money.profitRub,
-      returnsHome: true,
+      // «Везёт домой» честно: только если конечный город — сама база или её
+      // округ. Груз в свой регион закрывает выезд, но последние километры
+      // до базы машина ещё проедет — это видно в возврате маршрута.
+      returnsHome: samePlace(load.toCity, startCity),
     }
   }
   return null
@@ -1132,8 +1156,13 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
         backHome || !options.startPoint || !last.load.toPoint
           ? 0
           : haversineKm(options.startPoint, last.load.toPoint)
+      // Считаем ТАК ЖЕ, как итог маршрута (totalHours): часы плеч + ожидание
+      // дат загрузки + дорога домой. Раньше ожидание в проверку не входило, и
+      // маршрут с простоя под дату загрузки вылезал за лимит, а экран честно
+      // писал «в пути 24.6 ч из 24 ч».
       const withReturn =
-        legs.reduce((sum, leg) => sum + leg.hours, 0) + (back > 0 ? legHours(back, 0) : 0)
+        legs.reduce((sum, leg) => sum + leg.hours + leg.waitHours, 0) +
+        (back > 0 ? legHours(back, 0) : 0)
       if (withReturn <= maxHours) break
       if (keepIds.includes(last.load.id)) break
       legs.pop()
@@ -1151,6 +1180,10 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       startCity: effectiveStart,
       currentCity: legs[legs.length - 1].load.toCity,
       currentPoint: legs[legs.length - 1].load.toPoint ?? null,
+      startPoint: options.startPoint ?? null,
+      // «Дом» — район старта: именно из него машина выезжала и в него должна
+      // вернуться. Радиус берём тот же, что и для первого плеча.
+      homeRadiusKm: startRadiusKm,
       maxHours,
       minProfitPerKm,
       detourKm,

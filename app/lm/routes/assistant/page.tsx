@@ -28,6 +28,7 @@ import dynamic from "next/dynamic"
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
+import type { ApiMutationResult } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { findRegionByNameLocal } from "@/lib/ati/regions"
 import {
@@ -843,15 +844,21 @@ export default function RouteAssistantPage() {
   }
 
   /**
-   * Есть ли смысл добрать грузы «по пути»: цепочка короткая, срок не выбран,
-   * машина не дома. Если маршрут уже уперся в лимит часов или в кап плечей —
-   * додобор ничего не даст, только лишний запрос к бирже.
+   * Есть ли смысл добрать грузы: машина не дома и цепочка не уперлась в кап
+   * плеч.
+   *
+   * Условие «осталось время» убрано намеренно. Живой замер: маршрут на трое
+   * суток заканчивался в Краснодаре с 1401 км порожнего возврата, при этом
+   * цепочка время под возврат зарезервировала (проверка плеча считает дорогу
+   * домой). Груза домой в пуле не было — а спросить биржу «откуда стоим →
+   * куда база» никто не пробовал, потому что додобор запускался только при
+   * свободном времени. Когда замер поправил: обратка из Краснодара влезает в
+   * зарезервированное под возврат время, и маршрут едет домой с грузом.
    */
   function canExtend(route: BuiltRoute): boolean {
     if (autoExtendRef.current >= MAX_AUTO_EXTEND) return false
     if (route.legs.length === 0 || route.legs.length >= 8) return false
     if (route.returnsHomeWithLoad) return false
-    if (route.totalHours + 3 >= route.maxHours) return false
     const city = shortCity(route.legs[route.legs.length - 1]?.load.toCity)
     return Boolean(city) && city !== "—"
   }
@@ -893,6 +900,14 @@ export default function RouteAssistantPage() {
    * дальше. Поэтому спрашиваем биржу вокруг текущей точки (радиус «по
    * пути») и пересобираем, сохранив уже собранные плечи.
    */
+  /** Ответ /api/ati/scan — то, что нужно додобору. */
+  type ScanAnswer = {
+    success?: boolean
+    found?: number
+    loads?: Array<Record<string, unknown>>
+    error?: string
+  }
+
   async function extendAlongRoute(route: BuiltRoute) {
     const place = route.legs[route.legs.length - 1]?.load.toCity ?? ""
     const city = shortCity(place)
@@ -919,23 +934,62 @@ export default function RouteAssistantPage() {
       return
     }
 
-    const result = await apiSend<{
-      success?: boolean
-      found?: number
-      loads?: Array<Record<string, unknown>>
-      error?: string
-    }>("/api/ati/scan", "POST", {
+    // Регион базы — цель обратки. Его считает сервер из адреса организации,
+    // id — сайтовый (биржа принимает в фильтре только числовой id).
+    const baseRegion = loadsState.data?.baseRegion ?? null
+    const homeGeo =
+      baseRegion && baseRegion.id > 0
+        ? { id: baseRegion.id, name: baseRegion.name }
+        : serverRegionRoot
+          ? await lookupAtiPlace(serverRegionRoot)
+          : null
+
+    // Два поиска вокруг точки, где стоит машина.
+    //
+    // 1) Все грузы nearby — цепочка может продолжаться дальше.
+    // 2) Грузы, которые везут В РЕГИОН БАЗИ — обратка. Этого поиска не было
+    //    вовсе, и маршрут регулярно заканчивался порожним пробегом домой:
+    //    живой замер давал 151–1401 км порожняком. Причина не в бирже — в
+    //    нашем вопросе. Пул помощника фильтруется по РЕГИОНУ БАЗЫ и смотрит
+    //    на город ПОГРУЗКИ, поэтому груз «Серпухов → Ярославль» в пул не
+    //    попадает никогда: он из чужого региона. А биржа по такому условию
+    //    отдаёт десятки грузов — «Московская область → Ярославская область»
+    //    ответила 39 грузами, из них Серпухов → Ярославль за 60 000 ₽.
+    // Радиус «откуда» у поиска обратки шире детура: справочник ATI знает не
+    // все поселения и часто отдаёт не точку, а регион («Среднесибирский п.» →
+    // «Новосибирская область»). При радиусе 150 от областного центра груз
+    // «Барнаул → Новосибирск» (195 км от центра, 44 км от машины) в выдачу не
+    // попадает, и машина едет домой порожняком. Берём радиус первого плеча.
+    const scanBody = (extra: Record<string, unknown>) => ({
       manualMode: true,
       source: "exchange",
       fromGeo: { id: geo.id, name: geo.name, fullName: geo.fullName },
-      fromRadius: detourKm,
+      fromRadius: Math.max(detourKm, startRadiusKm),
       maxPages: EXTEND_PAGES,
       pageStart: 1,
       filters: {},
+      ...extra,
     })
-    if (!result.ok || !result.data?.success) {
+
+    const homeScan: Promise<ApiMutationResult<ScanAnswer>> = homeGeo
+      ? apiSend<ScanAnswer>("/api/ati/scan", "POST", scanBody({
+          toGeo: { id: homeGeo.id, name: homeGeo.name },
+          toRadius: startRadiusKm,
+        }))
+      : Promise.resolve({ ok: false, error: "Регион базы не определён" })
+    const [nearby, home] = await Promise.all([
+      apiSend<ScanAnswer>("/api/ati/scan", "POST", scanBody({})),
+      homeScan,
+    ])
+
+    const failed = [nearby, home].find((item) => !item.ok || !item.data?.success)
+    if (failed) {
       // Текст ошибки ATI часто заканчивается точкой — вторую не добавляем.
-      const reason = String(result.data?.error ?? "нет связи").replace(/[.\s]+$/, "")
+      const reason = String(
+        (failed as { data?: { error?: string } }).data?.error ??
+          (failed as { error?: string }).error ??
+          "нет связи",
+      ).replace(/[.\s]+$/, "")
       setExtendNote({
         kind: "exchange",
         text: `Биржа ATI не отдала грузы рядом с ${geo.name}: ${reason}. Маршрут собран только из грузов вашей базы.`,
@@ -943,7 +997,9 @@ export default function RouteAssistantPage() {
       return
     }
 
-    const rowsFound = result.data.loads ?? []
+    const nearbyRows = nearby.data?.loads ?? []
+    const homeRows = home.data?.loads ?? []
+    const rowsFound = [...nearbyRows, ...homeRows]
     if (rowsFound.length === 0) {
       setExtendNote({
         kind: "empty",
@@ -984,7 +1040,10 @@ export default function RouteAssistantPage() {
     setFoundLoads(foundLoadsRef.current)
     setExtendNote(null)
     toast(`Добрал грузы рядом с ${geo.name} — пересобираю маршрут`, {
-      description: `Биржа отдала ${result.data.found ?? rowsFound.length} грузов вокруг точки, где стоит машина`,
+      description:
+        homeRows.length > 0
+          ? `Биржа отдала ${rowsFound.length} грузов вокруг точки, где стоит машина, из них ${homeRows.length} везут в ${homeGeo?.name ?? "регион базы"}`
+          : `Биржа отдала ${rowsFound.length} грузов вокруг точки, где стоит машина`,
     })
     // Пересборка сохраняет уже собранные плечи: они согласованы или просто
     // выбраны, и терять их из-за додобора нельзя.
