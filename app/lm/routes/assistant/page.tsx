@@ -259,7 +259,7 @@ export default function RouteAssistantPage() {
    * оставался из одного плеча с объяснением «грузов по пути не нашлось».
    * Причина должна быть названа словом.
    */
-  const [extendNote, setExtendNote] = useState<string | null>(null)
+  const [extendNote, setExtendNote] = useState<{ kind: "geo" | "exchange" | "empty"; text: string } | null>(null)
   /**
    * Те же грузы в ref — накопительно.
    *
@@ -912,9 +912,10 @@ export default function RouteAssistantPage() {
       (region ? await lookupAtiPlace(region) : null) ??
       (serverRegionRoot ? await lookupAtiPlace(serverRegionRoot) : null)
     if (!geo) {
-      setExtendNote(
-        `Справочник ATI не узнал «${city}» — грузы рядом добрать нечем. Маршрут собран из грузов вашей базы.`,
-      )
+      setExtendNote({
+        kind: "geo",
+        text: `Справочник ATI не узнал «${city}» — грузы рядом добрать нечем. Маршрут собран из грузов вашей базы.`,
+      })
       return
     }
 
@@ -933,17 +934,21 @@ export default function RouteAssistantPage() {
       filters: {},
     })
     if (!result.ok || !result.data?.success) {
-      setExtendNote(
-        `Биржа ATI не отдала грузы рядом с ${geo.name}: ${result.data?.error ?? "нет связи"}. Маршрут собран только из грузов вашей базы.`,
-      )
+      // Текст ошибки ATI часто заканчивается точкой — вторую не добавляем.
+      const reason = String(result.data?.error ?? "нет связи").replace(/[.\s]+$/, "")
+      setExtendNote({
+        kind: "exchange",
+        text: `Биржа ATI не отдала грузы рядом с ${geo.name}: ${reason}. Маршрут собран только из грузов вашей базы.`,
+      })
       return
     }
 
     const rowsFound = result.data.loads ?? []
     if (rowsFound.length === 0) {
-      setExtendNote(
-        `В радиусе ${detourKm} км от ${geo.name} биржа отдала грузы, но все без ставки или не по нашей специализации.`,
-      )
+      setExtendNote({
+        kind: "empty",
+        text: `В радиусе ${detourKm} км от ${geo.name} биржа отдала грузы, но все без ставки или не по нашей специализации.`,
+      })
       return
     }
     const mapped: BuilderLoad[] = rowsFound.map((row: any) => ({
@@ -2499,7 +2504,7 @@ function RoutePhase({
   /** Пересобрать маршрут с бóльшим лимитом времени */
   onMoreHours: (hours: number) => void
   /** Что стало с додобором грузов «по пути» — показываем, если он не сработал */
-  extendNote: string | null
+  extendNote: { kind: "geo" | "exchange" | "empty"; text: string } | null
   /** Контакты фрахтователей, показанные по нажатию диспетчера */
   phones: Record<string, string>
   contactBusy: string | null
@@ -2621,12 +2626,14 @@ function RoutePhase({
         {/* Честная подпись о додоборе: почему цепочка не выросла */}
         {extendNote ? (
           <p className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-[12.5px] leading-snug text-foreground/90">
-            {extendNote}
+            {extendNote.text}
           </p>
         ) : null}
 
         {/* Что сделать, чтобы маршрут стал длиннее — по факту причины */}
-        {route.growthHint ? (
+        {/* Если додобор упал (справочник или биржа), совет «увеличьте радиус»
+            врёт: радиус ни при чём, мы просто не увидели грузы. */}
+        {route.growthHint && extendNote?.kind !== "exchange" && extendNote?.kind !== "geo" ? (
           <div className="mt-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 py-2.5">
             <p className="text-[12.5px] leading-snug text-foreground/90">{route.growthHint}</p>
             {route.growthHours ? (
