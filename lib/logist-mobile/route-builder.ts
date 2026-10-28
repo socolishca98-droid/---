@@ -1638,6 +1638,35 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       "Увеличьте радиус «грузы по пути» в тонкой настройке — цепочка станет длиннее."
   }
 
+  // Круг не закрылся, а обратка ЕСТЬ — просто без цены.
+  //
+  // Живой экран: маршрут «Ярославль → Омск» возвращался 2900 км порожнем, а в
+  // остатке биржи висели строки «Омск → Ярославль · ставка не озвучена». Это не
+  // тупик и не наша недоработка — фрахтователь цену не назвал. Но логисту об
+  // этом надо сказать словами: за 2900 км пустого хода стоит позвонить и
+  // спросить цену. Молчать про такой груз — значит показать «обратки нет».
+  if (!input.atHome && legs.length > 0) {
+    const fromKey = normalizeCityKey(lastLoadCity)
+    const homeRadius = Math.max(input.detourKm, 300)
+    const silentHome = pool.filter((load) => {
+      if (legs.some((leg) => leg.load.id === load.id)) return false
+      if (loadPrice(load) > 0) return false
+      if (normalizeCityKey(load.fromCity) !== fromKey) return false
+      if (!loadFitsVehicle(load, vehicle)) return false
+      if (samePlace(load.toCity, effectiveStart)) return true
+      return Boolean(startPoint && load.toPoint && haversineKm(startPoint, load.toPoint) <= homeRadius)
+    })
+    if (silentHome.length > 0) {
+      reasons.push(
+        `Из ${shortCity(lastLoadCity)} в сторону дома есть ${formatCount(silentHome.length, [
+          "груз",
+          "груза",
+          "грузов",
+        ])} без озвученной ставки — позвоните фрахтователю: цена может закрыть обратный ход`,
+      )
+    }
+  }
+
   return {
     id: `route:${legs.map((leg) => leg.load.id).join("-")}`,
     startCity: shortCity(effectiveStart),
