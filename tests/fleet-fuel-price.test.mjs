@@ -22,7 +22,7 @@ const {
   fuelPriceNote,
   FUEL_PRICE_BY_DISTRICT,
   FUEL_PRICE_RUSSIA,
-  FUEL_PRICE_DATE,
+  FUEL_PRICE_SHORT_DATE,
 } = require("../.test-build/lib/fleet/fuel-price.js")
 
 test("регион относится к своему федеральному округу", () => {
@@ -73,8 +73,9 @@ test("подпись называет цену, округ и дату срез�
   const note = fuelPriceNote("Ярославская область")
   assert.match(note, /81 ₽\/л/, "цена округа")
   assert.match(note, /ЦФО/, "округ")
-  assert.match(note, new RegExp(FUEL_PRICE_DATE), "дата среза Росстата")
+  assert.ok(note.includes(FUEL_PRICE_SHORT_DATE), "дата среза Росстата")
+  assert.ok(note.length <= 40, `подпись не должна раздвигать сетку: ${note}`)
   const unknown = fuelPriceNote(null)
-  assert.match(unknown, /средняя по России/)
+  assert.match(unknown, /РФ/, "без региона — средняя по стране")
   assert.match(unknown, /Росстат/)
 })

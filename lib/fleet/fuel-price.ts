@@ -130,11 +130,20 @@ export function fuelPriceForRegion(regionName: string | null | undefined): numbe
   return district ? FUEL_PRICE_BY_DISTRICT[district] : FUEL_PRICE_RUSSIA
 }
 
-/** Подпись для интерфейса: «81 ₽/л · ЦФО · Росстат, 5 октября 2026». */
+/**
+ * Подпись для интерфейса: «81 ₽/л · ЦФО · Росстат 05.10.26».
+ *
+ * Коротко намеренно: подпись стоит под значением в узкой ячейке итоговой
+ * таблицы. Полная дата словами переносилась на три строки и раздвигала
+ * соседние ячейки — логист видел кривую сетку.
+ */
 export function fuelPriceNote(regionName: string | null | undefined): string {
   const district = districtForRegion(regionName)
   const price = district ? FUEL_PRICE_BY_DISTRICT[district] : FUEL_PRICE_RUSSIA
   const priceText = `${Math.round(price)} ₽/л`
-  const where = district ? district : "средняя по России"
-  return `${priceText} · ${where} · Росстат, ${FUEL_PRICE_DATE}`
+  const where = district ? district : "РФ"
+  return `${priceText} · ${where} · Росстат ${FUEL_PRICE_SHORT_DATE}`
 }
+
+/** Дата среза числами — для узких подписей: «05.10.26». */
+export const FUEL_PRICE_SHORT_DATE = "05.10.26"

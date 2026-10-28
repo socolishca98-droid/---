@@ -1623,3 +1623,43 @@ test("часы плеча 1100 км на фуре включают отдых, �
   const back = legHours(1100, 0, null, 0)
   assert.ok(back > 40 && back < 41, `порожний возврат ${back} ч`)
 })
+
+// ── 21. Круг «база → база»: чем именно заканчивается рейс ─────────────────
+test("круг либо закрыт с грузом, либо заканчивается порожним возвратом", () => {
+  const P = {
+    Ярославль: { lat: 57.6261, lng: 39.8845 },
+    Москва: { lat: 55.7558, lng: 37.6173 },
+  }
+  const base = {
+    startCity: "Ярославль",
+    startPoint: P.Ярославль,
+    vehicles: [vehicle({ capacity: 20000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 168,
+  }
+  // Туда с грузом, обратно с грузом — порожняка нет
+  const closed = buildRoute({
+    ...base,
+    loads: [
+      load({ id: "out", fromCity: "Ярославль", toCity: "Москва", distanceKm: 270, weightKg: 5000, priceRub: 60000, fromPoint: P.Ярославль, toPoint: P.Москва }),
+      load({ id: "back", fromCity: "Москва", toCity: "Ярославль", distanceKm: 270, weightKg: 5000, priceRub: 55000, fromPoint: P.Москва, toPoint: P.Ярославль }),
+    ],
+  })
+  assert.ok(closed)
+  assert.equal(closed.returnsHomeWithLoad, true, "домой с грузом")
+  assert.equal(closed.returnDeadheadKm, 0, "порожнего возврата нет")
+
+  // Туда с грузом, обратного груза нет — возврат порожняком, и он учтён
+  const open = buildRoute({
+    ...base,
+    loads: [
+      load({ id: "out", fromCity: "Ярославль", toCity: "Москва", distanceKm: 270, weightKg: 5000, priceRub: 90000, fromPoint: P.Ярославль, toPoint: P.Москва }),
+    ],
+  })
+  assert.ok(open)
+  assert.equal(open.returnsHomeWithLoad, false)
+  assert.ok(open.returnDeadheadKm > 200, `порожний возврат ${open.returnDeadheadKm} км`)
+  // Топливо на возврат уже в прибыли — иначе прибыль завышена на весь путь домой
+  assert.ok(open.totalFuelCostRub > 0)
+})

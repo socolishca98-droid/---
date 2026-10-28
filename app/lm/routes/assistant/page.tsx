@@ -2845,12 +2845,24 @@ function RoutePhase({
           </div>
         ) : null}
 
-        {route.returnDeadheadKm > 0 ? (
-          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
-            В конце — возврат в {route.path[0]}: ≈ {route.returnDeadheadKm} км порожнем, топливо на него
-            уже учтено в прибыли.
+        {/* Круг «база → база»: логист должен видеть, чем именно заканчивается
+            рейс. Раньше строка появлялась только для порожнего возврата, и
+            закрытый с грузом круг выглядел так же, как незакрытый. */}
+        {route.returnsHomeWithLoad ? (
+          <p className="mt-2 text-[12px] leading-snug text-emerald-600">
+            Круг закрыт: машина возвращается в {route.path[route.path.length - 1]} с грузом —
+            порожнего возврата нет.
           </p>
-        ) : null}
+        ) : route.returnDeadheadKm > 0 ? (
+          <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
+            Круг закрыт, но последние ≈ {route.returnDeadheadKm} км до {route.path[0]} — порожняком;
+            топливо на них уже учтено в прибыли.
+          </p>
+        ) : (
+          <p className="mt-2 text-[12px] leading-snug text-amber-600">
+            База не определена — дорога домой в расчёт не попала, прибыль может быть завышена.
+          </p>
+        )}
 
         {/* Длина рейса днями: логист планирует не километры, а смены */}
         <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">
