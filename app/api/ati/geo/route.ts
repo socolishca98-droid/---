@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCitiesList } from "@/lib/ati-client"
 import { fetchAtiRegions, findRegionByName } from "@/lib/ati/regions"
 import { getActiveAtiToken } from "@/lib/ati/connection"
-import { canonicalCityName } from "@/lib/logist-mobile/city-norm"
+import { canonicalCityName, normalizeCityKey } from "@/lib/logist-mobile/city-norm"
 
 // Тип, который ждет фронтенд (компонент GeoSelect)
 interface GeoOption {
@@ -33,10 +33,20 @@ export async function GET(request: NextRequest) {
   const allCities = getCitiesList()
 
   // 2. Фильтруем по запросу
-  const filtered = allCities.filter(c => 
-    c.name.toLowerCase().includes(query) || 
-    c.region.toLowerCase().includes(query)
-  )
+  //
+  // Сравниваем НОРМАЛИЗОВАННЫЕ названия: биржа пишет «Чернушка г.
+  // (Чернушинский г.о.)», а справочник — «Чернушка г., Пермский край». Пока
+  // сравнивали подстроки как есть, такой город не находился, и додобор
+  // отвечал «справочник не узнал» — маршрут обрывался, хотя грузы рядом были.
+  const queryKey = normalizeCityKey(query)
+  const filtered = allCities.filter((c) => {
+    const nameKey = normalizeCityKey(c.name)
+    return (
+      c.name.toLowerCase().includes(query) ||
+      c.region.toLowerCase().includes(query) ||
+      (queryKey.length > 1 && (nameKey === queryKey || nameKey.includes(queryKey)))
+    )
+  })
 
   // 3. ПРЕВРАЩАЕМ В НУЖНЫЙ ФОРМАТ (Маппинг)
   // Это самое важное: фронт ждет 'name' и 'fullName', если их нет — будет undefined
