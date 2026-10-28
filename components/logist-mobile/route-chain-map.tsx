@@ -82,17 +82,16 @@ export function RouteChainMap({ points }: { points: RouteMapPoint[] }) {
     const instance = ensureMap()
     if (!instance) return
 
-    // Тёмные плитки CARTO на данных OpenStreetMap: без ключей, в пределах
-    // бесплатного объёма. Атрибуция — часть лицензии, поэтому включена.
-    const tiles = L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      {
-        subdomains: "abcd",
-        maxZoom: 12,
-        attribution: "© OpenStreetMap, © CARTO",
-        crossOrigin: true,
-      },
-    )
+    // Плитки OpenStreetMap — единственные без ключа: CARTO с 2025 года отдаёт
+    // вместо карты водяной знак «API KEY REQUIRED», и в тёмной панели это было
+    // серое поле с рамкой. Темноту делаем фильтром на самих плитках (класс
+    // map-tiles-dark в globals.css), а не сменой поставщика.
+    const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 12,
+      attribution: "© OpenStreetMap",
+      crossOrigin: true,
+      className: "map-tiles-dark",
+    })
     tiles.addTo(instance)
 
     const layer = L.layerGroup().addTo(instance)
