@@ -37,6 +37,8 @@ import {
   Truck,
   User,
   Weight,
+  Lock,
+  Unlock,
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
@@ -170,6 +172,39 @@ export default function LogistOrderPage() {
     }
     toast.success("Назначение обновлено")
     setAssignOpen(false)
+    orderState.reload()
+  }
+
+  /**
+   * Закрепить водителя за машиной (или отвязать).
+   *
+   * Зачем замок: связь «водитель ↔ машина» уже живёт в базе (Driver.vehicleId),
+   * но на экране её не было видно — инспектор каждый раз выбирал водителя
+   * заново. Замок делает связь явной и постоянной: закрепил Иванова за
+   * А421ВС750 — и в следующий раз он предлагается уже с этой машиной.
+   *
+   * Отвязать можно тем же замком: связь не прибита навсегда, водитель уходит
+   * в отпуск или садится на другую машину — это нормально.
+   */
+  async function toggleDriverLock(driverId: string) {
+    const driver = drivers.find((item) => item.id === driverId)
+    if (!driver) return
+    const locked = Boolean(driver.vehicleId) && driver.vehicleId === order?.assignedVehicleId
+    // Закрепляем ровно за той машиной, что стоит в заказе; отвязка — в null.
+    const nextVehicleId = locked ? null : (order?.assignedVehicleId ?? null)
+    if (!locked && !nextVehicleId) {
+      toast.error("Сначала выберите машину заказа — закрепить можно только за ней")
+      return
+    }
+    setBusy("lock")
+    const result = await apiSend(`/api/drivers/${driverId}`, "PATCH", { vehicleId: nextVehicleId })
+    setBusy(null)
+    if (!result.ok) {
+      toast.error(result.error || "Не удалось изменить закрепление")
+      return
+    }
+    toast.success(locked ? `${driver.name}: отвязан от машины` : `${driver.name}: закреплён за машиной`)
+    driversState.reload()
     orderState.reload()
   }
 
@@ -556,13 +591,42 @@ export default function LogistOrderPage() {
                                 : "border-border text-foreground"
                             }`}
                           >
-                            {item.name.split(" ")[0]}
-                            {item.vehiclePlate ? ` · ${item.vehiclePlate}` : ""}
+                            {/* Имя, а не госномер: логист выбирает человека,
+                                а номер машины он уже выбрал строкой ниже.
+                                «Иванов · А421ВС750» читалось как «Иванов-машина». */}
+                            {item.name}
                             {item.status === "offline" ? " · не на связи" : ""}
                           </button>
                         ))}
                     </div>
                   </div>
+
+                  {order.assignedDriverId ? (
+                    (() => {
+                      const assigned = drivers.find((item) => item.id === order.assignedDriverId)
+                      const locked = Boolean(assigned?.vehicleId) && assigned?.vehicleId === order.assignedVehicleId
+                      return (
+                        <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/40 px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => void toggleDriverLock(order.assignedDriverId!)}
+                            disabled={busy !== null}
+                            aria-label={locked ? "Отвязать водителя от машины" : "Закрепить водителя за машиной"}
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                              locked ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"
+                            } disabled:opacity-50`}
+                          >
+                            {locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                          </button>
+                          <p className="text-[12px] leading-snug text-muted-foreground">
+                            {locked
+                              ? `Водитель закреплён за машиной: ${assigned?.name ?? "выбран"}. Нажмите замок, чтобы отвязать.`
+                              : "Замок закрепит водителя за этой машиной — в следующий раз он будет предложен с ней. Отвязать можно тем же замком."}
+                          </p>
+                        </div>
+                      )
+                    })()
+                  ) : null}
 
                   <div>
                     <p className="mb-1.5 text-[12.5px] text-muted-foreground">Машина</p>
@@ -735,7 +799,7 @@ function EditSheet({
             value={price}
             onChange={(event) => setPrice(event.target.value.replace(/[^\d]/g, ""))}
             inputMode="numeric"
-            placeholder="38000"
+            placeholder="Сумма"
             className={inputClass}
           />
         </label>
@@ -745,7 +809,7 @@ function EditSheet({
             value={contact}
             onChange={(event) => setContact(event.target.value)}
             inputMode="tel"
-            placeholder="Петрова Ольга, +7 495 123-45-67"
+            placeholder="Имя и телефон для связи"
             className={inputClass}
           />
         </label>

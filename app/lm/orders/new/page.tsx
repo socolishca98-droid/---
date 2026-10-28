@@ -200,7 +200,7 @@ export default function NewOrderPage() {
               label="Откуда"
               value={form.routeFrom}
               error={errors.routeFrom}
-              placeholder="Москва, склад на Ленина, 5"
+              placeholder="Город и адрес склада"
               icon={<MapPin className="h-4 w-4" />}
               suggestions={focus === "routeFrom" ? suggestAddress("routeFrom") : []}
               onFocus={() => setFocus("routeFrom")}
@@ -216,7 +216,7 @@ export default function NewOrderPage() {
               label="Куда"
               value={form.routeTo}
               error={errors.routeTo}
-              placeholder="Калуга, улица Московская, 289"
+              placeholder="Город и адрес выгрузки"
               icon={<MapPin className="h-4 w-4" />}
               suggestions={focus === "routeTo" ? suggestAddress("routeTo") : []}
               onFocus={() => setFocus("routeTo")}
@@ -239,7 +239,7 @@ export default function NewOrderPage() {
               <input
                 value={form.cargoType}
                 onChange={(event) => update("cargoType", event.target.value)}
-                placeholder="Паллеты, продукты…"
+                placeholder="Что везём"
                 className={inputClass}
               />
             </label>
@@ -266,7 +266,7 @@ export default function NewOrderPage() {
                   value={form.weight}
                   onChange={(event) => update("weight", event.target.value.replace(/[^\d]/g, ""))}
                   inputMode="numeric"
-                  placeholder="4200"
+                  placeholder="Сколько весит"
                   className={fieldClass(Boolean(errors.weight))}
                 />
                 {errors.weight ? <ErrorText>{errors.weight}</ErrorText> : null}
@@ -277,7 +277,7 @@ export default function NewOrderPage() {
                   value={form.volume}
                   onChange={(event) => update("volume", event.target.value.replace(/[^\d.,]/g, ""))}
                   inputMode="decimal"
-                  placeholder="26"
+                  placeholder="Сколько кубов"
                   className={inputClass}
                 />
               </label>
@@ -297,7 +297,7 @@ export default function NewOrderPage() {
                 onChange={(event) => update("clientName", event.target.value)}
                 onFocus={() => setFocus("clientName")}
                 onBlur={() => window.setTimeout(() => setFocus(null), 150)}
-                placeholder="ООО «Ромашка»"
+                placeholder="Название клиента"
                 className={pickedClient ? `${inputClass} border-success/40` : inputClass}
               />
               {pickedClient ? (
@@ -340,7 +340,7 @@ export default function NewOrderPage() {
                 value={form.clientContact}
                 onChange={(event) => update("clientContact", event.target.value)}
                 inputMode="tel"
-                placeholder="Петрова Ольга, +7 495 123-45-67"
+                placeholder="Имя и телефон для связи"
                 className={inputClass}
               />
             </label>
@@ -353,7 +353,7 @@ export default function NewOrderPage() {
                 value={form.price}
                 onChange={(event) => update("price", event.target.value.replace(/[^\d]/g, ""))}
                 inputMode="numeric"
-                placeholder="38000"
+                placeholder="Сумма"
                 className={inputClass}
               />
             </label>

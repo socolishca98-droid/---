@@ -97,7 +97,7 @@ export default function LogistChatPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             inputMode="search"
-            placeholder="Имя или машина"
+            placeholder="Поиск по водителям"
             className="h-11 w-full rounded-xl border border-border bg-secondary pl-9 pr-9 text-[15px] text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none"
           />
           {query ? (

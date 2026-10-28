@@ -227,7 +227,7 @@ export default function LogistMorePage() {
             <input
               value={profilePhone}
               onChange={(event) => setProfilePhone(event.target.value)}
-              placeholder="Телефон: +7 900 555-44-33"
+              placeholder="Телефон для входа"
               autoComplete="tel"
               inputMode="tel"
               disabled={profileLoading || profileSaving}

@@ -226,13 +226,13 @@ export default function MobileSettingsPage() {
                 label="Название парка"
                 value={form.parkName ?? ""}
                 onChange={(value) => set("parkName", value)}
-                placeholder="Автопарк Логинекс"
+                placeholder="Название организации"
               />
               <Field
                 label="Адрес базы"
                 value={form.baseAddress ?? ""}
                 onChange={(value) => set("baseAddress", value)}
-                placeholder="Город, улица, дом"
+                placeholder="Адрес базы: город, улица, дом"
               />
 
               {suggestions.length > 0 ? (
@@ -263,14 +263,14 @@ export default function MobileSettingsPage() {
                   label="Широта"
                   value={form.baseLat ?? ""}
                   onChange={(value) => set("baseLat", value)}
-                  placeholder="55.4207"
+                  placeholder="Широта"
                   inputMode="decimal"
                 />
                 <Field
                   label="Долгота"
                   value={form.baseLng ?? ""}
                   onChange={(value) => set("baseLng", value)}
-                  placeholder="37.7376"
+                  placeholder="Долгота"
                   inputMode="decimal"
                 />
               </div>
@@ -307,7 +307,7 @@ export default function MobileSettingsPage() {
                     label="Непрерывное движение, минут"
                     value={form.restDriveLimitMin ?? ""}
                     onChange={(value) => set("restDriveLimitMin", value)}
-                    placeholder="240"
+                    placeholder="Сколько часов в месяц"
                     inputMode="numeric"
                     hint={minutesHuman(form.restDriveLimitMin ?? "")}
                   />
@@ -315,7 +315,7 @@ export default function MobileSettingsPage() {
                     label="Перерыв, минут"
                     value={form.restMinBreakMin ?? ""}
                     onChange={(value) => set("restMinBreakMin", value)}
-                    placeholder="45"
+                    placeholder="Ставка в час"
                     inputMode="numeric"
                     hint={minutesHuman(form.restMinBreakMin ?? "")}
                   />

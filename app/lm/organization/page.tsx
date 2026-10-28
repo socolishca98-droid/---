@@ -550,7 +550,7 @@ export default function MobileOrganizationPage() {
                   <input
                     value={token}
                     onChange={(event) => setToken(event.target.value)}
-                    placeholder="access_token"
+                    placeholder="Ключ доступа из личного кабинета"
                     autoComplete="off"
                     className={inputInline}
                   />
