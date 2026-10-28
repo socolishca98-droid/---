@@ -41,6 +41,7 @@ import {
   nextHoursStep,
   prevHoursStep,
   routeMapPoints,
+  explainVehicleMismatch,
   AVG_DEADHEAD_KMH,
   AVG_LOADED_KMH,
   LOAD_UNLOAD_HOURS,
@@ -372,6 +373,7 @@ export default function RouteAssistantPage() {
         weightKg: row.weight,
         volumeM3: row.volume,
         cargoType: row.cargoType,
+        truckType: (row as { truckType?: string | null }).truckType ?? null,
         priceRub: row.price,
         priceWithNds: row.vatIncluded ? row.price : null,
         distanceKm: row.distance,
@@ -852,10 +854,21 @@ export default function RouteAssistantPage() {
       // Согласованные: тоже объединяем — иначе пересборка «забывала» груз,
       // по которому логист уже договорился.
       const keepAll = Array.from(new Set([...keep, ...keepRef.current]))
+      // Собираем ПОД ТУ МАШИНУ, которую выбрал логист.
+      //
+      // Было: сборщику отдавался весь автопарк, он перебирал все машины и
+      // брал самую выгодную. Логист выбирал 5-тонную — а маршрут строился на
+      // 20-тонной, и в результат попадал груз на 10.8 т. На экране это
+      // выглядело как «в пятитонку положили десять тонн». Проверка веса в
+      // сборщике при этом работала — её просто не спрашивали.
+      const buildVehicles =
+        vehicleId && vehicles.some((item) => item.id === vehicleId)
+          ? vehicles.filter((item) => item.id === vehicleId)
+          : vehicles
       const built = buildRouteVariants({
         startCity: startPlace,
         loads: pool,
-        vehicles,
+        vehicles: buildVehicles,
         fuelPriceRubPerL: 62,
         keepIds: keepAll,
         excludeIds: excludeAll,
@@ -1235,6 +1248,7 @@ export default function RouteAssistantPage() {
           weightKg: row.weight,
           volumeM3: row.volume,
           cargoType: row.cargoType,
+          truckType: row.truckType ?? null,
           priceRub: row.price,
           priceWithNds: row.vatIncluded ? row.price : null,
           distanceKm: row.distance,
@@ -1365,6 +1379,7 @@ export default function RouteAssistantPage() {
         weightKg: row.weight,
         volumeM3: row.volume,
         cargoType: row.cargoType,
+        truckType: row.truckType ?? null,
         priceRub: row.price,
         priceWithNds: row.vatIncluded ? row.price : null,
         distanceKm: row.distance,
@@ -1589,6 +1604,7 @@ export default function RouteAssistantPage() {
             setVehicleId={setVehicleId}
             drivers={drivers}
             usableLoadsCount={usableLoads.length}
+            fitLoads={loadsWithPoints.length > 0 ? loadsWithPoints : loads}
             detourKm={detourKm}
             setDetourKm={setDetourKm}
             startRadiusKm={startRadiusKm}
@@ -1963,6 +1979,7 @@ function SetupPhase({
   setVehicleId,
   drivers,
   usableLoadsCount,
+  fitLoads,
   detourKm,
   setDetourKm,
   startRadiusKm,
@@ -1995,6 +2012,8 @@ function SetupPhase({
   setVehicleId: (value: string) => void
   drivers: MobileDriver[]
   usableLoadsCount: number
+  /** Пул грузов «как есть» — по нему считаем, что влезет в выбранную машину */
+  fitLoads: BuilderLoad[]
   detourKm: number
   setDetourKm: (value: number) => void
   /** Радиус поиска первого груза от базы, км */
@@ -2237,6 +2256,7 @@ function SetupPhase({
             За {selected.plate} не закреплён водитель — при отправке назначим свободного.
           </p>
         ) : null}
+        {selected ? <VehicleFitNote vehicle={selected} loads={fitLoads} /> : null}
       </Card>
 
       {/* Насколько едем — главный рычаг, он на виду */}
@@ -2701,6 +2721,19 @@ function RoutePhase({
           Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}
           {route.vehicle?.plate ? ` · ${route.vehicle.plate}` : ""}
         </p>
+        {/* Что за машина: логист должен видеть, под что собрано — иначе
+            «пятитонка с грузом на десять тонн» выглядит как ошибка сборщика. */}
+        {route.vehicle ? (
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            {[
+              route.vehicle.type,
+              route.vehicle.capacity ? formatWeightKg(route.vehicle.capacity) : null,
+              route.vehicle.volume ? `${route.vehicle.volume} м³` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
         <p className="mt-1 text-[30px] font-bold leading-none text-foreground lg:text-[40px]">
           {route.totalProfitRub !== null ? (
             <>
@@ -3351,6 +3384,41 @@ function routeTimeText(route: BuiltRoute): string {
   if (days === 1) return `1 день (${Math.round(hours)} ч)`
   if (days < 5) return `${days} дня (${Math.round(hours)} ч)`
   return `${days} дней (${Math.round(hours)} ч)`
+}
+
+/**
+ * Сколько грузов подходит под выбранную машину — и почему остальные нет.
+ *
+ * Зачем на экране выбора: логист выбирает машину до сборки и должен видеть,
+ * что она возьмёт. Иначе получается разговор «я выбрал пятитонку, а в неё
+ * положили десять тонн» — а причина в том, что вес и кузов никто не сверял.
+ */
+function VehicleFitNote({ vehicle, loads }: { vehicle: BuilderVehicle; loads: BuilderLoad[] }) {
+  const fit = explainVehicleMismatch(loads, vehicle)
+  if (fit.total === 0) return null
+  const reasons: string[] = []
+  if (fit.overweight > 0) reasons.push(`${fit.overweight} тяжелее ${formatWeightKg(vehicle.capacity ?? 0)}`)
+  if (fit.oversize > 0) reasons.push(`${fit.oversize} больше ${vehicle.volume ?? 0} м³`)
+  if (fit.body > 0) reasons.push(`${fit.body} не встанут в ${vehicle.type ?? "этот кузов"}`)
+  const tone =
+    fit.fits === 0
+      ? "border-warning/30 bg-warning/[0.06] text-foreground/90"
+      : "border-border bg-secondary/40 text-muted-foreground"
+  return (
+    <div className={`mt-2 rounded-xl border px-3 py-2 text-[12px] leading-snug ${tone}`}>
+      {fit.fits === 0 ? (
+        <p>
+          Под эту машину не подходит ни один груз из пула: {reasons.join(", ")}. Выберите
+          машину побольше или сузьте груз по весу на бирже.
+        </p>
+      ) : (
+        <p>
+          Подходит {fit.fits} из {fit.total} грузов пула
+          {reasons.length > 0 ? `: не берём ${reasons.join(", ")}` : ""}.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function SummaryCell({ label, value }: { label: string; value: string }) {

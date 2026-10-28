@@ -43,6 +43,12 @@ export interface BuilderLoad {
   weightKg: number | null
   volumeM3: number | null
   cargoType: string | null
+  /**
+   * Какие кузова допускает фрахтователь — строкой из биржи:
+   * «Тент, Фургон, Контейнеровоз, Кузов #16». Пусто — не назвал.
+   * По этому полю проверяем, что груз вообще можно ставить в нашу машину.
+   */
+  truckType?: string | null
   /** Ставка фрахтователя, ₽ */
   priceRub: number | null
   /** Ставка с НДС, если включена */
@@ -288,6 +294,71 @@ function usableVehicles(vehicles: BuilderVehicle[]): BuilderVehicle[] {
 }
 
 /** Влезает ли груз в машину по весу и объёму. */
+/**
+ * Класс кузова: что машина физически может взять.
+ *
+ * Биржа перечисляет допустимые кузова строкой — «Тент, Фургон, Контейнеровоз,
+ * Кузов #16, Кузов #64». Наши машины подписаны по-своему: «Тент», «Фура»,
+ * «Изотерм», «Рефрижератор», «Бортовая», «Газель». Сравнивать строки как есть
+ * нельзя — «Фура» не совпадёт ни с чем.
+ *
+ * Практика диспетчера: изотермический фургон спокойно берёт сухой груз,
+ * рефрижератор — тоже (агрегат выключается), а тентованный не берёт груз,
+ * которому нужна температура. Поэтому у машины набор классов, а у груза —
+ * требования, и требования должны вкладываться в набор.
+ */
+type BodyClass = "reefer" | "insulated" | "dry"
+
+const BODY_MATCHERS: Array<{ cls: BodyClass; re: RegExp }> = [
+  { cls: "reefer", re: /рефриж|refrigerator/i },
+  { cls: "insulated", re: /изотерм/i },
+  { cls: "dry", re: /тент|фургон|борт|площадк|открыт|контейнеровоз|фура|полуприцеп|цельнометалл|промтоварн/i },
+]
+
+function bodyClasses(text: string | null | undefined): Set<BodyClass> {
+  const out = new Set<BodyClass>()
+  const value = String(text ?? "")
+  if (!value.trim()) return out
+  for (const matcher of BODY_MATCHERS) {
+    if (matcher.re.test(value)) out.add(matcher.cls)
+  }
+  return out
+}
+
+/**
+ * Что машина может взять по типу кузова.
+ *
+ * Пустое значение типа у машины — «не знаем»: тогда не ограничиваем, иначе
+ * помощник молча перестанет строить маршруты у организаций, где тип не
+ * заполнен.
+ */
+function vehicleBodyClasses(vehicle: BuilderVehicle): Set<BodyClass> {
+  const own = bodyClasses(vehicle.type)
+  if (own.size === 0) return new Set<BodyClass>(["reefer", "insulated", "dry"])
+  // Рефрижератор берёт и изотермический, и сухой груз.
+  if (own.has("reefer")) return new Set<BodyClass>(["reefer", "insulated", "dry"])
+  // Изотерм — сухой тоже (но не груз, которому нужен рефрижератор).
+  if (own.has("insulated")) return new Set<BodyClass>(["insulated", "dry"])
+  return new Set<BodyClass>(["dry"])
+}
+
+/**
+ * Можно ли ставить этот груз в эту машину по типу кузова.
+ *
+ * Если биржа тип не назвала (или назвала только незнакомыми кодами вроде
+ * «Кузов #16») — не мешаем: молча выкидывать груз из-за неизвестного поля
+ * хуже, чем взять его и показать логисту.
+ */
+export function truckTypeMatches(load: BuilderLoad, vehicle: BuilderVehicle): boolean {
+  const required = bodyClasses(load.truckType)
+  if (required.size === 0) return true
+  const allowed = vehicleBodyClasses(vehicle)
+  for (const need of required) {
+    if (allowed.has(need)) return true
+  }
+  return false
+}
+
 export function loadFitsVehicle(load: BuilderLoad, vehicle: BuilderVehicle): boolean {
   if (load.weightKg != null) {
     const capacity = vehicle.capacity ?? 0
@@ -297,7 +368,39 @@ export function loadFitsVehicle(load: BuilderLoad, vehicle: BuilderVehicle): boo
     const volume = vehicle.volume ?? 0
     if (volume > 0 && load.volumeM3 > volume) return false
   }
+  if (!truckTypeMatches(load, vehicle)) return false
   return true
+}
+
+/**
+ * Почему грузы не подходят под машину — по причинам, для экрана.
+ *
+ * Живой случай: логист выбрал 5-тонную машину, а помощник показывал маршрут с
+ * грузом на 10.8 т. Причина была не в проверке веса (она есть), а в том, что
+ * выбранную машину никто не спрашивал: сборщик перебирал весь автопарк и
+ * брал самую выгодную. Теперь машина одна — и надо честно сказать, если под
+ * неё грузов нет.
+ */
+export function explainVehicleMismatch(
+  loads: readonly BuilderLoad[],
+  vehicle: BuilderVehicle,
+): { total: number; fits: number; overweight: number; oversize: number; body: number } {
+  let fits = 0
+  let overweight = 0
+  let oversize = 0
+  let body = 0
+  for (const load of loads) {
+    if (loadFitsVehicle(load, vehicle)) {
+      fits += 1
+      continue
+    }
+    const capacity = vehicle.capacity ?? 0
+    const volume = vehicle.volume ?? 0
+    if (capacity > 0 && load.weightKg != null && load.weightKg > capacity) overweight += 1
+    else if (volume > 0 && load.volumeM3 != null && load.volumeM3 > volume) oversize += 1
+    else body += 1
+  }
+  return { total: loads.length, fits, overweight, oversize, body }
 }
 
 /** Ставка за километр гружёного плеча — быстрая оценка выгоды. */

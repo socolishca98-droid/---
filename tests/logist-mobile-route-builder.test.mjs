@@ -1401,3 +1401,166 @@ test("машина пришла на базу — маршрут законче�
   assert.deepEqual(route.legs.map((leg) => leg.load.id), ["out", "back"], "плечо после возврата домой не берём")
   assert.equal(route.returnDeadheadKm, 0, "дома — пустого возврата нет")
 })
+
+// ── Машина: вес, объём и тип кузова ────────────────────────────────────────
+test("в 5-тонную машину 10.8 т не кладём", () => {
+  // Живой случай: логист выбирал 5-тонную, а помещник показывал маршрут с
+  // грузом на 10.8 т. Проверка веса работала — но выбранную машину сборщику
+  // не передавали, он перебирал весь автопарк. Здесь фиксируем саму проверку;
+  // выбор машины в сценарии проверяется тестом «одна машина — только её».
+  const route = buildRoute({
+    startCity: "Москва",
+    startPoint: { lat: 55.75, lng: 37.62 },
+    loads: [
+      load({
+        id: "heavy",
+        weightKg: 10800,
+        distanceKm: 170,
+        priceRub: 90000,
+        fromPoint: { lat: 55.75, lng: 37.62 },
+        toPoint: { lat: 56.86, lng: 35.9 },
+      }),
+    ],
+    vehicles: [vehicle({ capacity: 5000, volume: 32, type: "изотерм" })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.equal(route, null, "груз тяжелее машины не берём")
+})
+
+test("объём тоже проверяется: 82 м³ в 32 м³ не влезает", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    startPoint: { lat: 55.75, lng: 37.62 },
+    loads: [
+      load({
+        id: "bulky",
+        weightKg: 3000,
+        volumeM3: 82,
+        distanceKm: 170,
+        priceRub: 90000,
+        fromPoint: { lat: 55.75, lng: 37.62 },
+        toPoint: { lat: 56.86, lng: 35.9 },
+      }),
+    ],
+    vehicles: [vehicle({ capacity: 5000, volume: 32, type: "изотерм" })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.equal(route, null, "груз объёмнее машины не берём")
+})
+
+test("тип кузова: груз «только рефрижератор» в тент не ставим", () => {
+  const cold = {
+    id: "cold",
+    weightKg: 3000,
+    distanceKm: 170,
+    priceRub: 90000,
+    truckType: "Рефрижератор",
+    fromPoint: { lat: 55.75, lng: 37.62 },
+    toPoint: { lat: 56.86, lng: 35.9 },
+  }
+  const base = {
+    startCity: "Москва",
+    startPoint: { lat: 55.75, lng: 37.62 },
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  }
+  assert.equal(
+    buildRoute({ ...base, loads: [load(cold)], vehicles: [vehicle({ type: "тент" })] }),
+    null,
+    "тент не берёт температурный груз",
+  )
+  const ok = buildRoute({ ...base, loads: [load(cold)], vehicles: [vehicle({ type: "рефрижератор" })] })
+  assert.ok(ok, "рефрижератор берёт температурный груз")
+})
+
+test("изотерм берёт сухой груз, а тент не берёт груз с изотермом", () => {
+  const dry = {
+    id: "dry",
+    weightKg: 3000,
+    distanceKm: 170,
+    priceRub: 90000,
+    truckType: "Тент, Фургон, Контейнеровоз, Кузов #16",
+    fromPoint: { lat: 55.75, lng: 37.62 },
+    toPoint: { lat: 56.86, lng: 35.9 },
+  }
+  const base = {
+    startCity: "Москва",
+    startPoint: { lat: 55.75, lng: 37.62 },
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  }
+  assert.ok(
+    buildRoute({ ...base, loads: [load(dry)], vehicles: [vehicle({ type: "изотерм", capacity: 5000, volume: 32 })] }),
+    "сухой груз в изотерм ставим",
+  )
+  assert.equal(
+    buildRoute({
+      ...base,
+      loads: [load({ ...dry, truckType: "Изотерм" })],
+      vehicles: [vehicle({ type: "тент" })],
+    }),
+    null,
+    "тент не берёт груз, которому нужен изотерм",
+  )
+})
+
+test("незнакомый код кузова не мешает брать груз", () => {
+  // «Кузов #16» ATI пишет вместо типа — не повод выбрасывать груз.
+  const route = buildRoute({
+    startCity: "Москва",
+    startPoint: { lat: 55.75, lng: 37.62 },
+    loads: [
+      load({
+        id: "unknown",
+        weightKg: 3000,
+        distanceKm: 170,
+        priceRub: 90000,
+        truckType: "Кузов #16",
+        fromPoint: { lat: 55.75, lng: 37.62 },
+        toPoint: { lat: 56.86, lng: 35.9 },
+      }),
+    ],
+    vehicles: [vehicle({ type: "тент" })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(route, "неизвестный тип кузова не отсекает груз")
+})
+
+test("одна машина — только её: сборщик не подменяет 5-тонную на 20-тонную", () => {
+  const route = buildRouteVariants({
+    startCity: "Москва",
+    startPoint: { lat: 55.75, lng: 37.62 },
+    loads: [
+      load({
+        id: "fit",
+        weightKg: 3000,
+        distanceKm: 170,
+        priceRub: 60000,
+        fromPoint: { lat: 55.75, lng: 37.62 },
+        toPoint: { lat: 56.86, lng: 35.9 },
+      }),
+      load({
+        id: "heavy",
+        weightKg: 15000,
+        distanceKm: 170,
+        priceRub: 170000,
+        fromCity: "Тверь",
+        toCity: "Москва",
+        fromPoint: { lat: 56.86, lng: 35.9 },
+        toPoint: { lat: 55.75, lng: 37.62 },
+      }),
+    ],
+    vehicles: [vehicle({ id: "v5", plate: "K215CT790", capacity: 5000, volume: 32, type: "изотерм" })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(route.length > 0)
+  assert.equal(route[0].route.vehicle.id, "v5")
+  assert.ok(
+    route[0].route.legs.every((leg) => (leg.load.weightKg ?? 0) <= 5000),
+    "тяжёлый груз в пятитонку не попал",
+  )
+})
