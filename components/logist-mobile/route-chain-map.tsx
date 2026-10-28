@@ -30,34 +30,69 @@ export interface RouteMapPoint {
 export function RouteChainMap({ points }: { points: RouteMapPoint[] }) {
   const container = useRef<HTMLDivElement | null>(null)
   const map = useRef<L.Map | null>(null)
+  // Узел, к которому привязана карта. React может заменить сам DOM-узел при
+  // перерисовке (например, когда вместо «точек пока нет» появляется контейнер
+  // карты), и тогда Leaflet продолжает жить на устаревшем узле — на экране
+  // пустой прямоугольник. Поэтому сверяем: тот ли узел.
+  const boundNode = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    if (!container.current || map.current) return
-    // Карта создаётся один раз: без пересоздания не мигает при пересборке
-    const instance = L.map(container.current, {
+  /**
+   * Карта создаётся, когда контейнер реально в документе.
+   *
+   * Раньше инициализация висела на эффекте с пустыми зависимостями: к моменту
+   * его запуска точек ещё не было, компонент рендерил строку «точек пока нет»,
+   * и `container.current` был null — эффект выходил, а больше не запускался.
+   * Живой замер ПК-версии: блок «Как едем» показывал пустую рамку 420 px при
+   * том, что точки маршрута уже были посчитаны.
+   */
+  const ensureMap = () => {
+    const node = container.current
+    if (!node) return null
+    if (map.current && boundNode.current === node) return map.current
+    if (map.current) {
+      map.current.remove()
+      map.current = null
+    }
+    // Плитки CARTO dark: в тёмной панели карта должна оставаться картой, а не
+    // светлым листом посреди ночного экрана. Атрибуция включена — так требует
+    // лицензия OpenStreetMap, на чьих данных эти плитки построены.
+    const instance = L.map(node, {
       zoomControl: false,
-      attributionControl: false,
+      attributionControl: true,
       dragging: true,
       scrollWheelZoom: false,
       doubleClickZoom: false,
       touchZoom: true,
     })
     map.current = instance
+    boundNode.current = node
+    return instance
+  }
+
+  useEffect(() => {
     return () => {
-      instance.remove()
+      map.current?.remove()
       map.current = null
+      boundNode.current = null
     }
   }, [])
 
   useEffect(() => {
-    const instance = map.current
-    if (!instance || points.length === 0) return
+    if (points.length === 0) return
+    const instance = ensureMap()
+    if (!instance) return
 
-    // Плитки OpenStreetMap: без ключей и без лимитов для нашего объёма
-    const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 12,
-      crossOrigin: true,
-    })
+    // Тёмные плитки CARTO на данных OpenStreetMap: без ключей, в пределах
+    // бесплатного объёма. Атрибуция — часть лицензии, поэтому включена.
+    const tiles = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        subdomains: "abcd",
+        maxZoom: 12,
+        attribution: "© OpenStreetMap, © CARTO",
+        crossOrigin: true,
+      },
+    )
     tiles.addTo(instance)
 
     const layer = L.layerGroup().addTo(instance)
@@ -96,10 +131,19 @@ export function RouteChainMap({ points }: { points: RouteMapPoint[] }) {
 
     const bounds = L.latLngBounds(line as Array<[number, number]>)
     instance.fitBounds(bounds, { padding: [26, 26], maxZoom: 9 })
-    // Плиты догружаются асинхронно — иначе карта «прыгает» размерами
-    window.setTimeout(() => instance.invalidateSize(), 60)
+    // Плиты и сетка догружаются асинхронно — иначе карта «прыгает» размерами.
+    // На компьютере ширина колонки окончательная только после первой раскладки
+    // grid, поэтому пересчитываем дважды.
+    const timers = [
+      window.setTimeout(() => instance.invalidateSize(), 60),
+      window.setTimeout(() => instance.invalidateSize(), 600),
+    ]
+    const observer = new ResizeObserver(() => instance.invalidateSize())
+    if (container.current) observer.observe(container.current)
 
     return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+      observer.disconnect()
       layer.remove()
       tiles.remove()
     }
