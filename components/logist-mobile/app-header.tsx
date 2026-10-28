@@ -15,6 +15,7 @@ import type { ReactNode } from "react"
 import { ArrowLeft, Bell } from "lucide-react"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { mobileParentPath } from "@/lib/logist-mobile/routing"
+import { panelWidth } from "./chrome"
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).slice(0, 2)
@@ -44,7 +45,9 @@ export function LogistHeader({
       className="sticky top-0 z-30 border-b border-border surface-glass backdrop-blur"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <div className="mx-auto flex max-w-md items-center gap-3 px-4 py-3">
+      <div
+        className={`mx-auto flex max-w-md items-center gap-3 px-4 py-3 lg:px-6 lg:py-3.5 ${panelWidth(pathname)} lg:pl-[calc(250px+24px)]`}
+      >
         {back ? (
           <Link
             href={mobileParentPath(pathname)}

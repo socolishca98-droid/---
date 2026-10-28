@@ -15,7 +15,22 @@
 import { usePathname } from "next/navigation"
 
 import { AccountSwitchBanner } from "@/components/account-switch-banner"
-import { LogistBottomNav } from "./bottom-nav"
+import { LogistBottomNav, LogistSideNav } from "./bottom-nav"
+
+/**
+ * Экраны, которым на компьютере нужна вся ширина.
+ *
+ * Помощник сборки — не список карточек, а рабочее место: слева итог и плечи,
+ * справа остаток биржи и объяснение. В колонку телефона (448 px) это
+ * складывается в лестницу из девяти блоков, и на мониторe выглядит как
+ * мобильный скриншот, растянутый по центру. Поэтому у него своя ширина.
+ */
+const WIDE_SCREENS = /^\/lm\/routes\/assistant/
+
+/** Ширина сцены: узкая «читаемая» для списков, полная — для рабочих экранов. */
+export function panelWidth(pathname: string): string {
+  return WIDE_SCREENS.test(pathname) ? "lg:max-w-[1500px]" : "lg:max-w-4xl"
+}
 
 /** Экраны, где нижнее меню прячем (переписка с водителем) */
 export function hidesBottomNav(pathname: string): boolean {
@@ -33,14 +48,18 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
         <div className="theme-canvas__grid" />
       </div>
 
-      <div className="mx-auto max-w-md">
+      {/* На компьютере меню переезжает влево: нижняя полоса на мониторе —
+          мобильная привычка, а слева освобождается постоянное место. */}
+      <LogistSideNav />
+
+      <div className={`mx-auto max-w-md ${panelWidth(pathname)} lg:pl-[250px] lg:pr-6`}>
         {/* Полоса «Вы вошли как …» — только у владельца, когда он смотрит чужой аккаунт */}
         <AccountSwitchBanner className="sticky top-0 z-40" />
         <div
           className={
             hideNav
               ? "pb-[env(safe-area-inset-bottom)]"
-              : "pb-[calc(72px+env(safe-area-inset-bottom))]"
+              : "pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-10"
           }
         >
           {children}

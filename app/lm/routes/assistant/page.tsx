@@ -1489,7 +1489,7 @@ export default function RouteAssistantPage() {
         }
       />
 
-      <div className="px-4 pt-4 pb-8">
+      <div className="px-4 pt-4 pb-8 lg:px-6 lg:pt-5">
         {error ? (
           <ErrorState
             message={error}
@@ -1966,7 +1966,7 @@ function SetupPhase({
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 lg:mx-auto lg:max-w-3xl">
       {/* Откуда едем */}
       <Card>
         <label className="block text-[13px] font-medium text-foreground">
@@ -2422,7 +2422,7 @@ function FailedPhase({
   }, [loads, startCity])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 lg:mx-auto lg:max-w-3xl">
       {/* Сначала честно — откуда грузы: провал не должен выглядеть поломкой */}
       <SourceNoteCard note={sourceNote} loadsCount={loads.length} />
 
@@ -2611,14 +2611,19 @@ function RoutePhase({
   const declinedCount = route.legs.filter((leg) => calls[leg.load.id] === "declined").length
 
   return (
-    <div className="space-y-5">
+    // На компьютере результат раскладывается в две колонки: слева итог, карта,
+    // звонки и плечи — то, по чему принимают решение; справа остаток биржи и
+    // объяснение — то, куда смотрят, если решение не нравится. В одну колонку
+    // это девять блоков подряд, и на мониторе они уходят за экран.
+    <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-5 lg:min-w-0">
       {/* Итог: деньги — главное */}
       <Card className="border-primary/25 bg-primary/[0.06]">
         <p className="text-[13px] text-muted-foreground">
           Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}
           {route.vehicle?.plate ? ` · ${route.vehicle.plate}` : ""}
         </p>
-        <p className="mt-1 text-[30px] font-bold leading-none text-foreground">
+        <p className="mt-1 text-[30px] font-bold leading-none text-foreground lg:text-[40px]">
           {route.totalProfitRub !== null ? (
             <>
               {route.totalProfitRub < 0 ? "−" : "+"}
@@ -2634,7 +2639,7 @@ function RoutePhase({
           </p>
         ) : null}
 
-        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-primary/15 pt-3">
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-primary/15 pt-3 sm:grid-cols-3 lg:grid-cols-4">
           <SummaryCell label="Выручка" value={formatMoney(route.totalRevenue)} />
           <SummaryCell
             label="Топливо"
@@ -2981,6 +2986,9 @@ function RoutePhase({
         </div>
       </Card>
 
+      </div>
+
+      <aside className="space-y-5">
       {/* Подробности: что осталось на бирже */}
       <section>
         <button
@@ -3088,6 +3096,7 @@ function RoutePhase({
           </ul>
         ) : null}
       </section>
+      </aside>
     </div>
   )
 }

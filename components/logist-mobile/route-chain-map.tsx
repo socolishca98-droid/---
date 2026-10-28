@@ -116,7 +116,7 @@ export function RouteChainMap({ points }: { points: RouteMapPoint[] }) {
   return (
     <div
       ref={container}
-      className="h-[190px] w-full overflow-hidden rounded-xl border border-border"
+      className="h-[190px] w-full overflow-hidden rounded-xl border border-border lg:h-[420px]"
       aria-label="Карта маршрута"
       role="img"
     />
