@@ -15,6 +15,7 @@
 // Модуль чистый (без Next, без Prisma, без React) — его проверяют юнит-тесты
 // tests/logist-mobile-route-assistant.test.mjs.
 
+import { FUEL_PRICE_RUSSIA } from "../fleet/fuel-price"
 import {
   normalizeOrderStatus,
   ORDER_STATUSES,
@@ -33,10 +34,12 @@ import { formatDateShort, formatMoney, shortCity } from "./format"
  *
  * Своих чеков у предложения ещё нет (рейс только планируется), поэтому
  * берём последнюю известную цену организации, а если чеков не было —
- * константу-ориентир. Это оценка для решения «взять или отказаться», а не
+ * справочную по региону (Росстат, срез 5 октября 2026). Раньше здесь стояла
+ * константа 62 ₽ — на 20 ₽ ниже реальной розницы, и прибыль в предложениях
+ * выходила завышенной. Это оценка для решения «взять или отказаться», а не
  * бухгалтерия: точные литры и рубли появятся, когда водитель сдаст чеки.
  */
-export const DEFAULT_FUEL_PRICE_RUB_PER_L = 62
+export const DEFAULT_FUEL_PRICE_RUB_PER_L = FUEL_PRICE_RUSSIA
 
 /** Заказ, каким его видит помощник (лишние поля не нужны). */
 export interface AssistantOrder {

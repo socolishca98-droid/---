@@ -31,6 +31,7 @@ import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import type { ApiMutationResult } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { findRegionByNameLocal } from "@/lib/ati/regions"
+import { fuelPriceForRegion, fuelPriceNote } from "@/lib/fleet/fuel-price"
 import {
   buildRouteVariants,
   explainFailure,
@@ -784,6 +785,13 @@ export default function RouteAssistantPage() {
   // ── Построение маршрута ──
   // Таймер анимации живёт в ref: если логист ушёл с экрана mid-анимации,
   // интервал гасится — иначе он стучится в размонтированный компонент.
+  // ── Цена дизеля для расчёта ──
+  // Розница по округам различается на 16 ₽/л (ЦФО 81 ₽ против ДФО 97 ₽), а в
+  // расчёте была зашита одна цифра 62 ₽ — прибыль выходила выше реальной.
+  // Берём цену региона базы: там машина заправляется перед выездом.
+  const fuelPrice = useMemo(() => fuelPriceForRegion(baseRegionName), [baseRegionName])
+  const fuelNote = useMemo(() => fuelPriceNote(baseRegionName), [baseRegionName])
+
   const buildTimer = useRef<number | null>(null)
   /** Сколько раз автододобор грузов «по пути» уже срабатывал в этой сборке. */
   const autoExtendRef = useRef(0)
@@ -871,7 +879,9 @@ export default function RouteAssistantPage() {
         startCity: startPlace,
         loads: pool,
         vehicles: buildVehicles,
-        fuelPriceRubPerL: 62,
+        // Цена дизеля — по региону базы: там машина заправляется перед
+        // выездом. Зашитые 62 ₽ давали прибыль на 3–4 тысячи выше реальной.
+        fuelPriceRubPerL: fuelPrice,
         keepIds: keepAll,
         excludeIds: excludeAll,
         detourKm,
@@ -1667,6 +1677,7 @@ export default function RouteAssistantPage() {
             loadsScanned={loads.length}
             loadsTotal={loadsState.data?.total ?? loads.length}
             extendNote={extendNote}
+            fuelNote={fuelNote}
             onMoreHours={(hours) => {
               setMaxHours(hours)
               runBuild(startCity, keepIds, excludeIds, hours, true)
@@ -1682,6 +1693,7 @@ export default function RouteAssistantPage() {
             startPoint={startPoint}
             maxHours={maxHours}
             sourceNote={loadsState.data?.source?.note ?? null}
+            fuelPrice={fuelPrice}
             onMoreHours={() => {
               const longer = nextHoursStep(maxHours)
               setMaxHours(longer)
@@ -2457,6 +2469,7 @@ function FailedPhase({
   maxHours,
   onMoreHours,
   sourceNote,
+  fuelPrice,
 }: {
   startCity: string
   loads: BuilderLoad[]
@@ -2472,6 +2485,8 @@ function FailedPhase({
   onMoreHours: () => void
   /** Честная подпись об источнике грузов — чтобы провал не выглядел поломкой */
   sourceNote: string | null
+  /** Цена дизеля для расчёта — по региону базы, а не константа */
+  fuelPrice: number
 }) {
   // Причина провала — из тех же данных, что и сборка
   const reason = useMemo(
@@ -2480,12 +2495,12 @@ function FailedPhase({
         startCity,
         loads,
         vehicles,
-        fuelPriceRubPerL: 62,
+        fuelPriceRubPerL: fuelPrice,
         maxHours,
         startRadiusKm,
         startPoint,
       }),
-    [startCity, loads, vehicles, maxHours, startRadiusKm, startPoint],
+    [startCity, loads, vehicles, fuelPrice, maxHours, startRadiusKm, startPoint],
   )
 
   /**
@@ -2679,6 +2694,7 @@ function RoutePhase({
   loadsTotal,
   extendNote,
   onMoreHours,
+  fuelNote,
 }: {
   route: BuiltRoute
   calls: Record<string, CallStatus>
@@ -2699,6 +2715,8 @@ function RoutePhase({
   onMoreHours: (hours: number) => void
   /** Что стало с додобором грузов «по пути» — показываем, если он не сработал */
   extendNote: { kind: "geo" | "exchange" | "empty"; text: string } | null
+  /** Откуда взята цена дизеля: «81 ₽/л · ЦФО · Росстат, 5 октября 2026» */
+  fuelNote: string
   /** Контакты фрахтователей, показанные по нажатию диспетчера */
   phones: Record<string, string>
   contactBusy: string | null
@@ -2758,6 +2776,9 @@ function RoutePhase({
           <SummaryCell
             label="Топливо"
             value={route.totalFuelCostRub !== null ? `≈ ${formatMoney(route.totalFuelCostRub)}` : "—"}
+            /* Цена литра — не константа «на глаз»: регион и дата среза видны
+               сразу. Логист должен понимать, на каких ценах посчитана прибыль. */
+            hint={fuelNote}
           />
           <SummaryCell label="Плеч" value={String(route.legs.length)} />
           <SummaryCell
@@ -3442,11 +3463,21 @@ function VehicleFitNote({ vehicle, loads }: { vehicle: BuilderVehicle; loads: Bu
   )
 }
 
-function SummaryCell({ label, value }: { label: string; value: string }) {
+function SummaryCell({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: string
+  /** Откуда цифра — мелким шрифтом под значением (цена топлива, регион, дата) */
+  hint?: string
+}) {
   return (
     <div>
       <p className="text-[11.5px] text-muted-foreground">{label}</p>
       <p className="text-[14px] font-semibold tabular-nums text-foreground">{value}</p>
+      {hint ? <p className="text-[11px] leading-tight text-muted-foreground/80">{hint}</p> : null}
     </div>
   )
 }
