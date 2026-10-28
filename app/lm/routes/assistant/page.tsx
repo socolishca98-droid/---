@@ -2944,28 +2944,38 @@ function RoutePhase({
                       {leg.load.firmName?.trim() || "Фрахтователь не указан"}
                       {leg.load.cargoType ? ` · ${leg.load.cargoType}` : ""}
                     </p>
-                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                      {leg.loadedKm > 0 ? `≈ ${leg.loadedKm} км` : "расстояние неизвестно"}
+                    {/* Километры, вес и время — отдельными кусками с отступом,
+                        а не одной строкой через «·». Иначе на узком экране
+                        хвост «· 600 кг» уезжает на новую строку с точкой
+                        впереди — логист читает это как обрыв вёрстки. */}
+                    <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12.5px] text-muted-foreground">
+                      <span className="whitespace-nowrap">
+                        {leg.loadedKm > 0 ? `≈ ${leg.loadedKm} км` : "расстояние неизвестно"}
+                      </span>
+                      {leg.load.weightKg ? (
+                        <span className="whitespace-nowrap">{formatWeightKg(leg.load.weightKg)}</span>
+                      ) : null}
                       {/* Часы в leg.hours — это дорога, погрузка с выгрузкой и,
                           если вождение упирается в суточную норму, отдых.
                           Писать «80 км · 6 ч в пути» нельзя: логист читает это
                           как «машина ползёт 6 часов». Поэтому составляющие —
                           раздельно, и отдых назван отдыхом. */}
-                      {leg.hours > 0
-                        ? ` · ${Math.max(
+                      {leg.hours > 0 ? (
+                        <span>
+                          {Math.max(
                             1,
                             Math.round(
                               leg.deadheadKm / AVG_DEADHEAD_KMH + leg.loadedKm / AVG_LOADED_KMH,
                             ),
-                          )} ч в пути + ${handlingHours(leg.load.weightKg)} ч на погрузку/выгрузку${
-                            Math.round(
-                              leg.deadheadKm / AVG_DEADHEAD_KMH + leg.loadedKm / AVG_LOADED_KMH,
-                            ) > DRIVE_LIMIT_HOURS
-                              ? ` + отдых ${REST_HOURS} ч (норма вождения ${DRIVE_LIMIT_HOURS} ч в сутки)`
-                              : ""
-                          }`
-                        : ""}
-                      {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
+                          )}{" "}
+                          ч в пути + {handlingHours(leg.load.weightKg)} ч на погрузку/выгрузку
+                          {Math.round(
+                            leg.deadheadKm / AVG_DEADHEAD_KMH + leg.loadedKm / AVG_LOADED_KMH,
+                          ) > DRIVE_LIMIT_HOURS
+                            ? ` + отдых ${REST_HOURS} ч (норма вождения ${DRIVE_LIMIT_HOURS} ч в сутки)`
+                            : ""}
+                        </span>
+                      ) : null}
                     </p>
 
                     {/* Дата загрузки: по ней логист понимает, успевает ли цепочка */}
