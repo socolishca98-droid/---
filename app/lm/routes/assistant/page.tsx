@@ -2609,6 +2609,7 @@ function RoutePhase({
 
   const agreedCount = route.legs.filter((leg) => calls[leg.load.id] === "agreed").length
   const declinedCount = route.legs.filter((leg) => calls[leg.load.id] === "declined").length
+  const mapPoints = routeMapPoints(route)
 
   return (
     // На компьютере результат раскладывается в две колонки: слева итог, карта,
@@ -2765,13 +2766,19 @@ function RoutePhase({
         ) : null}
       </Card>
 
-      {/* Форма поездки: логист принимает решение глазами */}
-      <section>
-        <h2 className="mb-2 px-1 text-[14px] font-semibold text-foreground">Как едем</h2>
-        <Card>
-          <RouteChainMapLazy points={routeMapPoints(route)} />
-        </Card>
-      </section>
+      {/* Форма поездки: логист принимает решение глазами.
+          Если координат нет ни у одного груза (биржа отдала их без точек), блок
+          не показываем вовсе: строка «точек пока нет» на компьютере занимала
+          полосу под заголовком и выглядела как сломанная карта. О том, что
+          километры считаны по прямой, честно сказано в «Почему собрал так». */}
+      {mapPoints.length > 1 ? (
+        <section>
+          <h2 className="mb-2 px-1 text-[14px] font-semibold text-foreground">Как едем</h2>
+          <Card>
+            <RouteChainMapLazy points={mapPoints} />
+          </Card>
+        </section>
+      ) : null}
 
       {/* Кому позвонить: рабочий список в порядке плеч */}
       <CallSheet
