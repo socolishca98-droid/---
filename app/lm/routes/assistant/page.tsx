@@ -2650,10 +2650,14 @@ function RoutePhase({
             label="Расстояние"
             value={route.totalDistanceKm > 0 ? `≈ ${route.totalDistanceKm} км` : "—"}
           />
-          <SummaryCell
-            label="В пути"
-            value={`${routeTimeText(route)} из ${route.maxHours} ч`}
-          />
+          {/* «В пути» — единственная ячейка с длинной строкой: «2.8 дня (68 ч)
+              из 72 ч» в узкой колонке рвалась по «ч». Даём ей двойную ширину. */}
+          <div className="col-span-2">
+            <SummaryCell
+              label="В пути"
+              value={`${routeTimeText(route)} из ${route.maxHours} ч`}
+            />
+          </div>
           <SummaryCell
             label="На км"
             value={route.profitPerKm !== null ? formatMoney(route.profitPerKm) : "—"}

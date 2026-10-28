@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCitiesList } from "@/lib/ati-client"
 import { fetchAtiRegions, findRegionByName } from "@/lib/ati/regions"
 import { getActiveAtiToken } from "@/lib/ati/connection"
+import { canonicalCityName } from "@/lib/logist-mobile/city-norm"
 
 // Тип, который ждет фронтенд (компонент GeoSelect)
 interface GeoOption {
@@ -39,6 +40,23 @@ export async function GET(request: NextRequest) {
 
   // 3. ПРЕВРАЩАЕМ В НУЖНЫЙ ФОРМАТ (Маппинг)
   // Это самое важное: фронт ждет 'name' и 'fullName', если их нет — будет undefined
+  //
+  // Город мог быть переименован: ATI до сих пор пишет «Свердловск г.», а
+  // справочник знает «Екатеринбург». Живой замер ПК-версии: маршрут обрывался
+  // на одном плече, карта не рисовалась, додобор отвечал «в радиусе 150 км
+  // грузов не нашлось» — из-за одного старого названия в адресе груза.
+  if (filtered.length === 0) {
+    const current = canonicalCityName(query)
+    if (current) {
+      const aliasQuery = current.toLowerCase()
+      filtered.push(
+        ...allCities.filter(
+          (c) => c.name.toLowerCase().includes(aliasQuery) || c.name.toLowerCase() === aliasQuery,
+        ),
+      )
+    }
+  }
+
   const results: GeoOption[] = filtered.slice(0, 15).map(c => ({
     id: c.atiId, // Используем atiId как основной идентификатор
     name: c.name,

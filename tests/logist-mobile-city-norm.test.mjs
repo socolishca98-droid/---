@@ -21,6 +21,7 @@ const {
   sameCity,
   cityDistrictKey,
   samePlace,
+  canonicalCityName,
 } = require("../.test-build/lib/logist-mobile/city-norm.js")
 
 test("тип населённого пункта снимается", () => {
@@ -93,4 +94,25 @@ test("пустые значения не становятся одним мес�
   assert.equal(samePlace("", "Москва"), false)
   assert.equal(samePlace(null, null), false)
   assert.equal(samePlace("", ""), false)
+})
+
+// ── Переименованные города ────────────────────────────────────────────────
+test("старое название города узнаётся как нынешнее", () => {
+  // Живой замер: ATI отдаёт «Свердловск г., Свердловская область». Справочник
+  // и геокодер такого города не знают — маршрут оставался одним плечом с
+  // 1062 км порожнего возврата, карта не рисовалась, обратка не находилась.
+  assert.equal(normalizeCityKey("Свердловск г., Свердловская область"), "екатеринбург")
+  assert.equal(normalizeCityKey("Екатеринбург"), "екатеринбург")
+  assert.equal(normalizeCityKey("Горький г."), "нижний новгород")
+  assert.equal(normalizeCityKey("Куйбышев"), "самара")
+  assert.equal(normalizeCityKey("Ленинград"), "санкт-петербург")
+  assert.equal(canonicalCityName("Свердловск г."), "Екатеринбург")
+  assert.equal(canonicalCityName("Ярославль"), "", "нынешнее название не переписываем")
+})
+
+test("переименованный город и его нынешнее имя — одно место", () => {
+  const { samePlace, sameCity } = require("../.test-build/lib/logist-mobile/city-norm.js")
+  assert.ok(sameCity("Свердловск г.", "Екатеринбург"), "это один город")
+  assert.ok(samePlace("Свердловск г., Свердловская область", "Екатеринбург"))
+  assert.ok(!sameCity("Свердловск г.", "Ярославль"))
 })

@@ -23,6 +23,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { plainPlace } from "@/lib/geo/nominatim"
+import { canonicalCityName } from "@/lib/logist-mobile/city-norm"
 
 export type Coordinates = { lat: number; lng: number }
 
@@ -206,6 +207,20 @@ function addressVariants(address: string): string[] {
       !/^(обл|область|край|респ|республика|ао)\.?(?![a-zа-яё])/i.test(part),
   )
   if (cityOnly && !out.includes(cityOnly)) out.push(cityOnly)
+
+  // Город переименован («Свердловск» → «Екатеринбург», «Горький» → «Нижний
+  // Новгород»): геокодер знает только нынешнее название, поэтому пробуем его,
+  // пока не поздно. Регион из исходной строки сохраняем — он не менялся.
+  const current = canonicalCityName(cityOnly ?? base)
+  if (current) {
+    const region = (plain || base)
+      .split(",")
+      .map((part) => part.trim())
+      .find((part) => /(обл|область|край|респ|республика)\b/i.test(part))
+    const withRegion = region ? `${current}, ${region}` : current
+    if (!out.includes(withRegion)) out.push(withRegion)
+    if (!out.includes(current)) out.push(current)
+  }
 
   return out.filter((value, index) => value.length >= 3 && out.indexOf(value) === index)
 }
