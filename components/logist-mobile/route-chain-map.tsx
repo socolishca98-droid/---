@@ -90,7 +90,6 @@ export function RouteChainMap({ points }: { points: RouteMapPoint[] }) {
       maxZoom: 12,
       attribution: "© OpenStreetMap",
       crossOrigin: true,
-      className: "map-tiles-dark",
     })
     tiles.addTo(instance)
 
@@ -159,7 +158,7 @@ export function RouteChainMap({ points }: { points: RouteMapPoint[] }) {
   return (
     <div
       ref={container}
-      className="h-[190px] w-full overflow-hidden rounded-xl border border-border lg:h-[420px]"
+      className="route-map h-[190px] w-full overflow-hidden rounded-xl border border-border lg:h-[420px]"
       aria-label="Карта маршрута"
       role="img"
     />
