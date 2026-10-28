@@ -1074,7 +1074,7 @@ export default function RouteAssistantPage() {
     foundLoadsRef.current = [...foundLoadsRef.current, ...added]
     setFoundLoads(foundLoadsRef.current)
     setExtendNote(null)
-    toast(`Добрал грузы рядом с ${geo.name} — пересобираю маршрут`, {
+    toast(`Рядом с «${geo.name}» нашлись грузы — пересобираю маршрут`, {
       description:
         homeRows.length > 0
           ? `Биржа отдала ${rowsFound.length} грузов вокруг точки, где стоит машина, из них ${homeRows.length} везут в ${homeGeo?.name ?? "регион базы"}`

@@ -1616,6 +1616,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   let growthHint: string | null = null
   let growthHours: number | null = null
   const stopLoad = input.stop.load
+  const lastLoadCity = legs.length > 0 ? legs[legs.length - 1].load.toCity : ""
   if (input.stop.kind === "hours" && stopLoad) {
     const longer = nextHoursStep(maxHours)
     if (longer > maxHours) {
@@ -1626,9 +1627,14 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
         `Следующий груз${ready}: ${shortCity(stopLoad.fromCity)} → ${shortCity(stopLoad.toCity)}. ` +
         `Чтобы взять его, поставьте срок ${hoursLabel(longer)} (${longer} ч) — помощник доберёт его в цепочку.`
     }
-  } else if (input.stop.kind === "none" && legs.length > 0) {
+  } else if (input.stop.kind === "none" && legs.length > 0 && !input.atHome) {
+    // Совет «расширьте радиус» нужен, только если маршрут НЕ закрылся на базе.
+    // Живой экран ПК-версии: машина вернулась домой с грузом («Ярославль →
+    // Кемерово → Ярославль»), а под итогом красовалось красным «в радиусе
+    // 150 км от маршрута грузов не нашлось — увеличьте радиус». Это уже не
+    // правда: круг закрыт, добирать нечего.
     growthHint =
-      `В радиусе ${input.detourKm} км от маршрута грузов не нашлось. ` +
+      `За ${shortCity(lastLoadCity)} грузов «по пути» в радиусе ${input.detourKm} км не нашлось. ` +
       "Увеличьте радиус «грузы по пути» в тонкой настройке — цепочка станет длиннее."
   }
 
