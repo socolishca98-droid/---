@@ -1212,6 +1212,76 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       trimmedByHours = false
     }
 
+    // Круг не закрылся, и из конечного города домой ничего не везут. Тогда
+    // пробуем УКОРОТИТЬ цепочку: может, из предыдущей точки домой везут — и
+    // доехать туда гружёным лучше, чем тащить последнее плечо вперёд, а
+    // потом ползти на базу пустым.
+    //
+    // Живой замер, из-за которого это появилось (база «Ярославль», лимит
+    // 72 ч): цепочка брала плечо «Ярославль → Ростов-на-Дону» за 200 000 ₽,
+    // съедала 52 ч из 72 — и на 1157 км порожнего возврата времени хватало,
+    // а на гружёную обратку (медленнее: погрузка, выгрузка, скорость) уже
+    // нет. Биржа в том же додоборе отдавала 26 грузов «Ростов → Ярославская
+    // область». Помощник возвращался пустым на всех трёх проверенных базах:
+    // 635, 1157 и 1504 км порожнем.
+    if (!backLeg && legs.length > 1) {
+      const fuelFor = (km: number) =>
+        fuelPrice !== null && km > 0 ? (estimateFuelL(vehicle, km, 0) ?? 0) * fuelPrice : 0
+      const legValue = (leg: RouteLeg) => leg.profitRub ?? leg.revenue
+      const deadHomeFrom = (leg: RouteLeg) =>
+        samePlace(leg.load.toCity, effectiveStart) || !options.startPoint || !leg.load.toPoint
+          ? 0
+          : haversineKm(options.startPoint, leg.load.toPoint)
+      // Сколько денег даёт текущий финиш: все плечи минус топливо на порожний
+      // возврат с последней точки.
+      let bestValue =
+        legs.reduce((sum, leg) => sum + legValue(leg), 0) - fuelFor(deadHomeFrom(legs[legs.length - 1]))
+      let bestLegs: RouteLeg[] | null = null
+      for (let cut = legs.length - 1; cut >= 1; cut -= 1) {
+        const head = legs.slice(0, cut)
+        const last = head[head.length - 1]
+        const alt = findBackHomeLeg({
+          legs: head,
+          pool,
+          vehicle,
+          fuelPrice,
+          startCity: effectiveStart,
+          currentCity: last.load.toCity,
+          currentPoint: last.load.toPoint ?? null,
+          startPoint: options.startPoint ?? null,
+          homeRadiusKm: startRadiusKm,
+          maxHours,
+          minProfitPerKm,
+          detourKm,
+          keepIds,
+          clock: head.reduce((sum, leg) => sum + leg.hours + leg.waitHours, 0),
+          departAt,
+        })
+        if (!alt) continue
+        const value =
+          head.reduce((sum, leg) => sum + legValue(leg), 0) + legValue(alt) - fuelFor(deadHomeFrom(alt))
+        // Допуск на пустой ход. В модели пустой километр стоит только
+        // топлива, а на деле это ещё ~20 ч работы машины и водителя без
+        // выручки и износ. Живой замер (база «Новосибирск», лимит 72 ч):
+        // «уехать в Иркутск и вернуться 1434 км порожнем» давало 230 501 ₽,
+        // «вернуться из Красноярска грузом за 38 000 ₽» — 208 000 ₽.
+        // Разница 10% в деньгах, но круг во втором случае закрыт. Поэтому
+        // гружёный возврат выигрывает, если проигрывает не больше 15%.
+        if (value * 1.15 >= bestValue) {
+          bestValue = value
+          bestLegs = [...head, alt]
+          break
+        }
+      }
+      if (bestLegs) {
+        legs.length = 0
+        legs.push(...bestLegs)
+        // Хвост снят не из-за часов, а ради обратки: причина остановки другая,
+        // и объяснение берём у последнего плеча новой цепочки.
+        trimmedByHours = false
+      }
+    }
+
     const totalRevenue = legs.reduce((sum, leg) => sum + leg.revenue, 0)
     const totalLoaded = legs.reduce((sum, leg) => sum + leg.loadedKm, 0)
     const totalDeadhead = legs.reduce((sum, leg) => sum + leg.deadheadKm, 0)
