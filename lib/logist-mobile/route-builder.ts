@@ -667,10 +667,41 @@ function buildChain(
     //     поэтому маршрут двигается по календарю, а не прыгает по датам;
     //  5. при равной готовности — самая высокая ставка за километр.
     const firstLeg = legs.length === 0
+    /**
+     * Везёт ли машину куда-то, откуда в пуле есть груз домой.
+     *
+     * Зачем: без этого первый груз выбирался по ставке за километр — лучшим
+     * оказывалось самое длинное плечо, а из его точки выгрузки на бирже
+     * ничего не везли на базу. Живой замер (база «Ярославль», лимит 72 ч):
+     * единственное плечо «Ярославль → Свердловск» за 270 000 ₽, 27 ч из 72,
+     * и 1062 км порожнего возврата. При этом в пуле лежали грузы из
+     * Екатеринбурга. Помощник не знал, что финишная точка — тупик.
+     */
+    const hasWayHome = (load: BuilderLoad): boolean => {
+      if (!startPoint || !load.toPoint || startRadiusKm <= 0) return false
+      const pickupRadius = Math.max(detourKm, 200)
+      return pool.some((candidate) => {
+        // Сам груз обраткой не считается: его погрузка всегда рядом с его же
+        // выгрузкой, и без этой строки любой груз «везёт домой» сам себя.
+        if (candidate.id === load.id) return false
+        if (used.has(candidate.id)) return false
+        if (!candidate.fromPoint || !candidate.toPoint) return false
+        if (!loadFitsVehicle(candidate, vehicle)) return false
+        if (loadPrice(candidate) <= 0) return false
+        const toHome = samePlace(candidate.toCity, startCity)
+        if (!toHome && haversineKm(startPoint, candidate.toPoint) > startRadiusKm) return false
+        return haversineKm(load.toPoint!, candidate.fromPoint) <= pickupRadius
+      })
+    }
     const ordered = [...candidates].sort((a, b) => {
       const aKeep = keepIds.includes(a.id) ? 0 : 1
       const bKeep = keepIds.includes(b.id) ? 0 : 1
       if (aKeep !== bKeep) return aKeep - bKeep
+      // Из точки, откуда есть обратка, — раньше, чем из тупика. Разница в
+      // ставке это не отменяет: тупик просто перестаёт быть первым выбором.
+      const aHome = hasWayHome(a) ? 0 : 1
+      const bHome = hasWayHome(b) ? 0 : 1
+      if (aHome !== bHome) return aHome - bHome
       if (firstLeg) {
         const aHome = samePlace(a.toCity, startCity) ? 1 : 0
         const bHome = samePlace(b.toCity, startCity) ? 1 : 0
