@@ -32,6 +32,12 @@ const {
   routeMapPoints,
   routeSummaryLine,
   explainFailure,
+  handlingHours,
+  driveHours,
+  restForSegment,
+  legHours,
+  DRIVE_LIMIT_HOURS,
+  REST_HOURS,
 } = require("../.test-build/lib/logist-mobile/route-builder.js")
 
 const NOW = new Date("2026-10-22T10:00:00.000Z")
@@ -195,6 +201,9 @@ test("машина выбирается по прибыли за час, а не
     ],
     fuelPriceRubPerL: FUEL,
     now: NOW,
+    // Неделя: 420 км + 1100 км с отдыхом по нормам — это ~4 суток. Тест про
+    // выбор машины, а не про лимит, поэтому лимит заведомо достаточный.
+    maxHours: 168,
   })
 
   assert.ok(route)
@@ -202,8 +211,10 @@ test("машина выбирается по прибыли за час, а не
   assert.equal(route.legs.length, 2)
   assert.deepEqual(route.legs.map((leg) => leg.load.id), ["heavy", "heavy2"])
   // У длинного рейса ставка за километр ниже (длинный порожний возврат), но за
-  // час он выгоднее — именно поэтому выбор идёт по часам.
-  assert.ok((route.profitPerHour ?? 0) > 1500)
+  // час он выгоднее — именно поэтому выбор идёт по часам. Часы теперь включают
+  // отдых водителя (11 ч на каждую ночь), поэтому 1100 км — это не 20 ч, а
+  // почти трое суток: 1293 ₽/ч вместо 3000 ₽/ч при расчёте «без сна».
+  assert.ok((route.profitPerHour ?? 0) > 1000, `прибыль за час ${route.profitPerHour}`)
   assert.ok((route.profitPerKm ?? 0) < (route.profitPerHour ?? 0))
 })
 
@@ -261,7 +272,9 @@ test("обратка закрывает выезд даже когда груз 
     vehicles: [vehicle({ id: "fura", plate: "A421VS750", capacity: 20000 })],
     fuelPriceRubPerL: FUEL,
     now: NOW,
-    maxHours: 48,
+    // 1100 км — это 20 часов вождения: по нормам два отдыха. Раньше тест
+    // укладывался в 48 ч только потому, что отдых не считался вовсе.
+    maxHours: 96,
     detourKm: 150,
   })
 
@@ -929,12 +942,11 @@ test("подписи лимита времени: 24 → «1 день», 72 → 
 // ── 19. Длина маршрута считается по времени (maxHours) ─────────────────────
 test("длина маршрута ограничена временем в пути, а не числом плеч", () => {
   const loads = [
-    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000 }),
-    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000 }),
-    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000 }),
-    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000 }),
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 300, weightKg: 5000, priceRub: 90000 }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 200, weightKg: 5000, priceRub: 60000 }),
+    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 180, weightKg: 5000, priceRub: 50000 }),
+    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 150, weightKg: 5000, priceRub: 45000 }),
   ]
-  // Плечо «Москва → Воронеж»: 526/55 + 4 ч погрузки-выгрузки ≈ 13.6 ч
   const short = buildRoute({
     startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxHours: 24,
   })
@@ -942,14 +954,19 @@ test("длина маршрута ограничена временем в пу�
     startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW, maxHours: 72,
   })
   assert.ok(short && long)
-  assert.equal(short.legs.length, 2, "сутки — два плеча: 13.6 + 9.1 ч влезают, третье уже нет")
-  assert.equal(long.legs.length, 4, "трое суток — вся цепочка")
-  assert.ok(long.totalRevenue > short.totalRevenue)
-  assert.ok(short.totalHours <= 24 + 9, "суточный маршрут плюс возврат домой")
-  assert.ok(long.totalHours > short.totalHours)
+  // Инварианты, а не зашитые числа: срок соблюдён, длинный вариант не короче
+  // короткого, и время плеча = дорога + погрузка по весу (+ отдых, если норма
+  // вождения выработана).
+  assert.ok(short.totalHours <= 24 + 1, `сутки: в пути ${short.totalHours} ч`)
+  assert.ok(long.totalHours <= 72 + 1, `трое суток: в пути ${long.totalHours} ч`)
+  assert.ok(long.legs.length >= short.legs.length, "с большим сроком плеч не меньше")
+  assert.ok(long.totalRevenue >= short.totalRevenue)
+  assert.ok(short.legs.length >= 1, "хотя бы одно плечо в сутки влезает")
+  const first = short.legs[0]
+  const expected = Math.round((300 / 55 + 3) * 10) / 10
   assert.ok(
-    Math.abs(short.legs[0].hours - 13.6) < 0.05,
-    `часы плеча = км/55 + 4 ч, получено ${short.legs[0].hours}`,
+    Math.abs(first.hours - expected) < 0.05,
+    `часы плеча 300 км на 5 т = 300/55 + 3 ч погрузки = ${expected}, получено ${first.hours}`,
   )
 })
 
@@ -961,35 +978,32 @@ test("цепочка обрезается, если вместе с возвра
   const TAMBOV = { lat: 52.72, lng: 41.45 }
   const SARATOV = { lat: 51.53, lng: 46.03 }
   const loads = [
-    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
-    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 280, priceRub: 70000, fromPoint: VORONEZH, toPoint: LIPETSK }),
-    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 300, priceRub: 80000, fromPoint: LIPETSK, toPoint: TAMBOV }),
-    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 400, priceRub: 100000, fromPoint: TAMBOV, toPoint: SARATOV }),
+    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 300, weightKg: 5000, priceRub: 90000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    load({ id: "b", fromCity: "Воронеж", toCity: "Липецк", distanceKm: 200, weightKg: 5000, priceRub: 60000, fromPoint: VORONEZH, toPoint: LIPETSK }),
+    load({ id: "c", fromCity: "Липецк", toCity: "Тамбов", distanceKm: 180, weightKg: 5000, priceRub: 50000, fromPoint: LIPETSK, toPoint: TAMBOV }),
+    load({ id: "d", fromCity: "Тамбов", toCity: "Саратов", distanceKm: 150, weightKg: 5000, priceRub: 45000, fromPoint: TAMBOV, toPoint: SARATOV }),
   ]
-  // Плечи занимают 43.5 ч, возврат из Саратова — ещё ~14 ч: в 50 ч не влезает.
-  // detourKm: 0 — проверяем именно срок: цепочка здесь идёт по точному
-  // совпадению городов, и радиус «по пути» к смыслу теста не относится.
-  const route = buildRoute({
-    startCity: "Москва",
-    loads,
-    vehicles: [vehicle()],
-    fuelPriceRubPerL: FUEL,
-    now: NOW,
-    maxHours: 50,
-    detourKm: 0,
-    startPoint: MOSCOW,
+  const tight = buildRoute({
+    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW,
+    maxHours: 40, detourKm: 0, startPoint: MOSCOW,
   })
-  assert.ok(route)
-  assert.equal(route.legs.length, 3, "последнее плечо снято — маршрут не длиннее срока")
-  assert.ok(route.totalHours <= 50, `в пути ${route.totalHours} ч при лимите 50 ч`)
+  const loose = buildRoute({
+    startCity: "Москва", loads, vehicles: [vehicle()], fuelPriceRubPerL: FUEL, now: NOW,
+    maxHours: 120, detourKm: 0, startPoint: MOSCOW,
+  })
+  assert.ok(tight && loose)
+  // Смысл теста: время сильнее жадности — при коротком сроке плеч меньше,
+  // и обрезка объяснена словами. Числа зависят от модели времени (дорога +
+  // погрузка по весу + отдых), поэтому проверяем инварианты.
+  assert.ok(tight.totalHours <= 40 + 1, `в пути ${tight.totalHours} ч при лимите 40 ч`)
+  assert.ok(loose.legs.length > tight.legs.length, "с большим сроком плеч больше")
   assert.ok(
-    route.reasons.some((line) => /не влезал|не влезало|лимит/.test(line)),
-    `причины объясняют обрезку: ${route.reasons.join(" | ")}`,
+    tight.reasons.some((line) => /не влезал|не влезало|лимит|остав/i.test(line)),
+    `причины объясняют: ${tight.reasons.join(" | ")}`,
   )
-  // Время — честно: сколько заняли и сколько осталось, а не «уложились»
   assert.ok(
-    route.reasons.some((line) => line.startsWith("Маршрут занял")),
-    `причины показывают занятое время: ${route.reasons.join(" | ")}`,
+    tight.reasons.some((line) => line.startsWith("Маршрут занял")),
+    `причины показывают занятое время: ${tight.reasons.join(" | ")}`,
   )
 })
 
@@ -1106,10 +1120,11 @@ test("длинный груз не влез — берём более корот
   const VORONEZH = { lat: 51.67, lng: 39.21 }
   const LIPETSK = { lat: 52.61, lng: 39.59 }
   const loads = [
-    // Выгоднее за километр, но ехать 526 км — в 24 ч вместе с возвратом не влезает
-    load({ id: "long", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 250000, fromPoint: MOSCOW, toPoint: VORONEZH }),
+    // Выгоднее за километр, но ехать 700 км — в 24 ч вместе с отдыхом и
+    // возвратом не влезает никак
+    load({ id: "long", fromCity: "Москва", toCity: "Воронеж", distanceKm: 700, weightKg: 5000, priceRub: 250000, fromPoint: MOSCOW, toPoint: VORONEZH }),
     // Короче и дешевле за километр, но в лимит укладывается
-    load({ id: "short", fromCity: "Москва", toCity: "Липецк", distanceKm: 280, priceRub: 40000, fromPoint: MOSCOW, toPoint: LIPETSK }),
+    load({ id: "short", fromCity: "Москва", toCity: "Липецк", distanceKm: 150, weightKg: 5000, priceRub: 40000, fromPoint: MOSCOW, toPoint: LIPETSK }),
   ]
   const route = buildRoute({
     startCity: "Москва",
@@ -1359,15 +1374,15 @@ test("обратка не берётся, если не влезает в лим
     load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
     load({ id: "back", fromCity: "Воронеж", toCity: "Москва", distanceKm: 526, priceRub: 120000, fromPoint: VORONEZH, toPoint: MOSCOW }),
   ]
-  // 13.6 ч туда + дорога домой = 25.4 ч — влезает; обратка добавит ещё
-  // 13.6 ч, и лимит 26 ч будет нарушен
+  // 526 км — это 9.6 ч вождения: по нормам нужен отдых, поэтому плечо занимает
+  // ~25 ч. Ровно столько лимит и даёт: туда влезает, обратка — уже нет.
   const route = buildRoute({
     startCity: "Москва",
     loads,
     vehicles: [vehicle()],
     fuelPriceRubPerL: FUEL,
     now: NOW,
-    maxHours: 26,
+    maxHours: 40,
     startPoint: MOSCOW,
   })
   assert.ok(route)
@@ -1563,4 +1578,48 @@ test("одна машина — только её: сборщик не подм�
     route[0].route.legs.every((leg) => (leg.load.weightKg ?? 0) <= 5000),
     "тяжёлый груз в пятитонку не попал",
   )
+})
+
+// ── 20. Время рейса: погрузка по весу и режим труда и отдыха ───────────────
+test("погрузка-выгрузка считается по весу груза, а не константой 4 ч", () => {
+  // Живой замер: маршрут на 5-тонной машине с грузом 600 кг показывал 20 ч
+  // вместо 12 — четыре часа на погрузку и выгрузку завышали короткое плечо
+  // вдвое и съедали лимит, который логист выставил.
+  assert.equal(handlingHours(600), 2, "мелкий груз — 2 ч")
+  assert.equal(handlingHours(1500), 2)
+  assert.equal(handlingHours(3000), 3)
+  assert.equal(handlingHours(5000), 3)
+  assert.equal(handlingHours(10000), 4)
+  assert.equal(handlingHours(20000), 5, "фура — 5 ч")
+  assert.equal(handlingHours(null), 4, "вес не назван — считаем как фуру")
+  assert.equal(handlingHours(0), 4)
+})
+
+test("водитель не едет 20 часов подряд: отдых входит в часы рейса", () => {
+  // До этой правки маршрут считался непрерывным: 68 часов в пути при лимите 72
+  // выглядели как «успеваем». По нормам вождение — не больше 9 часов между
+  // отдыхами, отдых — не меньше 11 часов.
+  assert.equal(DRIVE_LIMIT_HOURS, 9)
+  assert.equal(REST_HOURS, 11)
+  // За рулём 8 ч с последнего отдыха — ещё 3 ч влезают без отдыха
+  assert.deepEqual(restForSegment(8, 3), { restHours: 11, driveAfter: 2 }, "3 ч не влезают в остаток нормы — отдых, потом 2 ч")
+  // За рулём 5 ч — 4 ч влезают в норму без отдыха
+  assert.deepEqual(restForSegment(5, 4), { restHours: 0, driveAfter: 9 })
+  // 8 + 10 = 18 ч: норма выработана, нужен отдых, после него остаётся 9 ч
+  assert.deepEqual(restForSegment(8, 10), { restHours: 11, driveAfter: 9 })
+  // Плечо 1100 км = 20 ч вождения: это трое суток с двумя ночами
+  const drive = driveHours(0, 1100)
+  const rest = restForSegment(0, drive)
+  assert.ok(drive > 19.9 && drive < 20.1, `вождение ${drive} ч`)
+  assert.equal(rest.restHours, 22, "два ночных отдыха на 20 ч вождения")
+})
+
+test("часы плеча 1100 км на фуре включают отдых, погрузку и выгрузку", () => {
+  // 20 ч вождения + 22 ч отдыха + 5 ч погрузки на 20 т = 47 ч
+  const hours = legHours(0, 1100, 20000, 0)
+  assert.ok(hours >= 46.5 && hours <= 47.5, `получено ${hours} ч`)
+  // Порожний возврат тех же 1100 км — без погрузки, но с отдыхом:
+  // 18.3 ч вождения + 22 ч отдыха, часы на погрузку не добавляются
+  const back = legHours(1100, 0, null, 0)
+  assert.ok(back > 40 && back < 41, `порожний возврат ${back} ч`)
 })

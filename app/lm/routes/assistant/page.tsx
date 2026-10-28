@@ -44,7 +44,9 @@ import {
   explainVehicleMismatch,
   AVG_DEADHEAD_KMH,
   AVG_LOADED_KMH,
-  LOAD_UNLOAD_HOURS,
+  handlingHours,
+  DRIVE_LIMIT_HOURS,
+  REST_HOURS,
   type BuilderLoad,
   type BuilderVehicle,
   type BuiltRoute,
@@ -2264,7 +2266,8 @@ function SetupPhase({
         <p className="text-[13px] font-medium text-foreground">Сколько едем</p>
         <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
           Помощник набирает грузы, пока маршрут укладывается в это время: около 55 км/ч с грузом,
-          по 4 часа на каждую погрузку-выгрузку и ожидание дат загрузки. Чем дольше едем — тем
+          от 2 до 5 часов на погрузку-выгрузку по весу груза, отдых водителя после 9 часов за
+          рулём и ожидание дат загрузки. Чем дольше едем — тем
           больше денег, но и больше смен в пути.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -2943,17 +2946,24 @@ function RoutePhase({
                     </p>
                     <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                       {leg.loadedKm > 0 ? `≈ ${leg.loadedKm} км` : "расстояние неизвестно"}
-                      {/* Часы в leg.hours — это и дорога, и 4 часа на погрузку с
-                          выгрузкой. Писать «80 км · 6 ч в пути» нельзя: логист
-                          читает это как «машина ползёт 6 часов». Поэтому дорога
-                          и обработка — раздельно. */}
+                      {/* Часы в leg.hours — это дорога, погрузка с выгрузкой и,
+                          если вождение упирается в суточную норму, отдых.
+                          Писать «80 км · 6 ч в пути» нельзя: логист читает это
+                          как «машина ползёт 6 часов». Поэтому составляющие —
+                          раздельно, и отдых назван отдыхом. */}
                       {leg.hours > 0
                         ? ` · ${Math.max(
                             1,
                             Math.round(
                               leg.deadheadKm / AVG_DEADHEAD_KMH + leg.loadedKm / AVG_LOADED_KMH,
                             ),
-                          )} ч в пути + ${LOAD_UNLOAD_HOURS} ч на погрузку/выгрузку`
+                          )} ч в пути + ${handlingHours(leg.load.weightKg)} ч на погрузку/выгрузку${
+                            Math.round(
+                              leg.deadheadKm / AVG_DEADHEAD_KMH + leg.loadedKm / AVG_LOADED_KMH,
+                            ) > DRIVE_LIMIT_HOURS
+                              ? ` + отдых ${REST_HOURS} ч (норма вождения ${DRIVE_LIMIT_HOURS} ч в сутки)`
+                              : ""
+                          }`
                         : ""}
                       {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
                     </p>
@@ -3368,7 +3378,8 @@ function CallSheet({
 
 /**
  * Сколько времени займёт маршрут — по часам, как его и планирует логист:
- * дорога (~55 км/ч с грузом) + 4 часа на каждую погрузку-выгрузку + возврат.
+ * дорога (~55 км/ч с грузом) + погрузка-выгрузка по весу груза + отдых
+ * водителя (11 ч после 9 ч за рулём) + возврат.
  * Ориентир для планировщика, а не обещание: точное время — после согласования.
  */
 /** Сколько часов лимита осталось незанятыми — для честной строки про срок. */

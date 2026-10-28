@@ -429,12 +429,75 @@ export function haversineKm(a: Point, b: Point): number {
 
 /**
  * Оценка времени плеча: гружёный путь ~55 км/ч, подъезд ~60 км/ч,
- * погрузка + выгрузка ~4 часа. Ориентир для планирования смен — не
- * обещание: точное время известен после согласования с фрахтователем.
+ * погрузка + выгрузка — по весу груза. Ориентир для планирования смен — не
+ * обещание: точное время известно после согласования с фрахтователем.
+ *
+ * Почему погрузка не константа: 4 часа — это фура на 20 т с боковой
+ * загрузкой. Для 600 кг в газели те же 4 часа завышают рейс вдвое и съедают
+ * лимит, который логист выставил. Живой случай: маршрут на 5-тонной машине
+ * с грузом 600 кг показывал 20 ч вместо 12.
  */
 export const AVG_LOADED_KMH = 55
 export const AVG_DEADHEAD_KMH = 60
+/** Значение по умолчанию — когда вес груза не назван: фура, погрузка + выгрузка */
 export const LOAD_UNLOAD_HOURS = 4
+
+/**
+ * Часы на погрузку и выгрузку по весу груза.
+ *
+ * Мелкий груз выгружают вручную за час-два, 20 тонн — за смену: погрузка
+ * борта, крепление, документы, выгрузка. Это не «придирки», а разница в
+ * лимите: на четырёх плечах по 600 кг константа съедала 16 часов из 72.
+ */
+export function handlingHours(weightKg?: number | null): number {
+  if (weightKg == null || weightKg <= 0) return LOAD_UNLOAD_HOURS
+  if (weightKg <= 1500) return 2
+  if (weightKg <= 5000) return 3
+  if (weightKg <= 10000) return 4
+  return 5
+}
+
+/**
+ * Режим труда и отдыха: сколько часов машина реально едет в сутки.
+ *
+ * До этой правки маршрут считался непрерывным: 68 часов в пути при лимите 72
+ * выглядели как «успеваем», хотя водитель физически не может ехать 68 часов.
+ * По нормам (Положение № 4244, ч. 2 ст. 28 ФЗ-196) вождение — не больше 9
+ * часов между отдыхами, отдых — не меньше 11 часов. Поэтому в часы рейса
+ * добавляется отдых: без него любая цифра «успеем или нет» остаётся
+ * приблизительной, а график — невыполнимым.
+ */
+export const DRIVE_LIMIT_HOURS = 9
+export const REST_HOURS = 11
+
+/** Часы вождения на отрезке: подъезд и гружёный путь с разными скоростями. */
+export function driveHours(deadheadKm: number, loadedKm: number): number {
+  return Math.max(0, deadheadKm) / AVG_DEADHEAD_KMH + Math.max(0, loadedKm) / AVG_LOADED_KMH
+}
+
+/**
+ * Сколько отдыха придётся взять на отрезке, если ехать его сейчас.
+ *
+ * `sinceRest` — сколько часов вождения уже накопилось с последнего отдыха.
+ * Возвращает и часы отдыха, и остаток вождения после отрезка — счётчик нужен
+ * следующему плечу.
+ */
+export function restForSegment(
+  sinceRest: number,
+  segmentDriveHours: number,
+): { restHours: number; driveAfter: number } {
+  let rest = 0
+  let driven = Math.max(0, sinceRest)
+  let left = Math.max(0, segmentDriveHours)
+  while (driven + left > DRIVE_LIMIT_HOURS + 1e-9) {
+    left -= DRIVE_LIMIT_HOURS - driven
+    rest += REST_HOURS
+    driven = 0
+    // Страховка от бесконечного цикла на мусорных числах
+    if (rest > REST_HOURS * 14) break
+  }
+  return { restHours: rest, driveAfter: driven + left }
+}
 
 /** Полночь даты в UTC — сравниваем календарные дни, а не часы. */
 function dayStart(date: Date): number {
@@ -472,9 +535,25 @@ function hoursBetween(from: Date, to: Date): number {
   return (to.getTime() - from.getTime()) / 3600000
 }
 
-/** Часы плеча: подъезд + гружёный путь + погрузка/выгрузка. */
-export function legHours(deadheadKm: number, loadedKm: number): number {
-  const hours = deadheadKm / AVG_DEADHEAD_KMH + loadedKm / AVG_LOADED_KMH + LOAD_UNLOAD_HOURS
+/**
+ * Часы плеча: подъезд + гружёный путь + погрузка/выгрузка (+ отдых, если
+ * вождение упирается в суточную норму).
+ *
+ * `weightKg` не назван — считаем как фуру (4 часа на погрузку и выгрузку):
+ * это безопаснее, чем занизить и потом не успеть.
+ */
+export function legHours(
+  deadheadKm: number,
+  loadedKm: number,
+  weightKg?: number | null,
+  sinceRest = 0,
+): number {
+  const drive = driveHours(deadheadKm, loadedKm)
+  const rest = sinceRest >= 0 ? restForSegment(sinceRest, drive).restHours : 0
+  // Порожний ход (например возврат домой) не грузят и не выгружают: часы на
+  // погрузку в нём — выдумка, которая съедает лимит.
+  const handling = loadedKm > 0 ? handlingHours(weightKg) : 0
+  const hours = drive + handling + rest
   // Точность до десятой часа: логист планирует смены, а не минуты
   return Math.round(hours * 10) / 10
 }
@@ -606,7 +685,9 @@ function findBackHomeLeg(input: {
     const loadedKm = Math.max(0, load.distanceKm ?? 0)
     const totalKm = deadheadKm + loadedKm
     if (totalKm <= 0) continue
-    const hours = legHours(deadheadKm, loadedKm)
+    // Обратка тоже идёт по нормам: после длинной цепочки вождение упирается
+    // в суточный лимит, значит отдых — часть этой дороги.
+    const hours = legHours(deadheadKm, loadedKm, load.weightKg, input.clock % DRIVE_LIMIT_HOURS)
     // Дорога домой от точки выгрузки. Груз в САМ город базы — возврата нет,
     // но груз «в свой регион» его не отменяет: до базы ещё доехать. Живой
     // замер: без этого маршрут на сутки выходил на 24.6 ч при лимите 24 —
@@ -615,7 +696,7 @@ function findBackHomeLeg(input: {
     const backHours =
       backHome || !startPoint || !load.toPoint
         ? 0
-        : legHours(haversineKm(startPoint, load.toPoint), 0)
+        : legHours(haversineKm(startPoint, load.toPoint), 0, null, input.clock % DRIVE_LIMIT_HOURS)
     if (clock + hours + backHours > maxHours) continue
     const money = legMoney(load, totalKm, vehicle, fuelPrice)
     if (money.revenue <= 0) continue
@@ -733,6 +814,8 @@ function buildChain(
   let currentPoint: Point | null = startPoint
   // Часы с момента выезда — по ним считаем, когда доедем до погрузки
   let clock = 0
+  // Часы вождения с последнего отдыха: по ним добавляем отдых в бюджет
+  let driveSinceRest = 0
 
   for (let step = 0; step < maxLegs; step += 1) {
     // Первый груз ищем шире: порожний выезд за ним — норма, если ставка
@@ -851,10 +934,10 @@ function buildChain(
      * цепочку на 49 ч при лимите 48, а «уложились в лимит» становилось
      * неправдой: хвост потом снимали вслепую.
      */
-    function backHomeHours(load: BuilderLoad): number {
+    function backHomeHours(load: BuilderLoad, sinceRest = driveSinceRest): number {
       if (samePlace(load.toCity, startCity)) return 0
       if (!startPoint || !load.toPoint) return 0
-      return legHours(haversineKm(startPoint, load.toPoint), 0)
+      return legHours(haversineKm(startPoint, load.toPoint), 0, null, sinceRest)
     }
 
     let best: {
@@ -887,7 +970,11 @@ function buildChain(
           : haversineKm(currentPoint, load.fromPoint)
       const loadedKm = Math.max(0, load.distanceKm ?? 0)
       const totalKm = deadheadKm + loadedKm
-      const hours = legHours(deadheadKm, loadedKm)
+      // Часы плеча: дорога + погрузка/выгрузка по весу + отдых, если норма
+      // вождения уже выработана.
+      const drive = driveHours(deadheadKm, loadedKm)
+      const rest = restForSegment(driveSinceRest, drive)
+      const hours = legHours(deadheadKm, loadedKm, load.weightKg, driveSinceRest)
       // Ожидание даты загрузки — тоже время маршрута: логист договорился
       // «еду трое суток», и пять суток простоя это нарушение.
       // Считаем ФАКТИЧЕСКИЕ часы от приезда до даты груза — и в проверке
@@ -913,7 +1000,7 @@ function buildChain(
       // Маршрут планируется по времени. Плечо не влезло — это ещё не конец:
       // следующий кандидат может быть короче или готов раньше, поэтому
       // запоминаем причину и пробуем дальше по списку.
-      const backHours = backHomeHours(load)
+      const backHours = backHomeHours(load, rest.driveAfter)
       if (clock + waitHours + hours + backHours > maxHours) {
         // Запоминаем самого «дешёвого по часам» непрошедшего: объяснять
         // будем именно ему — ближайший груз, который не влез в срок
@@ -964,7 +1051,10 @@ function buildChain(
       loadsAt && !lateRisk && hoursBetween(departAt, loadsAt) > arriveHours
         ? hoursBetween(departAt, loadsAt)
         : arriveHours
-    clock = startHours + best.loadedKm / AVG_LOADED_KMH + LOAD_UNLOAD_HOURS
+    // Ожидание даты загрузки дольше 8 часов — это и есть отдых: счётчик
+    // вождения обнуляется, иначе следующее плечо возьмёт лишние 11 часов.
+    if (startHours - arriveHours >= 8) driveSinceRest = 0
+    clock = startHours + best.loadedKm / AVG_LOADED_KMH + handlingHours(best.load.weightKg)
 
     used.add(best.load.id)
     usedFromKeys.add(normalizeCityKey(best.load.fromCity))
@@ -992,6 +1082,9 @@ function buildChain(
     // брала ещё одно плечо в 35 км. Для логиста это не один рейс, а два: домой
     // приехали — выезд закончился, следующий считается отдельно. Иначе экран
     // показывал «домой с грузом» и приписывал к этой поездке чужой заработок.
+    // Счётчик вождения: отдых уже заложен в часы плеча, поэтому после
+    // длинного отрезка начинаем считать с нуля.
+    driveSinceRest = restForSegment(driveSinceRest, driveHours(best.deadheadKm, best.loadedKm)).driveAfter
     currentKey = normalizeCityKey(best.load.toCity)
     // Точку выгрузки геокодер не знает — где машина после плеча, мы не знаем.
     // Держать прежнюю точку нельзя: живой замер помощника для базы «Нижний
