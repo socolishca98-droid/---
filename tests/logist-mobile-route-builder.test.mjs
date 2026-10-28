@@ -715,7 +715,7 @@ test("плечо знает дату загрузки и когда машина
   assert.equal(route.legs[0].waitHours, 13, "ждём ровно до даты загрузки")
 })
 
-test("груз, к дате загрузки которого не успеть, помечается риском", () => {
+test("груз, к дате которого не успеть, вторым плечом не берём", () => {
   const MOSCOW = { lat: 55.75, lng: 37.62 }
   const VORONEZH = { lat: 51.67, lng: 39.21 }
   const PERM = { lat: 58.01, lng: 56.25 }
@@ -752,13 +752,43 @@ test("груз, к дате загрузки которого не успеть,
     startPoint: MOSCOW,
   })
   assert.ok(route)
-  assert.equal(route.legs.length, 2)
-  assert.equal(route.legs[1].lateRisk, true, "приедем завтра, загрузка была сегодня")
-  assert.equal(route.lateRiskLegs, 1)
+  // Живой экран: вторым плечом стоял груз с загрузкой 29 окт, а расчёт честно
+  // писал «приедем ≈ 30 окт». Логист читал это как «маршрут, где машина
+  // опаздывает на сутки» — и был прав. Уехавший груз не купить ставкой,
+  // поэтому такое плечо в цепочку не идёт, а объяснение говорит почему.
+  assert.equal(route.legs.length, 1, "опаздывающее плечо в цепочку не берём")
+  assert.equal(route.legs[0].load.id, "a")
   assert.ok(
-    route.reasons.some((line) => line.includes("не успеть")),
+    route.reasons.some((line) => /не (успе|влез)/.test(line)),
     `причины: ${route.reasons.join(" | ")}`,
   )
+})
+
+test("груз с прошедшей датой загрузки вообще не попадает в сборку", () => {
+  // Дату прошлого дня отсекает фильтр «прошедшая дата» ещё до цепочки —
+  // поэтому риска «опоздали» на первом плече не возникает вовсе.
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "a",
+        fromCity: "Москва",
+        toCity: "Воронеж",
+        distanceKm: 526,
+        priceRub: 120000,
+        loadingDate: "2026-10-24T00:00:00.000Z",
+        fromPoint: MOSCOW,
+        toPoint: VORONEZH,
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: new Date("2026-10-25T09:00:00.000Z"),
+    startPoint: MOSCOW,
+  })
+  assert.equal(route, null)
 })
 
 test("вечером выезд переносится на утро — узлы в пути не планируют", () => {
@@ -1343,4 +1373,31 @@ test("обратка не берётся, если не влезает в лим
   assert.ok(route)
   assert.equal(route.legs.length, 1, "обратка не влезла в срок")
   assert.ok(route.totalHours <= route.maxHours, "лимит не нарушен")
+})
+
+test("машина пришла на базу — маршрут закончен, плечо «после дома» не берём", () => {
+  // Живой замер (база «Нижний Новгород»): цепочка шла «НН → Москва → НН
+  // (домой) → Дзержинск → Дзержинск» — после возврата на базу она брала ещё
+  // одно плечо в 35 км. Для логиста это два разных рейса: приехал домой —
+  // выезд закончился.
+  const NN = { lat: 56.3269, lng: 44.0059 }
+  const MSK = { lat: 55.7558, lng: 37.6173 }
+  const DZ = { lat: 56.2377, lng: 43.4595 }
+  const route = buildRoute({
+    startCity: "Нижний Новгород",
+    startPoint: NN,
+    loads: [
+      load({ id: "out", fromCity: "Нижний Новгород", toCity: "Москва", distanceKm: 440, priceRub: 110000, fromPoint: NN, toPoint: MSK }),
+      load({ id: "back", fromCity: "Москва", toCity: "Нижний Новгород", distanceKm: 440, priceRub: 100000, fromPoint: MSK, toPoint: NN }),
+      load({ id: "after", fromCity: "Дзержинск", toCity: "Дзержинск", distanceKm: 40, priceRub: 30000, fromPoint: DZ, toPoint: DZ }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    detourKm: 150,
+    startRadiusKm: 300,
+  })
+  assert.ok(route)
+  assert.deepEqual(route.legs.map((leg) => leg.load.id), ["out", "back"], "плечо после возврата домой не берём")
+  assert.equal(route.returnDeadheadKm, 0, "дома — пустого возврата нет")
 })

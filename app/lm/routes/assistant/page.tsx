@@ -41,6 +41,9 @@ import {
   nextHoursStep,
   prevHoursStep,
   routeMapPoints,
+  AVG_DEADHEAD_KMH,
+  AVG_LOADED_KMH,
+  LOAD_UNLOAD_HOURS,
   type BuilderLoad,
   type BuilderVehicle,
   type BuiltRoute,
@@ -216,6 +219,10 @@ export default function RouteAssistantPage() {
   const [variants, setVariants] = useState<RouteVariant[]>([])
   const [variantIndex, setVariantIndex] = useState(0)
   const route = variants[variantIndex]?.route ?? null
+  // Маршрут «до пересборки» — чтобы после отказа сказать, что именно поменялось
+  useEffect(() => {
+    if (route) routeRef.current = route
+  }, [route])
   /** Договорённости по грузам: позвонил → согласовано / отказ */
   const [calls, setCalls] = useState<Record<string, CallStatus>>({})
   /** Согласованные звонком грузы — пересборка их сохраняет */
@@ -272,6 +279,27 @@ export default function RouteAssistantPage() {
    * свежий список.
    */
   const foundLoadsRef = useRef<BuilderLoad[]>([])
+  /**
+   * Запреты на грузы — дублируются в ref.
+   *
+   * Зачем: `setExcludeIds` асинхронный. Когда логист нажимал «Отказ», обработчик
+   * собирал новый список, вызывал `setExcludeIds` и сразу `runBuild`, а внутри
+   * `runBuild` → `extendAlongRoute` пересборка шла по СТАРОМУ замыканию — и
+   * отказанный груз возвращался в маршрут. На экране это выглядело так: тост
+   * «груз убран, пересобираю», а маршрут не меняется.
+   */
+  /** Идёт ли мгновенная пересборка — тонкая полоса под шапкой результата. */
+  const [rebuilding, setRebuilding] = useState(false)
+  /** Текущий маршрут для сравнения «было → стало» после пересборки. */
+  const routeRef = useRef<BuiltRoute | null>(null)
+  const excludeRef = useRef<string[]>([])
+  const keepRef = useRef<string[]>([])
+  useEffect(() => {
+    excludeRef.current = excludeIds
+  }, [excludeIds])
+  useEffect(() => {
+    keepRef.current = keepIds
+  }, [keepIds])
   useEffect(() => {
     foundLoadsRef.current = foundLoads
   }, [foundLoads])
@@ -787,6 +815,9 @@ export default function RouteAssistantPage() {
     }
 
     const build = async () => {
+      // Мгновенная пересборка не показывает экран «собираю», и на экране
+      // ничего не происходит: логист думает, что кнопка не сработала.
+      setRebuilding(true)
       // Пока геокодер считает расстояния между городами, строить рано:
       // без точек «по пути» не считается, и маршрут выходит из одного
       // плеча. Живой прогон: нажали через 50 секунд после открытия экрана —
@@ -812,13 +843,19 @@ export default function RouteAssistantPage() {
       const seen = new Set(loadsWithPoints.map((load) => load.id))
       const extra = extraLoads.filter((load) => !seen.has(load.id))
       const pool = extra.length > 0 ? [...loadsWithPoints, ...extra] : loadsWithPoints
+      // Запреты: из аргумента ПЛЮС актуальные из ref. Аргумент мог прийти от
+      // обработчика, который ещё не дождался setExcludeIds.
+      const excludeAll = Array.from(new Set([...exclude, ...excludeRef.current]))
+      // Согласованные: тоже объединяем — иначе пересборка «забывала» груз,
+      // по которому логист уже договорился.
+      const keepAll = Array.from(new Set([...keep, ...keepRef.current]))
       const built = buildRouteVariants({
         startCity: startPlace,
         loads: pool,
         vehicles,
         fuelPriceRubPerL: 62,
-        keepIds: keep,
-        excludeIds: exclude,
+        keepIds: keepAll,
+        excludeIds: excludeAll,
         detourKm,
         startRadiusKm,
         maxHours: hoursLimit ?? maxHours,
@@ -827,7 +864,24 @@ export default function RouteAssistantPage() {
       setVariants(built)
       setVariantIndex(0)
       setPhase("route")
+      setRebuilding(false)
+      // Что именно поменялось — словами. Без этого после отказа логист видит
+      // новый маршрут и не понимает, учли ли его действие.
+      if (instant) {
+        const before = routeRef.current
+        const after = built[0]?.route ?? null
+        if (after) {
+          const wasIds = before?.legs.map((leg) => leg.load.id).join(",") ?? ""
+          const nowIds = after.legs.map((leg) => leg.load.id).join(",")
+          if (before && wasIds !== nowIds) {
+            toast.success(
+              `Маршрут пересобран: ${after.legs.length} плеч, ${formatMoney(after.totalProfitRub ?? after.totalRevenue)} прибыли`,
+            )
+          }
+        }
+      }
       if (built.length === 0) {
+        setRebuilding(false)
         toast.error("Из этого города не собралось ни одного окупаемого плеча")
         return
       }
@@ -1359,21 +1413,33 @@ export default function RouteAssistantPage() {
   }
 
   /** Отказ фрахтователя: убираем груз и пересобираем, согласованные остаются. */
-  function declineLoad(loadId: string) {    setCalls((prev) => ({ ...prev, [loadId]: "declined" }))
-    const keep = keepIds.filter((id) => id !== loadId)
-    const exclude = [...excludeIds, loadId]
+  function declineLoad(loadId: string) {
+    setCalls((prev) => ({ ...prev, [loadId]: "declined" }))
+    // ref пишем ДО сборки: иначе auto-додобор внутри runBuild пересоберёт
+    // маршрут по старому списку запретов, и отказанный груз вернётся.
+    const keep = keepRef.current.filter((id) => id !== loadId)
+    const exclude = Array.from(new Set([...excludeRef.current, loadId]))
+    keepRef.current = keep
+    excludeRef.current = exclude
     setKeepIds(keep)
     setExcludeIds(exclude)
-    runBuild(startCity, keep, exclude, variants[variantIndex]?.hours, true)
     toast("Груз убран — пересобираю маршрут")
+    runBuild(startCity, keep, exclude, variants[variantIndex]?.hours, true)
   }
 
   /** Убрать груз из маршрута без статуса отказа. */
   function removeLoad(loadId: string) {
-    const keep = keepIds.filter((id) => id !== loadId)
-    const exclude = [...excludeIds, loadId]
+    const keep = keepRef.current.filter((id) => id !== loadId)
+    const exclude = Array.from(new Set([...excludeRef.current, loadId]))
+    keepRef.current = keep
+    excludeRef.current = exclude
     setKeepIds(keep)
     setExcludeIds(exclude)
+    setCalls((prev) => {
+      const next = { ...prev }
+      delete next[loadId]
+      return next
+    })
     runBuild(startCity, keep, exclude, variants[variantIndex]?.hours, true)
   }
 
@@ -1549,6 +1615,13 @@ export default function RouteAssistantPage() {
         ) : phase === "building" ? (
           <BuildingPhase step={buildStep} waitingPoints={waitingPoints} />
         ) : variants.length > 0 && route ? (
+          <>
+            {rebuilding ? (
+              <div className="mb-3 flex items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2 text-[12.5px] text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Пересобираю маршрут с учётом отказа…
+              </div>
+            ) : null}
           <RoutePhase
             route={route}
             calls={calls}
@@ -1578,6 +1651,7 @@ export default function RouteAssistantPage() {
               runBuild(startCity, keepIds, excludeIds, hours, true)
             }}
           />
+          </>
         ) : (
           <FailedPhase
             startCity={cityOfAddress(startCity) || startCity}
@@ -1726,7 +1800,7 @@ function LiveSearchCard({
             <input
               value={from}
               onChange={(event) => setFrom(event.target.value)}
-              placeholder={defaultFrom || "Например: Вязники"}
+              placeholder="Город или адрес базы"
               className="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
             />
           </div>
@@ -1739,7 +1813,7 @@ function LiveSearchCard({
             <input
               value={to}
               onChange={(event) => setTo(event.target.value)}
-              placeholder="Например: Ярославль"
+              placeholder="Город, откуда едем"
               className="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
             />
           </div>
@@ -1977,7 +2051,7 @@ function SetupPhase({
           <input
             value={startCity}
             onChange={(event) => setStartCity(event.target.value)}
-            placeholder="Например: Коломна"
+            placeholder="Город, откуда едем"
             className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
           />
         </div>
@@ -2833,7 +2907,18 @@ function RoutePhase({
                     </p>
                     <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                       {leg.loadedKm > 0 ? `≈ ${leg.loadedKm} км` : "расстояние неизвестно"}
-                      {leg.hours > 0 ? ` · ≈ ${Math.round(leg.hours)} ч в пути` : ""}
+                      {/* Часы в leg.hours — это и дорога, и 4 часа на погрузку с
+                          выгрузкой. Писать «80 км · 6 ч в пути» нельзя: логист
+                          читает это как «машина ползёт 6 часов». Поэтому дорога
+                          и обработка — раздельно. */}
+                      {leg.hours > 0
+                        ? ` · ${Math.max(
+                            1,
+                            Math.round(
+                              leg.deadheadKm / AVG_DEADHEAD_KMH + leg.loadedKm / AVG_LOADED_KMH,
+                            ),
+                          )} ч в пути + ${LOAD_UNLOAD_HOURS} ч на погрузку/выгрузку`
+                        : ""}
                       {leg.load.weightKg ? ` · ${formatWeightKg(leg.load.weightKg)}` : ""}
                     </p>
 
