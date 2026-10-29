@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { tripState } = require("../.test-build/lib/shift/trip-state.js")
+const { tripState, isTripStarted } = require("../.test-build/lib/shift/trip-state.js")
 
 test("открытая точка — это и есть текущий рейс", () => {
   const state = tripState([
@@ -48,4 +48,13 @@ test("точки с разными закрывающими статусами �
   assert.equal(state.closed.length, 2)
   assert.equal(state.open.length, 1)
   assert.equal(state.active.status, "driving")
+})
+
+test("после «Начать рейс» карточка «Начать рейс» больше не показывается", () => {
+  // Раньше условие смотрело только на наличие открытых точек, и кнопка
+  // оставалась на экране уже во время рейса
+  assert.equal(isTripStarted({ status: "control" }), true)
+  assert.equal(isTripStarted({ status: "assigned" }), false)
+  assert.equal(isTripStarted({ status: "documents" }), false)
+  assert.equal(isTripStarted(null), false)
 })

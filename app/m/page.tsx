@@ -33,7 +33,7 @@ import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import { isOrderClosed } from "@/lib/orders/stages"
-import { tripState } from "@/lib/shift/trip-state"
+import { isTripStarted, tripState } from "@/lib/shift/trip-state"
 import { shortPersonName } from "@/lib/logist-mobile/format"
 import { emptyTotals, shiftStatusLabel, type ShiftTotals } from "@/lib/shift/timeline"
 import {
@@ -208,6 +208,7 @@ export default function MobileHomePage() {
   const hasActiveTrip = tripView.hasActiveTrip
   const closedPoints = tripView.closed.length
   const tripFinished = tripView.finished
+  const tripStarted = isTripStarted(activeOrder)
   const routeProgress = tripView.progress
 
   // ── Загрузка данных ────────────────────────────────────────────────────
@@ -983,7 +984,7 @@ export default function MobileHomePage() {
             />
 
             {/* ── Назначенный, но не начатый рейс ── */}
-            {hasActiveTrip && routePoints.length > 0 && (
+            {hasActiveTrip && !tripStarted && routePoints.length > 0 && (
               <div className="rounded-2xl border border-orange-500/40 bg-orange-500/10 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Truck className="h-5 w-5 text-orange-400" />

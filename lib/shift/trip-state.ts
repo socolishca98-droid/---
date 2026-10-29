@@ -9,7 +9,7 @@
 // «Вам назначен рейс · Начать рейс» на полностью выполненном рейсе, а кнопка
 // молча ничего не делала — открытых точек уже не было.
 
-import { isOrderClosed } from "../orders/stages"
+import { isOrderClosed, normalizeOrderStatus } from "../orders/stages"
 
 export interface TripPointLike {
   status: string
@@ -48,4 +48,21 @@ export function tripState<T extends TripPointLike>(points: readonly T[] | null |
     finished: all.length > 0 && open.length === 0,
     progress: all.length > 0 ? Math.round((closed.length / all.length) * 100) : 0,
   }
+}
+
+/** Статусы, в которых рейс уже едет: водитель его принял. */
+const STARTED_TRIP_STATUSES = ["control"] as const
+
+/**
+ * Рейс уже начат — кнопку «Начать рейс» показывать нечего.
+ *
+ * Проверка приёмки: после нажатия «Начать рейс» статус смены менялся на «в
+ * пути», а карточка «Вам назначен рейс · Начать рейс» оставалась на экране:
+ * условие смотрело только на наличие открытых точек, а они остаются открытыми
+ * до выгрузки.
+ */
+export function isTripStarted(order: { status?: string | null } | null | undefined): boolean {
+  const status = normalizeOrderStatus(order?.status)
+  if (!status) return false
+  return (STARTED_TRIP_STATUSES as readonly string[]).includes(status)
 }
