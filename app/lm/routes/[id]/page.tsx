@@ -54,6 +54,7 @@ import {
   type MobileRoute,
 } from "@/lib/logist-mobile/types"
 import {
+  displayCity,
   formatCount,
   formatDateTime,
   formatMoney,
@@ -164,7 +165,9 @@ export default function LogistRoutePage() {
       driverName: route.driver?.name ?? null,
       distanceKm: route.totalDistance ?? route.stats?.totalDistance ?? null,
     }
-    const waypoints = routeWaypoints(route.orders ?? [], shortCity)
+    // displayCity: в адресах с карт округ стоит в скобках, и точка маршрута
+    // читалась как «Бугровское с.п.)»
+    const waypoints = routeWaypoints(route.orders ?? [], displayCity)
     return {
       step: routeNextStep(input),
       progress: routeOrderProgress(route.orders ?? []),
@@ -802,7 +805,7 @@ export default function LogistRoutePage() {
                   {unagreedOrders.map((order) => (
                     <li key={order.id} className="text-[12.5px] text-foreground/90">
                       · {order.clientName || shortCity(order.routeFrom)} —{" "}
-                      {shortCity(order.routeFrom)} → {shortCity(order.routeTo)}
+                      {displayCity(order.routeFrom)} → {displayCity(order.routeTo)}
                     </li>
                   ))}
                 </ul>

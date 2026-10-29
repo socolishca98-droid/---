@@ -42,7 +42,14 @@ import {
   routeWaypoints,
   type RouteStep,
 } from "@/lib/logist-mobile/route-flow"
-import { formatCount, formatMoney, formatWeightKg, plural, shortCity, telHref } from "@/lib/logist-mobile/format"
+import {
+  displayCity,
+  formatCount,
+  formatMoney,
+  formatWeightKg,
+  plural,
+  telHref,
+} from "@/lib/logist-mobile/format"
 
 const TABS = [
   { id: "active", label: "Активные" },
@@ -233,7 +240,9 @@ export default function LogistRoutesPage() {
           routes.map(({ route, hint }) => {
             const meta = ROUTE_STATUS_META[route.status] ?? ROUTE_STATUS_META.planned
             const tel = telHref(route.driver?.phone)
-            const points = routeWaypoints(route.orders ?? [], shortCity)
+            // displayCity, а не shortCity: в адресах с карт округ стоит в
+            // скобках, и заголовок выходил «Нижний Новгород → Бугровское с.п.)»
+            const points = routeWaypoints(route.orders ?? [], displayCity)
             const summary = routeSummaryLine(
               { ...route, distanceKm: route.totalDistance ?? route.stats?.totalDistance ?? null },
               formatWeightKg,
