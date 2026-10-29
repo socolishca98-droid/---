@@ -78,3 +78,6 @@ public/uploads/*
 
 # Резервные копии базы (prisma/backups) — в репозиторий не попадают
 prisma/backups/
+
+# локальная связка с Vercel
+.vercel/

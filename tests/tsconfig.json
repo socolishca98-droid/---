@@ -77,6 +77,7 @@
     "../lib/ati/regions.ts",
     "../lib/ati/ati-city-regions.ts",
     "../lib/geo/nominatim.ts",
+    "../lib/geo/nearby.ts",
     "../lib/ati/base-region.ts"
   ]
 }

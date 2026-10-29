@@ -11,12 +11,7 @@ import { Coffee, Fuel, BedDouble, Loader2, MapPin, Navigation } from "lucide-rea
 import { BottomNav } from "@/components/driver-mobile/bottom-nav"
 import { SosButton } from "@/components/driver-mobile/sos-button"
 import { useDriverSession } from "@/hooks/use-driver-session"
-import {
-  formatMeters,
-  searchNearby,
-  type NearbyKind,
-  type NearbyPlace,
-} from "@/lib/geo/overpass"
+import { formatMeters, type NearbyKind, type NearbyPlace } from "@/lib/geo/nearby"
 
 const CATEGORIES: Array<{ kind: NearbyKind; label: string; icon: any }> = [
   { kind: "fuel", label: "АЗС", icon: Fuel },
@@ -29,6 +24,8 @@ export default function NearbyPage() {
   const [kind, setKind] = useState<NearbyKind>("fuel")
   const [places, setPlaces] = useState<NearbyPlace[]>([])
   const [loading, setLoading] = useState(false)
+  /** Честная причина, почему списка нет: сеть или правда пусто */
+  const [problem, setProblem] = useState<string | null>(null)
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [positionNote, setPositionNote] = useState("")
 
@@ -69,9 +66,34 @@ export default function NearbyPage() {
   const load = useCallback(async () => {
     if (!position) return
     setLoading(true)
-    const found = await searchNearby(position.lat, position.lng, kind)
-    setPlaces(found)
-    setLoading(false)
+    setProblem(null)
+    try {
+      // Через свой сервер, а не напрямую в Overpass: браузер водителя получал
+      // CORS-отказ, а пустой список выглядел как «вокруг ничего нет».
+      const params = new URLSearchParams({
+        lat: String(position.lat),
+        lng: String(position.lng),
+        kind,
+      })
+      const res = await fetch(`/api/geo/nearby?${params}`, { cache: "no-store" })
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean
+        places?: NearbyPlace[]
+        message?: string | null
+      }
+      if (!res.ok || !data.success) {
+        setPlaces([])
+        setProblem(data.message || "Не удалось получить данные карты. Нажмите «Обновить список».")
+      } else {
+        setPlaces(data.places ?? [])
+        setProblem(data.message ?? null)
+      }
+    } catch {
+      setPlaces([])
+      setProblem("Нет связи: список не обновлён. Проверьте интернет и нажмите «Обновить список».")
+    } finally {
+      setLoading(false)
+    }
   }, [position, kind])
 
   useEffect(() => {
@@ -113,9 +135,13 @@ export default function NearbyPage() {
         )}
 
         {!loading && position && places.length === 0 && (
-          <p className="py-10 text-center text-sm text-gray-500">
-            В радиусе 7 км ничего не нашлось. Попробуйте другую категорию или
-            подъедьте ближе к трассе.
+          <p
+            className={`py-10 text-center text-sm ${
+              problem && problem.includes("карте") ? "text-yellow-400/90" : "text-gray-500"
+            }`}
+          >
+            {problem ??
+              "В радиусе 7 км ничего не нашлось. Попробуйте другую категорию или подъедьте ближе к трассе."}
           </p>
         )}
 

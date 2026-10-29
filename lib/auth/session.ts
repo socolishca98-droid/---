@@ -143,23 +143,29 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
   const payload = await readPayload(request, "staff")
   if (!payload) return null
 
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-      mustChangePassword: true,
-      organizationId: true,
-      organization: { select: { name: true } },
-    },
-  })
+  // Две проверки независимы: и пользователь, и его сессия ищутся по данным из
+  // подписанного токена. Последовательные запросы давали 1.4 с на каждый экран
+  // (удалённая база, по 300–400 мс на круг) — теперь один круг вместо двух.
+  const [user, sessionActive] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        mustChangePassword: true,
+        organizationId: true,
+        organization: { select: { name: true } },
+      },
+    }),
+    assertSessionActive(payload.jti, payload.sub),
+  ])
   if (!user) return null
   if (user.status !== "active") return null
   if (!STAFF_ROLES.includes(user.role as UserRole)) return null
-  if (!(await assertSessionActive(payload.jti, user.id))) return null
+  if (!sessionActive) return null
 
   return {
     kind: "staff",
@@ -182,7 +188,11 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
   const payload = await readPayload(request, "driver")
   if (!payload) return null
 
-  const user = await prisma.user.findUnique({
+  // См. комментарий в loadStaffSession: и пользователь, и сессия ищутся по
+  // подписанному токену, поэтому два запроса идут параллельно — на телефоне
+  // водителя это половина задержки экрана.
+  const [user, sessionActive] = await Promise.all([
+  prisma.user.findUnique({
     where: { id: payload.sub },
     select: {
       id: true,
@@ -215,10 +225,12 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
         },
       },
     },
-  })
+  }),
+  assertSessionActive(payload.jti, payload.sub),
+  ])
   if (!user || user.role !== "driver" || user.status !== "active") return null
   if (!user.driverId || !user.driver) return null
-  if (!(await assertSessionActive(payload.jti, user.id))) return null
+  if (!sessionActive) return null
 
   return {
     kind: "driver",

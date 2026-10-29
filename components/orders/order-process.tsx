@@ -482,16 +482,27 @@ export function OrderProcess({
           <div>
             <p className="text-xs text-muted-foreground">Цена</p>
             <p className="text-sm font-medium">
-              {money(order.price)}
-              {order.priceNegotiable && (
+              {/* Ставка 0 — это НЕ «ноль рублей», а «ставку не назвали»: у
+                  грузов, взятых из базы биржи, суммы часто нет. Показывать
+                  «0 ₽» логист читает как бесплатный рейс. */}
+              {order.price && Number(order.price) > 0 ? money(order.price) : "не указана"}
+              {order.priceNegotiable && order.price && Number(order.price) > 0 && (
                 <span className="ml-1 text-xs text-muted-foreground">(торг)</span>
               )}
             </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Согласованная цена</p>
-            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-              {money(order.agreedPrice)}
+            <p
+              className={`text-sm font-medium ${
+                order.agreedPrice && Number(order.agreedPrice) > 0
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {order.agreedPrice && Number(order.agreedPrice) > 0
+                ? money(order.agreedPrice)
+                : "торг не закрыт"}
             </p>
           </div>
           <div>
@@ -549,7 +560,7 @@ export function OrderProcess({
                 inputMode="numeric"
                 value={agreedPriceInput}
                 onChange={(event) => setAgreedPriceInput(event.target.value)}
-                placeholder={order.price ? String(order.price) : "0"}
+                placeholder={order.price ? String(order.price) : "Сумма, о которой договорились"}
                 disabled={saving}
               />
             </div>

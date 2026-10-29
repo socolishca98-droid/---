@@ -42,6 +42,29 @@ interface UseStaffSessionReturn {
 
 const LOGIN_PATH = "/login?next=/lm"
 
+/**
+ * Последний известный ответ проверки сессии — на время жизни вкладки.
+ *
+ * Зачем: проверка сессии идёт в базу (в замерах — 1.4 с на тёплом сервере и
+ * до 8 с на холодном), и каждый экран /lm/* начинал с пустого места, потому
+ * что ждал её. Переход «Заказы → Оплаты → Ещё» превращался в три ожидания по
+ * полторы секунды. Кэш на 60 секунд показывает экран сразу, а проверку всё
+ * равно делает в фоне: если сессию отозвали, следующий ответ это покажет.
+ * Права не расширяются — сервер проверяет сессию на каждом API-запросе, кэш
+ * влияет только на то, что видно до ответа.
+ */
+const SESSION_TTL_MS = 60_000
+let cachedSession: {
+  at: number
+  user: StaffUser | null
+  organization: StaffOrganization | null
+} | null = null
+
+/** Сбросить кэш — после выхода или смены пользователя. */
+export function resetStaffSessionCache(): void {
+  cachedSession = null
+}
+
 export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffSessionReturn {
   const { requireAuth = true } = options
   const router = useRouter()
@@ -53,10 +76,18 @@ export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffS
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
+      // Свежий кэш — показываем сразу и не ждём сеть
+      if (cachedSession && Date.now() - cachedSession.at < SESSION_TTL_MS) {
+        setUser(cachedSession.user)
+        setOrganization(cachedSession.organization)
+        setIsLoading(false)
+        return
+      }
       const res = await fetch("/api/auth/session?kind=staff", { cache: "no-store" })
       const outcome = classifySessionStatus(res.status)
 
       if (outcome === "unauthorized") {
+        cachedSession = null
         setUser(null)
         setOrganization(null)
         if (requireAuth) router.replace(LOGIN_PATH)
@@ -72,8 +103,11 @@ export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffS
         return
       }
 
+      const sessionOrganization =
+        (data?.session?.organization as StaffOrganization | undefined) ?? null
+      cachedSession = { at: Date.now(), user: sessionUser, organization: sessionOrganization }
       setUser(sessionUser)
-      setOrganization((data?.session?.organization as StaffOrganization | undefined) ?? null)
+      setOrganization(sessionOrganization)
     } catch (error) {
       // Обрыв сети на телефоне — не повод разлогинивать: пробуем ещё раз
       console.error("[useStaffSession] сессия не проверена, повтор:", error)
@@ -97,6 +131,7 @@ export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffS
     } catch (error) {
       console.error("[useStaffSession] ошибка выхода:", error)
     } finally {
+      cachedSession = null
       setUser(null)
       setOrganization(null)
       router.replace("/login")

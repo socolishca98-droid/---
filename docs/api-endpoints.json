@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-27T21:55:08.309Z",
+  "generatedAt": "2026-10-29T18:03:09.487Z",
   "endpoints": [
     {
       "method": "GET",
@@ -400,6 +400,11 @@
       "method": "GET",
       "route": "/api/fuel",
       "group": "fuel"
+    },
+    {
+      "method": "GET",
+      "route": "/api/geo/nearby",
+      "group": "geo"
     },
     {
       "method": "GET",

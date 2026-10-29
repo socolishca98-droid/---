@@ -262,7 +262,9 @@ export default function MobileProfilePage() {
             {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold truncate">{shown.name}</h1>
+            {/* Полное имя — в профиле и целиком: здесь для него есть место,
+                обрезка «Кузнецов Андрей Вл…» прятала отчество. */}
+            <h1 className="text-lg font-bold leading-tight break-words">{shown.name}</h1>
             <a
               href={`tel:${telHref(shown.phone)}`}
               className="text-gray-400 text-sm flex items-center gap-1.5 mt-1 hover:text-gray-300"
@@ -467,24 +469,25 @@ export default function MobileProfilePage() {
                   Рейсов
                 </p>
               </div>
+              {/* Единицы — в самой цифре: «621 км» и «148 тыс. ₽». Раньше
+                  было «621» и отдельной строкой «Км», а зарплата — «148к» без
+                  пояснения, что это тысячи рублей. */}
               <div className="text-center">
                 <p className="text-2xl font-bold text-orange-400">
                   {stats.totalDistance > 1000
-                    ? `${(stats.totalDistance / 1000).toFixed(0)}к`
+                    ? `${(stats.totalDistance / 1000).toFixed(0)} тыс.`
                     : stats.totalDistance}
                 </p>
-                <p className="text-[11px] text-gray-500 uppercase">
-                  Км
-                </p>
+                <p className="text-[11px] text-gray-500 uppercase">Км</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-emerald-400">
                   {stats.totalEarnings > 1000
-                    ? `${(stats.totalEarnings / 1000).toFixed(0)}к`
+                    ? `${(stats.totalEarnings / 1000).toFixed(0)} тыс.`
                     : stats.totalEarnings}
                 </p>
                 <p className="text-[11px] text-gray-500 uppercase">
-                  ₽
+                  Рублей
                 </p>
               </div>
             </div>

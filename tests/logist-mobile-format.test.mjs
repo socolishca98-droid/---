@@ -25,6 +25,7 @@ const {
   routeMapsHref,
   orderHeaderSubtitle,
   clientContactLine,
+  shortPersonName,
 } = require("../.test-build/lib/logist-mobile/format.js")
 
 test("город выбирается из адреса, а не номер дома", () => {
@@ -125,4 +126,14 @@ test("вторая строка карточки клиента говорит �
   // Нет ни клиента, ни контакта — подсказка, что делать, а не второе «не указан»
   assert.equal(clientContactLine(null, null), "Добавьте имя и телефон — иначе звонить некому")
   assert.equal(clientContactLine("", ""), "Добавьте имя и телефон — иначе звонить некому")
+})
+
+test("в шапке водителя — фамилия и инициалы, а не обрезанное ФИО", () => {
+  // «Кузнец…» в шапке /m не давал ни фамилии, ни имени
+  assert.equal(shortPersonName("Кузнецов Андрей Владимирович"), "Кузнецов А. В.")
+  assert.equal(shortPersonName("  Иванов  Пётр "), "Иванов П.")
+  assert.equal(shortPersonName("Петров"), "Петров")
+  // Пустое имя не должно превращаться в пустую строку в шапке
+  assert.equal(shortPersonName(""), "Водитель")
+  assert.equal(shortPersonName(null), "Водитель")
 })

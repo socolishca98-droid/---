@@ -21,6 +21,22 @@ import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
 // ТИПЫ
 // ============================================
 
+/**
+ * Последний известный ответ проверки сессии водителя — на время жизни вкладки.
+ *
+ * Проверка идёт в базу (1.4 с на тёплом сервере, до 8 с на холодном), и каждый
+ * экран /m/* ждал её с пустым местом. Кэш на 60 секунд показывает экран сразу;
+ * сервер всё равно проверяет сессию на каждом запросе, поэтому права не
+ * расширяются — кэш влияет только на то, что видно до ответа.
+ */
+const SESSION_TTL_MS = 60_000
+let cachedDriverSession: { at: number; driver: any; mustChange: boolean } | null = null
+
+/** Сбросить кэш — после выхода водителя. */
+export function resetDriverSessionCache(): void {
+  cachedDriverSession = null
+}
+
 export interface DriverSession {
   id: string
   name: string
@@ -97,10 +113,18 @@ export function useDriverSession(
   const refresh = useCallback(
     async (attempt = 0): Promise<void> => {
       try {
+        // Свежий кэш — показываем сразу, сеть не ждём
+        if (cachedDriverSession && Date.now() - cachedDriverSession.at < SESSION_TTL_MS) {
+          setDriver(cachedDriverSession.driver)
+          setMustChangePassword(cachedDriverSession.mustChange)
+          setIsLoading(false)
+          return
+        }
         const res = await fetch("/api/auth/session?kind=driver", { cache: "no-store" })
         const outcome = classifySessionStatus(res.status)
 
         if (outcome === "unauthorized") {
+          cachedDriverSession = null
           setDriver(null)
           setMustChangePassword(false)
           redirectToLogin()
@@ -120,6 +144,11 @@ export function useDriverSession(
           return
         }
 
+        cachedDriverSession = {
+          at: Date.now(),
+          driver: sessionDriver,
+          mustChange: Boolean(data.session.user?.mustChangePassword),
+        }
         setDriver(sessionDriver)
         setMustChangePassword(Boolean(data.session.user?.mustChangePassword))
       } catch (error) {
@@ -178,6 +207,7 @@ export function useDriverSession(
     } catch (error) {
       console.error("[useDriverSession] ошибка выхода:", error)
     } finally {
+      cachedDriverSession = null
       setDriver(null)
       setMustChangePassword(false)
       router.replace(loginPath)

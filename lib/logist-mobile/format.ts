@@ -303,3 +303,26 @@ export function clientContactLine(
   if (name) return "Контакт не указан"
   return "Добавьте имя и телефон — иначе звонить некому"
 }
+
+/**
+ * Короткое имя человека для узкой шапки: «Кузнецов А. В.».
+ *
+ * В шапке водительского приложения стояло полное ФИО с обрезкой по ширине —
+ * «Кузнец…» и «В108МК799 • …» не давали ничего: ни фамилии, ни машины.Полное
+ * имя видно в профиле, в шапке достаточно фамилии и инициалов.
+ */
+export function shortPersonName(fullName: string | null | undefined): string {
+  const parts = String(fullName ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length === 0) return "Водитель"
+  if (parts.length === 1) return parts[0]
+  const [last, first, middle] = parts
+  const initials = [first, middle]
+    .filter(Boolean)
+    .map((word) => `${word[0].toUpperCase()}.`)
+    .join(" ")
+  // Слишком длинную фамилию тоже режем по-человечески, а не многоточием посреди слова
+  return `${last} ${initials}`.trim()
+}

@@ -33,6 +33,7 @@ import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import { isOrderClosed } from "@/lib/orders/stages"
+import { shortPersonName } from "@/lib/logist-mobile/format"
 import { emptyTotals, shiftStatusLabel, type ShiftTotals } from "@/lib/shift/timeline"
 import {
   AlertCircle,
@@ -806,7 +807,9 @@ export default function MobileHomePage() {
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-bold truncate">{driver.name}</h1>
+              {/* Полное ФИО в шапке не помещалось и обрезалось на «Кузнец…».
+                  Фамилия и инициалы читаются целиком; полное имя — в профиле. */}
+              <h1 className="text-lg font-bold truncate">{shortPersonName(driver.name)}</h1>
               <p className="text-xs text-gray-500 truncate">
                 {driver.vehiclePlate || "Нет ТС"}
                 {driver.vehicleType && ` • ${driver.vehicleType}`}
