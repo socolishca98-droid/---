@@ -2864,45 +2864,52 @@ export function OrdersSandbox() {
                       <div
                         key={order.id}
                         className={cn(
-                          "flex items-center gap-3 p-2 bg-slate-800 rounded-lg border",
+                          "flex items-start gap-2 p-2 bg-slate-800 rounded-lg border",
                           groupColor ? groupColor.border : "border-slate-700",
                         )}
                       >
-                        <div className="w-6 h-6 rounded-full bg-orange-500 text-white text-sm font-bold flex items-center justify-center">
+                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-sm font-bold text-white">
                           {idx + 1}
                         </div>
-                        <div className="flex-1 min-w-0">
+
+                        {/* Две строки вместо одной: в узкой панели маршрута
+                            «Ярославль → Челябинск · 1811 км · 270,000₽» в одну
+                            строку не влезали, город сжимался в ноль. */}
+                        <div className="min-w-0 flex-1 space-y-0.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400 truncate">
+                            <span className="min-w-0 truncate text-xs text-slate-400">
                               {order.clientCompany || "Заказ"}
                             </span>
                             {group && (
                               <Badge
                                 variant="outline"
                                 className={cn(
-                                  "text-[10px] px-1",
+                                  "shrink-0 px-1 text-[10px]",
                                   groupColor?.text,
                                   groupColor?.border,
                                 )}
                               >
-                                <Layers className="h-2.5 w-2.5 mr-0.5" />
+                                <Layers className="mr-0.5 h-2.5 w-2.5" />
                                 {group.name}
                               </Badge>
                             )}
                           </div>
-                          <span className="block truncate text-sm">
-                            {order.routeFrom?.split(",")[0]} →{" "}
-                            {order.routeTo?.split(",")[0]}
-                          </span>
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="min-w-0 truncate text-sm">
+                              {order.routeFrom?.split(",")[0]} →{" "}
+                              {order.routeTo?.split(",")[0]}
+                            </span>
+                            <span className="shrink-0 whitespace-nowrap text-xs text-slate-500">
+                              {order.distance} км
+                            </span>
+                          </div>
+                          <div className="shrink-0 whitespace-nowrap text-sm font-medium text-emerald-400">
+                            {order.price > 0
+                              ? `${order.price.toLocaleString()}₽`
+                              : "Договорная"}
+                          </div>
                         </div>
-                        <span className="shrink-0 whitespace-nowrap text-xs text-slate-500">
-                          {order.distance} км
-                        </span>
-                        <span className="shrink-0 whitespace-nowrap text-emerald-400 font-medium">
-                          {order.price > 0
-                            ? `${order.price.toLocaleString()}₽`
-                            : "Договорная"}
-                        </span>
+
                         <button
                           type="button"
                           onClick={() => toggleOrderInRoute(order.id)}
