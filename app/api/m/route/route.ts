@@ -29,6 +29,85 @@ export const dynamic = "force-dynamic"
 /** Статусы рейса, которые ещё считаются активными. */
 const CLOSED_ROUTE_STATUSES = ["completed", "cancelled"]
 
+/** Рейс водителя: сначала активный, иначе последний назначенный. */
+async function driverRoute(organizationId: string, driverId: string) {
+  const select = {
+    id: true,
+    name: true,
+    status: true,
+    vehicleId: true,
+    createdAt: true,
+    startedAt: true,
+    completedAt: true,
+    totalDistance: true,
+    startOdometer: true,
+    endOdometer: true,
+    vehicle: { select: { id: true, plate: true, type: true, capacity: true } },
+  } as const
+
+  const active = await prisma.route.findFirst({
+    where: scopedWhere(organizationId, {
+      driverId,
+      status: { notIn: CLOSED_ROUTE_STATUSES },
+    }),
+    orderBy: { createdAt: "desc" },
+    select,
+  })
+  if (active) return active
+
+  return prisma.route.findFirst({
+    where: scopedWhere(organizationId, { driverId }),
+    orderBy: { createdAt: "desc" },
+    select,
+  })
+}
+
+/** Точки рейса — по порядку объезда. */
+function ordersOfRoute(organizationId: string, routeId: string) {
+  return prisma.order.findMany({
+    where: scopedWhere(organizationId, { routeId }),
+    orderBy: [{ routeSequence: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      routeFrom: true,
+      routeTo: true,
+      status: true,
+      cargoType: true,
+      weight: true,
+      price: true,
+      distance: true,
+      clientName: true,
+      clientContact: true,
+      agreedPrice: true,
+      routeSequence: true,
+      isAdditionalLoad: true,
+    },
+  })
+}
+
+/** Догрузы, предложенные водителю (их принимает /api/m/route/accept-load). */
+function loadsProposedToDriver(organizationId: string, driverId: string) {
+  return prisma.order.findMany({
+    where: scopedWhere(organizationId, {
+      assignedDriverId: driverId,
+      proposedToDriver: true,
+    }),
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      routeFrom: true,
+      routeTo: true,
+      status: true,
+      cargoType: true,
+      weight: true,
+      price: true,
+      agreedPrice: true,
+      distance: true,
+      clientName: true,
+    },
+  })
+}
+
 export async function GET(request: NextRequest) {
   // Диагностика скорости: ?timing=1 добавляет в ответ разбивку по шагам.
   // Без флага ничего не меняется. Нужна, чтобы спорить о медленном экране
@@ -55,93 +134,18 @@ export async function GET(request: NextRequest) {
   const driverId = auth.value.driver.id
 
   try {
-    // 1. Рейс водителя: сначала активный, иначе последний назначенный.
-    let route = await prisma.route.findFirst({
-      where: scopedWhere(org.organizationId, {
-        driverId,
-        status: { notIn: CLOSED_ROUTE_STATUSES },
-      }),
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        vehicleId: true,
-        createdAt: true,
-        startedAt: true,
-        completedAt: true,
-        totalDistance: true,
-        startOdometer: true,
-        endOdometer: true,
-        vehicle: { select: { id: true, plate: true, type: true, capacity: true } },
-      },
-    })
-
-    if (!route) {
-      route = await prisma.route.findFirst({
-        where: scopedWhere(org.organizationId, { driverId }),
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          vehicleId: true,
-          createdAt: true,
-          startedAt: true,
-          completedAt: true,
-          totalDistance: true,
-          startOdometer: true,
-          endOdometer: true,
-          vehicle: { select: { id: true, plate: true, type: true, capacity: true } },
-        },
-      })
-    }
+    // 1. Рейс водителя и предложенные догрузы — независимые запросы, идём
+    //    параллельно: последовательно каждый добавлял к ответу своё сетевое
+    //    ожидание (замер по ?timing=1 — 2.5 с из 9 с).
+    const [route, proposedLoads] = await Promise.all([
+      driverRoute(org.organizationId, driverId),
+      loadsProposedToDriver(org.organizationId, driverId),
+    ])
+    lap("route+loads")
 
     // 2. Точки рейса — по порядку объезда.
-    const routeOrders = route
-      ? await prisma.order.findMany({
-          where: scopedWhere(org.organizationId, { routeId: route.id }),
-          orderBy: [{ routeSequence: "asc" }, { createdAt: "asc" }],
-          select: {
-            id: true,
-            routeFrom: true,
-            routeTo: true,
-            status: true,
-            cargoType: true,
-            weight: true,
-            price: true,
-            distance: true,
-            clientName: true,
-            clientContact: true,
-            agreedPrice: true,
-            routeSequence: true,
-            isAdditionalLoad: true,
-          },
-        })
-      : []
-
-    // 3. Догрузы, предложенные водителю (их принимает /api/m/route/accept-load).
-    const proposedLoads = await prisma.order.findMany({
-      where: scopedWhere(org.organizationId, {
-        assignedDriverId: driverId,
-        proposedToDriver: true,
-      }),
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        routeFrom: true,
-        routeTo: true,
-        status: true,
-        cargoType: true,
-        weight: true,
-        price: true,
-        agreedPrice: true,
-        distance: true,
-        clientName: true,
-      },
-    })
-
-    lap("route+orders")
+    const routeOrders = route ? await ordersOfRoute(org.organizationId, route.id) : []
+    lap("orders")
 
     const points = routeOrders.map((order) => {
       const status = normalizeOrderStatus(order.status)
@@ -184,7 +188,7 @@ export async function GET(request: NextRequest) {
         }[])
       : []
 
-    lap("loads+expenses")
+    lap("expenses")
 
     const completedCount = points.filter((point) => point.isDone).length
     const totalDistance = points.reduce((sum, point) => sum + (point.distanceKm || 0), 0)

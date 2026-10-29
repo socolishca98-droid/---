@@ -277,7 +277,21 @@ export async function ensureRouteStages(
   if (!loaded) return 0
 
   const built = await buildStagesForRoute(loaded, source)
+  return syncRouteStages(loaded, built, source)
+}
 
+/**
+ * Приводит строки RouteStage в соответствие с уже построенными этапами.
+ *
+ * Отдельная функция нужна, чтобы getRouteTripEta не строил этапы дважды:
+ * сборка этапов — самая дорогая часть прогноза (геокодер + маршрутизатор),
+ * а раньше она выполнялась и в ensureRouteStages, и сразу после неё.
+ */
+async function syncRouteStages(
+  loaded: LoadedRoute,
+  built: Awaited<ReturnType<typeof buildStagesForRoute>>,
+  source: RouteTripSource,
+): Promise<number> {
   const existing = new Set(loaded.stages.map(routeStageKey))
 
   const builtKeys = new Set(built.stages.map(routeStageKey))
@@ -494,7 +508,10 @@ async function osrmLegDistances(
  */
 const TRIP_ETA_TTL_MS = 5 * 60_000
 const TRIP_ETA_CACHE_LIMIT = 200
-const tripEtaCache = new Map<string, { at: number; signature: string; value: TripEtaResult }>()
+const tripEtaCache = new Map<
+  string,
+  { at: number; signature: string; synced: boolean; value: TripEtaResult }
+>()
 
 /** Подпись состояния рейса: всё, что влияет на прогноз. */
 function tripEtaSignature(
@@ -524,20 +541,31 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
   const loaded = await loadRoute(source)
   if (!loaded) return null
 
-  if (source.ensureStages) {
-    await ensureRouteStages(source, loaded)
-  }
-
   const actuals = actualsFromStages(loaded)
 
   // Свежий прогноз при том же состоянии рейса — из памяти, без сети
   const signature = tripEtaSignature(loaded, actuals)
   const cached = tripEtaCache.get(source.routeId)
-  if (cached && cached.signature === signature && Date.now() - cached.at < TRIP_ETA_TTL_MS) {
+  // Кэш годится, только если этапы рейса уже были записаны тем вызовом, что
+  // его наполнил: иначе пропустим создание строк RouteStage, и водителю будет
+  // некуда писать отметки.
+  if (
+    cached &&
+    cached.signature === signature &&
+    (!source.ensureStages || cached.synced) &&
+    Date.now() - cached.at < TRIP_ETA_TTL_MS
+  ) {
     return cached.value
   }
 
   const built = await buildStagesForRoute(loaded, source)
+
+  // Этапы должны существовать строками, иначе некуда писать отметки водителя.
+  // Синхронизируем по уже построенным этапам — без второй сборки.
+  if (source.ensureStages) {
+    await syncRouteStages(loaded, built, source)
+  }
+
   const unlocatedOrders = built.unlocatedOrders
   const stages: TripStageInput[] = built.stages
     .map((stage) => ({
@@ -603,7 +631,12 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
     const oldest = [...tripEtaCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]
     if (oldest) tripEtaCache.delete(oldest[0])
   }
-  tripEtaCache.set(source.routeId, { at: Date.now(), signature, value: result })
+  tripEtaCache.set(source.routeId, {
+    at: Date.now(),
+    signature,
+    synced: Boolean(source.ensureStages),
+    value: result,
+  })
 
   return result
 }
