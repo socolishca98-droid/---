@@ -78,6 +78,7 @@ import {
   mapsHref,
   routeMapsHref,
   shortCity,
+  displayCity,
   shortRef,
   telHref,
   whatsappHref,
@@ -166,17 +167,26 @@ export default function LogistOrderPage() {
 
   async function assign(driverId: string | null, vehicleId: string | null) {
     if (!orderId) return
+    // Подсказка в списке обещает «машина подставляется вместе с водителем»,
+    // а на деле после выбора водителя машина оставалась пустой. Берём машину,
+    // за которой водитель закреплён, если у заказа своей ещё нет.
+    const picked = driverId ? drivers.find((item) => item.id === driverId) : null
+    const resolvedVehicleId = vehicleId ?? picked?.vehicleId ?? null
     setBusy("assign")
     const result = await apiSend(`/api/orders/${orderId}`, "PATCH", {
       assignedDriverId: driverId ?? null,
-      assignedVehicleId: vehicleId ?? null,
+      assignedVehicleId: resolvedVehicleId,
     })
     setBusy(null)
     if (!result.ok) {
       toast.error(result.error || "Не удалось назначить")
       return
     }
-    toast.success("Назначение обновлено")
+    toast.success(
+      driverId && resolvedVehicleId && !vehicleId
+        ? "Назначение обновлено: водитель и его машина"
+        : "Назначение обновлено",
+    )
     setAssignOpen(false)
     orderState.reload()
   }
@@ -236,7 +246,14 @@ export default function LogistOrderPage() {
   return (
     <>
       <LogistHeader
-        title={order ? `${shortCity(order.routeFrom)} → ${shortCity(order.routeTo)}` : "Заказ"}
+        title={
+          order
+            ? // На экране — город без уточнений в скобках: из
+              // «Бугры г. (Всеволожский р-н, Бугровское с.п.)» получалось
+              // «Бугровское с.п.)» с висящей скобкой
+              `${displayCity(order.routeFrom)} → ${displayCity(order.routeTo)}`
+            : "Заказ"
+        }
         subtitle={
           order
             // Без клиента в шапке — только номер: «клиент не указан · № 4f2a»
@@ -482,8 +499,12 @@ export default function LogistOrderPage() {
             <div className="mt-3 grid grid-cols-2 gap-2.5">
               <Card>
                 <p className="text-[12px] text-muted-foreground">Цена</p>
+                {/* В списке такой заказ подписан «цена не задана», а здесь
+                    показывался «0 ₽» — как будто перевозка бесплатная. */}
                 <p className="mt-0.5 text-[16px] font-semibold text-foreground">
-                  {formatMoney(order.agreedPrice ?? order.price)}
+                  {order.agreedPrice || order.price
+                    ? formatMoney(order.agreedPrice ?? order.price)
+                    : "не задана"}
                 </p>
                 {order.paymentType && PAYMENT_TYPE_LABELS[order.paymentType] ? (
                   <p className="mt-0.5 text-[12px] text-muted-foreground">{PAYMENT_TYPE_LABELS[order.paymentType]}</p>
@@ -711,7 +732,16 @@ export default function LogistOrderPage() {
       {/* Подтверждение перехода — словами о последствиях, а не «изменить статус?» */}
       <ConfirmSheet
         open={confirm !== null}
-        title={confirm ? `Перевести в «${orderStatusLabel(confirm)}»?` : ""}
+        title={
+          confirm
+            ? // Кнопка «Взять в работу» открывала окно «Перевести в
+              // “Согласование”?» — человек жал одно, а его спрашивали про
+              // другое. Главный шаг подтверждаем его же словами.
+              step && step.status === confirm
+              ? `${step.title}?`
+              : `Перевести в «${orderStatusLabel(confirm)}»?`
+            : ""
+        }
         description={confirm ? STATUS_CHANGE_HINTS[confirm] : undefined}
         confirmLabel="Да, перевести"
         tone={confirm && ["cancelled", "rejected"].includes(confirm) ? "danger" : confirm === "delivered" ? "success" : "primary"}

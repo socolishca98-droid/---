@@ -140,6 +140,22 @@ export function cityOfAddress(address?: string | null): string {
   return city
 }
 
+/**
+ * Город для экрана: без уточнений в скобках.
+ *
+ * Отличие от shortCity: та работает с адресом целиком и нужна маршрутизатору —
+ * по ней «Константиново с. (г.о. Домодедово)» и «Домодедово» считаются одним
+ * местом. На экране же скобочная часть выглядит мусором: адрес «Бугры г.
+ * (Всеволожский р-н, Бугровское с.п.), Ленинградская область» превращался в
+ * «Бугровское с.п.)» — с висящей скобкой вместо города.
+ */
+export function displayCity(address?: string | null): string {
+  const withoutNotes = (address ?? "").replace(/\([^)]*\)/g, " ")
+  const city = shortCity(withoutNotes)
+  // «Бугры г.» — сокращение стоит после названия, снимаем и его
+  return city.replace(/\s+(?:г|город)\.?$/i, "").trim() || "—"
+}
+
 export function shortCity(address?: string | null): string {
   if (!address) return "—"
   const parts = address

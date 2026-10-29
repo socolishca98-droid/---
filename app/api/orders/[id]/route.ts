@@ -5,6 +5,7 @@ import { requireStaffOrganization, scopedWhere } from "@/lib/org"
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { decideOrderDeletion } from "@/lib/orders/archive-policy"
+import { canAssignToDriver, needsOwnRoute } from "@/lib/orders/route-link"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
 import {
@@ -372,6 +373,22 @@ export async function PATCH(request: NextRequest,
     }
 
     // Заказ занимает водителя и машину, пока он не закрыт
+    // «Назначен» = работа передана водителю. Без водителя заказ повиснет в
+    // статусе, где «машина в пути», а ехать некому и в приложении водителя
+    // ничего не появится.
+    const effectiveDriverId =
+      nextDriverId !== undefined ? nextDriverId : existing.assignedDriverId
+    if (!canAssignToDriver({ nextStatus, driverId: effectiveDriverId })) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Сначала назначьте водителя: в статусе «Назначен» работа переходит к нему, и без водителя заказ не поедет",
+        },
+        { status: 400 }
+      )
+    }
+
     const wasActive = !isOrderClosed(existing.status)
     const willBeActive = nextStatus ? !isOrderClosed(nextStatus) : wasActive
     const isCompleting = Boolean(nextStatus && isOrderClosed(nextStatus))
@@ -389,6 +406,43 @@ export async function PATCH(request: NextRequest,
           ...otherFields,
         },
       })
+
+      // Заказ уже едет (или передан водителю), но ни в одном рейсе — значит,
+      // в приложении водителя он не появится: точки рейса берутся из Route.
+      // Создаём рейс здесь же, одной транзакцией со сменой статуса.
+      if (
+        needsOwnRoute({
+          status: order.status,
+          assignedDriverId: (order as { assignedDriverId?: string | null }).assignedDriverId,
+          routeId: (order as { routeId?: string | null }).routeId,
+        })
+      ) {
+        const withTrip = order as {
+          id: string
+          routeFrom?: string | null
+          routeTo?: string | null
+          distance?: number | null
+          cargoWeight?: number | null
+          cargoVolume?: number | null
+          assignedDriverId?: string | null
+          assignedVehicleId?: string | null
+        }
+        const trip = await tx.route.create({
+          data: {
+            organizationId: __org.organizationId,
+            name: `Рейс: ${withTrip.routeFrom ?? "—"} — ${withTrip.routeTo ?? "—"}`,
+            status: "planned",
+            driverId: withTrip.assignedDriverId ?? null,
+            vehicleId: withTrip.assignedVehicleId ?? null,
+            totalDistance: withTrip.distance ?? null,
+          },
+          select: { id: true },
+        })
+        await tx.order.update({
+          where: { id: withTrip.id },
+          data: { routeId: trip.id, routeSequence: 1 },
+        })
+      }
 
       // История согласования пишется автоматически: смена цены и смена статуса
       // всегда попадают в ленту, даже если логист не добавил заметку руками.
