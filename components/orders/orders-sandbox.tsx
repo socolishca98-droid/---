@@ -2894,19 +2894,21 @@ export function OrdersSandbox() {
                               </Badge>
                             )}
                           </div>
+                          {/* Город — во всю ширину строки: иначе в узкой панели
+                              «Ярославль → …» обрезалось ровно место назначения. */}
+                          <span className="block truncate text-sm">
+                            {order.routeFrom?.split(",")[0]} →{" "}
+                            {order.routeTo?.split(",")[0]}
+                          </span>
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="min-w-0 truncate text-sm">
-                              {order.routeFrom?.split(",")[0]} →{" "}
-                              {order.routeTo?.split(",")[0]}
+                            <span className="truncate text-sm font-medium text-emerald-400">
+                              {order.price > 0
+                                ? `${order.price.toLocaleString()}₽`
+                                : "Договорная"}
                             </span>
                             <span className="shrink-0 whitespace-nowrap text-xs text-slate-500">
                               {order.distance} км
                             </span>
-                          </div>
-                          <div className="shrink-0 whitespace-nowrap text-sm font-medium text-emerald-400">
-                            {order.price > 0
-                              ? `${order.price.toLocaleString()}₽`
-                              : "Договорная"}
                           </div>
                         </div>
 
