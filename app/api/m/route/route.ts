@@ -11,6 +11,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 
+import { Prisma } from "@prisma/client"
+
 import { prisma } from "@/lib/prisma"
 import { requireDriver } from "@/lib/auth/session"
 import { requireOrganization, scopedWhere } from "@/lib/org"
@@ -29,9 +31,15 @@ export const dynamic = "force-dynamic"
 /** Статусы рейса, которые ещё считаются активными. */
 const CLOSED_ROUTE_STATUSES = ["completed", "cancelled"]
 
-/** Рейс водителя: сначала активный, иначе последний назначенный. */
+/**
+ * Рейс водителя: сначала активный, иначе последний назначенный.
+ *
+ * Точки и расходы забираем вложенными выборками — одним обращением к базе
+ * вместо трёх. У удалённой базы каждый отдельный запрос стоит около секунды,
+ * и на экране водителя это была половина времени ответа.
+ */
 async function driverRoute(organizationId: string, driverId: string) {
-  const select = {
+  const select: Prisma.RouteSelect = {
     id: true,
     name: true,
     status: true,
@@ -43,7 +51,40 @@ async function driverRoute(organizationId: string, driverId: string) {
     startOdometer: true,
     endOdometer: true,
     vehicle: { select: { id: true, plate: true, type: true, capacity: true } },
-  } as const
+    orders: {
+      orderBy: [{ routeSequence: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        routeFrom: true,
+        routeTo: true,
+        status: true,
+        cargoType: true,
+        weight: true,
+        price: true,
+        distance: true,
+        clientName: true,
+        clientContact: true,
+        agreedPrice: true,
+        routeSequence: true,
+        isAdditionalLoad: true,
+      },
+    },
+    expenses: {
+      orderBy: [{ spentAt: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        liters: true,
+        odometer: true,
+        vendor: true,
+        spentAt: true,
+        source: true,
+        photoId: true,
+      },
+    },
+  }
 
   const active = await prisma.route.findFirst({
     where: scopedWhere(organizationId, {
@@ -59,29 +100,6 @@ async function driverRoute(organizationId: string, driverId: string) {
     where: scopedWhere(organizationId, { driverId }),
     orderBy: { createdAt: "desc" },
     select,
-  })
-}
-
-/** Точки рейса — по порядку объезда. */
-function ordersOfRoute(organizationId: string, routeId: string) {
-  return prisma.order.findMany({
-    where: scopedWhere(organizationId, { routeId }),
-    orderBy: [{ routeSequence: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      routeFrom: true,
-      routeTo: true,
-      status: true,
-      cargoType: true,
-      weight: true,
-      price: true,
-      distance: true,
-      clientName: true,
-      clientContact: true,
-      agreedPrice: true,
-      routeSequence: true,
-      isAdditionalLoad: true,
-    },
   })
 }
 
@@ -144,7 +162,8 @@ export async function GET(request: NextRequest) {
     lap("route+loads")
 
     // 2. Точки рейса — по порядку объезда.
-    const routeOrders = route ? await ordersOfRoute(org.organizationId, route.id) : []
+    // Точки и расходы пришли вместе с рейсом
+    const routeOrders = route?.orders ?? []
     lap("orders")
 
     const points = routeOrders.map((order) => {
@@ -169,25 +188,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Расходы рейса (задача 7): водитель видит, что уже записано, и итог рейса
-    const expenses = route
-      ? ((await prisma.routeExpense.findMany({
-          where: scopedWhere(org.organizationId, { routeId: route.id }),
-          orderBy: [{ spentAt: "desc" }],
-          take: 100,
-        })) as {
-          id: string
-          type: string | null
-          amount: number
-          liters: number | null
-          odometer: number | null
-          vendor: string | null
-          spentAt: Date | null
-          source: string | null
-          photoId: string | null
-        }[])
-      : []
-
+    // Расходы рейса (задача 7): водитель видит, что уже записано, и итог рейса.
+    // Приходят вместе с рейсом — отдельного запроса больше нет.
+    const expenses = route?.expenses ?? []
     lap("expenses")
 
     const completedCount = points.filter((point) => point.isDone).length
