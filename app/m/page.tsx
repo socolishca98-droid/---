@@ -229,12 +229,14 @@ export default function MobileHomePage() {
     const point = activeOrder
     const city = (address?: string) => (address ? displayCity(address) : "")
     if (nextStage.kind === "return_to_base") return "Возврат на базу"
-    if (nextStage.kind === "loading" && point) return `Погрузка · ${city(point.routeFrom)}`
-    if (nextStage.kind === "unloading" && point) return `Выгрузка · ${city(point.routeTo)}`
+    // Двоеточие вместо предлога: «до Ярославля» требует падежа, а название
+    // приходит как есть — «В путь до Ярославль» читалось как ошибка.
+    if (nextStage.kind === "loading" && point) return `Погрузка: ${city(point.routeFrom)}`
+    if (nextStage.kind === "unloading" && point) return `Выгрузка: ${city(point.routeTo)}`
     if (nextStage.kind === "driving" && point) {
       // Едем к следующей остановке: первая точка рейса — погрузка
       const done = tripStages?.some((stage) => stage.kind === "loading" && stage.status === "done")
-      return `В путь до ${city(done ? point.routeTo : point.routeFrom)}`
+      return `В путь: ${city(done ? point.routeTo : point.routeFrom)}`
     }
     const distance = (trip as any)?.nextPoint?.distanceM
     return `${nextStage.label}${distance ? ` · ${Math.round(distance / 1000)} км` : ""}`
