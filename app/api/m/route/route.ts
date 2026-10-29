@@ -30,7 +30,23 @@ export const dynamic = "force-dynamic"
 const CLOSED_ROUTE_STATUSES = ["completed", "cancelled"]
 
 export async function GET(request: NextRequest) {
+  // Диагностика скорости: ?timing=1 добавляет в ответ разбивку по шагам.
+  // Без флага ничего не меняется. Нужна, чтобы спорить о медленном экране
+  // числами, а не ощущениями.
+  const timings: Record<string, number> | null = request.nextUrl.searchParams.has("timing")
+    ? {}
+    : null
+  let mark = Date.now()
+  const lap = (name: string) => {
+    if (!timings) return
+    const now = Date.now()
+    timings[name] = now - mark
+    mark = now
+  }
+  if (timings) mark = Date.now()
+
   const auth = await requireDriver(request)
+  lap("auth")
   if (!auth.ok) return auth.response
 
   const org = requireOrganization(auth.value)
@@ -125,6 +141,8 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    lap("route+orders")
+
     const points = routeOrders.map((order) => {
       const status = normalizeOrderStatus(order.status)
       return {
@@ -166,6 +184,8 @@ export async function GET(request: NextRequest) {
         }[])
       : []
 
+    lap("loads+expenses")
+
     const completedCount = points.filter((point) => point.isDone).length
     const totalDistance = points.reduce((sum, point) => sum + (point.distanceKm || 0), 0)
     const totalWeight = points.reduce((sum, point) => sum + (point.weight || 0), 0)
@@ -194,10 +214,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    lap("tripEta")
+
     const tripActions = trip ? availableTripActions(trip, Boolean(route?.startedAt)) : null
+
+    lap("actions")
 
     return NextResponse.json({
       success: true,
+      ...(timings ? { timings } : {}),
       trip: trip && tripActions
         ? {
             startedAt: route?.startedAt?.toISOString() ?? null,
