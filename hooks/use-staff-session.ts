@@ -60,9 +60,58 @@ let cachedSession: {
   organization: StaffOrganization | null
 } | null = null
 
+/**
+ * Идущая прямо сейчас проверка сессии.
+ *
+ * Кэш спасает только после первого ответа, а на одной странице хук вызывают
+ * несколько компонентов сразу — они стартовали одновременно и делали 4–6
+ * одинаковых запросов по 1.4 с, каждый со своим «загрузка». Теперь все ждут
+ * один общий ответ.
+ */
+let inFlightSession: Promise<{
+  user: StaffUser | null
+  organization: StaffOrganization | null
+} | null> | null = null
+
 /** Сбросить кэш — после выхода или смены пользователя. */
 export function resetStaffSessionCache(): void {
   cachedSession = null
+  inFlightSession = null
+}
+
+/**
+ * Один запрос проверки сессии на всех, кому он нужен в эту секунду.
+ * Возвращает null, если сессии нет.
+ */
+function loadStaffSession(): Promise<{
+  user: StaffUser | null
+  organization: StaffOrganization | null
+} | null> {
+  // Уже спросили — ждём тот же ответ, второй запрос не нужен
+  if (inFlightSession) return inFlightSession
+
+  const request = (async () => {
+    const res = await fetch("/api/auth/session?kind=staff", { cache: "no-store" })
+    const outcome = classifySessionStatus(res.status)
+    if (outcome === "transient") throw new Error(`сервер ответил ${res.status}`)
+    if (outcome !== "ok") return null
+
+    const data = await res.json()
+    const sessionUser = data?.session?.user as StaffUser | undefined
+    if (!sessionUser?.id) return null
+
+    return {
+      user: sessionUser,
+      organization: (data?.session?.organization as StaffOrganization | undefined) ?? null,
+    }
+  })().finally(() => {
+    // Снимаем «в полёте» в любом случае: иначе после обрыва сети
+    // следующие проверки ждали бы уже завершённый запрос
+    inFlightSession = null
+  })
+
+  inFlightSession = request
+  return request
 }
 
 export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffSessionReturn {
@@ -83,10 +132,9 @@ export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffS
         setIsLoading(false)
         return
       }
-      const res = await fetch("/api/auth/session?kind=staff", { cache: "no-store" })
-      const outcome = classifySessionStatus(res.status)
+      const session = await loadStaffSession()
 
-      if (outcome === "unauthorized") {
+      if (!session) {
         cachedSession = null
         setUser(null)
         setOrganization(null)
@@ -94,20 +142,9 @@ export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffS
         return
       }
 
-      const data = await res.json()
-      const sessionUser = data?.session?.user as StaffUser | undefined
-      if (!sessionUser?.id) {
-        setUser(null)
-        setOrganization(null)
-        if (requireAuth) router.replace(LOGIN_PATH)
-        return
-      }
-
-      const sessionOrganization =
-        (data?.session?.organization as StaffOrganization | undefined) ?? null
-      cachedSession = { at: Date.now(), user: sessionUser, organization: sessionOrganization }
-      setUser(sessionUser)
-      setOrganization(sessionOrganization)
+      cachedSession = { at: Date.now(), user: session.user, organization: session.organization }
+      setUser(session.user)
+      setOrganization(session.organization)
     } catch (error) {
       // Обрыв сети на телефоне — не повод разлогинивать: пробуем ещё раз
       console.error("[useStaffSession] сессия не проверена, повтор:", error)

@@ -32,9 +32,43 @@ import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
 const SESSION_TTL_MS = 60_000
 let cachedDriverSession: { at: number; driver: any; mustChange: boolean } | null = null
 
+/**
+ * Идущая прямо сейчас проверка сессии водителя.
+ *
+ * На одном экране хук вызывают несколько компонентов, и до этого кэша они
+ * успевали сделать 4–6 одинаковых запросов, каждый со своим «загрузка».
+ */
+let inFlightDriverSession: Promise<{ driver: any; mustChange: boolean } | null> | null = null
+
 /** Сбросить кэш — после выхода водителя. */
 export function resetDriverSessionCache(): void {
   cachedDriverSession = null
+  inFlightDriverSession = null
+}
+
+/** Один запрос проверки сессии на всех, кому он нужен в эту секунду. */
+function loadDriverSession(): Promise<{ driver: any; mustChange: boolean } | null> {
+  if (inFlightDriverSession) return inFlightDriverSession
+
+  const request = (async () => {
+    const res = await fetch("/api/auth/session?kind=driver", { cache: "no-store" })
+    const outcome = classifySessionStatus(res.status)
+    // Разовая ошибка сервера или лимит запросов — не повод выбрасывать
+    // водителя на экран входа: наверху refresh повторит попытку с паузой
+    if (outcome === "transient") throw new Error(`сервер ответил ${res.status}`)
+    if (outcome !== "ok") return null
+
+    const data = await res.json()
+    const sessionDriver = data?.session?.driver as DriverSession | undefined
+    if (!sessionDriver?.id) return null
+
+    return { driver: sessionDriver, mustChange: Boolean(data.session.user?.mustChangePassword) }
+  })().finally(() => {
+    inFlightDriverSession = null
+  })
+
+  inFlightDriverSession = request
+  return request
 }
 
 export interface DriverSession {
@@ -120,10 +154,9 @@ export function useDriverSession(
           setIsLoading(false)
           return
         }
-        const res = await fetch("/api/auth/session?kind=driver", { cache: "no-store" })
-        const outcome = classifySessionStatus(res.status)
+        const session = await loadDriverSession()
 
-        if (outcome === "unauthorized") {
+        if (!session) {
           cachedDriverSession = null
           setDriver(null)
           setMustChangePassword(false)
@@ -131,26 +164,9 @@ export function useDriverSession(
           return
         }
 
-        if (outcome === "transient") {
-          throw new Error(`сервер ответил ${res.status}`)
-        }
-
-        const data = await res.json()
-        const sessionDriver = data?.session?.driver as DriverSession | undefined
-        if (!sessionDriver?.id) {
-          setDriver(null)
-          setMustChangePassword(false)
-          redirectToLogin()
-          return
-        }
-
-        cachedDriverSession = {
-          at: Date.now(),
-          driver: sessionDriver,
-          mustChange: Boolean(data.session.user?.mustChangePassword),
-        }
-        setDriver(sessionDriver)
-        setMustChangePassword(Boolean(data.session.user?.mustChangePassword))
+        cachedDriverSession = { at: Date.now(), driver: session.driver, mustChange: session.mustChange }
+        setDriver(session.driver)
+        setMustChangePassword(session.mustChange)
       } catch (error) {
         // Временная ошибка: сессию не трогаем, пробуем ещё раз
         console.error("[useDriverSession] сессия не проверена, повтор:", error)
@@ -208,6 +224,7 @@ export function useDriverSession(
       console.error("[useDriverSession] ошибка выхода:", error)
     } finally {
       cachedDriverSession = null
+      inFlightDriverSession = null
       setDriver(null)
       setMustChangePassword(false)
       router.replace(loginPath)
