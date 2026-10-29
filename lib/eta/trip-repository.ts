@@ -476,6 +476,39 @@ async function osrmLegDistances(
 }
 
 /**
+ * Кэш прогноза рейса.
+ *
+ * Зачем: getRouteTripEta ходит в геокодер и в OSRM — это секунды сетевого
+ * времени. Приложение водителя опрашивает /api/m/route каждые 30 секунд, и
+ * каждый опрос заново геокодировал те же адреса: эндпоинт отвечал 7–12 с на
+ * тёплом сервере. Приёмка это и показала.
+ *
+ * Портим кэш сразу, как только меняются отметки водителя: подпись считается по
+ * фактическим временам этапов и статусам заказов. Пять минут — предел, после
+ * которого прогноз пересчитывается в любом случае (время идёт).
+ */
+const TRIP_ETA_TTL_MS = 5 * 60_000
+const TRIP_ETA_CACHE_LIMIT = 200
+const tripEtaCache = new Map<string, { at: number; signature: string; value: TripEtaResult }>()
+
+/** Подпись состояния рейса: всё, что влияет на прогноз. */
+function tripEtaSignature(
+  loaded: LoadedRoute,
+  actuals: Map<string, { startAt?: Date | null; endAt?: Date | null }>,
+): string {
+  const stages = loaded.stages
+    .map((stage) => `${stage.type}:${stage.orderId ?? "route"}:${stage.sequence ?? 0}`)
+    .join(",")
+  const marks = [...actuals.entries()]
+    .map(([key, value]) => `${key}@${value.startAt?.getTime() ?? ""}-${value.endAt?.getTime() ?? ""}`)
+    .sort()
+    .join(";")
+  const orders = loaded.orders.map((order) => `${order.id}:${order.status}`).sort().join(",")
+  const vehicle = loaded.vehicle ? `${loaded.vehicle.type}:${loaded.vehicle.capacity}` : "-"
+  return `${loaded.route.startedAt?.getTime() ?? ""}|${stages}|${marks}|${orders}|${vehicle}`
+}
+
+/**
  * Прогноз по рейсу: единый механизм для кабинета водителя, карты логиста,
  * помощника сборки и оптимизатора.
  *
@@ -491,6 +524,13 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
   }
 
   const actuals = actualsFromStages(loaded)
+
+  // Свежий прогноз при том же состоянии рейса — из памяти, без сети
+  const signature = tripEtaSignature(loaded, actuals)
+  const cached = tripEtaCache.get(source.routeId)
+  if (cached && cached.signature === signature && Date.now() - cached.at < TRIP_ETA_TTL_MS) {
+    return cached.value
+  }
 
   const built = await buildStagesForRoute(loaded, source)
   const unlocatedOrders = built.unlocatedOrders
@@ -551,7 +591,16 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
     totalOrders: loaded.orders.length,
   }
 
-  return calculateTripEta(stages, options)
+  const result = calculateTripEta(stages, options)
+
+  if (tripEtaCache.size >= TRIP_ETA_CACHE_LIMIT) {
+    // Простейшая уборка: удаляем самый старый прогноз
+    const oldest = [...tripEtaCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]
+    if (oldest) tripEtaCache.delete(oldest[0])
+  }
+  tripEtaCache.set(source.routeId, { at: Date.now(), signature, value: result })
+
+  return result
 }
 
 /** Правила отдыха организации — для кабинета водителя и объяснений. */
