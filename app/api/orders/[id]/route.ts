@@ -556,6 +556,36 @@ export async function PATCH(request: NextRequest,
       return order
     })
 
+    // В рейсе не осталось открытых заказов — рейс закрываем.
+    //
+    // На приёмке было иначе: заказ доставлен, водитель вернулся в «ожидаю
+    // рейс», а сам рейс висел в «Активных маршрутах» со статусом «Ожидает»
+    // и прогрессом 100% — и логист, и водитель видели одновременно
+    // «завершено» и «ещё едет».
+    if (isCompleting && (updatedOrder as { routeId?: string | null }).routeId) {
+      const routeId = (updatedOrder as { routeId?: string | null }).routeId as string
+      try {
+        const openLeft = await prisma.order.count({
+          where: scopedWhere(__org.organizationId, {
+            routeId,
+            status: { notIn: [...CLOSED_ORDER_STATUSES] },
+          }),
+        })
+        if (openLeft === 0) {
+          await prisma.route.updateMany({
+            where: scopedWhere(__org.organizationId, {
+              id: routeId,
+              status: { notIn: ["completed", "cancelled"] },
+            }),
+            data: { status: "completed", completedAt: new Date() },
+          })
+        }
+      } catch (error) {
+        // Рейс — не повод не закрыть заказ: пишем в лог и продолжаем
+        console.error("[Order API] не удалось закрыть рейс:", error)
+      }
+    }
+
     // Архив и восстановление — в журнал аудита (этап «сохранность данных»)
     if (archivedAtChanged) {
       await logAudit({
