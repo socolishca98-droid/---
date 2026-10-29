@@ -96,11 +96,16 @@ async function computeRest(params: {
   driverId: string
   organizationId: string
   now: Date
+  /** Нормы отдыха, если их уже загрузил вызывающий (иначе — свой запрос) */
+  settings?: { restDriveLimitMin: number | null; restMinBreakMin: number | null } | null
 }): Promise<RestSnapshot> {
-  const settings = await prisma.fleetSettings.findFirst({
-    where: { organizationId: params.organizationId } as any,
-    select: { restDriveLimitMin: true, restMinBreakMin: true },
-  })
+  const settings =
+    params.settings !== undefined
+      ? params.settings
+      : await prisma.fleetSettings.findFirst({
+          where: { organizationId: params.organizationId } as any,
+          select: { restDriveLimitMin: true, restMinBreakMin: true },
+        })
   const limitMin = settings?.restDriveLimitMin ?? 270
   const minBreakMin = settings?.restMinBreakMin ?? 45
 
@@ -180,14 +185,26 @@ export async function getShiftSnapshot(params: {
 }): Promise<ShiftSnapshot | null> {
   const now = params.now ?? new Date()
 
-  const shift = await prisma.driverShift.findFirst({
-    where: { organizationId: params.organizationId, driverId: params.driverId, endedAt: null } as any,
-    orderBy: { startedAt: "desc" },
-  })
+  // Смена, активный заказ и нормы отдыха независимы: три параллельных запроса
+  // вместо трёх последовательных. У удалённой базы каждое обращение — около
+  // секунды, и /api/m/shift отвечал 9 секунд, хотя данных в нём немного.
+  const [shift, activeOrder, settings] = await Promise.all([
+    prisma.driverShift.findFirst({
+      where: {
+        organizationId: params.organizationId,
+        driverId: params.driverId,
+        endedAt: null,
+      } as any,
+      orderBy: { startedAt: "desc" },
+    }),
+    getActiveOrderForDriver(params.driverId, params.organizationId),
+    prisma.fleetSettings.findFirst({
+      where: { organizationId: params.organizationId } as any,
+      select: { restDriveLimitMin: true, restMinBreakMin: true },
+    }),
+  ])
 
   if (!shift) return null
-
-  const activeOrder = await getActiveOrderForDriver(params.driverId, params.organizationId)
 
   const [events, rest] = await Promise.all([
     loadShiftEvents(shift.id, params.organizationId),
@@ -197,6 +214,7 @@ export async function getShiftSnapshot(params: {
       driverId: params.driverId,
       organizationId: params.organizationId,
       now,
+      settings,
     }),
   ])
 
