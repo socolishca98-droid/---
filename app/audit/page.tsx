@@ -28,13 +28,12 @@ export default function AuditPage() {
     if (!isLoading && user?.role === "driver") {
       router.push("/m")
     }
-    // Журнал — только админу организации; логисту он не показывается
-    if (!isLoading && user && user.role !== "admin") {
-      router.push("/dashboard")
-    }
+    // Логиста отсюда больше не выбрасывает: меню «Журнал» видно всем
+    // сотрудникам, API /api/admin/audit тоже пускает любой штабной роли, а
+    // страница молча уводила на дашборд — пункт меню выглядел сломанным.
   }, [user, isLoading, router])
 
-  if (isLoading || !user || user.role !== "admin") {
+  if (isLoading || !user || user.role === "driver") {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <TruckLoader className="text-primary" />
@@ -51,7 +50,8 @@ export default function AuditPage() {
           <div>
             <h1 className="text-2xl font-bold">Журнал действий</h1>
             <p className="text-muted-foreground">
-              Кто входил, кого приглашали и одобряли, что меняли — все действия в вашей организации
+              Кто входил, кого приглашали и одобряли, что меняли — все действия в вашей организации.
+              Записи видны только сотрудникам организации.
             </p>
           </div>
 

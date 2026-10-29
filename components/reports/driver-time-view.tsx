@@ -169,6 +169,17 @@ export function DriverTimeView() {
   )
 }
 
+/**
+ * Длительность для отчёта: ноль — это «—», а не «0 с».
+ *
+ * В отчёте по времени половина ячеек была «0 с»: у водителя без погрузок
+ * «средняя погрузка 0 с», «самая долгая погрузка 0 с». Ноль здесь значит «не
+ * было», и пустая ячейка говорит это честнее, чем секунды.
+ */
+function durationOrDash(seconds: number): string {
+  return seconds > 0 ? formatDuration(seconds) : "—"
+}
+
 function DriverCard({ row }: { row: DriverTimeRow }) {
   const total = Math.max(1, row.totalSeconds)
   return (
@@ -177,15 +188,19 @@ function DriverCard({ row }: { row: DriverTimeRow }) {
       <dl className="mt-2 space-y-1 text-xs text-muted-foreground">
         <div className="flex justify-between">
           <dt>Средняя погрузка</dt>
-          <dd className="tabular-nums text-foreground">{formatDuration(row.avgLoadingSeconds)}</dd>
+          <dd className="tabular-nums text-foreground">{durationOrDash(row.avgLoadingSeconds)}</dd>
         </div>
         <div className="flex justify-between">
           <dt>Самая долгая погрузка</dt>
-          <dd className="tabular-nums text-foreground">{formatDuration(row.maxLoadingSeconds)}</dd>
+          <dd className="tabular-nums text-foreground">{durationOrDash(row.maxLoadingSeconds)}</dd>
         </div>
         <div className="flex justify-between">
           <dt>Средняя выгрузка</dt>
-          <dd className="tabular-nums text-foreground">{formatDuration(row.avgUnloadingSeconds)}</dd>
+          <dd className="tabular-nums text-foreground">{durationOrDash(row.avgUnloadingSeconds)}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt>Самая долгая выгрузка</dt>
+          <dd className="tabular-nums text-foreground">{durationOrDash(row.maxUnloadingSeconds)}</dd>
         </div>
       </dl>
       {/* Полоски долей: видно, во что уходит смена */}

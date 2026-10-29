@@ -244,8 +244,11 @@ export function VehicleCard({
     <Card className="card-interactive overflow-hidden">
       <div className="p-6">
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-4">
+        {/* Шапка карточки не должна вылезать за её край: госномер, статус и
+            «без рейса 3 нед.» в одной строке не помещались, и вместе с ними
+            за границу уезжало меню действий. */}
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-4">
             <div
               className={`p-3 rounded-xl ${
                 vehicle.status === "available"
@@ -266,8 +269,8 @@ export function VehicleCard({
               />
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-xl font-bold">{vehicle.plate}</h3>
                 <Badge className={getStatusColor(vehicle.status)} variant="outline">
                   {getStatusIcon(vehicle.status)}
@@ -297,6 +300,7 @@ export function VehicleCard({
                 variant="ghost"
                 size="icon"
                 disabled={isDeleting}
+                className="shrink-0"
                 aria-label="Действия с машиной"
                 title="Действия с машиной"
               >

@@ -48,6 +48,8 @@ export interface DriverTimeRow {
   maxLoadingSeconds: number
   /** Средняя длина одной выгрузки, секунды */
   avgUnloadingSeconds: number
+  /** Самая долгая выгрузка за период, секунды */
+  maxUnloadingSeconds: number
   /** Всего учтённого времени (сумма групп) */
   totalSeconds: number
 }
@@ -112,6 +114,7 @@ export function buildShiftTimeReport(shifts: readonly ShiftTimeInput[]): ShiftTi
         avgLoadingSeconds: 0,
         maxLoadingSeconds: 0,
         avgUnloadingSeconds: 0,
+        maxUnloadingSeconds: 0,
         totalSeconds: 0,
       } satisfies DriverTimeRow)
 
@@ -136,6 +139,7 @@ export function buildShiftTimeReport(shifts: readonly ShiftTimeInput[]): ShiftTi
     row.avgLoadingSeconds = average([...loadingLengths])
     row.maxLoadingSeconds = Math.max(row.maxLoadingSeconds, ...loadingLengths, 0)
     row.avgUnloadingSeconds = average([...unloadingLengths])
+    row.maxUnloadingSeconds = Math.max(row.maxUnloadingSeconds, ...unloadingLengths, 0)
     row.totalSeconds = Object.values(row.buckets).reduce((sum, entry) => sum + entry.seconds, 0)
 
     byDriver.set(shift.driverId, row)

@@ -104,7 +104,12 @@ function formatDate(value: string | null): string {
   if (!value) return "—"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "—"
-  return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", year: "numeric" })
+  // Русская локаль добавляет «г.» — в предложении «Организация создана … .»
+  // это давало «07 окт. 2026 г..»: две точки подряд.
+  return date
+    .toLocaleDateString("ru-RU", { day: "2-digit", month: "short", year: "numeric" })
+    .replace(/\s*г\.?$/, "")
+    .replace(/\.$/, "")
 }
 
 function formatDateTime(value: string | null): string {

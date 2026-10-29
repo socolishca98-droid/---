@@ -96,7 +96,10 @@ export default function MobileUsersPage() {
   // Админ и логист — один профиль: действия над сотрудниками доступны обоим
   const canManage = !!user && user.role !== "driver"
 
-  const [status, setStatus] = useState("pending")
+  // Открываем на «Все»: с фильтром «Ожидают» экран «Сотрудники» показывал
+  // «Всего 0 · Заявок нет», хотя в организации девять человек. Пустая
+  // вкладка выглядела как «сотрудников нет».
+  const [status, setStatus] = useState("all")
   const [query, setQuery] = useState("")
   const [debounced, setDebounced] = useState("")
   const [rows, setRows] = useState<StaffRow[]>([])
