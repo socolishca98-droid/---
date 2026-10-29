@@ -104,67 +104,74 @@ const STOP_TO_STAGE_TYPE: Record<StopRequest["kind"], string> = {
   other: "other",
 }
 
-/** Загружает рейс и всё, что нужно для прогноза. Только в рамках организации. */
+/**
+ * Загружает рейс и всё, что нужно для прогноза. Только в рамках организации.
+ *
+ * Три запроса (рейс с заказами, настройки парка, этапы рейса) независимы и
+ * идут параллельно. По очереди они складывались в 3–4 секунды: у удалённой
+ * базы каждое обращение — отдельный сетевой круг, и на экране водителя это
+ * была самая долгая часть ответа.
+ */
 async function loadRoute(source: RouteTripSource): Promise<LoadedRoute | null> {
-  const route = await prisma.route.findFirst({
-    where: { id: source.routeId, organizationId: source.organizationId },
-    select: {
-      id: true,
-      status: true,
-      driverId: true,
-      vehicleId: true,
-      startedAt: true,
-      orders: {
-        select: {
-          id: true,
-          routeFrom: true,
-          routeTo: true,
-          routeSequence: true,
-          distance: true,
-          status: true,
-          createdAt: true,
+  const [route, settings, stages] = await Promise.all([
+    prisma.route.findFirst({
+      where: { id: source.routeId, organizationId: source.organizationId },
+      select: {
+        id: true,
+        status: true,
+        driverId: true,
+        vehicleId: true,
+        startedAt: true,
+        orders: {
+          select: {
+            id: true,
+            routeFrom: true,
+            routeTo: true,
+            routeSequence: true,
+            distance: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: [{ routeSequence: "asc" }, { createdAt: "asc" }],
+          take: MAX_ROUTE_ORDERS,
         },
-        orderBy: [{ routeSequence: "asc" }, { createdAt: "asc" }],
-        take: MAX_ROUTE_ORDERS,
-      },
-      vehicle: {
-        select: {
-          type: true,
-          capacity: true,
-          volume: true,
-          length: true,
-          width: true,
-          height: true,
+        vehicle: {
+          select: {
+            type: true,
+            capacity: true,
+            volume: true,
+            length: true,
+            width: true,
+            height: true,
+          },
         },
       },
-    },
-  })
+    }),
+    prisma.fleetSettings.findFirst({
+      where: { organizationId: source.organizationId },
+      select: {
+        baseLat: true,
+        baseLng: true,
+        baseAddress: true,
+        restDriveLimitMin: true,
+        restMinBreakMin: true,
+      },
+    }),
+    prisma.routeStage.findMany({
+      where: { routeId: source.routeId, organizationId: source.organizationId },
+      select: {
+        id: true,
+        orderId: true,
+        type: true,
+        sequence: true,
+        startedAt: true,
+        endedAt: true,
+      },
+      orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
+    }),
+  ])
 
   if (!route) return null
-
-  const settings = await prisma.fleetSettings.findFirst({
-    where: { organizationId: source.organizationId },
-    select: {
-      baseLat: true,
-      baseLng: true,
-      baseAddress: true,
-      restDriveLimitMin: true,
-      restMinBreakMin: true,
-    },
-  })
-
-  const stages = await prisma.routeStage.findMany({
-    where: { routeId: source.routeId, organizationId: source.organizationId },
-    select: {
-      id: true,
-      orderId: true,
-      type: true,
-      sequence: true,
-      startedAt: true,
-      endedAt: true,
-    },
-    orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
-  })
 
   return {
     route: {
