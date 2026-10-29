@@ -161,6 +161,8 @@ export default function MobileHomePage() {
   // он ещё грузится.
   const [isRouteLoading, setIsRouteLoading] = useState(true)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
+  /** Лист SOS открывается плиткой из сетки действий */
+  const [isSosOpen, setIsSosOpen] = useState(false)
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("inactive")
   const [isGoingToBase, setIsGoingToBase] = useState(false)
   const [completingRoute, setCompletingRoute] = useState(false)
@@ -850,7 +852,7 @@ export default function MobileHomePage() {
   const statusId = shift?.status ?? "waiting"
 
   return (
-    <div className={`min-h-screen bg-[#09090b] text-white ${shift && !isOnMaintenance ? "m-nav-pad-sos" : "m-nav-pad"}`}>
+    <div className={`min-h-screen bg-[#09090b] text-white m-nav-pad`}>
       <FirstLoginGuide />
 
       <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
@@ -1069,6 +1071,7 @@ export default function MobileHomePage() {
               onSelect={(status) => void changeStatus(status)}
               onPhoto={(context) => router.push(`/m/photo?context=${context}`)}
               onMaintenance={() => router.push("/m/maintenance")}
+              onSos={() => setIsSosOpen(true)}
             />
 
             {/* ── Нормы отдыха ── */}
@@ -1213,7 +1216,14 @@ export default function MobileHomePage() {
         )}
       </main>
 
-      {shift && !isOnMaintenance && <SosButton orderId={activeOrder?.id} />}
+      {shift && !isOnMaintenance && (
+        <SosButton
+          orderId={activeOrder?.id}
+          open={isSosOpen}
+          onClose={() => setIsSosOpen(false)}
+          variant="none"
+        />
+      )}
 
       <BottomNav />
     </div>

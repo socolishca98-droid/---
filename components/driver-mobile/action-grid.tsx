@@ -13,7 +13,7 @@
 
 "use client"
 
-import { Camera, Check, Coffee, Fuel, Moon, Package, Truck, Wrench } from "lucide-react"
+import { AlertTriangle, Camera, Check, Coffee, Fuel, Moon, Package, Truck, Wrench } from "lucide-react"
 
 import { formatClock, shiftStatusMeta, suggestedNext } from "@/lib/shift/timeline"
 
@@ -39,6 +39,8 @@ export interface ActionGridProps {
   onSelect: (statusId: string) => void
   onPhoto: (context: string) => void
   onMaintenance: () => void
+  /** Открыть лист SOS. Если не передан — плитки SOS нет. */
+  onSos?: () => void
 }
 
 /** Порядок кнопок = порядок работы рейса. */
@@ -75,6 +77,7 @@ export function ActionGrid({
   onSelect,
   onPhoto,
   onMaintenance,
+  onSos,
 }: ActionGridProps) {
   const next = suggestedNext(status)
 
@@ -102,7 +105,9 @@ export function ActionGrid({
           const isActive = status === statusId
           const isRestingButton = statusId === "resting"
           const restActive = isRestingButton && resting
-          const isSuggested = !isActive && !restActive && next.includes(statusId)
+          // Подсказка «далее» уместна только внутри рейса: без рейса следующий
+          // шаг — не «в путь», а новое задание от логиста.
+          const isSuggested = hasActiveTrip && !isActive && !restActive && next.includes(statusId)
 
           // Без рейса бессмысленно ехать и грузиться: точки ещё нет
           const pointOnly =
@@ -179,6 +184,23 @@ export function ActionGrid({
           )
         })}
       </div>
+
+      {/* SOS — плиткой в этой же сетке. Так он всегда на виду и не перекрывает
+          кнопки: раньше плавающая красная кнопка закрывала «Ожидание». */}
+      {onSos && (
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={onSos}
+            className="relative flex min-h-[68px] w-full flex-col items-center justify-center gap-1 rounded-xl border border-red-500/50 bg-red-500/10 p-2 text-xs font-semibold text-red-300 active:opacity-70"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500">
+              <AlertTriangle className="h-4 w-4 text-white" />
+            </span>
+            <span className="text-center leading-tight">SOS</span>
+          </button>
+        </div>
+      )}
 
       {/* ТО / ремонт — отдельный сценарий со своей формой, не статус смены */}
       <button

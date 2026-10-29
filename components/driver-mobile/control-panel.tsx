@@ -153,7 +153,7 @@ export function ControlPanel({
       <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
         <span className="inline-flex items-center gap-1">
           <PauseCircle className="h-3 w-3" />
-          Смена идёт
+          Смена идёт · цифры за смену
         </span>
         {/* Счётчик точек — только когда есть незакрытые: иначе «закрыто 1 из 1»
             висело на экране до начала рейса и читалось как «уже всё сделано». */}
@@ -167,9 +167,12 @@ export function ControlPanel({
           )}
       </div>
 
-      {next.length > 0 && (
+      {/* Подсказка про следующие шаги — только когда рейс идёт. Без рейса
+          «дальше по рейсу» показывало статусы смены (отдых, заправку) как
+          этапы рейса: водитель думал, что после разгрузки его ждёт отдых. */}
+      {hasActiveTrip && next.length > 0 && (
         <p className="mt-2 text-[11px] text-gray-500">
-          Дальше по рейсу:{" "}
+          Дальше по смене:{" "}
           {next
             .map((id) => shiftStatusMeta(id)?.label ?? id)
             .join(" → ")}

@@ -6,6 +6,14 @@ import { toast } from "sonner"
 
 interface Props {
   orderId?: string
+  /** Открыть лист SOS снаружи (например, из плитки в сетке действий) */
+  open?: boolean
+  onClose?: () => void
+  /**
+   * "floating" — круглая кнопка поверх экрана (по умолчанию),
+   * "none" — только лист выбора, кнопку рисует вызывающий экран.
+   */
+  variant?: "floating" | "none"
 }
 
 // Типы должны совпадать с бэкендом (app/api/m/sos/route.ts)
@@ -48,9 +56,19 @@ const sosOptions = [
   },
 ]
 
-export function SosButton({ orderId }: Props) {
-  const [isOpen, setIsOpen] = useState(false)
+export function SosButton({ orderId, open, onClose, variant = "floating" }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
+
+  const isControlled = open !== undefined
+  const isOpen = isControlled ? Boolean(open) : internalOpen
+  const setIsOpen = (next: boolean) => {
+    if (isControlled) {
+      if (!next) onClose?.()
+      return
+    }
+    setInternalOpen(next)
+  }
 
   const sendSos = async (type: string, message: string) => {
     setIsSending(true)
@@ -107,12 +125,18 @@ export function SosButton({ orderId }: Props) {
   // (Вставляешь сюда весь остальной JSX из оригинального файла)
   return (
     <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/40 flex items-center justify-center transition-all active:scale-95 z-40 animate-pulse"
-      >
-        <AlertTriangle className="h-6 w-6 text-white" />
-      </button>
+      {/* Плавающая кнопка перекрывала плитки статусов и «Ожидание» — самое
+          частое нажатие в смене. Основной вход в SOS теперь плитка в сетке
+          действий (ActionGrid), а плавающая осталась только если её явно
+          просят и не передают управляемый open. */}
+      {variant === "floating" && !isControlled && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/40 flex items-center justify-center transition-all active:scale-95 z-40"
+        >
+          <AlertTriangle className="h-6 w-6 text-white" />
+        </button>
+      )}
 
       {isOpen && (
         <div className="fixed inset-0 z-[60] bg-black/90 flex items-end animate-in fade-in slide-in-from-bottom-10">

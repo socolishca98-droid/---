@@ -81,6 +81,14 @@ type SegmentPattern = string[]
  *  (водитель видит только свои заказы, свой чат и свой рейс). */
 const ANY_ROLE_API: { pattern: SegmentPattern; reason: string }[] = [
   { pattern: ["api", "chat"], reason: "чат используют и логист, и водитель" },
+  {
+    pattern: ["api", "push"],
+    reason: "уведомления нужны и водителю: подписка привязана к его аккаунту",
+  },
+  {
+    pattern: ["api", "onboarding"],
+    reason: "инструктаж при первом входе нужен и водителю — у него свои шаги",
+  },
   { pattern: ["api", "orders"], reason: "водитель читает свои заказы" },
   { pattern: ["api", "orders", ":id"], reason: "водитель меняет статус своего заказа" },
   { pattern: ["api", "drivers", ":id"], reason: "водитель читает свою карточку" },
