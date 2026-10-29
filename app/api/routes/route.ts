@@ -43,6 +43,7 @@ import { routeOrdersOrderBy, serializeRoute } from "@/lib/routes/service"
 import { parseDateParam, routePeriodWhere } from "@/lib/routes/date-range"
 import { captureRouteError } from "@/lib/sentry"
 import {
+  CLOSED_ORDER_STATUSES,
   canChangeOrderStatus,
   isOrderRouteable,
   normalizeOrderStatus,
@@ -230,6 +231,40 @@ export async function GET(request: NextRequest) {
         skip: offset,
       }),
     ])
+
+    // Самолечение старых данных: рейс, у которого все заказы закрыты, но
+    // статус остался «плановый», висел в «Активных» с прогрессом 100% —
+    // логист видел одновременно «завершено» и «ещё едет». Правило применяем
+    // на чтении (закрытие заказа теперь закрывает рейс само), а здесь
+    // поправляем записи, созданные до этого правила.
+    const staleDoneIds: string[] = []
+    for (const route of rows as RouteListRow[]) {
+      const status = String(route.status ?? "")
+      if (status === "completed" || status === "cancelled") continue
+      const orders = Array.isArray(route.orders) ? route.orders : []
+      if (orders.length === 0) continue
+      const closed = new Set<string>(CLOSED_ORDER_STATUSES)
+      const allClosed = orders.every((order) => closed.has(String(order.status ?? "")))
+      if (!allClosed) continue
+
+      staleDoneIds.push(route.id)
+      ;(route as { status?: string }).status = "completed"
+    }
+    if (staleDoneIds.length > 0) {
+      // Не блокируем ответ записью: экран уже показывает правильный статус,
+      // а база догоняет следом.
+      void prisma.route
+        .updateMany({
+          where: scopedWhere(org.organizationId, {
+            id: { in: staleDoneIds },
+            status: { notIn: ["completed", "cancelled"] },
+          }),
+          data: { status: "completed", completedAt: new Date() },
+        })
+        .catch((error: unknown) => {
+          console.error("[Routes API] не удалось закрыть отработанные рейсы:", error)
+        })
+    }
 
     const routes = (rows as RouteListRow[]).map((route) => {
       // ── Обратное плечо: конец рейса против базы компании ──
