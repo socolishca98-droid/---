@@ -267,8 +267,13 @@ function actualsFromStages(
  * вызов ничего не ломает и не дублирует операции. Расхождение в количестве
  * этапов (заказы добавили) тоже обрабатывается — доберём только новые.
  */
-export async function ensureRouteStages(source: RouteTripSource): Promise<number> {
-  const loaded = await loadRoute(source)
+export async function ensureRouteStages(
+  source: RouteTripSource,
+  // Уже загруженный рейс: getRouteTripEta грузит его сам, и второй такой же
+  // запрос в базу только удваивал время ответа (см. замеры /api/m/route)
+  preloaded?: LoadedRoute,
+): Promise<number> {
+  const loaded = preloaded ?? (await loadRoute(source))
   if (!loaded) return 0
 
   const built = await buildStagesForRoute(loaded, source)
@@ -520,7 +525,7 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
   if (!loaded) return null
 
   if (source.ensureStages) {
-    await ensureRouteStages(source)
+    await ensureRouteStages(source, loaded)
   }
 
   const actuals = actualsFromStages(loaded)

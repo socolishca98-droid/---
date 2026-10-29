@@ -21,7 +21,7 @@ import {
   orderStatusLabel,
 } from "@/lib/orders/stages"
 import { buildTripSummary } from "@/lib/trips/history"
-import { getRouteTripEta, ensureRouteStages } from "@/lib/eta/trip-repository"
+import { getRouteTripEta } from "@/lib/eta/trip-repository"
 import { availableTripActions } from "@/lib/eta/trip-actions"
 
 export const dynamic = "force-dynamic"
@@ -178,12 +178,14 @@ export async function GET(request: NextRequest) {
     let trip: Awaited<ReturnType<typeof getRouteTripEta>> = null
     if (route) {
       try {
-        // Этапы рейса должны существовать как строки, иначе некуда писать
-        // фактические отметки водителя
-        await ensureRouteStages({ routeId: route.id, organizationId: org.organizationId })
+        // Этапы рейса должны существовать как строками, иначе некуда писать
+        // фактические отметки водителя. Создаём их внутри getRouteTripEta:
+        // отдельный вызов означал две загрузки рейса подряд, и ответ занимал
+        // 13–17 секунд вместо секунд.
         trip = await getRouteTripEta({
           routeId: route.id,
           organizationId: org.organizationId,
+          ensureStages: true,
         })
       } catch (tripError) {
         // Прогноз — не критичная часть ответа: без него экран водителя
