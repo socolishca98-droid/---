@@ -492,7 +492,10 @@ export default function RoutesPage() {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">
-                      {(stats.totalRevenue / 1000).toFixed(0)}К
+                      {/* «0К» читалось как опечатка: у нуля нет тысяч */}
+                      {stats.totalRevenue > 0
+                        ? `${(stats.totalRevenue / 1000).toFixed(0)}К`
+                        : "0 ₽"}
                     </p>
                     <p className="text-xs text-muted-foreground">Выручка</p>
                   </div>
