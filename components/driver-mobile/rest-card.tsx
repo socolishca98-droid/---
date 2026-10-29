@@ -57,8 +57,11 @@ export function RestCard({
           )}
           <h2 className="text-sm font-semibold">Отдых и норма</h2>
         </div>
+        {/* «норма 4 ч 30 мин без перерыва» + строка «За рулём без перерыва»
+            ниже — два раза одно и то же. Норма говорит, через сколько нужен
+            перерыв, а не сколько можно без него. */}
         <span className="text-[11px] text-gray-500">
-          норма {formatDuration(limitMin * 60)} без перерыва
+          перерыв через {formatDuration(limitMin * 60)}
         </span>
       </div>
 

@@ -33,6 +33,7 @@ import { useDriverNotifications } from "@/hooks/use-driver-notifications"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import { isOrderClosed } from "@/lib/orders/stages"
+import { tripState } from "@/lib/shift/trip-state"
 import { shortPersonName } from "@/lib/logist-mobile/format"
 import { emptyTotals, shiftStatusLabel, type ShiftTotals } from "@/lib/shift/timeline"
 import {
@@ -118,13 +119,16 @@ type GpsStatus =
   | "denied"        // браузер не дал геолокацию
   | "error"         // отправка не удалась
 
+// Подписи только про геолокацию. Раньше здесь стояло «Рейс не назначен» и
+// «Смена не начата» — чип в шапке читался как состояние рейса и спорил с
+// карточкой «Вам назначен рейс» на том же экране.
 const GPS_LABELS: Record<GpsStatus, string> = {
-  inactive: "Смена не начата",
-  no_trip: "Рейс не назначен",
-  searching: "Ожидание сигнала",
-  active: "GPS работает",
-  denied: "Нет доступа к геолокации: как разрешить",
-  error: "Ошибка отправки, проверьте связь",
+  inactive: "GPS выкл.",
+  no_trip: "GPS: нет рейса",
+  searching: "GPS ищет",
+  active: "GPS ок",
+  denied: "GPS запрещён",
+  error: "GPS: ошибка",
 }
 
 /** Статусы, при которых заказ считается «в исполнении». */
@@ -152,6 +156,10 @@ export default function MobileHomePage() {
   const [proposedLoads, setProposedLoads] = useState<ProposedLoad[]>([])
   const [activeMaintenance, setActiveMaintenance] = useState<ActiveMaintenance | null>(null)
   const [isDataLoading, setIsDataLoading] = useState(true)
+  // Рейс приходит заметно позже смены (до 14 с на холодном сервере) — экран
+  // показываем сразу после смены, а на месте карточки рейса честно пишем, что
+  // он ещё грузится.
+  const [isRouteLoading, setIsRouteLoading] = useState(true)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("inactive")
   const [isGoingToBase, setIsGoingToBase] = useState(false)
@@ -191,23 +199,26 @@ export default function MobileHomePage() {
     }
   }, [])
 
-  const activeOrder = routePoints.find((point) => !isOrderClosed(point.status)) ?? null
-  const hasActiveTrip = activeOrder !== null
-  const closedPoints = routePoints.filter((point) => isOrderClosed(point.status)).length
-  const routeProgress =
-    routePoints.length > 0 ? Math.round((closedPoints / routePoints.length) * 100) : 0
+  // Открытые точки — это и есть текущий рейс. Закрытые остаются в списке как
+  // история, но «активным рейсом» больше не считаются: раньше из-за этого на
+  // выполненном рейсе висело «Вам назначен рейс · Начать рейс», а кнопка молча
+  // ничего не делала.
+  const tripView = tripState(routePoints)
+  const activeOrder = tripView.active
+  const hasActiveTrip = tripView.hasActiveTrip
+  const closedPoints = tripView.closed.length
+  const tripFinished = tripView.finished
+  const routeProgress = tripView.progress
 
   // ── Загрузка данных ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     if (!driver?.id) return
 
     try {
-      const [shiftRes, routeRes, maintenanceRes] = await Promise.all([
-        fetch("/api/m/shift"),
-        fetch("/api/m/route"),
-        fetch(`/api/m/maintenance?driverId=${driver.id}`),
-      ])
-
+      // Смена — первым запросом и без ожидания остальных: она решает, что
+      // вообще показывать на экране. Раньше экран ждал весь пакет и висел на
+      // загрузчике 8–14 секунд.
+      const shiftRes = await fetch("/api/m/shift")
       const shiftData = await shiftRes.json()
       if (shiftData.success) {
         setShift(shiftData.shift || null)
@@ -215,6 +226,12 @@ export default function MobileHomePage() {
         setTotals(shiftData.totals ?? emptyTotals())
         setRest(shiftData.rest || null)
       }
+      setIsDataLoading(false)
+
+      const [routeRes, maintenanceRes] = await Promise.all([
+        fetch("/api/m/route"),
+        fetch(`/api/m/maintenance?driverId=${driver.id}`),
+      ])
 
       const routeData = await routeRes.json()
       if (routeData.success) {
@@ -254,6 +271,7 @@ export default function MobileHomePage() {
       console.error("[Mobile] Failed to fetch data:", error)
     } finally {
       setIsDataLoading(false)
+      setIsRouteLoading(false)
     }
   }, [driver?.id])
 
@@ -372,7 +390,10 @@ export default function MobileHomePage() {
 
   // ── Смена ──────────────────────────────────────────────────────────────
   const startShift = async () => {
-    if (!driver?.id) return
+    if (!driver?.id) {
+      toast.error("Не удалось начать смену", { description: "Профиль водителя не загрузился — обновите экран" })
+      return
+    }
     setIsChangingStatus(true)
 
     try {
@@ -557,7 +578,16 @@ export default function MobileHomePage() {
 
   // ── Принять назначенный рейс ───────────────────────────────────────────
   const acceptTrip = async () => {
-    if (!driver?.id || !activeOrder) return
+    if (!activeOrder) {
+      // Раньше кнопка молча ничего не делала: экран показывал «Вам назначен
+      // рейс», а в данных открытых точек уже не было.
+      toast.info("Этот рейс уже выполнен", { description: "Ждите новое задание — оно придёт уведомлением" })
+      return
+    }
+    if (!driver?.id) {
+      toast.error("Не удалось начать рейс", { description: "Профиль водителя не загрузился — обновите экран" })
+      return
+    }
     setIsChangingStatus(true)
 
     try {
@@ -805,67 +835,70 @@ export default function MobileHomePage() {
 
       <header className="sticky top-0 z-10 bg-[#09090b]/95 backdrop-blur-lg border-b border-gray-800/50">
         <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              {/* Полное ФИО в шапке не помещалось и обрезалось на «Кузнец…».
-                  Фамилия и инициалы читаются целиком; полное имя — в профиле. */}
-              <h1 className="text-lg font-bold truncate">{shortPersonName(driver.name)}</h1>
-              <p className="text-xs text-gray-500 truncate">
+          {/* Шапка в две строки: имя и машина сверху, служебные чипы снизу.
+              В одну строку имя обрезалось до «Кузнец…», а госномер — до
+              «В108МК799 • …»: чипы занимали больше места, чем данные. */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base font-bold leading-tight">{shortPersonName(driver.name)}</h1>
+              <p className="mt-0.5 truncate text-xs text-gray-500">
                 {driver.vehiclePlate || "Нет ТС"}
                 {driver.vehicleType && ` • ${driver.vehicleType}`}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 ml-3">
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  gpsStatus === "active"
-                    ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                    : gpsStatus === "denied"
-                      ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                      : gpsStatus === "error"
-                        ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                        : gpsStatus === "searching"
-                          ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                          : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
-                }`}
-                title={
-                  gpsStatus === "denied"
-                    ? "Разрешите доступ к геолокации в настройках браузера для этого сайта"
-                    : undefined
-                }
-              >
-                {gpsStatus === "active" && <Wifi className="h-3 w-3" />}
-                {gpsStatus === "denied" && <WifiOff className="h-3 w-3" />}
-                {gpsStatus === "error" && <WifiOff className="h-3 w-3" />}
-                {gpsStatus === "searching" && <Locate className="h-3 w-3 animate-pulse" />}
-                {(gpsStatus === "inactive" || gpsStatus === "no_trip") && <WifiOff className="h-3 w-3" />}
-                <span>{GPS_LABELS[gpsStatus]}</span>
-              </div>
-
-              {!isOnline && (
-                <span
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                  title="Нет связи: действия отправятся, когда сеть вернётся"
-                >
-                  <WifiOff className="h-3 w-3" />
-                  Офлайн
-                </span>
-              )}
-
-              {pendingPhotos > 0 && (
-                <span
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30"
-                  title="Фото ждут отправки и уйдут сами"
-                >
-                  <Camera className="h-3 w-3" />
-                  {pendingPhotos}
-                </span>
-              )}
-
+            <div className="flex shrink-0 items-center gap-1.5">
               <DriverNotificationsBell driverId={driver.id} />
               <DriverChatButton />
             </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <div
+              className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+                gpsStatus === "active"
+                  ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                  : gpsStatus === "denied" || gpsStatus === "error"
+                    ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                    : gpsStatus === "searching"
+                      ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                      : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+              }`}
+              title={
+                gpsStatus === "denied"
+                  ? "Разрешите доступ к геолокации в настройках браузера для этого сайта"
+                  : gpsStatus === "no_trip"
+                    ? "Рейс не начат — координаты не отправляются, пока нет задания"
+                    : undefined
+              }
+            >
+              {gpsStatus === "active" && <Wifi className="h-3 w-3" />}
+              {gpsStatus === "searching" && <Locate className="h-3 w-3 animate-pulse" />}
+              {(gpsStatus === "denied" || gpsStatus === "error" || gpsStatus === "inactive" || gpsStatus === "no_trip") && (
+                <WifiOff className="h-3 w-3" />
+              )}
+              <span>{GPS_LABELS[gpsStatus]}</span>
+            </div>
+
+            {!isOnline && (
+              <span
+                className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                title="Нет связи: действия отправятся, когда сеть вернётся"
+              >
+                <WifiOff className="h-3 w-3" />
+                Офлайн
+              </span>
+            )}
+
+            {pendingPhotos > 0 && (
+              <span
+                className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                title="Фото ждут отправки и уйдут сами"
+              >
+                <Camera className="h-3 w-3" />
+                {pendingPhotos}
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -944,12 +977,13 @@ export default function MobileHomePage() {
               statusSeconds={statusSeconds}
               totals={totals}
               hasActiveTrip={hasActiveTrip}
+              tripFinished={tripFinished}
               closedPoints={closedPoints}
               totalPoints={routePoints.length}
             />
 
             {/* ── Назначенный, но не начатый рейс ── */}
-            {!hasActiveTrip && routePoints.length > 0 && (
+            {hasActiveTrip && routePoints.length > 0 && (
               <div className="rounded-2xl border border-orange-500/40 bg-orange-500/10 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Truck className="h-5 w-5 text-orange-400" />
@@ -973,6 +1007,31 @@ export default function MobileHomePage() {
                   <Play className="h-5 w-5" />
                   Начать рейс
                 </button>
+              </div>
+            )}
+
+            {/* ── Рейс выполнен: открытых точек нет ── */}
+            {tripFinished && (
+              <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-400" />
+                  <span className="font-semibold text-green-300">Рейс выполнен</span>
+                </div>
+                <p className="text-sm text-gray-300">
+                  {routePoints[0].routeFrom} → {routePoints[routePoints.length - 1].routeTo}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Все точки закрыты ({routePoints.length}). Логист назначит следующее задание — оно придёт уведомлением.
+                </p>
+              </div>
+            )}
+
+            {/* Рейс ещё грузится: не показываем «задания нет» раньше времени */}
+            {isRouteLoading && routePoints.length === 0 && (
+              <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4">
+                <p className="flex items-center gap-2 text-sm text-gray-400">
+                  Загружаем данные рейса…
+                </p>
               </div>
             )}
 
@@ -1067,7 +1126,7 @@ export default function MobileHomePage() {
             )}
 
             {/* ── Ожидаю рейс: смена открыта, задания нет ── */}
-            {!hasActiveTrip && routePoints.length === 0 && (
+            {!hasActiveTrip && routePoints.length === 0 && !isRouteLoading && (
               <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-800">

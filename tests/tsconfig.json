@@ -35,6 +35,7 @@
     "../lib/auth/owner.ts",
     "../lib/routes/model.ts",
     "../lib/orders/stages.ts",
+    "../lib/shift/trip-state.ts",
     "../lib/routes/optimizer.ts",
     "../lib/fleet/insights.ts",
     "../lib/payments/summary.ts",

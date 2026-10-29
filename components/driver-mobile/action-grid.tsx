@@ -163,7 +163,9 @@ export function ActionGrid({
                 )}
               </button>
 
-              {photoContext && hasActiveTrip && (
+              {/* Чек заправки нужен и без активного рейса: расход всё равно
+                  надо приложить к отчёту. Фото груза — только в рейсе. */}
+              {photoContext && (hasActiveTrip || statusId === "fueling") && (
                 <button
                   type="button"
                   onClick={() => onPhoto(photoContext)}

@@ -38,8 +38,10 @@ export interface ControlPanelProps {
   statusSeconds: number
   /** Итоги за смену — для живой строки под таймером */
   totals: ShiftTotals
-  /** Идёт ли рейс (есть активный заказ) */
+  /** Идёт ли рейс (есть открытые точки) */
   hasActiveTrip: boolean
+  /** Рейс есть, но все точки закрыты — работа выполнена */
+  tripFinished?: boolean
   /** Сколько точек рейса закрыто */
   closedPoints?: number
   /** Сколько всего точек */
@@ -51,6 +53,7 @@ export function ControlPanel({
   statusSeconds,
   totals,
   hasActiveTrip,
+  tripFinished,
   closedPoints,
   totalPoints,
 }: ControlPanelProps) {
@@ -96,7 +99,16 @@ export function ControlPanel({
         </div>
       </div>
 
-      <p className="mt-2 text-xs text-gray-500">{meta?.hint}</p>
+      {/* Подсказка под статусом. Раньше здесь всегда стояло «Смена идёт,
+          задания нет» — даже когда на экране висела карточка назначенного
+          рейса, и это было прямым противоречием. */}
+      <p className="mt-2 text-xs text-gray-500">
+        {status === "waiting" && tripFinished
+          ? "Рейс выполнен, ждём новое задание"
+          : status === "waiting" && hasActiveTrip
+            ? "Рейс назначен — начните его кнопкой ниже"
+            : meta?.hint}
+      </p>
 
       {/* Полоска шагов рейса — где я в цепочке «путь → погрузка → выгрузка» */}
       {hasActiveTrip && step > 0 && (
@@ -143,11 +155,16 @@ export function ControlPanel({
           <PauseCircle className="h-3 w-3" />
           Смена идёт
         </span>
-        {typeof closedPoints === "number" && typeof totalPoints === "number" && totalPoints > 0 && (
-          <span>
-            Точек закрыто: {closedPoints} из {totalPoints}
-          </span>
-        )}
+        {/* Счётчик точек — только когда есть незакрытые: иначе «закрыто 1 из 1»
+            висело на экране до начала рейса и читалось как «уже всё сделано». */}
+        {hasActiveTrip &&
+          typeof closedPoints === "number" &&
+          typeof totalPoints === "number" &&
+          totalPoints > 0 && (
+            <span>
+              Точек закрыто: {closedPoints} из {totalPoints}
+            </span>
+          )}
       </div>
 
       {next.length > 0 && (

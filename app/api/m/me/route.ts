@@ -83,7 +83,22 @@ export async function GET(request: NextRequest) {
       select: { parkName: true, phone: true }
     })
 
-    const fleetPhone = (fleetSettings?.phone || "").trim()
+    // Если телефон автопарка не заполнен, показываем номер логиста своей
+    // организации: водителю в дороге нужен живой человек, а не надпись
+    // «Телефон автопарка не указан». Номер берём только у сотрудника, у
+    // которого он есть, и только внутри своей организации.
+    let fleetPhone = (fleetSettings?.phone || "").trim()
+    if (!fleetPhone) {
+      const logist = await prisma.user.findFirst({
+        where: scopedWhere(org.organizationId, {
+          role: { in: ["logist", "admin", "owner", "dispatcher"] },
+          phone: { not: null }
+        }),
+        select: { phone: true },
+        orderBy: { createdAt: "asc" }
+      })
+      fleetPhone = (logist?.phone || "").trim()
+    }
 
     return NextResponse.json({
       success: true,

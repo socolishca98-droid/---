@@ -201,7 +201,10 @@ function PhotoPageContent() {
         ? `/api/m/photos?driverId=${driver.id}&orderId=${selectedOrder.id}`
         : `/api/m/photos?driverId=${driver.id}`
 
-      const res = await fetch(url)
+      // no-store: после загрузки список читался из кеша браузера и фото
+      // «не появлялось» — водитель видел тост «Загружено фото: 1» и пустую
+      // галерею, то есть думал, что снимок потерялся.
+      const res = await fetch(url, { cache: "no-store" })
       const data = await res.json()
       if (data.success) {
         setPhotos(data.photos as Photo[])
