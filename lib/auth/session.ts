@@ -135,6 +135,58 @@ async function assertSessionActive(sessionId: string, userId: string): Promise<b
 }
 
 // ---------------------------------------------------------------------------
+// Кэш разрешённых сессий
+// ---------------------------------------------------------------------------
+
+/**
+ * Разрешённая сессия живёт в памяти процесса 15 секунд.
+ *
+ * Зачем: каждый запрос приложения проверяет подпись токена и делает ДВА
+ * обращения к базе (пользователь + строка сессии). У удалённой базы это
+ * 1.5–2.5 секунды на запрос, и экран водителя открывался десять секунд только
+ * из-за проверок. Кэш ничего не ослабляет сверх 15 секунд: отзыв сессии
+ * (выход, смена пароля, блокировка) применяется с этой задержкой, а сам токен
+ * по-прежнему проверяется подписью на каждом запросе.
+ *
+ * Ограничения честные: в serverless кэш живёт в пределах одного процесса, то
+ * есть ускоряет повторные запросы экрана, а не первый в новом процессе.
+ */
+const SESSION_CACHE_TTL_MS = 15_000
+const SESSION_CACHE_LIMIT = 500
+const sessionCache = new Map<string, { at: number; session: StaffSession | DriverSession | null }>()
+
+function cacheKey(kind: SessionKind, userId: string, sessionId: string): string {
+  return `${kind}:${userId}:${sessionId}`
+}
+
+function cachedSession(key: string): { hit: boolean; session: StaffSession | DriverSession | null } {
+  const entry = sessionCache.get(key)
+  if (!entry) return { hit: false, session: null }
+  if (Date.now() - entry.at > SESSION_CACHE_TTL_MS) {
+    sessionCache.delete(key)
+    return { hit: false, session: null }
+  }
+  return { hit: true, session: entry.session }
+}
+
+function rememberSession(key: string, session: StaffSession | DriverSession | null): void {
+  if (!session) return // отрицательный результат не кэшируем: доступ могли выдать только что
+  if (sessionCache.size > SESSION_CACHE_LIMIT) sessionCache.clear()
+  sessionCache.set(key, { at: Date.now(), session })
+}
+
+/** Сбросить кэш сессии (выход, смена пароля, отзыв доступа). */
+export function forgetSessionCache(sessionId?: string): void {
+  if (!sessionId) {
+    sessionCache.clear()
+    return
+  }
+  for (const key of [...sessionCache.keys()]) {
+    if (key.endsWith(`:${sessionId}`)) sessionCache.delete(key)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Загрузка сессий
 // ---------------------------------------------------------------------------
 
@@ -142,6 +194,10 @@ async function assertSessionActive(sessionId: string, userId: string): Promise<b
 export async function loadStaffSession(request: NextRequest): Promise<StaffSession | null> {
   const payload = await readPayload(request, "staff")
   if (!payload) return null
+
+  const key = cacheKey("staff", payload.sub, payload.jti)
+  const cached = cachedSession(key)
+  if (cached.hit) return cached.session as StaffSession | null
 
   // Две проверки независимы: и пользователь, и его сессия ищутся по данным из
   // подписанного токена. Последовательные запросы давали 1.4 с на каждый экран
@@ -167,7 +223,7 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
   if (!STAFF_ROLES.includes(user.role as UserRole)) return null
   if (!sessionActive) return null
 
-  return {
+  const session: StaffSession = {
     kind: "staff",
     sessionId: payload.jti,
     user: {
@@ -181,12 +237,19 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
       organizationName: user.organization?.name ?? null,
     },
   }
+
+  rememberSession(key, session)
+  return session
 }
 
 /** Сессия водителя или null (без исключений) */
 export async function loadDriverSession(request: NextRequest): Promise<DriverSession | null> {
   const payload = await readPayload(request, "driver")
   if (!payload) return null
+
+  const key = cacheKey("driver", payload.sub, payload.jti)
+  const cached = cachedSession(key)
+  if (cached.hit) return cached.session as DriverSession | null
 
   // См. комментарий в loadStaffSession: и пользователь, и сессия ищутся по
   // подписанному токену, поэтому два запроса идут параллельно — на телефоне
@@ -232,7 +295,7 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
   if (!user.driverId || !user.driver) return null
   if (!sessionActive) return null
 
-  return {
+  const session: DriverSession = {
     kind: "driver",
     sessionId: payload.jti,
     userId: user.id,
@@ -244,6 +307,9 @@ export async function loadDriverSession(request: NextRequest): Promise<DriverSes
         user.driver.organization?.name ?? user.organization?.name ?? null,
     },
   }
+
+  rememberSession(key, session)
+  return session
 }
 
 /** Любая из двух сессий */
@@ -453,6 +519,7 @@ export function expiredSessionCookie(name: string) {
 
 /** Настоящий выход: отзываем сессию в БД, а не только чистим cookie */
 export async function revokeSession(sessionId: string, reason = "logout"): Promise<void> {
+  forgetSessionCache(sessionId)
   await prisma.session.updateMany({
     where: { id: sessionId, revokedAt: null },
     data: { revokedAt: new Date(), revokeReason: reason },
@@ -489,6 +556,7 @@ export async function revokeRequestSessions(
 
 /** Отозвать все сессии пользователя (деактивация доступа, смена пароля) */
 export async function revokeAllSessions(userId: string, reason: string): Promise<number> {
+  forgetSessionCache()
   const result = await prisma.session.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date(), revokeReason: reason },
