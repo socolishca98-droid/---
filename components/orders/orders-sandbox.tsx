@@ -298,6 +298,16 @@ const AUTOPROPOSALS_HIDDEN_KEY = "tms_sandbox_autoproposals_hidden_v1"
 const AUTOPROPOSALS_SNOOZED_KEY = "tms_sandbox_autoproposals_snoozed_v1"
 const AUTOPROPOSALS_SENT_KEY = "tms_sandbox_autoproposals_sent_v1"
 
+/** «1 заказ», «2 заказа», «5 заказов» — без «1 заказов» в заголовке маршрута. */
+function orderWord(count: number): string {
+  const mod100 = count % 100
+  const mod10 = count % 10
+  if (mod100 >= 11 && mod100 <= 14) return "заказов"
+  if (mod10 === 1) return "заказ"
+  if (mod10 >= 2 && mod10 <= 4) return "заказа"
+  return "заказов"
+}
+
 const AUTOPROPOSALS_SNOOZE_MINUTES = 30
 
 const AUTOPROPOSAL_TYPE_META: Record<
@@ -2831,7 +2841,7 @@ export function OrdersSandbox() {
                 <div className="flex items-center gap-2 mb-3">
                   <Truck className="h-5 w-5 text-orange-500" />
                   <h3 className="font-semibold">
-                    Маршрут ({routeOrders.length} заказов)
+                    Маршрут ({routeOrders.length} {orderWord(routeOrders.length)})
                   </h3>
                   {routeCalculation.hasGroups && (
                     <Badge
@@ -2880,15 +2890,15 @@ export function OrdersSandbox() {
                               </Badge>
                             )}
                           </div>
-                          <span className="text-sm">
+                          <span className="block truncate text-sm">
                             {order.routeFrom?.split(",")[0]} →{" "}
                             {order.routeTo?.split(",")[0]}
                           </span>
                         </div>
-                        <span className="text-xs text-slate-500">
+                        <span className="shrink-0 whitespace-nowrap text-xs text-slate-500">
                           {order.distance} км
                         </span>
-                        <span className="text-emerald-400 font-medium">
+                        <span className="shrink-0 whitespace-nowrap text-emerald-400 font-medium">
                           {order.price > 0
                             ? `${order.price.toLocaleString()}₽`
                             : "Договорная"}
