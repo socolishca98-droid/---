@@ -2688,42 +2688,46 @@ export function OrdersSandbox() {
                 <TooltipContent>Очистить лист</TooltipContent>
               </Tooltip>
             </div>
+
+            {/* Подсказка режима — второй строкой в плашке инструментов.
+                Раньше она висела по центру холста и накрывала карточки
+                заказов ровно там, куда логист и собирался кликнуть. */}
+            {(mode === "connect" || mode === "route" || (mode === "group" && activeGroupId)) && (
+              <div
+                className={`mt-1 flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm text-white ${
+                  mode === "connect" ? "bg-blue-600" : mode === "route" ? "bg-orange-600" : "bg-purple-600"
+                }`}
+              >
+                {mode === "connect" ? (
+                  <>
+                    <Info className="h-4 w-4" />
+                    {connectingFrom ? "Кликните на вторую карточку" : "Кликните на первую карточку"}
+                  </>
+                ) : mode === "route" ? (
+                  <>
+                    <Truck className="h-4 w-4" />
+                    Кликайте по карточкам для добавления в маршрут
+                  </>
+                ) : (
+                  <>
+                    <Layers className="h-4 w-4" />
+                    Кликайте на карточки для добавления в группу
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("select")
+                        setActiveGroupId(null)
+                      }}
+                      className="ml-1 rounded bg-white/20 px-2 py-0.5 text-xs"
+                    >
+                      Готово
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
-          {mode === "connect" && (
-            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
-              <div className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 animate-pulse">
-                <Info className="h-4 w-4" />
-                {connectingFrom ? "Кликните на вторую карточку" : "Кликните на первую карточку"}
-              </div>
-            </div>
-          )}
-          {mode === "route" && (
-            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
-              <div className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                <Truck className="h-4 w-4" />
-                Кликайте по карточкам для добавления в маршрут
-              </div>
-            </div>
-          )}
-          {mode === "group" && activeGroupId && (
-            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
-              <div className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-                <Layers className="h-4 w-4" />
-                Кликайте на карточки для добавления в группу
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("select")
-                    setActiveGroupId(null)
-                  }}
-                  className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs"
-                >
-                  Готово
-                </button>
-              </div>
-            </div>
-          )}
 
           <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             <div
@@ -3170,14 +3174,17 @@ export function OrdersSandbox() {
                               }))
                             }
                           >
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                               <Badge
                                 variant="outline"
                                 className={cn("text-[11px]", meta.badgeClass)}
                               >
                                 {meta.label}
                               </Badge>
-                              <span className="text-xs text-slate-500 truncate">
+                              {/* Подсказка переносится, а не обрезается: в узкой
+                                  панели «Не хватает данных для оформления»
+                                  читалось как «…для оформ». */}
+                              <span className="min-w-0 flex-1 basis-32 text-xs leading-snug text-slate-500">
                                 {meta.hint}
                               </span>
                             </div>
