@@ -124,7 +124,7 @@ type GpsStatus =
 // карточкой «Вам назначен рейс» на том же экране.
 const GPS_LABELS: Record<GpsStatus, string> = {
   inactive: "GPS выкл.",
-  no_trip: "GPS: нет рейса",
+  no_trip: "GPS ждёт рейс",
   searching: "GPS ищет",
   active: "GPS ок",
   denied: "GPS запрещён",

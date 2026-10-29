@@ -39,14 +39,17 @@ export function needsOwnRoute(order: RouteLinkInput): boolean {
 /**
  * Можно ли перевести заказ в «Назначен» — то есть передать работу водителю.
  *
- * Без водителя переводить нечего: заказ повиснет в статусе, где «машина в
- * пути», а ехать некому и в приложении водителя пусто.
+ * Шаг называется «Назначить машину», и без машины он бессмысленен: рейс без
+ * ТС нельзя ни посчитать по расходу, ни проверить по вместимости, а на экране
+ * водителя появляется «машина в пути», которой нет. Поэтому нужны оба: и
+ * водитель, и машина.
  */
 export function canAssignToDriver(input: {
   nextStatus: string | null | undefined
   driverId?: string | null
+  vehicleId?: string | null
 }): boolean {
   const status = normalizeOrderStatus(input.nextStatus)
   if (status !== "assigned") return true
-  return Boolean(input.driverId)
+  return Boolean(input.driverId && input.vehicleId)
 }

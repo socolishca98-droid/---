@@ -378,12 +378,22 @@ export async function PATCH(request: NextRequest,
     // ничего не появится.
     const effectiveDriverId =
       nextDriverId !== undefined ? nextDriverId : existing.assignedDriverId
-    if (!canAssignToDriver({ nextStatus, driverId: effectiveDriverId })) {
+    const effectiveVehicleId =
+      nextVehicleId !== undefined ? nextVehicleId : existing.assignedVehicleId
+    if (
+      !canAssignToDriver({
+        nextStatus,
+        driverId: effectiveDriverId,
+        vehicleId: effectiveVehicleId,
+      })
+    ) {
+      const missing = !effectiveDriverId
+        ? "водителя и машину"
+        : "машину"
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Сначала назначьте водителя: в статусе «Назначен» работа переходит к нему, и без водителя заказ не поедет",
+          error: `Сначала назначьте ${missing}: шаг называется «Назначить машину», и без них заказ не поедет`,
         },
         { status: 400 }
       )

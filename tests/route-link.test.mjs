@@ -24,9 +24,11 @@ test("уже привязанный или закрытый заказ не тр
   assert.equal(needsOwnRoute({ status: "неизвестный", assignedDriverId: "d1" }), false)
 })
 
-test("в «Назначен» нельзя без водителя", () => {
-  assert.equal(canAssignToDriver({ nextStatus: "assigned", driverId: "d1" }), true)
-  assert.equal(canAssignToDriver({ nextStatus: "assigned", driverId: null }), false)
-  // остальные переходы не ограничиваем
+test("в «Назначен» нельзя без водителя и машины", () => {
+  assert.equal(canAssignToDriver({ nextStatus: "assigned", driverId: "d1", vehicleId: "v1" }), true)
+  assert.equal(canAssignToDriver({ nextStatus: "assigned", driverId: null, vehicleId: "v1" }), false)
+  // «Машина в пути» без машины — то же самое враньё, только другим словом
+  assert.equal(canAssignToDriver({ nextStatus: "assigned", driverId: "d1", vehicleId: null }), false)
+  // остальные переходы не ограничиваем: на них ещё нет ни водителя, ни машины
   assert.equal(canAssignToDriver({ nextStatus: "in_route", driverId: null }), true)
 })
