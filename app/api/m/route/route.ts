@@ -210,6 +210,7 @@ export async function GET(request: NextRequest) {
           routeId: route.id,
           organizationId: org.organizationId,
           ensureStages: true,
+          timings: timings ?? undefined,
         })
       } catch (tripError) {
         // Прогноз — не критичная часть ответа: без него экран водителя

@@ -43,6 +43,12 @@ export interface RouteTripSource {
   ensureStages?: boolean
   /** Возврат на базу в конце рейса (по умолчанию — из настроек организации) */
   returnToBase?: boolean
+  /**
+   * Диагностика: если передать объект, функция запишет в него время по шагам
+   * («загрузка рейса», «сборка этапов», «расчёт»). Нужна, чтобы медленный
+   * экран разбирать числами, а не догадками. В обычных вызовах не задаётся.
+   */
+  timings?: Record<string, number>
 }
 
 interface LoadedRoute {
@@ -538,7 +544,18 @@ function tripEtaSignature(
  * обязан отдать 404, а не «пустой прогноз».
  */
 export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaResult | null> {
+  const timings = source.timings
+  let mark = Date.now()
+  const lap = (name: string) => {
+    if (!timings) return
+    const now = Date.now()
+    timings[name] = (timings[name] ?? 0) + (now - mark)
+    mark = now
+  }
+  if (timings) mark = Date.now()
+
   const loaded = await loadRoute(source)
+  lap("loadRoute")
   if (!loaded) return null
 
   const actuals = actualsFromStages(loaded)
@@ -559,11 +576,13 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
   }
 
   const built = await buildStagesForRoute(loaded, source)
+  lap("buildStages")
 
   // Этапы должны существовать строками, иначе некуда писать отметки водителя.
   // Синхронизируем по уже построенным этапам — без второй сборки.
   if (source.ensureStages) {
     await syncRouteStages(loaded, built, source)
+    lap("syncStages")
   }
 
   const unlocatedOrders = built.unlocatedOrders
@@ -625,6 +644,7 @@ export async function getRouteTripEta(source: RouteTripSource): Promise<TripEtaR
   }
 
   const result = calculateTripEta(stages, options)
+  lap("calculate")
 
   if (tripEtaCache.size >= TRIP_ETA_CACHE_LIMIT) {
     // Простейшая уборка: удаляем самый старый прогноз
