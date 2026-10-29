@@ -37,6 +37,7 @@
     "../lib/orders/stages.ts",
     "../lib/orders/route-link.ts",
     "../lib/shift/trip-state.ts",
+    "../lib/shift/timeline.ts",
     "../lib/routes/optimizer.ts",
     "../lib/fleet/insights.ts",
     "../lib/payments/summary.ts",

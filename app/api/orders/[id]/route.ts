@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { decideOrderDeletion } from "@/lib/orders/archive-policy"
 import { canAssignToDriver, needsOwnRoute } from "@/lib/orders/route-link"
+import { changeShiftStatus } from "@/lib/shift/service"
+import { needsReturnToWaiting } from "@/lib/shift/timeline"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
 import {
@@ -570,6 +572,32 @@ export async function PATCH(request: NextRequest,
         },
         ip: getClientIp(request),
       })
+    }
+
+    // Заказ закрыли, а смена водителя осталась «в пути» — так и было на
+    // приёмке: машина стоит, а отчёт пишет километры и часы. Возвращаем смену
+    // в «ожидаю рейс» тем же механизмом, что и приложение водителя.
+    if (isCompleting && effectiveDriverId) {
+      try {
+        const openShift = await prisma.driverShift.findFirst({
+          where: {
+            organizationId: __org.organizationId,
+            driverId: effectiveDriverId,
+            endedAt: null,
+          } as any,
+          select: { status: true },
+        })
+        if (openShift && needsReturnToWaiting(openShift.status)) {
+          await changeShiftStatus({
+            driverId: effectiveDriverId,
+            organizationId: __org.organizationId,
+            status: "waiting",
+          })
+        }
+      } catch (error) {
+        // Смена — не повод не закрыть заказ: пишем в лог и продолжаем
+        console.error("[Order API] не удалось вернуть смену в ожидание:", error)
+      }
     }
 
     return NextResponse.json({ success: true, order: updatedOrder })

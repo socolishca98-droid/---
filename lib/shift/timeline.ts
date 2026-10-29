@@ -133,6 +133,21 @@ export const SHIFT_STATUS_IDS = SHIFT_STATUSES.map((s) => s.id)
 
 const STATUS_BY_ID = new Map(SHIFT_STATUSES.map((s) => [s.id, s]))
 
+/**
+ * Статусы, которые возможны только внутри рейса.
+ *
+ * Нужны для случая «рейс закрыли, а смена осталась в пути»: приёмка показала
+ * водителя, который стоял на базе, но отчёт писал ему «в пути» уже 17 минут —
+ * потому что заказ закрыли на стороне логиста, а смену никто не тронул.
+ */
+export const TRIP_ONLY_STATUSES = ["driving", "loading", "unloading", "waiting_point"] as const
+
+/** Смену пора вернуть в «ожидаю рейс» — рейс закончился. */
+export function needsReturnToWaiting(status: string | null | undefined): boolean {
+  if (!status) return false
+  return (TRIP_ONLY_STATUSES as readonly string[]).includes(status)
+}
+
 export function shiftStatusMeta(status: string | null | undefined): ShiftStatusMeta | undefined {
   if (!status) return undefined
   return STATUS_BY_ID.get(status)
