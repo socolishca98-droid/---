@@ -46,6 +46,12 @@ export interface ControlPanelProps {
   closedPoints?: number
   /** Сколько всего точек */
   totalPoints?: number
+  /**
+   * Следующий пункт рейса словами («Погрузка · Ярославль»). Строится из точек
+   * рейса, а не из статусов смены: раньше здесь стояло «В пути → Отдых →
+   * Заправка», и водитель читал отдых с заправкой как обязательные этапы рейса.
+   */
+  nextStopLabel?: string | null
 }
 
 export function ControlPanel({
@@ -56,6 +62,7 @@ export function ControlPanel({
   tripFinished,
   closedPoints,
   totalPoints,
+  nextStopLabel,
 }: ControlPanelProps) {
   // Таймер тикает локально: ждать ответа сервера каждую секунду незачем,
   // а водителю нужны точные секунды на погрузке.
@@ -167,10 +174,14 @@ export function ControlPanel({
           )}
       </div>
 
-      {/* Подсказка про следующие шаги — только когда рейс идёт. Без рейса
-          «дальше по рейсу» показывало статусы смены (отдых, заправку) как
-          этапы рейса: водитель думал, что после разгрузки его ждёт отдых. */}
-      {hasActiveTrip && next.length > 0 && (
+      {/* Следующий пункт рейса — из точек рейса. Если сервер ещё не прислал
+          этапы, показываем шаги смены, но подписываем их честно («по смене»). */}
+      {hasActiveTrip && nextStopLabel && (
+        <p className="mt-2 truncate text-[11px] text-gray-400">
+          Следующий пункт: {nextStopLabel}
+        </p>
+      )}
+      {hasActiveTrip && !nextStopLabel && next.length > 0 && (
         <p className="mt-2 text-[11px] text-gray-500">
           Дальше по смене:{" "}
           {next

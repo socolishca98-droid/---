@@ -211,6 +211,22 @@ export default function MobileHomePage() {
   const closedPoints = tripView.closed.length
   const tripFinished = tripView.finished
   const tripStarted = isTripStarted(activeOrder)
+
+  /**
+   * Следующий пункт рейса словами — из этапов, которые прислал сервер
+   * (trip.stages / trip.nextPoint). Это настоящее «что дальше по рейсу»:
+   * погрузка, выгрузка, точка, возврат на базу.
+   */
+  const tripStages = (trip as any)?.stages as
+    | Array<{ index: number; kind: string; label: string; status: string }>
+    | undefined
+  const nextStage =
+    tripStages?.find((stage) => stage.status === "planned" || stage.status === "active") ?? null
+  const nextStopLabel = nextStage
+    ? `${nextStage.label}${(trip as any)?.nextPoint?.distanceM
+        ? ` · ${Math.round((trip as any).nextPoint.distanceM / 1000)} км`
+        : ""}`
+    : null
   const routeProgress = tripView.progress
 
   // ── Загрузка данных ────────────────────────────────────────────────────
@@ -1002,6 +1018,7 @@ export default function MobileHomePage() {
               tripFinished={tripFinished}
               closedPoints={closedPoints}
               totalPoints={routePoints.length}
+              nextStopLabel={nextStopLabel}
             />
 
             {/* ── Назначенный, но не начатый рейс ── */}
