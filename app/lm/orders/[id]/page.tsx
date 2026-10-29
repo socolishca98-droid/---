@@ -51,6 +51,7 @@ import {
   allowedOrderStatuses,
   orderStageLabel,
   orderStatusLabel,
+  isOrderClosed,
   type OrderStatus,
 } from "@/lib/orders/stages"
 import {
@@ -80,6 +81,8 @@ import {
   shortRef,
   telHref,
   whatsappHref,
+  orderHeaderSubtitle,
+  clientContactLine,
 } from "@/lib/logist-mobile/format"
 
 const FINAL = ["delivered", "cancelled", "rejected", "expired"]
@@ -126,6 +129,9 @@ export default function LogistOrderPage() {
   const steps = order ? orderSteps(order.status) : []
   const currentStep = steps.find((item) => item.state === "current")
   const deadline = formatDeadline(order?.deadline)
+  // Закрытый заказ править нечем: «Изменить» рядом с «Отменить» на карточке
+  // выполненного заказа читалось как «изменить сам факт доставки».
+  const closed = order ? isOrderClosed(order.status) : false
   const clientPhone = order?.clientContact?.match(/\+?[\d\s()-]{10,}/)?.[0]?.trim() || null
   const tel = telHref(clientPhone)
   const wa = whatsappHref(clientPhone)
@@ -233,7 +239,10 @@ export default function LogistOrderPage() {
         title={order ? `${shortCity(order.routeFrom)} → ${shortCity(order.routeTo)}` : "Заказ"}
         subtitle={
           order
-            ? `${order.clientName?.trim() || "клиент не указан"} · № ${shortRef(order.id)}`
+            // Без клиента в шапке — только номер: «клиент не указан · № 4f2a»
+            // дублировало строку в карточке клиента ниже, и на экране это
+            // читалось как две разные проблемы.
+            ? orderHeaderSubtitle(order.clientName, shortRef(order.id))
             : undefined
         }
         back
@@ -402,8 +411,11 @@ export default function LogistOrderPage() {
                   <p className="text-[15px] font-semibold text-foreground">
                     {order.clientName?.trim() || "Клиент не указан"}
                   </p>
+                  {/* Вторая строка — только когда есть что сказать. Раньше под
+                      «Клиент не указан» стояло ещё «контакт не указан»: две
+                      строки об одном и том же, и обе бесполезны. */}
                   <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                    {order.clientContact?.trim() || "контакт не указан"}
+                    {clientContactLine(order.clientName, order.clientContact)}
                   </p>
                 </div>
                 <OrderStatusChip status={order.status} />
@@ -473,13 +485,15 @@ export default function LogistOrderPage() {
                 {order.paymentType && PAYMENT_TYPE_LABELS[order.paymentType] ? (
                   <p className="mt-0.5 text-[12px] text-muted-foreground">{PAYMENT_TYPE_LABELS[order.paymentType]}</p>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => setEditOpen(true)}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary"
-                >
-                  <Pencil className="h-3 w-3" /> Изменить
-                </button>
+                {closed ? null : (
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(true)}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary"
+                  >
+                    <Pencil className="h-3 w-3" /> Изменить
+                  </button>
+                )}
               </Card>
               <Card>
                 <p className="text-[12px] text-muted-foreground">Срок выгрузки</p>
@@ -491,13 +505,23 @@ export default function LogistOrderPage() {
                   {deadline.text}
                 </p>
                 <p className="mt-0.5 text-[12px] text-muted-foreground">{formatDateShort(order.deadline)}</p>
-                <button
-                  type="button"
-                  onClick={() => setEditOpen(true)}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary"
-                >
-                  <Pencil className="h-3 w-3" /> Изменить
-                </button>
+                {/* Просроченный срок у заказа в работе — не «поломка экрана»,
+                    а то, что логисту надо решать: поправить срок или закрыть
+                    заказ. Пишем это словами, а не оставляем красное число. */}
+                {!closed && deadline.overdue ? (
+                  <p className="mt-1 text-[11.5px] leading-snug text-destructive/90">
+                    Срок прошёл, а заказ ещё в работе — поправьте срок или закройте заказ
+                  </p>
+                ) : null}
+                {closed ? null : (
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(true)}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary"
+                  >
+                    <Pencil className="h-3 w-3" /> Изменить
+                  </button>
+                )}
               </Card>
             </div>
 
@@ -520,13 +544,22 @@ export default function LogistOrderPage() {
             <Card>
               <div className="flex items-center justify-between">
                 <p className="text-[14px] font-semibold text-foreground">Исполнение</p>
-                <button
-                  type="button"
-                  onClick={() => setAssignOpen((value) => !value)}
-                  className="text-[13px] font-medium text-primary"
-                >
-                  {assignOpen ? "Закрыть" : "Изменить"}
-                </button>
+                {/* «Изменить» рядом с «Отменить» не говорило, что именно
+                    меняется. Здесь меняется только исполнитель — так и пишем;
+                    у закрытого заказа менять нечего. */}
+                {closed ? null : (
+                  <button
+                    type="button"
+                    onClick={() => setAssignOpen((value) => !value)}
+                    className="text-[13px] font-medium text-primary"
+                  >
+                    {assignOpen
+                      ? "Закрыть"
+                      : order.assignedDriverId || order.assignedVehicleId
+                        ? "Заменить"
+                        : "Назначить"}
+                  </button>
+                )}
               </div>
 
               <div className="mt-2.5 space-y-2 text-[13.5px]">

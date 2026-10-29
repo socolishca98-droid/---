@@ -23,6 +23,8 @@ const {
   paymentState,
   mapsHref,
   routeMapsHref,
+  orderHeaderSubtitle,
+  clientContactLine,
 } = require("../.test-build/lib/logist-mobile/format.js")
 
 test("город выбирается из адреса, а не номер дома", () => {
@@ -106,4 +108,21 @@ test("cityOfAddress выделяет город из адреса, записа�
   assert.equal(cityOfAddress("Москва"), "Москва")
   assert.equal(cityOfAddress(""), "")
   assert.equal(cityOfAddress(null), "")
+})
+
+// ── Шапка и карточка заказа: без двойного «не указан» ──────────────────────
+test("в шапке заказа имя клиента не повторяет «клиент не указан»", () => {
+  assert.equal(orderHeaderSubtitle("ООО «Ромашка»", "4f2a"), "ООО «Ромашка» · № 4f2a")
+  // Пустое имя в шапку не выносим — ниже есть карточка клиента о том же
+  assert.equal(orderHeaderSubtitle(null, "4f2a"), "№ 4f2a")
+  assert.equal(orderHeaderSubtitle("   ", "4f2a"), "№ 4f2a")
+  assert.equal(orderHeaderSubtitle(undefined, "4f2a"), "№ 4f2a")
+})
+
+test("вторая строка карточки клиента говорит разное в трёх состояниях", () => {
+  assert.equal(clientContactLine("ООО «Ромашка»", "+7 999 123-45-67"), "+7 999 123-45-67")
+  assert.equal(clientContactLine("ООО «Ромашка»", "  "), "Контакт не указан")
+  // Нет ни клиента, ни контакта — подсказка, что делать, а не второе «не указан»
+  assert.equal(clientContactLine(null, null), "Добавьте имя и телефон — иначе звонить некому")
+  assert.equal(clientContactLine("", ""), "Добавьте имя и телефон — иначе звонить некому")
 })

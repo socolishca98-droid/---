@@ -269,3 +269,37 @@ export function paymentState(order: {
   }
   return { label: "Ожидает оплаты", tone: "wait" }
 }
+
+// ---------------------------------------------------------------------------
+// Подписи карточки заказа
+// ---------------------------------------------------------------------------
+
+/**
+ * Подзаголовок шапки заказа: «ООО Ромашка · № 4f2a» или просто «№ 4f2a».
+ *
+ * Пустое имя клиента в шапку не выносим: ниже есть карточка клиента с той же
+ * информацией, и «клиент не указан · № 4f2a» над «Клиент не указан» читалось
+ * как две разные проблемы вместо одной.
+ */
+export function orderHeaderSubtitle(clientName: string | null | undefined, ref: string): string {
+  const name = (clientName ?? "").trim()
+  return name ? `${name} · № ${ref}` : `№ ${ref}`
+}
+
+/**
+ * Вторая строка в карточке клиента — только когда есть что сказать.
+ *
+ * Три состояния: есть контакт — показываем его; есть клиент без контакта —
+ * «Контакт не указан»; нет ни клиента, ни контакта — подсказка, что делать,
+ * а не второе «не указан».
+ */
+export function clientContactLine(
+  clientName: string | null | undefined,
+  clientContact: string | null | undefined,
+): string {
+  const contact = (clientContact ?? "").trim()
+  if (contact) return contact
+  const name = (clientName ?? "").trim()
+  if (name) return "Контакт не указан"
+  return "Добавьте имя и телефон — иначе звонить некому"
+}
