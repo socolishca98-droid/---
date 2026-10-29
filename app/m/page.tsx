@@ -34,7 +34,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 import { FirstLoginGuide } from "@/components/onboarding/first-login-guide"
 import { isOrderClosed } from "@/lib/orders/stages"
 import { isTripStarted, tripState } from "@/lib/shift/trip-state"
-import { shortPersonName } from "@/lib/logist-mobile/format"
+import { displayCity, shortPersonName } from "@/lib/logist-mobile/format"
 import { emptyTotals, shiftStatusLabel, type ShiftTotals } from "@/lib/shift/timeline"
 import {
   AlertCircle,
@@ -222,11 +222,23 @@ export default function MobileHomePage() {
     | undefined
   const nextStage =
     tripStages?.find((stage) => stage.status === "planned" || stage.status === "active") ?? null
-  const nextStopLabel = nextStage
-    ? `${nextStage.label}${(trip as any)?.nextPoint?.distanceM
-        ? ` · ${Math.round((trip as any).nextPoint.distanceM / 1000)} км`
-        : ""}`
-    : null
+  // Подпись словами водителя: куда именно он едет и что там делает.
+  // «Движение · 3 км» ничего не объясняло.
+  const nextStopLabel = (() => {
+    if (!nextStage) return null
+    const point = activeOrder
+    const city = (address?: string) => (address ? displayCity(address) : "")
+    if (nextStage.kind === "return_to_base") return "Возврат на базу"
+    if (nextStage.kind === "loading" && point) return `Погрузка · ${city(point.routeFrom)}`
+    if (nextStage.kind === "unloading" && point) return `Выгрузка · ${city(point.routeTo)}`
+    if (nextStage.kind === "driving" && point) {
+      // Едем к следующей остановке: первая точка рейса — погрузка
+      const done = tripStages?.some((stage) => stage.kind === "loading" && stage.status === "done")
+      return `В путь до ${city(done ? point.routeTo : point.routeFrom)}`
+    }
+    const distance = (trip as any)?.nextPoint?.distanceM
+    return `${nextStage.label}${distance ? ` · ${Math.round(distance / 1000)} км` : ""}`
+  })()
   const routeProgress = tripView.progress
 
   // ── Загрузка данных ────────────────────────────────────────────────────
