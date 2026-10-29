@@ -212,9 +212,15 @@ export default function MobileHomePage() {
   const routeProgress = tripView.progress
 
   // ── Загрузка данных ────────────────────────────────────────────────────
+  /**
+   * Смена и рейс грузятся сразу при открытии экрана, не дожидаясь проверки
+   * сессии.
+   *
+   * Проверка сессии — отдельный запрос на 1.7 с, и раньше экран ждал её, хотя
+   * она нужна только для выбора «чья это страница»: сервер всё равно проверяет
+   * cookie в каждом запросе. Теперь запросы идут параллельно.
+   */
   const fetchData = useCallback(async () => {
-    if (!driver?.id) return
-
     try {
       // Смена — первым запросом и без ожидания остальных: она решает, что
       // вообще показывать на экране. Раньше экран ждал весь пакет и висел на
@@ -231,7 +237,9 @@ export default function MobileHomePage() {
 
       const [routeRes, maintenanceRes] = await Promise.all([
         fetch("/api/m/route"),
-        fetch(`/api/m/maintenance?driverId=${driver.id}`),
+        driver?.id
+          ? fetch(`/api/m/maintenance?driverId=${driver.id}`)
+          : Promise.resolve(null),
       ])
 
       const routeData = await routeRes.json()
@@ -264,9 +272,11 @@ export default function MobileHomePage() {
         )
       }
 
-      const maintenanceData = await maintenanceRes.json()
-      if (maintenanceData.success) {
-        setActiveMaintenance(maintenanceData.maintenance || null)
+      if (maintenanceRes) {
+        const maintenanceData = await maintenanceRes.json()
+        if (maintenanceData.success) {
+          setActiveMaintenance(maintenanceData.maintenance || null)
+        }
       }
     } catch (error) {
       console.error("[Mobile] Failed to fetch data:", error)
@@ -276,9 +286,12 @@ export default function MobileHomePage() {
     }
   }, [driver?.id])
 
-  // Первая загрузка — сразу, как только сессия водителя известна. Опрос
-  // стартует вместе с экраном, когда driver ещё null, поэтому без этого
-  // эффекта главная /m висела на загрузчике до первого тика таймера (30 с).
+  // Первая загрузка — сразу при открытии экрана.
+  useEffect(() => {
+    void fetchData()
+  }, [fetchData])
+
+  // Данные о ТО зависят от водителя — догружаем, когда сессия стала известна
   useEffect(() => {
     if (!driver?.id) return
     void fetchData()
@@ -289,7 +302,7 @@ export default function MobileHomePage() {
   // побольше, а в скрытой вкладке и без сети опрос выключен совсем.
   const dataPolling = useAdaptivePolling(
     () => {
-      if (!isAuthenticated || !driver?.id) return
+      if (!isAuthenticated) return
       return fetchData()
     },
     { baseMs: 30_000, maxMs: 120_000 },
