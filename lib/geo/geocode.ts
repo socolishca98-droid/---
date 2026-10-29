@@ -245,6 +245,39 @@ async function geocodeRemote(
 }
 
 /** Координаты для списка адресов + источник каждой точки. */
+/**
+ * Кэш в памяти процесса: адрес → координаты или «не найден».
+ *
+ * Зачем: промахи (адрес не распознан) в постоянный GeoCache не попадают —
+ * там только найденные координаты. Из-за этого каждый запрос заново шёл в
+ * Nominatim, с паузой между адресами, и /api/m/route отвечал 13–17 секунд:
+ * приложение водителя опрашивает его каждые 30 секунд.
+ *
+ * «Не найден» тоже результат: держим его 10 минут и не дёргаем чужой сервис
+ * повторно. Найденные адреса живут в памяти 30 минут, постоянный GeoCache при
+ * этом остаётся источником правды для новых процессов.
+ */
+const HIT_TTL_MS = 30 * 60_000
+const MISS_TTL_MS = 10 * 60_000
+const memoryCache = new Map<string, { at: number; coords: Coordinates | null }>()
+
+function memoryGet(key: string): { hit: boolean; coords: Coordinates | null } {
+  const entry = memoryCache.get(key)
+  if (!entry) return { hit: false, coords: null }
+  const ttl = entry.coords ? HIT_TTL_MS : MISS_TTL_MS
+  if (Date.now() - entry.at > ttl) {
+    memoryCache.delete(key)
+    return { hit: false, coords: null }
+  }
+  return { hit: true, coords: entry.coords }
+}
+
+function memorySet(key: string, coords: Coordinates | null): void {
+  // Простейшее ограничение размера: процесс живёт недолго, но разрастаться не даём
+  if (memoryCache.size > 500) memoryCache.clear()
+  memoryCache.set(key, { at: Date.now(), coords })
+}
+
 export async function geocodeAddressesWithSource(
   addresses: readonly string[],
 ): Promise<{
@@ -267,8 +300,19 @@ export async function geocodeAddressesWithSource(
 
   const networkQueue: string[] = []
   for (const address of unique) {
-    const hit = byKey.get(normalizeKey(address))
+    const key = normalizeKey(address)
+
+    // 1а. Память процесса — в том числе «не найден»
+    const memory = memoryGet(key)
+    if (memory.hit) {
+      result.set(address, memory.coords)
+      sources.set(address, memory.coords ? "cache" : "none")
+      continue
+    }
+
+    const hit = byKey.get(key)
     if (hit) {
+      memorySet(key, hit)
       result.set(address, hit)
       sources.set(address, "cache")
     } else {
@@ -285,6 +329,7 @@ export async function geocodeAddressesWithSource(
     const { coords, source } = await geocodeRemote(address)
     result.set(address, coords)
     sources.set(address, source)
+    memorySet(normalizeKey(address), coords)
     if (!coords) continue
 
     try {
