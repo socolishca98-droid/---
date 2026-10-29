@@ -367,9 +367,12 @@ export default function LogistOrderPage() {
 
             {/* 3. Этапы: где заказ сейчас */}
             <Card className="mt-3">
-              <div className="flex items-baseline justify-between gap-2">
+              {/* Заголовок и состояние — в две строки, а не по краям одной.
+                  «Этап 1 из 6 · Ищем машину» не влезало рядом с «Ход заказа»
+                  и обрезалось о край карточки: логист видел «Ищем машин». */}
+              <div>
                 <p className="text-[14px] font-semibold text-foreground">Ход заказа</p>
-                <p className="text-[12.5px] text-muted-foreground">{progressLabel(order.status)}</p>
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">{progressLabel(order.status)}</p>
               </div>
               <ol className="mt-3 flex items-center">
                 {steps.map((item, index) => (
