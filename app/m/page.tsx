@@ -221,10 +221,10 @@ export default function MobileHomePage() {
    * cookie в каждом запросе. Теперь запросы идут параллельно.
    */
   const fetchData = useCallback(async () => {
-    try {
-      // Смена — первым запросом и без ожидания остальных: она решает, что
-      // вообще показывать на экране. Раньше экран ждал весь пакет и висел на
-      // загрузчике 8–14 секунд.
+    // Смена и рейс не зависят друг от друга: запрашиваем одновременно, а
+    // показываем по мере готовности. Раньше рейс ждал смену, и экран открывался
+    // суммой двух запросов (2.7 с + 5 с) вместо большего из них.
+    const shiftTask = (async () => {
       const shiftRes = await fetch("/api/m/shift")
       const shiftData = await shiftRes.json()
       if (shiftData.success) {
@@ -234,7 +234,9 @@ export default function MobileHomePage() {
         setRest(shiftData.rest || null)
       }
       setIsDataLoading(false)
+    })()
 
+    try {
       const [routeRes, maintenanceRes] = await Promise.all([
         fetch("/api/m/route"),
         driver?.id
@@ -278,6 +280,10 @@ export default function MobileHomePage() {
           setActiveMaintenance(maintenanceData.maintenance || null)
         }
       }
+
+      // Экран больше не должен висеть на загрузчике, даже если смена ответила
+      // ошибкой: рейс уже показан, а статус смены догрузится следующим опросом.
+      await shiftTask
     } catch (error) {
       console.error("[Mobile] Failed to fetch data:", error)
     } finally {
