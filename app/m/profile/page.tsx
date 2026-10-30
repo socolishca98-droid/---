@@ -8,6 +8,7 @@ import Link from "next/link"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatPhone, telHref } from "@/lib/ui/phone"
+import { plural } from "@/lib/logist-mobile/format"
 import { toast } from "sonner"
 import {
   Phone,
@@ -136,6 +137,11 @@ export default function MobileProfilePage() {
           hiredAt: session.hiredAt ?? undefined,
         }
       : null)
+
+  // Число рейсов: живой подсчёт по доставленным заказам, пока он не пришёл —
+  // счётчик из карточки водителя. Значение используется в двух местах, чтобы
+  // они не расходились.
+  const tripCount = stats?.totalOrders ?? shown?.ordersCompleted ?? 0
 
   const startEdit = () => {
     setName(shown?.name ?? "")
@@ -286,7 +292,10 @@ export default function MobileProfilePage() {
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-500/30 rounded-full">
             <Award className="h-4 w-4 text-emerald-500" />
             <span className="text-sm font-medium text-emerald-500">
-              {shown.ordersCompleted || 0} рейсов
+              {/* Одно и то же число, что и в блоке «Статистика»: в карточке
+                  водителя лежит отдельный счётчик, и на экране выходило
+                  «97 рейсов» над «4 рейса». Считаем по закрытым заказам. */}
+              {tripCount} {plural(tripCount, ["рейс", "рейса", "рейсов"])}
             </span>
           </div>
         </div>
