@@ -134,7 +134,15 @@ export async function loadRouteDocuments(params: {
   // нормализованному названию (та же логика, что при импорте базы клиентов).
   const clients = await prisma.client.findMany({
     where: scopedWhere(organizationId, {}),
-    select: { id: true, nameKey: true, inn: true, kpp: true, address: true },
+    select: {
+      id: true,
+      nameKey: true,
+      inn: true,
+      kpp: true,
+      address: true,
+      contactName: true,
+      phone: true,
+    },
   })
   const clientById = new Map(clients.map((client) => [client.id, client]))
   const clientByName = new Map(clients.map((client) => [client.nameKey, client]))
@@ -179,10 +187,12 @@ export async function loadRouteDocuments(params: {
     priceRub: order.price ?? null,
     agreedPriceRub: order.agreedPrice ?? null,
     clientName: order.clientName ?? null,
-    clientContact: order.clientContact ?? null,
+    // Контакт в заказе — снимок на момент заказа; пустой добираем из карточки
+    clientContact: order.clientContact || (client?.contactName ?? null),
     clientInn: client?.inn ?? null,
     clientKpp: client?.kpp ?? null,
     clientAddress: client?.address ?? null,
+    clientPhone: client?.phone ?? null,
     paymentType: order.paymentType ?? null,
     vatType: order.vatType ?? null,
     deferredDays: order.deferredDays ?? null,

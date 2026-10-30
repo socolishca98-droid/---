@@ -238,6 +238,7 @@ export function buildTtn(
           { label: "Наименование", value: orBlank(order.clientName) },
           { label: "Контактное лицо", value: orBlank(order.clientContact) },
           { label: "Адрес погрузки", value: orBlank(order.routeFrom) },
+          { label: "Телефон", value: orBlank(order.clientPhone) },
           { label: "ИНН", value: orBlank(order.clientInn) },
           { label: "КПП", value: orBlank(order.clientKpp) },
           { label: "Юридический адрес клиента", value: orBlank(order.clientAddress) },

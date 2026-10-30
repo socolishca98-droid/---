@@ -139,6 +139,7 @@ export type DocumentOrder = {
   clientInn: string | null
   clientKpp: string | null
   clientAddress: string | null
+  clientPhone: string | null
   paymentType: string | null
   vatType: string | null
   deferredDays: number | null
