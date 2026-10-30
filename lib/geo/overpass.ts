@@ -22,9 +22,13 @@ export type { NearbyKind, NearbyPlace }
  * один адрес означал «нет связи» на ровном месте. Пробуем по очереди.
  */
 const OVERPASS_ENDPOINTS = [
+  // Российское зеркало: в нём есть данные по России и оно не делит очередь
+  // с публичным overpass-api.de, который под нагрузкой отвечает 502
+  // «at capacity» (проверено 30.10.2026 — АЗС вокруг Ярославля отдаёт).
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
 ]
 
 /** Сколько держим ответ в памяти: экран «Рядом» открывают повторно. */
@@ -86,34 +90,40 @@ export async function searchNearby(
 
   const query = nearbyQuery(lat, lng, kind, radiusM, limit)
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 12000)
+  // Две попытки по кругу: публичные зеркала отвечают 502 очередью, и один
+  // проход часто упирается в «all query workers are busy».
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 12000)
 
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          // Overpass просит представляться: без User-Agent отвечает 429
-          "User-Agent": "loginex-tms/1.0 (driver nearby)",
-        },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: controller.signal,
-        cache: "no-store",
-      })
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            // Overpass просит представляться: без User-Agent отвечает 429
+            "User-Agent": "loginex-tms/1.0 (driver nearby)",
+          },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal,
+          cache: "no-store",
+        })
 
-      // 429 (лимит) и 5xx — повод взять следующее зеркало, а не сдаваться
-      if (!response.ok) continue
+        // 429 (лимит) и 5xx — повод взять следующее зеркало, а не сдаваться
+        if (!response.ok) continue
 
-      const data = await response.json()
-      const places = parseNearby(data, { lat, lng }, limit)
-      writeCache(key, places)
-      return { places, failed: false }
-    } catch {
-      // таймаут или сеть — следующее зеркало
-    } finally {
-      clearTimeout(timer)
+        const data = await response.json()
+        const places = parseNearby(data, { lat, lng }, limit)
+        // Пустой ответ тоже кэшируем: «вокруг правда пусто» — такой же ответ,
+        // и повторять его каждые 10 секунд незачем.
+        writeCache(key, places)
+        return { places, failed: false }
+      } catch {
+        // таймаут или сеть — следующее зеркало
+      } finally {
+        clearTimeout(timer)
+      }
     }
   }
 
