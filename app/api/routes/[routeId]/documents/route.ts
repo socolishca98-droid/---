@@ -73,6 +73,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       route: result.route,
       kinds,
       documents: result.documents,
+      // Что дозаполнить, чтобы бланки вышли без пустых строк (со ссылками)
+      missing: result.missing,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось собрать документы"

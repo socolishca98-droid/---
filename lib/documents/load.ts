@@ -11,6 +11,7 @@ import { clientNameKey } from "@/lib/clients/normalize"
 import { scopedWhere } from "@/lib/org"
 
 import { buildRouteDocuments } from "./build"
+import { missingForDocuments, type MissingItem } from "./missing"
 import type {
   CarrierRequisites,
   DocumentKind,
@@ -22,6 +23,8 @@ import type {
 export type RouteDocumentsResult =
   | {
       ok: true
+      /** Чего не хватает для бланков — со ссылками, куда дозаполнить. */
+      missing: MissingItem[]
       documents: PrintDocument[]
       route: { id: string; name: string | null; ordersCount: number }
     }
@@ -229,11 +232,26 @@ export async function loadRouteDocuments(params: {
     },
   }
 
+  const carrier = requisitesFromSettings(
+    settings,
+    organization?.name ?? "Перевозчик",
+  )
+
   return {
     ok: true,
+    // «Чего не хватает» считаем здесь же: страница печати показывает это до
+    // печати, чтобы бланки не уходили с пустыми строками.
+    missing: missingForDocuments({
+      route: {
+        driverName: documentRoute.crew.driverName,
+        vehiclePlate: documentRoute.crew.vehiclePlate,
+        orders: documentOrders,
+      },
+      requisites: carrier,
+    }),
     documents: buildRouteDocuments({
       route: documentRoute,
-      carrier: requisitesFromSettings(settings, organization?.name ?? "Перевозчик"),
+      carrier,
       kinds,
     }),
     route: { id: route.id, name: route.name ?? null, ordersCount: documentOrders.length },

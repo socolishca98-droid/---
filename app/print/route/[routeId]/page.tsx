@@ -13,7 +13,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
-import { AlertCircle, ArrowLeft, Loader2, Printer } from "lucide-react"
+import { AlertCircle, ArrowLeft, ArrowUpRight, Loader2, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
@@ -31,6 +31,15 @@ interface PrintDocument {
   tables: { title: string; columns: string[]; rows: string[][] }[]
   notes: string[]
   signatures: string[]
+}
+
+/** Пункт «чего не хватает» из API документов (см. lib/documents/missing.ts). */
+interface MissingItem {
+  key: string
+  label: string
+  hint: string
+  severity: "blocker" | "warning"
+  fix?: { href: string; label: string }
 }
 
 /** Незаполненное поле печатается местом для рукописной записи. */
@@ -145,6 +154,7 @@ function PrintRouteDocumentsContent() {
   const types = searchParams.get("types") || ""
 
   const [documents, setDocuments] = useState<PrintDocument[]>([])
+  const [missing, setMissing] = useState<MissingItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -164,6 +174,7 @@ function PrintRouteDocumentsContent() {
       }
 
       setDocuments(data.documents || [])
+      setMissing(Array.isArray(data.missing) ? data.missing : [])
     } catch (e: any) {
       setError(e?.message || "Не удалось собрать документы")
     } finally {
@@ -196,6 +207,37 @@ function PrintRouteDocumentsContent() {
           Печать / PDF
         </Button>
       </div>
+
+      {/* Что дозаполнить — до печати, а не после: на бумаге пустая строка уже
+          не объяснит, куда идти. На печать этот блок не попадает. */}
+      {!isLoading && missing.length > 0 ? (
+        <div className="no-print mx-auto mb-4 max-w-[210mm] rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="font-medium">
+            Документы напечатаются с пустыми строками: {missing.length}{" "}
+            {missing.length === 1 ? "пункт" : missing.length < 5 ? "пункта" : "пунктов"}
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {missing.map((item) => (
+              <li key={item.key} className="flex flex-wrap items-baseline gap-x-2">
+                <span className={item.severity === "blocker" ? "font-medium" : ""}>
+                  {item.label}
+                  {item.severity === "blocker" ? " — без этого бланк недействителен" : ""}
+                </span>
+                <span className="text-amber-800">{item.hint}</span>
+                {item.fix ? (
+                  <Link
+                    href={item.fix.href}
+                    className="inline-flex items-center gap-0.5 font-medium underline underline-offset-2 hover:no-underline"
+                  >
+                    {item.fix.label}
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </Link>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20 text-sm text-neutral-600">
