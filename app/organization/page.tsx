@@ -641,7 +641,8 @@ function RequisitesCard({ requisites }: { requisites: Record<string, string> }) 
         </CardTitle>
         <CardDescription>
           Печатаются в транспортной накладной, путевом листе, договоре-заявке и
-          счёте. Пустое поле уходит в бланк строкой для заполнения от руки.
+          счёте. Незаполненное поле остаётся в бланке пустой строкой — дописать
+          можно от руки.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -649,8 +650,9 @@ function RequisitesCard({ requisites }: { requisites: Record<string, string> }) 
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              Без {missing.map((field) => field.label).join(", ").toLowerCase()} документы
-              напечатаются с прочерками.
+              Не хватает:{" "}
+              <span className="font-medium">{missing.map((field) => field.label).join(", ")}</span>.
+              Документы напечатаются с прочерками в этих строках.
             </span>
           </div>
         )}
