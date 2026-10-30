@@ -475,7 +475,7 @@ export default function MobileProfilePage() {
               <div className="text-center">
                 <p className="text-2xl font-bold">{stats.totalOrders}</p>
                 <p className="text-[11px] text-gray-500 uppercase">
-                  Рейсов
+                  {plural(stats.totalOrders, ["Рейс", "Рейса", "Рейсов"])}
                 </p>
               </div>
               {/* Единицы — в самой цифре: «621 км» и «148 тыс. ₽». Раньше
