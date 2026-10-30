@@ -13,8 +13,10 @@
 // без них бланк уйдёт с пустыми полями, и это лучше увидеть здесь, а не на
 // бумаге.
 
+import Link from "next/link"
+
 import { useEffect, useState } from "react"
-import { AlertTriangle, FileText, Loader2, Printer } from "lucide-react"
+import { AlertTriangle, ArrowUpRight, FileText, Loader2, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -210,6 +212,21 @@ export function RouteDocumentsDialog({
                     {item.label}
                   </div>
                   <div className="mt-0.5 text-muted-foreground/90">{item.hint}</div>
+                  {/* Прямой переход к тому, что надо дозаполнить: искать
+                      «Настройки → Реквизиты» по меню логист не должен. */}
+                  {item.fix && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 h-7 px-2 text-xs"
+                    >
+                      <Link href={item.fix.href} onClick={() => onOpenChange(false)}>
+                        {item.fix.label}
+                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

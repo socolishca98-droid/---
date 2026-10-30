@@ -312,11 +312,12 @@ export default function SettingsPage() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Fuel className="h-4 w-4" />
-              Реквизиты перевозчика
+              Реквизиты для документов
             </CardTitle>
             <CardDescription>
-              Печатаются в ТТН, путевом листе и договоре-заявке от имени вашей
-              организации. Пустое поле уходит в документ строкой для заполнения от руки
+              Реквизиты перевозчика: печатаются в транспортной накладной, путевом
+              листе, договоре-заявке, счёте и акте от имени вашей организации.
+              Пустое поле остаётся в бланке пустой строкой — дописать можно от руки
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">

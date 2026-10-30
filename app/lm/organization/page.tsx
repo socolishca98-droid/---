@@ -22,6 +22,7 @@ import {
   Check,
   History,
   Copy,
+  FileText,
   Link2,
   Loader2,
   Plug,
@@ -335,6 +336,31 @@ export default function MobileOrganizationPage() {
                   откройте «Сотрудников», чтобы одобрить.
                 </p>
               ) : null}
+            </Card>
+
+            {/* Реквизиты для документов: с телефона путь к ним был только
+                «Автопарк» → «Настройки». Ведём прямо к полям из организации. */}
+            <Card className="space-y-2.5">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                  <FileText className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold leading-snug text-foreground">
+                    Реквизиты для документов
+                  </p>
+                  <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                    ИНН, КПП, ОГРН, банк и подписант печатаются в накладной,
+                    путевом листе, заявке и счёте.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/lm/settings"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70"
+              >
+                Заполнить реквизиты
+              </Link>
             </Card>
 
             {freshCode ? (

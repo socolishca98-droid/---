@@ -47,6 +47,12 @@ export type MissingItem = {
   severity: MissingSeverity
   /** Каким документам рейса мешает этот пункт (виды из DOCUMENT_KINDS). */
   kinds: string[]
+  /**
+   * Куда идти, чтобы дозаполнить: экран и действие словами.
+   * Нужно, чтобы из диалога печати и из карточки рейса можно было не искать
+   * настройки по меню, а нажать и попасть на нужное поле.
+   */
+  fix?: { href: string; label: string }
 }
 
 const PER_ORDER_KINDS = ["ttn", "contract", "invoice", "act"]
@@ -83,9 +89,13 @@ export function missingForDocuments(input: {
     items.push({
       key: "requisites",
       label: "Не заполнены реквизиты организации",
-      hint: "Наименование, ИНН и адрес — в «Автопарк» → «Настройки». Документ напечатается с пустыми строками.",
+      // Раньше здесь стояло «Автопарк → Настройки», а реквизиты живут на
+      // отдельном экране «Настройки» → «Реквизиты перевозчика». Логист искал
+      // их в автопарке и не находил.
+      hint: "ИНН, КПП, ОГРН и банк печатаются в бланках. Заполняются в «Настройки» → «Реквизиты для документов» — там же телефон, e-mail и подписант.",
       severity: "blocker",
       kinds: ["ttn", "waybill", "contract", "invoice", "act"],
+      fix: { href: "/settings#requisites", label: "Заполнить реквизиты" },
     })
   }
 
@@ -110,6 +120,7 @@ export function missingForDocuments(input: {
       hint: "Счёт и акт без суммы недействительны — укажите цену в заказе до печати.",
       severity: "blocker",
       kinds: ["invoice", "act", "ttn"],
+      fix: { href: "/orders", label: "Открыть заказы" },
     })
   }
 
@@ -121,6 +132,7 @@ export function missingForDocuments(input: {
       hint: "В счёте и акте плательщик останется прочерком — заполнить можно в заказе.",
       severity: "warning",
       kinds: ["invoice", "act", "contract"],
+      fix: { href: "/orders", label: "Открыть заказы" },
     })
   }
 
@@ -166,6 +178,7 @@ export function missingForDocuments(input: {
       hint: "В путевом листе и накладной ФИО водителя останется пустым.",
       severity: "warning",
       kinds: ["ttn", "waybill"],
+      fix: { href: "/routes", label: "Открыть рейсы" },
     })
   }
 
@@ -176,6 +189,7 @@ export function missingForDocuments(input: {
       hint: "Госномер и марка в путевом листе останутся пустыми.",
       severity: "warning",
       kinds: ["ttn", "waybill"],
+      fix: { href: "/routes", label: "Открыть рейсы" },
     })
   }
 

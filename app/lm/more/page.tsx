@@ -65,7 +65,9 @@ const COMPANY_LINKS: SectionLink[] = [
   { href: "/lm/fleet", label: "Автопарк", icon: Car },
   { href: "/lm/reports", label: "Отчёты", icon: BarChart3 },
   { href: "/lm/users", label: "Сотрудники", icon: ShieldCheck },
-  { href: "/lm/organization", label: "Организация", icon: Building2 },
+  // Реквизиты и настройки автопарка открываются из «Организации» и из
+  // «Автопарка»: отдельной строкой здесь они дублировали бы меню.
+  { href: "/lm/organization", label: "Организация и реквизиты", icon: Building2 },
 ]
 
 export default function LogistMorePage() {

@@ -45,6 +45,7 @@ import {
   Building2,
   CheckCircle2,
   Copy,
+  FileText,
   KeyRound,
   Loader2,
   Truck,
@@ -147,6 +148,11 @@ export default function OrganizationPage() {
   const [busyInviteId, setBusyInviteId] = useState<string | null>(null)
   const [copiedCode, setCopiedCode] = useState("")
 
+  // Реквизиты для документов: живут в настройках парка, но искать их здесь
+  // естественно — это страница организации. Показываем, что заполнено, и
+  // ведём прямо к полям.
+  const [requisites, setRequisites] = useState<Record<string, string>>({})
+
   const load = useCallback(async (options?: { force?: boolean }) => {
     if (options?.force) invalidateCache("/api/organization")
     setIsLoading(true)
@@ -163,6 +169,10 @@ export default function OrganizationPage() {
 
       setOrganization(orgData.organization)
       setSummary(orgData.summary)
+
+      // Реквизиты нужны всем штабным ролям: печатать документы может и логист
+      const settingsData = await fetchJsonCached<any>("/api/fleet/settings")
+      if (settingsData?.success) setRequisites(settingsData.settings || {})
 
       if (isAdmin) {
         const invitesData = await fetchJsonCached<any>("/api/organization/invites")
@@ -443,6 +453,9 @@ export default function OrganizationPage() {
         </CardContent>
       </Card>
 
+      {/* ── Реквизиты для документов ─────────────────────────────────── */}
+      <RequisitesCard requisites={requisites} />
+
       {!isAdmin && (
         <Card className="border-border/50">
           <CardContent className="pt-6">
@@ -585,5 +598,98 @@ export default function OrganizationPage() {
         </CardContent>
       </Card>
     </PageLayout>
+  )
+}
+
+/**
+ * Реквизиты, которые печатаются в документах рейса.
+ *
+ * Зачем карточка здесь: страница «Организация» — первое место, куда логист
+ * идёт за «данными организации», а реквизиты до этого жили только в
+ * «Настройках», и найти их оттуда было нечем. Здесь видно, что заполнено, а
+ * чего не хватает для бланков, и есть прямой переход к полям.
+ */
+function RequisitesCard({ requisites }: { requisites: Record<string, string> }) {
+  const fields: Array<{ key: string; label: string; needed: boolean }> = [
+    { key: "legalName", label: "Юридическое имя", needed: true },
+    { key: "inn", label: "ИНН", needed: true },
+    { key: "kpp", label: "КПП", needed: false },
+    { key: "ogrn", label: "ОГРН / ОГРНИП", needed: false },
+    { key: "legalAddress", label: "Юридический адрес", needed: true },
+    { key: "phone", label: "Телефон", needed: false },
+    { key: "email", label: "E-mail", needed: false },
+    { key: "bankName", label: "Банк", needed: false },
+    { key: "bankBic", label: "БИК", needed: false },
+    { key: "bankAccount", label: "Расчётный счёт", needed: false },
+    { key: "signerName", label: "Подписант", needed: false },
+    { key: "signerPosition", label: "Должность подписанта", needed: false },
+  ]
+
+  const filled = (key: string) => (requisites[key] ?? "").trim().length > 0
+  const missing = fields.filter((field) => field.needed && !filled(field.key))
+  const doneCount = fields.filter((field) => filled(field.key)).length
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+          <FileText className="h-5 w-5 text-primary" />
+          Реквизиты для документов
+          <Badge variant={missing.length === 0 ? "default" : "secondary"}>
+            заполнено {doneCount} из {fields.length}
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Печатаются в транспортной накладной, путевом листе, договоре-заявке и
+          счёте. Пустое поле уходит в бланк строкой для заполнения от руки.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {missing.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Без {missing.map((field) => field.label).join(", ").toLowerCase()} документы
+              напечатаются с прочерками.
+            </span>
+          </div>
+        )}
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {fields.map((field) => (
+            <div
+              key={field.key}
+              className="flex items-start justify-between gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">{field.label}</div>
+                <div className="truncate text-sm">
+                  {filled(field.key) ? requisites[field.key] : "—"}
+                </div>
+              </div>
+              {filled(field.key) ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+              ) : (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {field.needed ? "нужно" : "нет"}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild size="sm">
+            <Link href="/settings#requisites">
+              <FileText className="mr-2 h-4 w-4" />
+              {missing.length > 0 ? "Заполнить реквизиты" : "Изменить реквизиты"}
+            </Link>
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Настройки → Реквизиты перевозчика
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
