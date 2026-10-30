@@ -231,6 +231,11 @@ export default function RoutesPage() {
   const [sortOrder, setSortOrder] = useState<"new" | "old">("new")
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState(0)
+  // Числа на вкладках запоминаем по отдельности: `total` и `stats` считаются по
+  // загруженной вкладке, и после переключения на «Завершённые» подпись
+  // «Активные (0)» врала — рейсы в пути никуда не делись.
+  const [activeCount, setActiveCount] = useState<number | null>(null)
+  const [completedCount, setCompletedCount] = useState<number | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -248,6 +253,12 @@ export default function RoutesPage() {
     from.setDate(from.getDate() - Number(period))
     return from.toISOString().slice(0, 10)
   }, [period])
+
+  /** Счётчик для подписи вкладки: пишем только про ту вкладку, что грузилась. */
+  const rememberTabCount = (value: number) => {
+    if (activeTab === "active") setActiveCount(value)
+    else setCompletedCount(value)
+  }
 
   // Рейсы читаются из таблицы Route (задача 2): один запрос вместо
   // «заказы лимитом 500 → группировка по routeId → два запроса за справочниками».
@@ -279,6 +290,7 @@ export default function RoutesPage() {
       if (known) {
         setRoutes(buildRouteCards(known.data.routes ?? []))
         setTotal(known.data.total ?? known.data.routes?.length ?? 0)
+        rememberTabCount(known.data.total ?? known.data.routes?.length ?? 0)
         setIsLoading(false)
       } else {
         if (options?.append) setLoadingMore(true)
@@ -298,6 +310,7 @@ export default function RoutesPage() {
         }
 
         setTotal(data.total ?? 0)
+        rememberTabCount(data.total ?? data.routes?.length ?? 0)
         setRoutes((prev) => {
           const fresh = buildRouteCards(data.routes || [])
           return options?.append ? [...prev, ...fresh] : fresh
@@ -570,13 +583,13 @@ export default function RoutesPage() {
               <TabsList>
                 <TabsTrigger value="active" className="gap-2">
                   <Clock className="h-4 w-4" />
-                  Активные ({stats.inProgress + stats.pending})
+                  Активные ({activeCount ?? stats.inProgress + stats.pending})
                 </TabsTrigger>
                 <TabsTrigger value="completed" className="gap-2">
                   <CheckCircle2 className="h-4 w-4" />
                   {/* Счётчик как у «Активных»: пустая вкладка без числа не
                       говорит, пусто там или просто не догрузилось. */}
-                  {activeTab === "completed" ? `Завершённые (${total})` : "Завершённые"}
+                  {completedCount === null ? "Завершённые" : `Завершённые (${completedCount})`}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
