@@ -28,6 +28,11 @@ export const OVERPASS_ENDPOINTS = [
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  // Полные (планетные) зеркала: у osm.ch данных по России нет — он ответит
+  // «ок» и пустым списком, а водитель прочитает это как «вокруг пусто».
+  "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://overpass.osm.jp/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass.osm.ch/api/interpreter",
 ]
 
