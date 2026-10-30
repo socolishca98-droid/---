@@ -100,11 +100,22 @@ export async function searchNearby(
   // ответили и все пусты.
   let answeredEmpty = false
 
+  // Общий бюджет на весь перебор: водитель не должен ждать чужой сервис
+  // дольше 15 секунд. Первому зеркалу — 12 с (с холодным кэшем оно отвечает
+  // за 8), остальным по 8 с, и как только бюджет вышел — заканчиваем.
+  const deadline = Date.now() + 15_000
+  let endpointIndex = 0
+
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    const remaining = deadline - Date.now()
+    if (remaining < 1500) break
+
     const controller = new AbortController()
-    // 7 секунд: водитель ждёт список, а не чужой сервис. Мёртвое зеркало
-    // отваливается быстро и передаёт слово следующему.
-    const timer = setTimeout(() => controller.abort(), 7000)
+    const timer = setTimeout(
+      () => controller.abort(),
+      Math.min(remaining, endpointIndex === 0 ? 12_000 : 8_000),
+    )
+    endpointIndex += 1
 
     try {
       const response = await fetch(endpoint, {
