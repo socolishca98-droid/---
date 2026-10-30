@@ -148,3 +148,19 @@ test("нулевая цена и нулевой вес — всё равно «�
   })
   assert.deepEqual(keys(items).sort(), ["price", "weight"])
 })
+
+test("условия оплаты в базе читаются в любом виде (no_vat, prepay)", () => {
+  // Диалог «Условия оплаты» раньше показывал «Не указан» на значениях
+  // no_vat/with_vat и стирал их при сохранении — проверяем нормализаторы.
+  const { normalizePaymentType, normalizeVatType } = require("../.test-build/lib/payments/summary.js")
+  assert.equal(normalizeVatType("no_vat"), "none")
+  assert.equal(normalizeVatType("without_vat"), "none")
+  assert.equal(normalizeVatType("with_vat"), "included")
+  assert.equal(normalizeVatType("20"), "vat20")
+  assert.equal(normalizeVatType("vat10"), "vat10")
+  assert.equal(normalizePaymentType("bank_transfer"), "bank")
+  assert.equal(normalizePaymentType("нал"), "cash")
+  // Незнакомое значение не выдумываем: null — форма покажет его как есть
+  assert.equal(normalizePaymentType("prepay"), null)
+  assert.equal(normalizeVatType("неведомо"), null)
+})

@@ -136,6 +136,24 @@ export function normalizePaymentType(raw: string | null | undefined): string | n
   return null
 }
 
+/**
+ * Приводит НДС к канону none | vat20 | vat10 | included.
+ * В базе встречаются no_vat/without_vat/«0» и with_vat/«20» — без этого
+ * форма «Условия оплаты» показывала «Не указан» и стирала значение при
+ * сохранении.
+ */
+export function normalizeVatType(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const value = raw.trim().toLowerCase()
+
+  if (["none", "no_vat", "without_vat", "0", "без ндс"].includes(value)) return "none"
+  if (["vat20", "20", "20%"].includes(value)) return "vat20"
+  if (["vat10", "10", "10%"].includes(value)) return "vat10"
+  if (["included", "with_vat", "включён", "включен"].includes(value)) return "included"
+
+  return null
+}
+
 export function paymentTypeLabel(raw: string | null | undefined): string {
   const canonical = normalizePaymentType(raw)
   if (canonical) return PAYMENT_TYPE_LABELS[canonical]

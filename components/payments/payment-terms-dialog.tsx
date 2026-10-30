@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select"
 
 import { toDateInputValue } from "@/lib/dates"
+import { normalizePaymentType, normalizeVatType } from "@/lib/payments/summary"
 
 const NONE = "__none__"
 
@@ -37,6 +38,19 @@ const PAYMENT_TYPES = [
   { id: "bank", label: "Безнал" },
   { id: "card", label: "Карта" },
 ]
+
+/** Подписи для значений, которых нет в списке (встречаются в старых заказах). */
+const PAYMENT_LABELS_EXTRA: Record<string, string> = {
+  prepay: "Предоплата",
+  cash_on_delivery: "Оплата при получении",
+  deferred: "Отсрочка платежа",
+}
+
+const VAT_LABELS_EXTRA: Record<string, string> = {
+  no_vat: "Без НДС",
+  without_vat: "Без НДС",
+  with_vat: "С НДС",
+}
 
 const VAT_TYPES = [
   { id: "none", label: "Без НДС" },
@@ -76,6 +90,11 @@ export function PaymentTermsDialog({
 }: PaymentTermsDialogProps) {
   const [paymentType, setPaymentType] = useState<string>(NONE)
   const [vatType, setVatType] = useState<string>(NONE)
+  // Исходное значение из базы, если справочник его не знает («prepay»,
+  // «cash_on_delivery»): показываем как есть и сохраняем без изменений, а не
+  // стираем молча.
+  const [rawPaymentType, setRawPaymentType] = useState<string | null>(null)
+  const [rawVatType, setRawVatType] = useState<string | null>(null)
   const [deferredDays, setDeferredDays] = useState("")
   const [dueDate, setDueDate] = useState("")
   const [amount, setAmount] = useState("")
@@ -85,8 +104,16 @@ export function PaymentTermsDialog({
   useEffect(() => {
     if (!open || !target) return
 
-    setPaymentType(target.paymentType ?? NONE)
-    setVatType(target.vatType ?? NONE)
+    // Старые значения («prepay», «no_vat», «20») приводим к списку формы,
+    // иначе поле показывало пусто и сохранение стирало условие.
+    const payment = normalizePaymentType(target.paymentType)
+    const vat = normalizeVatType(target.vatType)
+    // Неизвестное справочнику значение оставляем выбранным: сохранить без
+    // изменений — значит не потерять, а «Не указана» — осознанно стереть.
+    setPaymentType(payment ?? target.paymentType ?? NONE)
+    setVatType(vat ?? target.vatType ?? NONE)
+    setRawPaymentType(!payment && target.paymentType ? target.paymentType : null)
+    setRawVatType(!vat && target.vatType ? target.vatType : null)
     setDeferredDays(target.deferredDays > 0 ? String(target.deferredDays) : "")
     setDueDate(toDateInput(target.dueDate))
     setAmount(String(target.amount || ""))
@@ -159,6 +186,11 @@ export function PaymentTermsDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Не указана</SelectItem>
+                  {rawPaymentType ? (
+                    <SelectItem value={rawPaymentType}>
+                      {PAYMENT_LABELS_EXTRA[rawPaymentType] ?? rawPaymentType}
+                    </SelectItem>
+                  ) : null}
                   {PAYMENT_TYPES.map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.label}
@@ -176,6 +208,11 @@ export function PaymentTermsDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Не указан</SelectItem>
+                  {rawVatType ? (
+                    <SelectItem value={rawVatType}>
+                      {VAT_LABELS_EXTRA[rawVatType] ?? rawVatType}
+                    </SelectItem>
+                  ) : null}
                   {VAT_TYPES.map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.label}
