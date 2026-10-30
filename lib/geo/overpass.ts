@@ -22,16 +22,15 @@ export type { NearbyKind, NearbyPlace }
  * один адрес означал «нет связи» на ровном месте. Пробуем по очереди.
  */
 export const OVERPASS_ENDPOINTS = [
-  // Российское зеркало: в нём есть данные по России и оно не делит очередь
-  // с публичным overpass-api.de, который под нагрузкой отвечает 502
-  // «at capacity» (проверено 30.10.2026 — АЗС вокруг Ярославля отдаёт).
+  // Порядок — по результату живой проверки с прода (30.10.2026):
+  // openstreetmap.fr отвечает 200 за 0,4 с и отдаёт полные данные;
+  // maps.mail.ru, kumi и private.coffee тонут в таймауте, overpass-api.de
+  // отдаёт 502 «at capacity», а osm.ch отвечает «ок», но данных по России
+  // у него нет — пустой список водитель прочитает как «вокруг пусто».
+  "https://overpass.openstreetmap.fr/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
-  // Полные (планетные) зеркала: у osm.ch данных по России нет — он ответит
-  // «ок» и пустым списком, а водитель прочитает это как «вокруг пусто».
-  "https://overpass.openstreetmap.fr/api/interpreter",
-  "https://overpass.osm.jp/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
   "https://overpass.osm.ch/api/interpreter",
 ]
@@ -95,41 +94,52 @@ export async function searchNearby(
 
   const query = nearbyQuery(lat, lng, kind, radiusM, limit)
 
-  // Две попытки по кругу: публичные зеркала отвечают 502 очередью, и один
-  // проход часто упирается в «all query workers are busy».
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    for (const endpoint of OVERPASS_ENDPOINTS) {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 12000)
+  // Ответ «ок, но пусто» от зеркала с неполными данными (osm.ch) — не повод
+  // остановиться: настоящий ответ может быть у следующего. Останавливаемся на
+  // первом непустом списке, а «правда пусто» говорим только если все зеркала
+  // ответили и все пусты.
+  let answeredEmpty = false
 
-      try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            // Overpass просит представляться: без User-Agent отвечает 429
-            "User-Agent": "loginex-tms/1.0 (driver nearby)",
-          },
-          body: `data=${encodeURIComponent(query)}`,
-          signal: controller.signal,
-          cache: "no-store",
-        })
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const controller = new AbortController()
+    // 7 секунд: водитель ждёт список, а не чужой сервис. Мёртвое зеркало
+    // отваливается быстро и передаёт слово следующему.
+    const timer = setTimeout(() => controller.abort(), 7000)
 
-        // 429 (лимит) и 5xx — повод взять следующее зеркало, а не сдаваться
-        if (!response.ok) continue
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          // Overpass просит представляться: без User-Agent отвечает 429
+          "User-Agent": "loginex-tms/1.0 (driver nearby)",
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+        cache: "no-store",
+      })
 
-        const data = await response.json()
-        const places = parseNearby(data, { lat, lng }, limit)
-        // Пустой ответ тоже кэшируем: «вокруг правда пусто» — такой же ответ,
-        // и повторять его каждые 10 секунд незачем.
+      // 429 (лимит) и 5xx — повод взять следующее зеркало, а не сдаваться
+      if (!response.ok) continue
+
+      const data = await response.json()
+      const places = parseNearby(data, { lat, lng }, limit)
+      if (places.length > 0) {
         writeCache(key, places)
         return { places, failed: false }
-      } catch {
-        // таймаут или сеть — следующее зеркало
-      } finally {
-        clearTimeout(timer)
       }
+      answeredEmpty = true
+    } catch {
+      // таймаут или сеть — следующее зеркало
+    } finally {
+      clearTimeout(timer)
     }
+  }
+
+  // Все зеркала ответили и все пусты — так и говорим, и запоминаем на 10 минут
+  if (answeredEmpty) {
+    writeCache(key, [])
+    return { places: [], failed: false }
   }
 
   return { places: [], failed: true }
