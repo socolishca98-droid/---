@@ -185,7 +185,8 @@ export function missingForDocuments(input: {
     items.push({
       key: "payment-terms",
       label: `Не согласованы оплата и НДС (${withoutPayment.length} из ${orders.length})`,
-      hint: "Договор-заявка и счёт останутся без порядка оплаты — условия согласуются в заказе.",
+      hint: "Договор-заявка и счёт останутся без порядка оплаты — форма оплаты и НДС задаются в заказе.",
+      fix: { href: "/orders", label: "Открыть заказы" },
       severity: "warning",
       kinds: ["contract", "invoice", "act"],
     })
