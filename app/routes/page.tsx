@@ -574,7 +574,9 @@ export default function RoutesPage() {
                 </TabsTrigger>
                 <TabsTrigger value="completed" className="gap-2">
                   <CheckCircle2 className="h-4 w-4" />
-                  Завершённые
+                  {/* Счётчик как у «Активных»: пустая вкладка без числа не
+                      говорит, пусто там или просто не догрузилось. */}
+                  {activeTab === "completed" ? `Завершённые (${total})` : "Завершённые"}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
