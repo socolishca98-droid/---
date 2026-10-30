@@ -218,6 +218,14 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
 
   const sources = variants?.[0]?.sources
 
+  // Три сценария при двух точках почти всегда дают один и тот же порядок.
+  // Показывать три блока с одинаковыми цифрами — значит делать вид, что есть
+  // выбор. Считаем, сколько разных порядков реально получилось.
+  const uniqueOrders = new Set(
+    (variants ?? []).map((variant) => [...variant.orderedOrderIds].sort().join(">")),
+  )
+  const ordersAreSame = uniqueOrders.size === 1
+
   return (
     <Card className="bg-card border-border">
       <CardHeader>
@@ -326,6 +334,16 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
         {variants && sources && (
           <div className="space-y-3 pt-2">
             <SourceBadge routing={sources.routing} traffic={sources.traffic} />
+
+            {ordersAreSame ? (
+              <div className="flex items-start gap-2 rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
+                <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  У этого рейса все сценарии дают один порядок точек — сравнивать нечего.
+                  Выбор появится, когда в рейсе три и более точек.
+                </span>
+              </div>
+            ) : null}
 
             {variants.map((variant) => (
               <div
