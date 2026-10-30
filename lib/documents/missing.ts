@@ -14,9 +14,14 @@
 /** Заказ в том виде, в каком он приходит в панель (MobileRouteOrder-подобный). */
 export type MissingOrderLike = {
   clientName?: string | null
+  /** Вес в кг. В API рейса поле называется weight, в документах weightKg —
+   *  проверка понимает оба, иначе «не указан вес» врало на заполненном рейсе. */
   weightKg?: number | null
+  weight?: number | null
   priceRub?: number | null
+  price?: number | null
   agreedPriceRub?: number | null
+  agreedPrice?: number | null
   deadline?: Date | string | null
   paymentType?: string | null
   vatType?: string | null
@@ -60,7 +65,18 @@ const PER_ORDER_KINDS = ["ttn", "contract", "invoice", "act"]
 function hasValue(value: unknown): boolean {
   if (value === null || value === undefined) return false
   if (typeof value === "string") return value.trim().length > 0
+  // Ноль — это не заполненное значение: пустой вес и нулевая цена в бланке
+  // печатаются прочерком, как и отсутствие поля.
+  if (typeof value === "number") return value > 0
   return true
+}
+
+/** Первое непустое значение из нескольких вариантов имени поля. */
+function pick<T>(...values: Array<T | null | undefined>): T | null {
+  for (const value of values) {
+    if (hasValue(value)) return value as T
+  }
+  return null
 }
 
 /**
@@ -111,7 +127,9 @@ export function missingForDocuments(input: {
   }
 
   const withoutPrice = orders.filter(
-    (order) => !hasValue(order.priceRub) && !hasValue(order.agreedPriceRub),
+    (order) =>
+      !hasValue(pick(order.agreedPriceRub, order.agreedPrice)) &&
+      !hasValue(pick(order.priceRub, order.price)),
   )
   if (withoutPrice.length > 0) {
     items.push({
@@ -136,7 +154,9 @@ export function missingForDocuments(input: {
     })
   }
 
-  const withoutWeight = orders.filter((order) => !hasValue(order.weightKg))
+  const withoutWeight = orders.filter(
+    (order) => !hasValue(pick(order.weightKg, order.weight)),
+  )
   if (withoutWeight.length > 0) {
     items.push({
       key: "weight",

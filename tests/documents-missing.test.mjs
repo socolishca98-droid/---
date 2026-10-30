@@ -122,3 +122,29 @@ test("пустая строка — это «не заполнено»", () => {
   })
   assert.deepEqual(keys(items).sort(), ["client", "driver"])
 })
+
+test("заказ в форме API рейса (price/weight) не даёт ложных «нет цены» и «нет веса»", () => {
+  // В /api/routes заказ приходит как запись Prisma: weight, price, agreedPrice.
+  // Раньше проверка смотрела только weightKg/priceRub/agreedPriceRub и на
+  // заполненном рейсе показывала два блокера подряд.
+  const apiOrder = {
+    clientName: "ООО Ромашка",
+    weight: 15000,
+    price: 270000,
+    agreedPrice: null,
+    deadline: "2026-10-29T00:00:00.000Z",
+    paymentType: "cash",
+    vatType: "no_vat",
+  }
+  const items = missingForDocuments({
+    route: { driverName: "Кузнецов", vehiclePlate: "В108МК799", orders: [apiOrder] },
+  })
+  assert.deepEqual(keys(items), [])
+})
+
+test("нулевая цена и нулевой вес — всё равно «не заполнено»", () => {
+  const items = missingForDocuments({
+    route: fullRoute({ orders: [fullOrder({ weightKg: 0, priceRub: 0 })] }),
+  })
+  assert.deepEqual(keys(items).sort(), ["price", "weight"])
+})
