@@ -339,8 +339,10 @@ export function RouteOptimizer({ orders, onOptimize, defaultSelectedOrderIds }: 
               <div className="flex items-start gap-2 rounded-lg border border-border bg-background/40 p-3 text-xs text-muted-foreground">
                 <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <span>
-                  У этого рейса все сценарии дают один порядок точек — сравнивать нечего.
-                  Выбор появится, когда в рейсе три и более точек.
+                  Все сценарии дали один порядок точек — сравнивать нечего. Так бывает,
+                  когда цепочка уже выстроена: каждый следующий груз стоит там, где
+                  выгрузили предыдущий. Выбор появится, если из одного города идёт
+                  несколько грузов или цепочка рвётся.
                 </span>
               </div>
             ) : null}

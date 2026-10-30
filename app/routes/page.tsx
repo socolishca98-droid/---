@@ -292,9 +292,14 @@ export default function RoutesPage() {
         setTotal(known.data.total ?? known.data.routes?.length ?? 0)
         rememberTabCount(known.data.total ?? known.data.routes?.length ?? 0)
         setIsLoading(false)
+      } else if (options?.append) {
+        setLoadingMore(true)
       } else {
-        if (options?.append) setLoadingMore(true)
-        else setIsLoading(true)
+        // Скелетон показываем только на пустом экране. Фоновое обновление
+        // (раз в 30 с) раньше подменяло список заглушкой: карточка рейса
+        // размонтировалась, и открытые диалоги — «Документы», «Экипаж»,
+        // «Догруз», «Оптимизатор» — закрывались сами через несколько секунд.
+        setIsLoading(routes.length === 0)
       }
 
       try {
