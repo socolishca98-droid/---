@@ -356,7 +356,7 @@ export default function MobileOrganizationPage() {
                 </div>
               </div>
               <Link
-                href="/lm/settings"
+                href="/lm/settings#requisites"
                 className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70"
               >
                 Заполнить реквизиты

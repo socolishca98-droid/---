@@ -101,6 +101,13 @@ export default function MobileSettingsPage() {
     }
   }, [])
 
+  // Пришли по ссылке «Заполнить реквизиты» (/lm/settings#requisites) —
+  // сразу раскрываем нужный раздел, чтобы не искать его руками.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (window.location.hash === "#requisites") setOpenSection("requisites")
+  }, [])
+
   useEffect(() => {
     if (!user) return
     void load()
