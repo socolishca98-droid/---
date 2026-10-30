@@ -238,7 +238,9 @@ export function buildTtn(
           { label: "Наименование", value: orBlank(order.clientName) },
           { label: "Контактное лицо", value: orBlank(order.clientContact) },
           { label: "Адрес погрузки", value: orBlank(order.routeFrom) },
-          { label: "ИНН / адрес", value: null },
+          { label: "ИНН", value: orBlank(order.clientInn) },
+          { label: "КПП", value: orBlank(order.clientKpp) },
+          { label: "Юридический адрес клиента", value: orBlank(order.clientAddress) },
         ],
       },
       {
@@ -367,8 +369,12 @@ export function buildContract(
         fields: [
           { label: "Наименование", value: orBlank(order.clientName) },
           { label: "Контактное лицо", value: orBlank(order.clientContact) },
-          { label: "ИНН / КПП", value: null },
-          { label: "Адрес", value: null },
+          {
+            label: "ИНН / КПП",
+            value:
+              orBlank([order.clientInn, order.clientKpp].filter(Boolean).join(" / ")),
+          },
+          { label: "Адрес", value: orBlank(order.clientAddress) },
         ],
       },
       {
@@ -448,7 +454,13 @@ export function buildInvoice(
         fields: [
           { label: "Наименование", value: orBlank(order.clientName) },
           { label: "Контактное лицо", value: orBlank(order.clientContact) },
-          { label: "ИНН / адрес", value: null },
+          {
+            label: "ИНН / адрес",
+            value:
+              orBlank(
+                [order.clientInn, order.clientAddress].filter(Boolean).join(", "),
+              ),
+          },
         ],
       },
       totalRow,
@@ -519,7 +531,13 @@ export function buildAct(
         fields: [
           { label: "Наименование", value: orBlank(order.clientName) },
           { label: "Контактное лицо", value: orBlank(order.clientContact) },
-          { label: "ИНН / адрес", value: null },
+          {
+            label: "ИНН / адрес",
+            value:
+              orBlank(
+                [order.clientInn, order.clientAddress].filter(Boolean).join(", "),
+              ),
+          },
         ],
       },
       totalRow,

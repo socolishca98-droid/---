@@ -134,6 +134,11 @@ export type DocumentOrder = {
   agreedPriceRub: number | null
   clientName: string | null
   clientContact: string | null
+  /** ИНН, КПП и адрес клиента из его карточки («Клиенты»). В бланке —
+   *  строки «ИНН / адрес»; не заведено — остаются пустыми под ручную запись. */
+  clientInn: string | null
+  clientKpp: string | null
+  clientAddress: string | null
   paymentType: string | null
   vatType: string | null
   deferredDays: number | null

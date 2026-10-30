@@ -7,6 +7,7 @@
 // заказы другой организации в документы не попадут.
 
 import { prisma } from "@/lib/prisma"
+import { clientNameKey } from "@/lib/clients/normalize"
 import { scopedWhere } from "@/lib/org"
 
 import { buildRouteDocuments } from "./build"
@@ -119,6 +120,7 @@ export async function loadRouteDocuments(params: {
       agreedPrice: true,
       clientName: true,
       clientContact: true,
+      clientId: true,
       paymentType: true,
       vatType: true,
       deferredDays: true,
@@ -126,6 +128,16 @@ export async function loadRouteDocuments(params: {
       requirements: true,
     },
   })
+
+  // Реквизиты клиента для «ИНН / адрес» в бланках: берём из карточки клиента.
+  // Старые заказы связаны с клиентом только по имени — тогда ищем по
+  // нормализованному названию (та же логика, что при импорте базы клиентов).
+  const clients = await prisma.client.findMany({
+    where: scopedWhere(organizationId, {}),
+    select: { id: true, nameKey: true, inn: true, kpp: true, address: true },
+  })
+  const clientById = new Map(clients.map((client) => [client.id, client]))
+  const clientByName = new Map(clients.map((client) => [client.nameKey, client]))
 
   const settings = await prisma.fleetSettings.findFirst({
     where: scopedWhere(organizationId),
@@ -153,7 +165,11 @@ export async function loadRouteDocuments(params: {
     select: { name: true },
   })
 
-  const documentOrders: DocumentOrder[] = orders.map((order) => ({
+  const documentOrders: DocumentOrder[] = orders.map((order) => {
+    const client =
+      (order.clientId ? clientById.get(order.clientId) : undefined) ??
+      clientByName.get(clientNameKey(order.clientName))
+    return {
     id: order.id,
     routeFrom: order.routeFrom,
     routeTo: order.routeTo,
@@ -164,12 +180,16 @@ export async function loadRouteDocuments(params: {
     agreedPriceRub: order.agreedPrice ?? null,
     clientName: order.clientName ?? null,
     clientContact: order.clientContact ?? null,
+    clientInn: client?.inn ?? null,
+    clientKpp: client?.kpp ?? null,
+    clientAddress: client?.address ?? null,
     paymentType: order.paymentType ?? null,
     vatType: order.vatType ?? null,
     deferredDays: order.deferredDays ?? null,
     deadline: order.deadline ?? null,
     notes: order.requirements ?? null,
-  }))
+  }
+  })
 
   const documentRoute: DocumentRoute = {
     id: route.id,
