@@ -81,6 +81,7 @@
     "../lib/ati/ati-city-regions.ts",
     "../lib/geo/nominatim.ts",
     "../lib/geo/nearby.ts",
+    "../lib/sandbox/placement.ts",
     "../lib/ati/base-region.ts"
   ]
 }

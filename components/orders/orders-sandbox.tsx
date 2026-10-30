@@ -118,6 +118,7 @@ import {
 import { OrderProcess } from "@/components/orders/order-process"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { fetchJsonCached, invalidateCache } from "@/lib/client-cache"
+import { nextCardPosition } from "@/lib/sandbox/placement"
 import {
   Sheet,
   SheetContent,
@@ -1288,6 +1289,38 @@ export function OrdersSandbox() {
     }
   }
 
+  /**
+   * Перевести груз в «Согласован» и сразу положить на холст.
+   *
+   * Раньше единственный путь был такой: навести на карточку, найти неприметную
+   * иконку переговоров, в панели нажать «Договорились» — и только потом груз
+   * можно было взять в рейс. Клик по самой карточке отвечал «Заказ ещё не
+   * согласован» и не предлагал ничего. Снаружи это выглядело как «маршрут не
+   * собирается».
+   */
+  const agreeAndTake = async (order: any): Promise<void> => {
+    const orderId = order.orderId ?? order.id
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ negotiationStatus: "agreed" }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Не удалось согласовать заказ")
+      }
+
+      addOrderFromAti({ ...order, status: "agreed" })
+      toast.success("Заказ согласован и на холсте", {
+        description: "Теперь его можно поставить в маршрут режимом «Маршрут»",
+      })
+      void loadAtiOrders()
+    } catch (error: any) {
+      toast.error(error?.message || "Не удалось согласовать заказ")
+    }
+  }
+
   const removeFromAtiList = async (orderId: string): Promise<void> => {
     try {
       await fetch("/api/ati/sandbox", {
@@ -1333,11 +1366,23 @@ export function OrdersSandbox() {
       clientPhone: atiOrder.clientPhone ?? atiOrder.phone ?? undefined,
       loadingDate: atiOrder.loadingDate || undefined,
       status: normalizeOrderStatus(atiOrder.status) ?? "search",
-      x: 100 + Math.random() * 50,
-      y: 100 + Math.random() * 50,
+      // Куда поставить — считает updateSheet ниже: нужны уже стоящие карточки.
+      x: 0,
+      y: 0,
       groupId: null,
     }
-    updateSheet((s) => ({ ...s, orders: [...s.orders, newOrder] }))
+    updateSheet((s) => {
+      // Раньше здесь был Math.random() в квадрате 50×50, и вторая карточка
+      // ложилась ровно на первую: клик попадал в неё же, «маршрут не собирался».
+      const position = nextCardPosition(
+        s.orders.map((order: any) => ({ x: order.x, y: order.y })),
+        {
+          width: canvasRef.current?.clientWidth ?? 0,
+          height: canvasRef.current?.clientHeight ?? 0,
+        },
+      )
+      return { ...s, orders: [...s.orders, { ...newOrder, ...position }] }
+    })
   }
 
   // Заказ из вкладки «Заказ из текста» прилетает событием и встаёт на активный
@@ -2514,10 +2559,15 @@ export function OrdersSandbox() {
                             return
                           }
                           if (!canTakeToCanvas) {
+                            // Не тупик: сразу предлагаем согласовать и взять
                             toast.message("Заказ ещё не согласован", {
                               description:
-                                "Откройте карточку заказа и проведите согласование — тогда его можно взять в рейс",
-                              duration: 6000,
+                                "В рейс идут только согласованные грузы. Согласовать можно здесь же — или в карточке заказа, если цена ещё обсуждается.",
+                              duration: 8000,
+                              action: {
+                                label: "Согласовать и взять",
+                                onClick: () => void agreeAndTake(order),
+                              },
                             })
                             return
                           }
@@ -2557,6 +2607,24 @@ export function OrdersSandbox() {
                           </Badge>
                         </div>
                       </div>
+
+                      {/* Груз на этапе согласования: путь в рейс виден сразу, а не
+                          через неприметную иконку переговоров. */}
+                      {!isUsed && !canTakeToCanvas ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-8 w-full border-orange-500/40 bg-orange-500/10 text-[12px] text-orange-200 hover:bg-orange-500/20 hover:text-orange-100"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void agreeAndTake(order)
+                          }}
+                        >
+                          <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                          Согласовать и взять
+                        </Button>
+                      ) : null}
                     </div>
                   )
                 })}
