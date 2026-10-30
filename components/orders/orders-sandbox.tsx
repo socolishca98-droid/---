@@ -3486,7 +3486,7 @@ export function OrdersSandbox() {
           open={!!selectedOrderForEdit}
           onOpenChange={() => setSelectedOrderForEdit(null)}
         >
-          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-3xl max-h-[90vh] overflow-auto">
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Edit3 className="h-5 w-5 text-blue-400" />

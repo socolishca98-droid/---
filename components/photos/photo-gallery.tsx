@@ -198,7 +198,7 @@ export function PhotoGallery({ photos }: PhotoGalleryProps) {
         open={!!selectedPhoto}
         onOpenChange={() => setSelectedPhoto(null)}
       >
-        <DialogContent className="max-w-4xl bg-card p-0 overflow-hidden">
+        <DialogContent className="max-w-4xl sm:max-w-4xl bg-card p-0 overflow-hidden">
           {selectedAny && (
             <>
               <div className="relative">

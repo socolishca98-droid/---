@@ -151,7 +151,7 @@ export function ClientCardDialog({ open, onOpenChange, clientId, onChanged }: Cl
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-start justify-between gap-3">
               <div>

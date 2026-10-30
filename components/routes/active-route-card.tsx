@@ -811,7 +811,7 @@ export function ActiveRouteCard({ route, onAddLoad, onRefresh, onBackhaul }: Act
       />
 
       <Dialog open={showOptimizer} onOpenChange={setShowOptimizer}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-5xl sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />

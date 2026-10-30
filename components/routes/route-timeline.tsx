@@ -405,7 +405,7 @@ export function RouteTimeline({ routeId }: RouteTimelineProps) {
       ))}
 
       <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-none shadow-2xl">
+        <DialogContent className="max-w-4xl sm:max-w-4xl p-0 overflow-hidden bg-black/95 border-none shadow-2xl">
           {previewImage && (
             <div className="relative w-full h-[80vh] flex items-center justify-center">
               <img
