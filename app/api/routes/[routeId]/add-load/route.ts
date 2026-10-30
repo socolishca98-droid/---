@@ -49,6 +49,22 @@ export async function POST(
       overloadNote,
     } = body
 
+    // Раньше тело без routeFrom/routeTo доходило до prisma.order.create и
+    // возвращало 500 с текстом запроса: логист видел внутренности базы вместо
+    // понятной подсказки. Проверяем до запросов.
+    const loadFrom = typeof routeFrom === "string" ? routeFrom.trim() : ""
+    const loadTo = typeof routeTo === "string" ? routeTo.trim() : ""
+    if (!loadFrom || !loadTo) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Укажите, откуда и куда едет догруз",
+          code: "route_points_required",
+        },
+        { status: 400 }
+      )
+    }
+
     const route = await prisma.route.findFirst({
       where: scopedWhere(org.organizationId, { id: routeId }),
       select: { id: true, status: true, driverId: true, vehicleId: true },
@@ -147,8 +163,8 @@ export async function POST(
           // связь со строкой накопленной базы ATI (Order.atiCacheId)
           atiCacheId: atiCacheId || null,
           routeId,
-          routeFrom,
-          routeTo,
+          routeFrom: loadFrom,
+          routeTo: loadTo,
           distance: distance || 0,
           weight: weight || 0,
           cargoType: cargoType || "Груз",
@@ -188,7 +204,7 @@ export async function POST(
           userRole: "driver",
           type: proposeToDriver ? "load_proposal" : "load_added",
           title: proposeToDriver ? "Предложен догруз" : "Добавлен догруз",
-          message: `${routeFrom} → ${routeTo}, ${((weight || 0) / 1000).toFixed(1)}т`,
+          message: `${loadFrom} → ${loadTo}, ${((weight || 0) / 1000).toFixed(1)}т`,
           orderId: order.id,
           routeId,
           priority: "high",
