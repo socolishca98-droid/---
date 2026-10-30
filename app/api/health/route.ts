@@ -42,9 +42,15 @@ function databaseInfo() {
   const pooledByPort = port === "6543"
   const connectionLimit = params?.get("connection_limit") ?? null
 
+  // Регион из адреса пулера (aws-0-eu-central-1.pooler.supabase.com): нужен,
+  // чтобы сверить его с регионом функций на Vercel — если они в разных
+  // частях света, каждый запрос платит за это сетевым временем.
+  const regionMatch = host.match(/([a-z]{2}-[a-z]+-\d)/)
+
   return {
     configured: true,
     provider,
+    region: regionMatch?.[1] ?? null,
     /** Ходим ли мы через пулер подключений (главный фактор скорости). */
     pooled: provider === "postgres" ? pooledByParam || pooledByHost || pooledByPort : null,
     connectionLimit: connectionLimit ? Number(connectionLimit) : null,
