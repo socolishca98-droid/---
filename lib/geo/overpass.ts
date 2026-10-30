@@ -21,7 +21,7 @@ export type { NearbyKind, NearbyPlace }
  * Зеркала Overpass. Публичный overpass-api.de регулярно отвечает 429/504 —
  * один адрес означал «нет связи» на ровном месте. Пробуем по очереди.
  */
-const OVERPASS_ENDPOINTS = [
+export const OVERPASS_ENDPOINTS = [
   // Российское зеркало: в нём есть данные по России и оно не делит очередь
   // с публичным overpass-api.de, который под нагрузкой отвечает 502
   // «at capacity» (проверено 30.10.2026 — АЗС вокруг Ярославля отдаёт).
@@ -128,4 +128,69 @@ export async function searchNearby(
   }
 
   return { places: [], failed: true }
+}
+
+/**
+ * Проверка зеркал «как есть»: какое ответило, за сколько и сколько вернуло.
+ *
+ * Нужна, когда у водителя «ничего не нашлось», а данные на самом деле есть:
+ * из разных сетей зеркала ведут себя по-разному, и гадать по одному флагу
+ * `failed` бессмысленно.
+ */
+export async function probeNearbyMirrors(
+  lat: number,
+  lng: number,
+  kind: NearbyKind = "fuel",
+  radiusM = 7000,
+): Promise<
+  Array<{ endpoint: string; status: number | null; ms: number; elements: number; error?: string }>
+> {
+  const query = nearbyQuery(lat, lng, kind, radiusM, 3)
+  const results: Array<{
+    endpoint: string
+    status: number | null
+    ms: number
+    elements: number
+    error?: string
+  }> = []
+
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const started = Date.now()
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10000)
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "loginex-tms/1.0 (driver nearby)",
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+        cache: "no-store",
+      })
+      const ms = Date.now() - started
+      if (!response.ok) {
+        results.push({ endpoint, status: response.status, ms, elements: 0 })
+        continue
+      }
+      const data = await response.json()
+      const elements = Array.isArray((data as { elements?: unknown[] })?.elements)
+        ? ((data as { elements: unknown[] }).elements.length ?? 0)
+        : 0
+      results.push({ endpoint, status: response.status, ms, elements })
+    } catch (error) {
+      results.push({
+        endpoint,
+        status: null,
+        ms: Date.now() - started,
+        elements: 0,
+        error: error instanceof Error ? error.name : "error",
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  return results
 }

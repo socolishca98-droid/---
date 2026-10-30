@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireStaffAuth } from "@/lib/api-auth"
 import { loadDriverSession, loadStaffSession } from "@/lib/auth/session"
-import { searchNearby } from "@/lib/geo/overpass"
+import { probeNearbyMirrors, searchNearby } from "@/lib/geo/overpass"
 import {
   formatMeters,
   nearbyOutcome,
@@ -48,6 +48,13 @@ export async function GET(request: NextRequest) {
       { success: false, error: "Нужны координаты точки: lat и lng", code: "bad_coordinates" },
       { status: 400 },
     )
+  }
+
+  // ?probe=1 — диагностика: какое зеркало Overpass ответило и что вернуло.
+  // Нужна, когда «ничего не нашлось», а точки на самом деле есть.
+  if (request.nextUrl.searchParams.get("probe") === "1") {
+    const mirrors = await probeNearbyMirrors(lat, lng, kind, radiusM)
+    return NextResponse.json({ success: true, mirrors })
   }
 
   const { places, failed } = await searchNearby(lat, lng, kind, radiusM)
