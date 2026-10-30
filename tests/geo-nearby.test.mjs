@@ -102,3 +102,32 @@ test("расстояние показывается по-человечески"
   assert.equal(formatMeters(Number.NaN), "—")
   assert.equal(formatMeters(-5), "—")
 })
+
+test("запрос спрашивает координаты: out center, а не out tags", () => {
+  // С `out tags` в ответе нет lat/lon, и все точки отбрасывались — экран
+  // писал «ничего не нашлось», хотя АЗС в радиусе есть (проверено на живом
+  // Overpass 30.10.2026).
+  const query = nearbyQuery(57.6261, 39.8845, "fuel", 7000, 12)
+  assert.match(query, /out center/)
+  assert.doesNotMatch(query, /out tags/)
+})
+
+test("точка-полигон с center тоже попадает в список", () => {
+  const raw = {
+    elements: [
+      { type: "node", id: 1, lat: 57.63, lon: 39.9, tags: { amenity: "fuel", name: "Опти" } },
+      {
+        type: "way",
+        id: 2,
+        center: { lat: 57.64, lon: 39.92 },
+        tags: { amenity: "fuel", name: "Лукойл" },
+      },
+      { type: "node", id: 3, tags: { amenity: "fuel" } },
+    ],
+  }
+  const places = parseNearby(raw, { lat: 57.6261, lng: 39.8845 }, 12)
+  assert.deepEqual(
+    places.map((place) => place.name),
+    ["Опти", "Лукойл"],
+  )
+})

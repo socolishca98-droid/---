@@ -64,7 +64,11 @@ export function nearbyQuery(
     .split(";")
     .map((selector) => `${selector}(around:${radiusM},${lat},${lng});`)
     .join("")
-  return `[out:json][timeout:12];(${parts});out tags ${limit * 3};`
+  // Именно `out center`, а не `out tags`: в ответе `out tags` у узлов нет
+  // координат, и разбор выбрасывал все точки — экран писал «в радиусе 7 км
+  // ничего не нашлось», хотя АЗС в радиусе есть. `center` отдаёт координаты
+  // и для узлов, и для путей (заправка часто нарисована полигоном).
+  return `[out:json][timeout:12];(${parts});out center ${limit * 3};`
 }
 
 /** Расстояние по прямой, км — чтобы модуль не тянул за собой клиент OSRM. */
@@ -93,8 +97,9 @@ export function parseNearby(
   const elements: any[] = Array.isArray((raw as any)?.elements) ? (raw as any).elements : []
   const places: NearbyPlace[] = []
   for (const element of elements) {
-    const lat = Number(element?.lat)
-    const lng = Number(element?.lon)
+    // Узел отдаёт lat/lon, путь и отношение — center.lat/center.lon.
+    const lat = Number(element?.lat ?? element?.center?.lat)
+    const lng = Number(element?.lon ?? element?.center?.lon)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
     const tags = (element?.tags ?? {}) as Record<string, string>
     const { kind, tag } = kindOf(tags)
