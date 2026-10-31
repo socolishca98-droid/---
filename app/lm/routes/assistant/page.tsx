@@ -1709,7 +1709,9 @@ export default function RouteAssistantPage() {
           <FailedPhase
             startCity={cityOfAddress(startCity) || startCity}
             loads={loadsWithPoints}
-            vehicles={vehicles}
+            // Только свободные: предлагать «собрать на А421ВС750», которая уже
+            // в рейсе, — совет, который нельзя выполнить
+            vehicles={freeVehicles}
             startRadiusKm={startRadiusKm}
             startPoint={startPoint}
             maxHours={maxHours}
@@ -2632,37 +2634,42 @@ function FailedPhase({
           <ul className="mt-2.5 space-y-1">
             {reason.tooHeavy > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.tooHeavy} груз(ов) тяжелее ваших машин
+                · {loadsPhrase(reason.tooHeavy, "тяжелее ваших машин", "тяжелее ваших машин")}
               </li>
             ) : null}
             {reason.tooVolumetric > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.tooVolumetric} груз(ов) не влезают по объёму — кузов меньше груза
+                · {loadsPhrase(reason.tooVolumetric, "не влезает по объёму", "не влезают по объёму")} — кузов меньше груза
               </li>
             ) : null}
             {reason.tooBody > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.tooBody} не встанут в ваш кузов (нужен тент или реф)
+                · {loadsPhrase(reason.tooBody, "не встанет в ваш кузов", "не встанут в ваш кузов")} (нужен тент или реф)
               </li>
             ) : null}
             {reason.noPrice > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.noPrice} без озвученной ставки
+                · {loadsPhrase(reason.noPrice, "без озвученной ставки", "без озвученной ставки")}
               </li>
             ) : null}
             {expiredCount > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {expiredCount} уже неактуальны: дата загрузки прошла — обновите биржу
+                ·{" "}
+                {loadsPhrase(
+                  expiredCount,
+                  "уже неактуален: дата загрузки прошла — обновите биржу",
+                  "уже неактуальны: дата загрузки прошла — обновите биржу",
+                )}
               </li>
             ) : null}
             {reason.unprofitable > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.unprofitable} не окупаются после топлива
+                · {loadsPhrase(reason.unprofitable, "не окупается после топлива", "не окупаются после топлива")}
               </li>
             ) : null}
             {reason.tooLong > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.tooLong} едут дольше выбранного срока
+                · {loadsPhrase(reason.tooLong, "едет дольше выбранного срока", "едут дольше выбранного срока")}
               </li>
             ) : null}
           </ul>
@@ -3570,6 +3577,18 @@ function CallSheet({
  * водителя (11 ч после 9 ч за рулём) + возврат.
  * Ориентир для планировщика, а не обещание: точное время — после согласования.
  */
+/**
+ * «1 груз тяжелее» против «3 груза тяжелее»: без этого на экране стояло
+ * «1 груз(ов) тяжелее ваших машин» — машинный текст в живом приложении.
+ */
+function loadsPhrase(count: number, one: string, many: string): string {
+  const n = Math.abs(count) % 100
+  const tail = n % 10
+  const word =
+    n > 10 && n < 20 ? "грузов" : tail === 1 ? "груз" : tail > 1 && tail < 5 ? "груза" : "грузов"
+  return `${count} ${word} ${count === 1 ? one : many}`
+}
+
 /** Сколько часов лимита осталось незанятыми — для честной строки про срок. */
 function routeRestHours(route: BuiltRoute): number {
   return Math.round((route.maxHours - route.totalHours) * 10) / 10
