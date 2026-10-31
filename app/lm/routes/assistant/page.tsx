@@ -2838,6 +2838,28 @@ function FailedPhase({
     return explainVehicleMismatch(priced, selected)
   }, [loads, selected])
 
+  /**
+   * Грузы, которые ВЛЕЗАЮТ в выбранную машину: свежие, со ставкой.
+   *
+   * Зачем отдельно: «грузов нет» и «груз есть, но загружается позже» — разные
+   * вещи с разными действиями. Живой случай: пятитонка, в пуле два реф-груза
+   * (3,6 т на 4 ноября и 5 т на 5 ноября), а экран писал «грузов такого
+   * размера нет». Логист шёл расширять радиус, хотя помочь могло только
+   * «ехать дольше».
+   */
+  const fittingLoads = useMemo(() => {
+    if (!selected) return []
+    return loads
+      .filter(
+        (load) =>
+          load.status === "new" &&
+          isFreshLoad(load) &&
+          (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
+          loadFitsVehicle(load, selected),
+      )
+      .sort((a, b) => (a.loadingDate ?? "").localeCompare(b.loadingDate ?? ""))
+  }, [loads, selected])
+
   /** Радиус уже на максимуме — советовать «расширьте» бессмысленно. */
   const radiusIsMax = startRadiusKm >= 1200
 
@@ -3088,8 +3110,39 @@ function FailedPhase({
         </Card>
       ) : null}
 
+      {/* Под эту машину есть грузы, но они не влезают в выбранный срок —
+          говорим прямо и называем их, а не «расширьте радиус» */}
+      {fittingLoads.length > 0 ? (
+        <Card>
+          <p className="text-[13px] font-medium text-foreground">
+            {`Под ${selected?.plate ?? "эту машину"} грузы есть — ${fittingLoads.length} ${fittingLoads.length === 1 ? "груз" : "грузов"} — но загружаются позже выбранного срока`}
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {fittingLoads.slice(0, 3).map((load) => (
+              <li key={load.id} className="text-[12.5px] leading-snug text-muted-foreground">
+                · {shortCity(load.fromCity)} → {shortCity(load.toCity)} ·{" "}
+                {formatWeightKg(load.weightKg ?? 0)}
+                {load.volumeM3 ? ` · ${load.volumeM3} м³` : ""} ·{" "}
+                {formatMoney(load.priceWithNds ?? load.priceRub ?? 0)}
+                {load.loadingDate ? ` · с ${formatDateShort(load.loadingDate)}` : ""}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[12.5px] leading-snug text-muted-foreground">
+            Увеличьте время маршрута — и они встанут в сборку.
+          </p>
+          <button
+            type="button"
+            onClick={onMoreHours}
+            className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-medium text-primary-foreground active:opacity-70"
+          >
+            Ехать дольше ({hoursLabel(nextHoursStep(maxHours))})
+          </button>
+        </Card>
+      ) : null}
+
       {/* Под выбранную машину грузов нет ни в одном городе — говорим прямо */}
-      {workingCities.length === 0 ? (
+      {workingCities.length === 0 && fittingLoads.length === 0 ? (
         <Card>
           <p className="text-[13px] font-medium text-foreground">Под эту машину грузов сейчас нет</p>
           <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
