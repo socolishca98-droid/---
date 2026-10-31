@@ -163,7 +163,11 @@ export async function apiSend<T = unknown>(
     const json = (await res.json().catch(() => ({}))) as { error?: string } & T
 
     if (!res.ok) {
-      return { ok: false, error: json?.error || `Ошибка ${res.status}` }
+      // Тело ошибки тоже отдаём: сервер кладёт туда код и полезные данные.
+      // Живой случай — помощник сборки: 409 already_taken приходит с already
+      // созданным заказом в поле order, и без него маршрут не отправить
+      // повторно («этот груз уже взят в работу» — и тупик).
+      return { ok: false, error: json?.error || `Ошибка ${res.status}`, data: json as T }
     }
     return { ok: true, data: json as T }
   } catch {

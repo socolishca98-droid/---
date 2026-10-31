@@ -1610,6 +1610,32 @@ export default function RouteAssistantPage() {
         }
       }
 
+      // 1b. «Договорились» на плече — это решение логиста, и оно должно дойти
+      // до заказа. Раньше ✓ меняла только вид кнопки: сервер по-прежнему
+      // считал заказ несогласованным и отвечал 409 orders_not_agreed, то есть
+      // маршрут было не отправить вообще.
+      for (let index = 0; index < route.legs.length; index += 1) {
+        const leg = route.legs[index]
+        const orderId = orderIds[index]
+        if (!orderId || calls[leg.load.id] !== "agreed") continue
+        const agreed = await apiSend<{ success?: boolean; error?: string }>(
+          `/api/orders/${orderId}`,
+          "PATCH",
+          {
+            negotiationStatus: "agreed",
+            agreedPrice: leg.load.priceWithNds ?? leg.load.priceRub ?? undefined,
+          },
+        )
+        if (!agreed.ok) {
+          toast.error(
+            agreed.error ??
+              `Не удалось отметить согласование: ${shortCity(leg.load.fromCity)} → ${shortCity(leg.load.toCity)}`,
+          )
+          setPhase("route")
+          return
+        }
+      }
+
       // 2. Рейс: заказы + машина + водитель
       const created = await apiSend<{ route: { id: string } }>("/api/routes", "POST", {
         orderIds,
