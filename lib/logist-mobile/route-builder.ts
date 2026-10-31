@@ -91,6 +91,12 @@ export interface BuilderVehicle {
   capacity?: number | null
   /** Объём, м³ */
   volume?: number | null
+  /**
+   * Особенности из карточки машины: строка JSON (`["Гидроборт"]`), массив или
+   * запись через запятую. Логист отмечает там «Рефрижератор» или «Изотерм» —
+   * это его заявка, какие грузы машина возит, и подбор обязан её учитывать.
+   */
+  features?: unknown
   status?: string | null
   /** Паспортный расход, л/100 км */
   fuelConsumptionPer100?: number | null
@@ -341,8 +347,35 @@ function bodyClasses(text: string | null | undefined): Set<BodyClass> {
  * помощник молча перестанет строить маршруты у организаций, где тип не
  * заполнен.
  */
+/**
+ * Особенности машины одной строкой — чтобы применить к ним те же правила
+ * распознавания кузова, что и к типу.
+ *
+ * Зачем: логист меняет карточку («это тент, но реф-грузы тоже берём»), ставит
+ * галочки, а подбор смотрел только на поле «Тип ТС» — и галочка не значила
+ * ничего. Человек видел в карточке «Рефрижератор» и не понимал, почему
+ * реф-груз по-прежнему «не встаёт в кузов».
+ */
+function vehicleFeaturesText(features: unknown): string {
+  if (features == null) return ""
+  if (Array.isArray(features)) return features.map((item) => String(item ?? "")).join(" ")
+  const text = String(features).trim()
+  if (!text) return ""
+  try {
+    const parsed = JSON.parse(text)
+    if (Array.isArray(parsed)) return parsed.map((item) => String(item ?? "")).join(" ")
+  } catch {
+    // не JSON — читаем как есть, через запятую
+  }
+  return text
+}
+
 function vehicleBodyClasses(vehicle: BuilderVehicle): Set<BodyClass> {
-  const own = bodyClasses(vehicle.type)
+  // Тип из карточки плюс отмеченные особенности: «Рефрижератор», «Изотерм»,
+  // «Тент» — любой из них делает кузов пригодным для такого груза.
+  const own = bodyClasses(
+    `${vehicle.type ?? " "} ${vehicleFeaturesText(vehicle.features)}`.trim(),
+  )
   if (own.size === 0) return new Set<BodyClass>(["reefer", "insulated", "dry"])
   // Рефрижератор берёт и изотермический, и сухой груз.
   if (own.has("reefer")) return new Set<BodyClass>(["reefer", "insulated", "dry"])

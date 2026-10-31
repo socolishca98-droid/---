@@ -2823,6 +2823,24 @@ function FailedPhase({
    * при кузове 32 м³), и экран обязан предложить выход кнопкой: «собрать на
    * этой машине», а не советом выбрать другую.
    */
+  /**
+   * Что именно мешает выбранной машине — по причинам, для экрана.
+   * Считаем по тем же грузам, что видит логист: со ставкой и свежим сроком.
+   */
+  const mismatch = useMemo(() => {
+    if (!selected) return null
+    const priced = loads.filter(
+      (load) =>
+        load.status === "new" &&
+        isFreshLoad(load) &&
+        (load.priceWithNds ?? load.priceRub ?? 0) > 0,
+    )
+    return explainVehicleMismatch(priced, selected)
+  }, [loads, selected])
+
+  /** Радиус уже на максимуме — советовать «расширьте» бессмысленно. */
+  const radiusIsMax = startRadiusKm >= 1200
+
   const betterVehicle = useMemo(() => {
     if (!selected) return null
     const priced = loads.filter(
@@ -3075,11 +3093,41 @@ function FailedPhase({
         <Card>
           <p className="text-[13px] font-medium text-foreground">Под эту машину грузов сейчас нет</p>
           <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
-            {selected
-              ? `${selected.plate} берёт до ${formatWeightKg(selected.capacity ?? 0)}${
+            {selected ? (
+              <>
+                {`${selected.plate} берёт до ${formatWeightKg(selected.capacity ?? 0)}${
                   selected.volume ? ` и ${selected.volume} м³` : ""
-                }. Грузов такого размера на бирже сейчас нет — расширьте радиус, обновите биржу или постройте на другой машине.`
-              : "Свободных машин нет — назначьте машину и вернитесь к сборке."}
+                }. `}
+                {/* Раньше здесь всегда стояло «расширьте радиус». Когда радиус
+                    уже максимальный или мешает вес с объёмом, а не расстояние,
+                    это совет, который нельзя выполнить: логист жмёт 500, 800,
+                    1200 — и получает тот же экран. Называем, что именно мешает. */}
+                {mismatch && mismatch.total > 0
+                  ? `Грузов со ставкой в пуле ${mismatch.total}, и ни один не влезает: `
+                  : "Грузов такого размера на бирже сейчас нет."}
+                {mismatch && mismatch.total > 0 ? (
+                  <>
+                    {mismatch.overweight > 0
+                      ? `${mismatch.overweight} тяжелее машины`
+                      : ""}
+                    {mismatch.overweight > 0 && (mismatch.oversize > 0 || mismatch.body > 0)
+                      ? ", "
+                      : ""}
+                    {mismatch.oversize > 0
+                      ? `${mismatch.oversize} больше по объёму — это грузы под фуру`
+                      : ""}
+                    {mismatch.oversize > 0 && mismatch.body > 0 ? ", " : ""}
+                    {mismatch.body > 0 ? `${mismatch.body} просят другой кузов` : ""}
+                    {". "}
+                    {radiusIsMax
+                      ? "Радиус уже максимальный — дальше искать некуда."
+                      : "Можно расширить радиус поиска."}
+                  </>
+                ) : null}
+              </>
+            ) : (
+              "Свободных машин нет — назначьте машину и вернитесь к сборке."
+            )}
           </p>
           {selected && lightestPriced ? (
             <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
