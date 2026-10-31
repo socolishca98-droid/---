@@ -283,6 +283,10 @@ export default function RouteAssistantPage() {
    * Причина должна быть названа словом.
    */
   const [extendNote, setExtendNote] = useState<{ kind: "geo" | "exchange" | "empty"; text: string } | null>(null)
+  /** Идёт живой поиск по бирже вокруг базы — по кнопке «Искать шире». */
+  const [radiusBusy, setRadiusBusy] = useState(false)
+  /** Что ответила биржа на расширение радиуса — словами, без «не собралось» */
+  const [radiusNote, setRadiusNote] = useState<string | null>(null)
   /**
    * Те же грузы в ref — накопительно.
    *
@@ -485,53 +489,6 @@ export default function RouteAssistantPage() {
     }
   }, [baseCity, loadsState.data?.baseRegion?.name])
 
-  /**
-   * Грузы, пригодные для цепочки, — ТОЛЬКО региона базы.
-   *
-   * Если регион определить не удалось (адрес базы не заполнен), показываем
-   * всё как раньше: лучше больше грузов, чем пустой экран.
-   */
-  const regionLoads = useMemo(() => {
-    if (!baseRegionName) return loads
-    const inRegion = loads.filter((load) => {
-      const from = String(load.fromCity ?? "")
-      return from.includes(baseRegionName.replace(/\s+(область|край|республика).*$/, ""))
-    })
-    // В своем регионе грузов нет — не показываем чужие как свои. Экран честно
-    // скажет, что регион нужно собрать.
-    return inRegion
-  }, [loads, baseRegionName])
-
-  /**
-   * Сколько грузов региона выпало из работы, потому что дата загрузки прошла.
-   *
-   * Зачем считать отдельно: кэш биржи копит и вчерашние грузы, и позавчерашние.
-   * Раньше они оставались в пуле, показывались в списке («с 30 окт» при
-   * сегодняшнем 31-м) и попадали в разбор провала строкой «42 с прошедшей
-   * датой загрузки» — логист видел сломанные данные вместо причины.
-   */
-  const expiredLoads = useMemo(
-    () =>
-      regionLoads.filter(
-        (load) => load.status === "new" && !isFreshLoad(load),
-      ).length,
-    [regionLoads],
-  )
-
-  const usableLoads = useMemo(
-    () =>
-      regionLoads.filter(
-        (load) =>
-          load.status === "new" &&
-          // Прошедшая дата загрузки — не кандидат: ехать некуда
-          isFreshLoad(load) &&
-          (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
-          shortCity(load.fromCity) !== "—" &&
-          shortCity(load.toCity) !== "—",
-      ),
-    [regionLoads],
-  )
-
   /** Города погрузки на бирже — быстрый выбор базы, если своей нет в списке. */
   /**
    * Города погрузки, где сейчас есть грузы.
@@ -628,6 +585,64 @@ export default function RouteAssistantPage() {
     if (!city || !cityPoints) return null
     return cityPoints[normalizeCityKey(city)] ?? null
   }, [basePoint, baseCity, startCity, cityPoints])
+
+  /**
+   * Грузы, пригодные для цепочки: регион базы ПЛЮС радиус от базы.
+   *
+   * Было: только регион по названию. Ползунок «радиус первого груза» на пул
+   * не влиял вообще — логист ставил 500 и 1200 км, а список грузов оставался
+   * тем же, и «Искать шире» ничего не находило. Живой случай: пятитонная
+   * изотерма в Ярославле — в регионе ни одного подходящего груза, а в 300 км
+   * (Москва, Владимир, Кострома) они есть.
+   *
+   * Правило прежнее: объём сбора — регион базы и радиус вокруг неё, а не вся
+   * страна. Дальние грузы (Новосибирск, Омск) по-прежнему мимо: они за
+   * пределами радиуса.
+   */
+  const regionLoads = useMemo(() => {
+    if (!baseRegionName) return loads
+    const regionRoot = baseRegionName.replace(/\s+(область|край|республика).*$/, "")
+    const start = basePointForSort
+    const radiusKm = startRadiusKm > 0 ? startRadiusKm : 0
+    return loads.filter((load) => {
+      const from = String(load.fromCity ?? "")
+      if (from.includes(regionRoot)) return true
+      // Не свой регион, но точка погрузки в радиусе от базы — берём
+      if (!start || radiusKm === 0 || !load.fromPoint) return false
+      return haversineKm(start, load.fromPoint) <= radiusKm
+    })
+  }, [loads, baseRegionName, basePointForSort, startRadiusKm])
+
+  /**
+   * Сколько грузов региона выпало из работы, потому что дата загрузки прошла.
+   *
+   * Зачем считать отдельно: кэш биржи копит и вчерашние грузы, и позавчерашние.
+   * Раньше они оставались в пуле, показывались в списке («с 30 окт» при
+   * сегодняшнем 31-м) и попадали в разбор провала строкой «42 с прошедшей
+   * датой загрузки» — логист видел сломанные данные вместо причины.
+   */
+  const expiredLoads = useMemo(
+    () =>
+      regionLoads.filter(
+        (load) => load.status === "new" && !isFreshLoad(load),
+      ).length,
+    [regionLoads],
+  )
+
+  const usableLoads = useMemo(
+    () =>
+      regionLoads.filter(
+        (load) =>
+          load.status === "new" &&
+          // Прошедшая дата загрузки — не кандидат: ехать некуда
+          isFreshLoad(load) &&
+          (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
+          shortCity(load.fromCity) !== "—" &&
+          shortCity(load.toCity) !== "—",
+      ),
+    [regionLoads],
+  )
+
 
 
 
@@ -1073,6 +1088,111 @@ export default function RouteAssistantPage() {
     error?: string
   }
 
+  /**
+   * «Искать шире»: радиус плюс ЖИВОЙ запрос к бирже вокруг базы.
+   *
+   * Было: кнопка меняла число радиуса и пересобирала маршрут по тому же кэшу,
+   * где лежит только свой регион. Для пятитонной машины это выглядело так:
+   * нажал 500, 800, 1200 — «не собралось» каждый раз. Радиус ничего не
+   * расширял, потому что спрашивать биржу было нечего.
+   *
+   * Теперь: кэш региона + поиск на бирже в радиусе от базы (как на сайте ATI),
+   * найденное добавляется в пул и участвует в сборке.
+   */
+  async function widenRadius() {
+    const wider = startRadiusKm >= 1200 ? 1200 : startRadiusKm + 200
+    setStartRadiusKm(wider)
+    setRadiusNote(null)
+
+    const place = cityOfAddress(baseCity) || cityOfAddress(startCity)
+    const geo =
+      (place ? await lookupAtiPlace(place) : null) ??
+      (serverRegionRoot ? await lookupAtiPlace(serverRegionRoot) : null)
+    if (!geo) {
+      setRadiusNote(
+        `Справочник ATI не узнал «${place || startCity}» — искать вокруг базы нечем, беру грузы вашей базы.`,
+      )
+      runBuild(startCity, keepIds, excludeIds, maxHours, true)
+      return
+    }
+
+    setRadiusBusy(true)
+    const answer = await apiSend<ScanAnswer>("/api/ati/scan", "POST", {
+      manualMode: true,
+      source: "exchange",
+      fromGeo: { id: geo.id, name: geo.name, fullName: geo.fullName },
+      fromRadius: wider,
+      maxPages: EXTEND_PAGES,
+      pageStart: 1,
+      filters: {},
+    })
+    setRadiusBusy(false)
+
+    const rows = answer.data?.loads ?? []
+    const added = scanRowsToLoads(rows as Array<Record<string, any>>)
+    const seen = new Set(foundLoadsRef.current.map((load) => load.id))
+    const fresh = added.filter((load) => !seen.has(load.id))
+    if (fresh.length > 0) {
+      foundLoadsRef.current = [...foundLoadsRef.current, ...fresh]
+      setFoundLoads(foundLoadsRef.current)
+    }
+
+    if (!answer.ok || !answer.data?.success) {
+      setRadiusNote(
+        `Биржа не ответила на запрос в радиусе ${wider} км: ${answer.data?.error ?? answer.error ?? "нет связи"}`,
+      )
+    } else if (fresh.length === 0) {
+      setRadiusNote(
+        `В радиусе ${wider} км от ${geo.name} биржа не отдала ни одного нового груза${
+          rows.length > 0 ? " (всё уже в базе или без ставки)" : ""
+        }.`,
+      )
+    } else {
+      setRadiusNote(`В радиусе ${wider} км от ${geo.name} биржа отдала ${fresh.length} новых грузов — они участвуют в сборке.`)
+      toast(`Нашлись грузы в радиусе ${wider} км`, {
+        description: `${fresh.length} новых грузов с биржи вокруг ${geo.name}`,
+      })
+    }
+
+    runBuild(startCity, keepIds, excludeIds, maxHours, true, foundLoadsRef.current)
+  }
+
+  /**
+   * Строки ответа /api/ati/scan → грузы сборщика, с точками городов.
+   *
+   * Точки нужны каждому додобранному грузу: без них «по пути» от новой точки
+   * не считается, и цепочка снова обрывается на одном плече.
+   */
+  function scanRowsToLoads(rows: Array<Record<string, any>>): BuilderLoad[] {
+    return rows.map((row) => {
+      const load: BuilderLoad = {
+        id: String(row.id),
+        loadId: row.atiLoadId ?? null,
+        fromCity: row.routeFrom,
+        toCity: row.routeTo,
+        weightKg: row.weight,
+        volumeM3: row.volume,
+        cargoType: row.cargoType,
+        priceRub: row.price,
+        priceWithNds: row.vatIncluded ? row.price : null,
+        distanceKm: row.distance,
+        firmName: row.firmName,
+        firmUrl: row.firmUrl ?? null,
+        contactPhone: row.contactPhone,
+        loadingDate: row.loadingDate,
+        status: row.status ?? "new",
+        fromPoint: row.fromPoint ?? null,
+        toPoint: row.toPoint ?? null,
+      }
+      return {
+        ...load,
+        fromPoint:
+          load.fromPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.fromCity))] ?? null,
+        toPoint: load.toPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.toCity))] ?? null,
+      }
+    })
+  }
+
   async function extendAlongRoute(route: BuiltRoute) {
     const place = route.legs[route.legs.length - 1]?.load.toCity ?? ""
     const city = shortCity(place)
@@ -1176,33 +1296,7 @@ export default function RouteAssistantPage() {
       })
       return
     }
-    const mapped: BuilderLoad[] = rowsFound.map((row: any) => ({
-      id: String(row.id),
-      loadId: row.atiLoadId ?? null,
-      fromCity: row.routeFrom,
-      toCity: row.routeTo,
-      weightKg: row.weight,
-      volumeM3: row.volume,
-      cargoType: row.cargoType,
-      priceRub: row.price,
-      priceWithNds: row.vatIncluded ? row.price : null,
-      distanceKm: row.distance,
-      firmName: row.firmName,
-      firmUrl: row.firmUrl ?? null,
-      contactPhone: row.contactPhone,
-      loadingDate: row.loadingDate,
-      status: row.status ?? "new",
-      fromPoint: row.fromPoint ?? null,
-      toPoint: row.toPoint ?? null,
-      source: row.source === "exchange" ? "exchange" : "boards",
-    }))
-    // Точки городов додобранных грузов: без них «по пути» от новой точки
-    // не считается, и цепочка снова оборвётся на одном плече.
-    const withPoints = mapped.map((load) => ({
-      ...load,
-      fromPoint: load.fromPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.fromCity))] ?? null,
-      toPoint: load.toPoint ?? cityPoints?.[normalizeCityKey(shortCity(load.toCity))] ?? null,
-    }))
+    const withPoints = scanRowsToLoads(rowsFound)
     const seen = new Set(foundLoadsRef.current.map((load) => load.id))
     const added = withPoints.filter((load) => !seen.has(load.id))
     foundLoadsRef.current = [...foundLoadsRef.current, ...added]
@@ -1795,12 +1889,9 @@ export default function RouteAssistantPage() {
               setMaxHours(longer)
               runBuild(startCity, keepIds, excludeIds, longer, true)
             }}
-            onWiderRadius={() => {
-              // Провал часто = «груз есть, но дальше радиуса» — пробуем шире
-              const wider = startRadiusKm >= 1200 ? 1200 : startRadiusKm + 200
-              setStartRadiusKm(wider)
-              runBuild(startCity, keepIds, excludeIds, maxHours, true)
-            }}
+            onWiderRadius={() => void widenRadius()}
+            radiusBusy={radiusBusy}
+            radiusNote={radiusNote}
             onPickCity={(city) => {
               setStartCity(city)
               window.localStorage.setItem(START_CITY_KEY, city)
@@ -2577,6 +2668,8 @@ function FailedPhase({
   startRadiusKm,
   startPoint,
   onWiderRadius,
+  radiusBusy,
+  radiusNote,
   onPickCity,
   onOtherCity,
   onRefresh,
@@ -2602,6 +2695,10 @@ function FailedPhase({
   startPoint: Point | null
   maxHours: number
   onWiderRadius: () => void
+  /** Идёт запрос к бирже по кнопке «Искать шире» */
+  radiusBusy: boolean
+  /** Что ответила биржа: нашлись грузы, нет новых или связи нет */
+  radiusNote: string | null
   onPickCity: (city: string) => void
   onOtherCity: () => void
   onRefresh: () => void
@@ -2794,6 +2891,13 @@ function FailedPhase({
         </Card>
       ) : null}
 
+      {/* Ответ биржи на расширение радиуса: что реально нашлось */}
+      {radiusNote ? (
+        <Card className="border-border">
+          <p className="text-[12.5px] leading-snug text-muted-foreground">{radiusNote}</p>
+        </Card>
+      ) : null}
+
       {/* Под выбранную машину грузов нет ни в одном городе — говорим прямо */}
       {workingCities.length === 0 ? (
         <Card>
@@ -2857,16 +2961,23 @@ function FailedPhase({
             Ехать дольше ({hoursLabel(nextHoursStep(maxHours))})
           </button>
         ) : null}
-        {startRadiusKm < 1200 ? (
-          <button
-            type="button"
-            onClick={onWiderRadius}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70"
-          >
+        <button
+          type="button"
+          onClick={onWiderRadius}
+          disabled={radiusBusy || startRadiusKm >= 1200}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-secondary px-4 text-[14px] font-medium text-foreground active:opacity-70 disabled:opacity-50"
+        >
+          {radiusBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
             <RouteIcon className="h-4 w-4" />
-            Искать шире ({Math.min(startRadiusKm + 200, 1200)} км)
-          </button>
-        ) : null}
+          )}
+          {radiusBusy
+            ? "Ищу на бирже вокруг базы…"
+            : startRadiusKm >= 1200
+              ? "Радиус 1200 км — максимум"
+              : `Искать шире (${Math.min(startRadiusKm + 200, 1200)} км)`}
+        </button>
         <button
           type="button"
           onClick={onRefresh}
