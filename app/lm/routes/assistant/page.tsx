@@ -3503,7 +3503,8 @@ function RoutePhase({
             {route.returnDeadheadKm > 0
               ? ` (≈ ${Math.max(1, Math.round(route.returnDeadheadKm / AVG_DEADHEAD_KMH))} ч в пути)`
               : ""}{" "}
-            до {route.path[0]} — порожняком; топливо и часы на них уже учтены в прибыли и в сроке.
+            до базы ({route.path[0]}) — порожняком; топливо и часы на них уже учтены в прибыли
+            и в сроке.
           </p>
         ) : (
           <p className="mt-2 text-[12px] leading-snug text-amber-600">
