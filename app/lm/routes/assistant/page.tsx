@@ -3115,7 +3115,11 @@ function FailedPhase({
       {fittingLoads.length > 0 ? (
         <Card>
           <p className="text-[13px] font-medium text-foreground">
-            {`Под ${selected?.plate ?? "эту машину"} грузы есть — ${fittingLoads.length} ${fittingLoads.length === 1 ? "груз" : "грузов"} — но загружаются позже выбранного срока`}
+            {`Под ${selected?.plate ?? "эту машину"} грузы есть — ${loadsPhrase(
+              fittingLoads.length,
+              "груз",
+              "грузов",
+            )} — но загружаются позже выбранного срока`}
           </p>
           <ul className="mt-1.5 space-y-1">
             {fittingLoads.slice(0, 3).map((load) => (
