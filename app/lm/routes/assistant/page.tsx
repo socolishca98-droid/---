@@ -1819,7 +1819,7 @@ export default function RouteAssistantPage() {
     <>
       <LogistHeader
         title="Сборка маршрута"
-        subtitle="Грузы биржи → цепочка → машина в пути"
+        subtitle="Грузы биржи → маршрут"
         back
         userName={user?.name}
         action={
