@@ -324,6 +324,8 @@ export interface MobileFleetVehicle {
   volume: number | null
   mileage: number | null
   status: string
+  /** Доп. оборудование: строка JSON или список — разбирает vehicleFeatureLabels. */
+  features?: string | null
   lastMaintenanceDate: string | null
   nextMaintenanceDate: string | null
   driverName?: string | null

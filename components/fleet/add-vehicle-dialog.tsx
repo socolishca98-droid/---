@@ -12,16 +12,45 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2 } from "lucide-react"
 
+import {
+  VEHICLE_FEATURES,
+  customVehicleFeatures,
+  featuresForSave,
+  parseVehicleFeatures,
+  type VehicleFeatureId,
+} from "@/lib/fleet/vehicle-features"
+
 // Локальное определение типа (в lib/types его нет)
-type VehicleFeature = "tent" | "refrigerator" | "top_loading" | "side_loading" | "tail_lift" | "gps" | "adr"
+type VehicleFeature = VehicleFeatureId
+
+/** Машина, которую редактируем. null/undefined — режим создания. */
+export interface EditableVehicle {
+  id: string
+  plate?: string | null
+  type?: string | null
+  brand?: string | null
+  model?: string | null
+  year?: number | string | null
+  capacity?: number | string | null
+  volume?: number | string | null
+  length?: number | string | null
+  width?: number | string | null
+  height?: number | string | null
+  features?: unknown
+  fuelTankL?: number | string | null
+  fuelConsumptionPer100?: number | string | null
+  fuelLevelL?: number | string | null
+}
 
 interface AddVehicleDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSubmit?: (data: VehicleFormData) => Promise<void>
+  /** Если передана машина — диалог правит её, а не заводит новую. */
+  vehicle?: EditableVehicle | null
 }
 
-interface VehicleFormData {
+export interface VehicleFormData {
   plate: string
   type: string
   brand: string
@@ -40,15 +69,9 @@ interface VehicleFormData {
 
 const vehicleTypes = ["Фура", "Газель", "Рефрижератор", "Бортовая", "Тент", "Изотерм"]
 
-const featureOptions: { id: VehicleFeature; label: string }[] = [
-  { id: "tent", label: "Тент" },
-  { id: "refrigerator", label: "Рефрижератор" },
-  { id: "top_loading", label: "Верхняя загрузка" },
-  { id: "side_loading", label: "Боковая загрузка" },
-  { id: "tail_lift", label: "Гидроборт" },
-  { id: "gps", label: "GPS-трекер" },
-  { id: "adr", label: "ADR (опасные грузы)" },
-]
+// Галочки особенностей — из общего модуля, чтобы форма и карточка читали
+// оборудование одинаково.
+const featureOptions: { id: VehicleFeature; label: string }[] = VEHICLE_FEATURES
 
 const initialFormData: VehicleFormData = {
   plate: "",
@@ -67,16 +90,49 @@ const initialFormData: VehicleFormData = {
   fuelLevelL: "",
 }
 
-export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDialogProps) {
+const text = (value: unknown): string =>
+  value === null || value === undefined ? "" : String(value)
+
+export function AddVehicleDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  vehicle = null,
+}: AddVehicleDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState<VehicleFormData>(initialFormData)
+  // Особенности, которых нет среди галочек формы (термограф, коники, кран-балка).
+  // Их нельзя терять при сохранении: логист правит тоннаж, а не снимает
+  // оборудование, которое ему даже не показали.
+  const [preservedFeatures, setPreservedFeatures] = useState<string[]>([])
+  const editing = Boolean(vehicle?.id)
 
-  // Сброс формы при открытии
+  // При открытии: пустая форма для новой машины, заполненная — для правки
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    if (!vehicle) {
       setFormData(initialFormData)
+      setPreservedFeatures([])
+      return
     }
-  }, [open])
+    setPreservedFeatures(customVehicleFeatures(vehicle.features))
+    setFormData({
+      plate: text(vehicle.plate).toUpperCase(),
+      type: text(vehicle.type),
+      brand: text(vehicle.brand),
+      model: text(vehicle.model),
+      year: text(vehicle.year),
+      capacity: text(vehicle.capacity),
+      volume: text(vehicle.volume),
+      length: text(vehicle.length),
+      width: text(vehicle.width),
+      height: text(vehicle.height),
+      features: parseVehicleFeatures(vehicle.features),
+      fuelTankL: text(vehicle.fuelTankL),
+      fuelConsumptionPer100: text(vehicle.fuelConsumptionPer100),
+      fuelLevelL: text(vehicle.fuelLevelL),
+    })
+  }, [open, vehicle])
 
   const handleFeatureToggle = (feature: VehicleFeature) => {
     setFormData((prev) => ({
@@ -97,7 +153,17 @@ export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDia
     
     setIsSubmitting(true)
     try {
-      await onSubmit(formData)
+      // Особенности сохраняем человеческими названиями («Гидроборт»), как они
+      // уже лежат в базе и как их показывает карточка. Идентификаторы вида
+      // «tail_lift» в карточке выглядели бы машинным текстом.
+      const payload: VehicleFormData = {
+        ...formData,
+        features: featuresForSave(
+          formData.features,
+          preservedFeatures,
+        ) as unknown as VehicleFeature[],
+      }
+      await onSubmit(payload)
     } finally {
       setIsSubmitting(false)
     }
@@ -105,9 +171,11 @@ export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Добавить транспорт</DialogTitle>
+          <DialogTitle>
+            {editing ? `Редактировать ${vehicle?.plate ?? "транспорт"}` : "Добавить транспорт"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Основное */}
@@ -313,7 +381,7 @@ export function AddVehicleDialog({ open, onOpenChange, onSubmit }: AddVehicleDia
             </Button>
             <Button type="submit" disabled={isSubmitting || !formData.type || !formData.plate || !formData.capacity}>
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Добавить
+              {editing ? "Сохранить" : "Добавить"}
             </Button>
           </DialogFooter>
         </form>

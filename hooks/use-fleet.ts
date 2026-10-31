@@ -110,6 +110,22 @@ export function useFleet() {
     [fetchAll],
   )
 
+  /** Правка машины: номер, тоннаж, кузов, оборудование. */
+  const updateVehicle = useCallback(
+    async (id: string, vehicleData: any) => {
+      const res = await fetch(`/api/vehicles/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(vehicleData),
+      })
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error)
+      await fetchAll()
+      return result.vehicle
+    },
+    [fetchAll],
+  )
+
   const deleteVehicle = useCallback(
     async (id: string) => {
       const res = await fetch(`/api/vehicles/${id}`, { method: "DELETE" })
@@ -137,6 +153,7 @@ export function useFleet() {
     addDriver,
     deleteDriver,
     addVehicle,
+    updateVehicle,
     deleteVehicle,
     getAvailableVehicles,
   }

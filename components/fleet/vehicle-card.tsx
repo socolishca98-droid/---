@@ -37,7 +37,7 @@ import { Progress } from "@/components/ui/progress"
 import { formatKg } from "@/lib/fleet/load"
 import { cn } from "@/lib/utils"
 import { useConfirm } from "@/components/ui/confirm-dialog"
-import { safeJsonParse } from "@/lib/safe-json"
+import { vehicleFeatureLabels } from "@/lib/fleet/vehicle-features"
 import { formatPhone } from "@/lib/ui/phone"
 
 interface Vehicle {
@@ -112,8 +112,9 @@ export function VehicleCard({
   const [showHistory, setShowHistory] = useState(false)
   const confirm = useConfirm()
 
-  // ✅ ИСПРАВЛЕНО: безопасный парсинг features
-  const features = safeJsonParse<string[]>(vehicle.features, [])
+  // Особенности в базе лежат в двух видах (русские названия и идентификаторы),
+  // поэтому читаем их общим разбором, а не «как есть» из JSON.
+  const features = vehicleFeatureLabels(vehicle.features)
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -496,7 +497,7 @@ export function VehicleCard({
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Особенности</p>
             <div className="flex flex-wrap gap-2">
-              {features.map((feature: any, idx: any) => (
+              {features.map((feature: string, idx: number) => (
                 <Badge key={idx} variant="secondary" className="text-xs">
                   {feature}
                 </Badge>

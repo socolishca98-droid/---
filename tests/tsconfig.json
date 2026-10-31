@@ -73,6 +73,7 @@
     "../lib/logist-mobile/city-norm.ts",
     "../lib/fleet/fuel.ts",
     "../lib/fleet/fuel-price.ts",
+    "../lib/fleet/vehicle-features.ts",
     "../lib/logist-mobile/route-builder.ts",
     "../lib/ati/boards-mapping.ts",
     "../lib/ati/search-geo.ts",

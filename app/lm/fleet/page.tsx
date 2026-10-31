@@ -6,12 +6,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Fuel as FuelIcon, Phone, Settings2, Truck, Wrench } from "lucide-react"
+import { Fuel as FuelIcon, Pencil, Phone, Plus, Settings2, Truck, Wrench } from "lucide-react"
+import { toast } from "sonner"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { EmptyState, ErrorState, KpiCard, LinkRow, ListSkeleton } from "@/components/logist-mobile/ui"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { RepairForm, type RepairFormVehicle } from "@/components/maintenance/repair-form"
+import { AddVehicleDialog, type VehicleFormData } from "@/components/fleet/add-vehicle-dialog"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import {
   DEADLINE_STATUS_META,
@@ -20,6 +22,7 @@ import {
   type MobileFleetVehicle,
 } from "@/lib/logist-mobile/types"
 import { formatDateShort, formatMileage, telHref, formatCount } from "@/lib/logist-mobile/format"
+import { vehicleFeatureLabels } from "@/lib/fleet/vehicle-features"
 
 interface Deadline {
   status: string
@@ -42,6 +45,32 @@ export default function LogistFleetPage() {
   const drivers = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
   const [tab, setTab] = useState("vehicles")
   const [repairOpen, setRepairOpen] = useState(false)
+  // Машина, которую правим: null — заводим новую
+  const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<MobileFleetVehicle | null>(null)
+
+  /** Создание и правка машины: POST — новая, PATCH — существующая. */
+  const saveVehicle = async (data: VehicleFormData) => {
+    const editingId = editing?.id
+    try {
+      const res = await fetch(editingId ? `/api/vehicles/${editingId}` : "/api/vehicles", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result?.success) {
+        throw new Error(result?.error || "Не удалось сохранить машину")
+      }
+      setVehicleDialogOpen(false)
+      setEditing(null)
+      vehicles.reload()
+      maintenance.reload()
+      toast.success(editingId ? "Изменения сохранены" : "Машина добавлена")
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : "Не удалось сохранить машину")
+    }
+  }
 
   // Сроки ТО и страховки приходят из раздела обслуживания — сводим их к машинам
   const deadlinesByVehicle = useMemo(() => {
@@ -135,6 +164,19 @@ export default function LogistFleetPage() {
               ))}
             </div>
 
+            {tab === "vehicles" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(null)
+                  setVehicleDialogOpen(true)
+                }}
+                className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-70"
+              >
+                <Plus className="h-4 w-4" /> Добавить машину
+              </button>
+            ) : null}
+
             {tab === "service" ? (
               <button
                 type="button"
@@ -188,6 +230,12 @@ export default function LogistFleetPage() {
                           </p>
                         ) : null}
 
+                        {vehicleFeatureLabels(vehicle.features).length ? (
+                          <p className="mt-1 text-[12.5px] text-muted-foreground">
+                            {vehicleFeatureLabels(vehicle.features).join(" · ")}
+                          </p>
+                        ) : null}
+
                         {driver ? (
                           <div className="mt-3 flex items-center gap-2">
                             <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
@@ -206,6 +254,20 @@ export default function LogistFleetPage() {
                         ) : (
                           <p className="mt-2.5 text-[12.5px] text-muted-foreground/80">Водитель не закреплён</p>
                         )}
+
+                        {/* Сняли доп. оборудование или поменяли тоннаж — правим
+                            карточку, а не заводим машину заново: иначе пропадут
+                            история рейсов, ТО и документы */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditing(vehicle)
+                            setVehicleDialogOpen(true)
+                          }}
+                          className="mt-3 flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-border text-[13px] font-medium text-foreground active:opacity-70"
+                        >
+                          <Pencil className="h-4 w-4" /> Изменить машину
+                        </button>
                       </div>
                     )
                   })
@@ -247,6 +309,16 @@ export default function LogistFleetPage() {
             </div>
           </>
         )}
+
+        <AddVehicleDialog
+          open={vehicleDialogOpen}
+          onOpenChange={(open) => {
+            setVehicleDialogOpen(open)
+            if (!open) setEditing(null)
+          }}
+          vehicle={editing}
+          onSubmit={saveVehicle}
+        />
 
         <RepairForm
           open={repairOpen}

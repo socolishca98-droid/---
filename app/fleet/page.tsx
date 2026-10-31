@@ -51,6 +51,7 @@ export default function FleetPage() {
     refresh,
     addDriver,
     addVehicle,
+    updateVehicle,
     deleteDriver,
     deleteVehicle,
     getAvailableVehicles,
@@ -58,6 +59,8 @@ export default function FleetPage() {
 
   const [searchQuery, setSearchQuery] = useState("")
   const [showAddVehicle, setShowAddVehicle] = useState(false)
+  // Машина, которую правим: null — диалог заводит новую
+  const [editVehicle, setEditVehicle] = useState<any>(null)
   const [showAddDriver, setShowAddDriver] = useState(false)
 
   // Диалоги действий
@@ -353,6 +356,7 @@ export default function FleetPage() {
                         vehicle={vehicleWithDriver}
                         assignments={insights?.history?.[vehicle.id] ?? []}
                         idleDays={vehicleInsight?.idleDays}
+                        onEdit={() => setEditVehicle(vehicle)}
                         onDelete={() => handleDeleteVehicle(vehicle.id)}
                         onMaintenance={() => setMaintenanceVehicle(vehicle)}
                         onAssignDriver={() => setAssignVehicle(vehicle)}
@@ -411,6 +415,29 @@ export default function FleetPage() {
           await addVehicle(data)
           setShowAddVehicle(false)
           toast.success("Транспорт добавлен")
+        }}
+      />
+
+      {/* Правка существующей машины: сняли доп. оборудование, поменяли тоннаж —
+          правим карточку, а не заводим машину заново (иначе теряются история
+          рейсов, ТО и документы) */}
+      <AddVehicleDialog
+        open={!!editVehicle}
+        onOpenChange={(open) => !open && setEditVehicle(null)}
+        vehicle={editVehicle}
+        onSubmit={async (data) => {
+          if (!editVehicle) return
+          try {
+            await updateVehicle(editVehicle.id, data)
+            setEditVehicle(null)
+            toast.success("Изменения сохранены")
+          } catch (error) {
+            toast.error(
+              error instanceof Error && error.message
+                ? error.message
+                : "Не удалось сохранить изменения",
+            )
+          }
         }}
       />
 
