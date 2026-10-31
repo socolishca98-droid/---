@@ -2792,6 +2792,40 @@ function FailedPhase({
     return suggestion
   }, [loads, vehicles, selected])
 
+  /**
+   * Самый лёгкий груз со ставкой в пуле.
+   *
+   * Зачем: на вопрос «а что, под 5 тонн совсем нет?» экран должен отвечать
+   * фактом, а не молчанием. Живой замер: в радиусе 500 км от Ярославля
+   * самый лёгкий груз со ставкой — 13 т, а грузы до 5 т есть, но без ставки.
+   */
+  const lightestPriced = useMemo(() => {
+    const priced = loads.filter(
+      (load) =>
+        load.status === "new" &&
+        isFreshLoad(load) &&
+        (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
+        load.weightKg != null,
+    )
+    if (priced.length === 0) return null
+    return priced.reduce(
+      (min, load) => ((load.weightKg ?? 0) < (min.weightKg ?? 0) ? load : min),
+      priced[0],
+    )
+  }, [loads])
+
+  /** Сколько грузов подходят по размеру, но без озвученной ставки. */
+  const fitWithoutPrice = useMemo(() => {
+    if (!selected) return 0
+    return loads.filter(
+      (load) =>
+        load.status === "new" &&
+        isFreshLoad(load) &&
+        (load.priceWithNds ?? load.priceRub ?? 0) <= 0 &&
+        loadFitsVehicle(load, selected),
+    ).length
+  }, [loads, selected])
+
   return (
     <div className="space-y-4 lg:mx-auto lg:max-w-3xl">
       {/* Сначала честно — откуда грузы: провал не должен выглядеть поломкой */}
@@ -2906,9 +2940,26 @@ function FailedPhase({
             {selected
               ? `${selected.plate} берёт до ${formatWeightKg(selected.capacity ?? 0)}${
                   selected.volume ? ` и ${selected.volume} м³` : ""
-                }. Грузов такого размера на бирже региона сейчас нет — обновите биржу или постройте на другой машине.`
+                }. Грузов такого размера на бирже сейчас нет — расширьте радиус, обновите биржу или постройте на другой машине.`
               : "Свободных машин нет — назначьте машину и вернитесь к сборке."}
           </p>
+          {selected && lightestPriced ? (
+            <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
+              Самый лёгкий груз со ставкой в пуле —{" "}
+              {formatWeightKg(lightestPriced.weightKg ?? 0)} (
+              {shortCity(lightestPriced.fromCity)} → {shortCity(lightestPriced.toCity)}).
+            </p>
+          ) : null}
+          {fitWithoutPrice > 0 ? (
+            <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
+              {loadsPhrase(
+                fitWithoutPrice,
+                "груз подходит по размеру, но ставка не озвучена",
+                "грузов подходят по размеру, но ставка не озвучена",
+              )}{" "}
+              — цену узнают звонком, в сборку они не идут.
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={onRefresh}
