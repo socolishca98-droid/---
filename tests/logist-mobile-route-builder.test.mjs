@@ -1803,3 +1803,31 @@ test("без переопределения тот же груз в маршру
   })
   assert.equal(route, null)
 })
+
+// ── 22. Дата загрузки позже срока — это отдельная причина ─────────────────
+test("объяснение: груз загружается позже лимита срока", () => {
+  // Живой случай: Ярославль → Брянск, 3,6 т, 90 000 ₽, загрузка 4 ноября.
+  // Подходит и по весу, и по ставке, но ожидание не влезает в 3 дня.
+  const reason = explainFailure({
+    startCity: "Ярославль",
+    loads: [
+      load({
+        id: "bryansk",
+        fromCity: "Ярославль",
+        toCity: "Брянск",
+        distanceKm: 662,
+        priceRub: 90000,
+        weightKg: 3600,
+        loadingDate: "2026-10-27T00:00:00.000Z",
+      }),
+    ],
+    vehicles: [vehicle({ capacity: 5000, volume: 32, type: "Изотерм", truckType: null })],
+    fuelPriceRubPerL: FUEL,
+    maxHours: 72,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.waitingLate, 1)
+  assert.equal(reason.overdue, 0, "дата в будущем — не просрочка")
+  assert.match(reason.headline, /загружаются позже выбранного срока/)
+})

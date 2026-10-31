@@ -2955,6 +2955,16 @@ function FailedPhase({
                 · {loadsPhrase(reason.unprofitable, "не окупается после топлива", "не окупаются после топлива")}
               </li>
             ) : null}
+            {reason.waitingLate > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                ·{" "}
+                {loadsPhrase(
+                  reason.waitingLate,
+                  "загружается позже выбранного срока — увеличьте время маршрута",
+                  "загружаются позже выбранного срока — увеличьте время маршрута",
+                )}
+              </li>
+            ) : null}
             {reason.tooLong > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
                 · {loadsPhrase(reason.tooLong, "едет дольше выбранного срока", "едут дольше выбранного срока")}

@@ -2003,6 +2003,16 @@ export interface FailureReason {
   unprofitable: number
   /** Плечо дольше выбранного лимита времени маршрута */
   tooLong: number
+  /**
+   * Груз загружается позже, чем позволяет срок маршрута: ожидание даты
+   * съедает лимит.
+   *
+   * Живой случай: Ярославль → Брянск, 3,6 т, 90 000 ₽ — груз подходит и по
+   * весу, и по ставке, но загрузка 4 ноября. При лимите 3 дня ожидание не
+   * влезает, и экран писал «ничего не сложилось в окупаемую цепочку» —
+   * логист видел непонятный отказ при нормальном грузе.
+   */
+  waitingLate: number
   /** Главная причина одной строкой — для экрана */
   headline: string
 }
@@ -2073,14 +2083,28 @@ export function explainFailure(options: {
 
   let unprofitable = 0
   let tooLong = 0
+  let waitingLate = 0
   for (const load of fromCity) {
     if (loadPrice(load) <= 0 || !isFresh(load, now)) continue
     if (!fitsSomeVehicle(load)) continue
     const km = Math.max(0, load.distanceKm ?? 0)
     if (km === 0) continue
-    // Плечо дольше выбранного срока — логист не поедет, даже если выгодно
-    if (legHours(0, km) > maxHours) {
-      tooLong += 1
+    // Ожидание даты загрузки входит в срок маршрута: груз со загрузкой через
+    // четыре дня в трёхдневный рейс не встаёт
+    const date = loadDate(load)
+    const waitHours = date
+      ? Math.max(0, (date.getTime() - now.getTime()) / 3600000)
+      : 0
+    const travelHours = legHours(0, km)
+    // Сначала — «дорога сама не влезает» (это tooLong), и только потом
+    // «дорога влезает, а ожидание даты — нет» (waitingLate): иначе причина
+    // называлась бы неверно.
+    if (travelHours + waitHours > maxHours) {
+      if (travelHours > maxHours) {
+        tooLong += 1
+      } else {
+        waitingLate += 1
+      }
       continue
     }
     // Считаем по лучшей машине, в которую груз влезает
@@ -2119,6 +2143,11 @@ export function explainFailure(options: {
     headline = `Грузы из «${shortCity(city)}» не встают в ваш кузов — нужен тент или реф`
   } else if (unprofitable > 0 && unprofitable + noPrice + overdue + tooHeavy + tooVolumetric + tooBody >= fromCity.length) {
     headline = `Плеча из «${shortCity(city)}» не окупаются — ставка ниже расходов на топливо`
+  } else if (
+    waitingLate > 0 &&
+    waitingLate + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length
+  ) {
+    headline = `Грузы из «${shortCity(city)}» загружаются позже выбранного срока — увеличьте время маршрута`
   } else if (tooLong > 0 && tooLong + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length) {
     headline = `Грузы из «${shortCity(city)}» есть, но ехать дольше выбранного срока — увеличьте время маршрута`
   } else if (overdue > 0 && overdue + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length) {
@@ -2136,6 +2165,7 @@ export function explainFailure(options: {
     tooHeavy,
     tooVolumetric,
     tooBody,
+    waitingLate,
     overdue,
     unprofitable,
     tooLong,
