@@ -3492,19 +3492,17 @@ function RoutePhase({
         {/* Круг «база → база»: логист должен видеть, чем именно заканчивается
             рейс. Раньше строка появлялась только для порожнего возврата, и
             закрытый с грузом круг выглядел так же, как незакрытый. */}
-        {route.returnsHomeWithLoad ? (
+        {route.returnsHomeWithLoad && route.returnDeadheadKm === 0 ? (
           <p className="mt-2 text-[12px] leading-snug text-emerald-600">
             Круг закрыт: машина возвращается в {route.path[route.path.length - 1]} с грузом —
             порожнего возврата нет.
           </p>
         ) : route.returnDeadheadKm > 0 ? (
           <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
-            Круг закрыт, но последние ≈ {route.returnDeadheadKm} км
-            {route.returnDeadheadKm > 0
-              ? ` (≈ ${Math.max(1, Math.round(route.returnDeadheadKm / AVG_DEADHEAD_KMH))} ч в пути)`
-              : ""}{" "}
-            до базы ({route.path[0]}) — порожняком; топливо и часы на них уже учтены в прибыли
-            и в сроке.
+            Круг закрыт{route.returnsHomeWithLoad ? " с грузом" : ""}, но последние ≈{" "}
+            {route.returnDeadheadKm} км (≈{" "}
+            {Math.max(1, Math.round(route.returnDeadheadKm / AVG_DEADHEAD_KMH))} ч в пути) до базы
+            ({route.path[0]}) — порожняком; топливо и часы на них уже учтены в прибыли и в сроке.
           </p>
         ) : (
           <p className="mt-2 text-[12px] leading-snug text-amber-600">

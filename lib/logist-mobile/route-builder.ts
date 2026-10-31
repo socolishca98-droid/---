@@ -1855,7 +1855,18 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
       ? Math.round(returnFuelLiters * fuelPrice)
       : null
 
-  const returnsHomeWithLoad = atHome || legs.some((leg) => leg.returnsHome)
+  // «Домой с грузом» — не только точное совпадение города. Живой замер
+  // (Е774ОР750, 120 ч): маршрут кончался выгрузкой в Корюково д. — это 8 км от
+  // Ярославля, машина фактически дома, но экран писал «порожняком 8 км»,
+  // потому что названия городов разные. Считаем домом и выгрузку в пределах
+  // 25 км от базы: это тот же городской район, а не отдельный рейс.
+  const HOME_CITY_KM = 25
+  const endsAtHome = (leg: RouteLeg): boolean => {
+    if (leg.returnsHome) return true
+    if (!startPoint || !leg.load.toPoint) return false
+    return haversineKm(startPoint, leg.load.toPoint) <= HOME_CITY_KM
+  }
+  const returnsHomeWithLoad = atHome || legs.some(endsAtHome)
 
   const totalDistanceKm = totalLoaded + totalDeadhead + returnDeadheadKm
   // Время: плечи + дорога домой (если возврат не гружёный)

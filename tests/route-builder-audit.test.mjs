@@ -423,3 +423,23 @@ test("обратка берётся, даже если прибыль на ки�
   assert.equal(route.returnsHomeWithLoad, true)
   assert.equal(route.returnDeadheadKm, 0, "порожнего возврата быть не должно")
 })
+
+test("выгрузка рядом с базой — это «дома с грузом», а не порожний возврат", () => {
+  // Живой замер (Е774ОР750, 120 ч): маршрут кончался в Корюково д. — 8 км от
+  // Ярославля. Машина фактически дома, но экран писал «порожняком 8 км»,
+  // потому что названия городов разные.
+  const near = load({
+    id: "near-home",
+    fromCity: "Тутаев",
+    toCity: "Корюково",
+    fromPoint: CLOSE,
+    toPoint: { lat: 57.62, lng: 39.79 }, // 8 км от базы
+    distanceKm: 40,
+    priceRub: 30000,
+  })
+  const route = buildRoute(baseOptions([near], { maxHours: 48 }))
+  assert.ok(route, "маршрут не собрался")
+  assert.equal(route.returnsHomeWithLoad, true, "круг не признан закрытым грузом")
+  assert.ok(route.returnDeadheadKm > 0, "последние километры до базы всё равно едем порожнем")
+  assert.ok(route.returnDeadheadKm <= 25, `порожний хвост слишком длинный: ${route.returnDeadheadKm}`)
+})
