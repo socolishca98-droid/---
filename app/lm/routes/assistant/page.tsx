@@ -3500,9 +3500,12 @@ function RoutePhase({
         ) : route.returnDeadheadKm > 0 ? (
           <p className="mt-2 text-[12px] leading-snug text-muted-foreground">
             Круг закрыт{route.returnsHomeWithLoad ? " с грузом" : ""}, но последние ≈{" "}
-            {route.returnDeadheadKm} км (≈{" "}
-            {Math.max(1, Math.round(route.returnDeadheadKm / AVG_DEADHEAD_KMH))} ч в пути) до базы
-            ({route.path[0]}) — порожняком; топливо и часы на них уже учтены в прибыли и в сроке.
+            {route.returnDeadheadKm} км
+            {/* Часы — только когда они осмысленны: «≈ 1 ч» на 8 км читается как ошибка */}
+            {route.returnDeadheadKm >= 30
+              ? ` (≈ ${Math.round(route.returnDeadheadKm / AVG_DEADHEAD_KMH)} ч в пути)`
+              : ""}{" "}
+            до базы ({route.path[0]}) — порожняком; топливо и часы на них уже учтены в прибыли и в сроке.
           </p>
         ) : (
           <p className="mt-2 text-[12px] leading-snug text-amber-600">
