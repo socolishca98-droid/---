@@ -1723,6 +1723,73 @@ interface FinalizeInput {
   trimmedByHours: boolean
 }
 
+
+/**
+ * Почему груз остался на бирже — причина словами, а не «другое направление».
+ *
+ * Было: любой невзятый груз подписывался «другое направление», и на экране
+ * «Брянск → Ярославль» (обратка домой!) стоял с этим ярлыком — логист читал
+ * это как «груз не туда едет», хотя дело было в другом. Живой случай
+ * (А421ВС750, 72 ч): маршрут «Тутаев → Раменское + Черноголовка → Ярославль»
+ * закрыт, а в остатке биржи все 117 грузов были подписаны одинаково.
+ *
+ * Теперь причина считается от собранного маршрута: с этого города уже брали
+ * груз, до погрузки далеко от маршрута, плечо не окупается, в лимит часов не
+ * влезает — и только если ничего не подошло, «в цепочку не встал».
+ */
+function leftoverReason(
+  load: BuilderLoad,
+  legs: RouteLeg[],
+  vehicle: BuilderVehicle,
+  fuelPrice: number | null,
+  input: { startPoint: Point | null; detourKm: number; maxHours: number; minProfitPerKm: number; excludeIds: Set<string>; effectiveStart: string },
+): string {
+  if (input.excludeIds.has(load.id)) return "исключён вами"
+  if (loadPrice(load) <= 0) return "ставка не озвучена"
+  if (!loadHasRoute(load)) return "погрузка и выгрузка в одном городе"
+  if (!loadFitsVehicle(load, vehicle)) return "не влезает в выбранную машину"
+  const fromKey = normalizeCityKey(load.fromCity)
+  if (legs.some((leg) => normalizeCityKey(leg.load.fromCity) === fromKey)) {
+    return "с этого города уже берём груз"
+  }
+  // Насколько погрузка далеко от того, где машина уже проезжает
+  const routePoints: Point[] = []
+  if (input.startPoint) routePoints.push(input.startPoint)
+  for (const leg of legs) {
+    if (leg.load.fromPoint) routePoints.push(leg.load.fromPoint)
+    if (leg.load.toPoint) routePoints.push(leg.load.toPoint)
+  }
+  let nearestKm: number | null = null
+  if (load.fromPoint && routePoints.length > 0) {
+    nearestKm = Math.min(...routePoints.map((point) => haversineKm(point, load.fromPoint as Point)))
+  }
+  const detour = Math.max(input.detourKm, 0)
+  if (nearestKm !== null && nearestKm > detour) {
+    if (samePlace(load.toCity, input.effectiveStart)) {
+      return `обратка, но погрузка в ${Math.round(nearestKm)} км от маршрута`
+    }
+    return `погрузка в ${Math.round(nearestKm)} км от маршрута — не по пути`
+  }
+  const km = Math.max(0, load.distanceKm ?? 0)
+  const money = legMoney(load, km, vehicle, fuelPrice)
+  if (money.profitRub !== null && money.profitRub <= 0) return "плечо в убыток"
+  if (km > 0 && (money.profitRub ?? money.revenue) / km < input.minProfitPerKm) {
+    return "слишком низкая ставка"
+  }
+  const backKm = load.toPoint && input.startPoint ? haversineKm(load.toPoint, input.startPoint) : 0
+  const hours = legHours(nearestKm ?? 0, km) + legHours(backKm, 0)
+  if (input.maxHours > 0 && hours > input.maxHours) {
+    return `не влезает в лимит ${input.maxHours} ч`
+  }
+  // Маршрут уже закрыт грузом домой — вторая обратка в тот же рейс не нужна.
+  if (legs.some((leg) => leg.returnsHome) && samePlace(load.toCity, input.effectiveStart)) {
+    return "обратка уже есть — маршрут закрыт"
+  }
+  // Груз прошёл все проверки сборщика, но в жадную цепочку не попал: честно
+  // так и говорим — его можно взять вместо любого плеча вручную.
+  return "подошёл бы, но в цепочку не встал"
+}
+
 /** Считать итоги маршрута и собрать объяснения — один раз на вариант. */
 function finalize(input: FinalizeInput): BuiltRoute | null {
   const {
@@ -1789,18 +1856,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   for (const load of pool) {
     if (usedIds.has(load.id)) continue
     if (excluded.some((item) => item.load.id === load.id)) continue
-    let reason = "другое направление"
-    if (excludeIds.has(load.id)) reason = "исключён вами"
-    else if (loadPrice(load) <= 0) reason = "ставка не озвучена"
-    else if (!loadFitsVehicle(load, vehicle)) reason = "не влезает в выбранную машину"
-    else if (legs.some((leg) => normalizeCityKey(leg.load.toCity) === normalizeCityKey(load.fromCity))) {
-      const km = Math.max(0, load.distanceKm ?? 0)
-      const money = legMoney(load, km, vehicle, fuelPrice)
-      if (money.profitRub !== null && money.profitRub <= 0) reason = "плечо в убыток"
-      else if (km > 0 && (money.profitRub ?? money.revenue) / km < input.minProfitPerKm) {
-        reason = "слишком низкая ставка"
-      }
-    }
+    let reason = leftoverReason(load, legs, vehicle, fuelPrice, input)
     excluded.push({ load, reason })
   }
 

@@ -296,3 +296,53 @@ test("груз «город → тот же город» в маршрут не 
   // Нормальный груз проверку проходит
   assert.equal(loadHasRoute(load({ id: "ok" })), true)
 })
+
+test("остаток биржи объясняется правдиво, а не «другое направление»", () => {
+  const main = load({
+    id: "main",
+    fromCity: "Тутаев",
+    toCity: "Москва",
+    fromPoint: CLOSE,
+    toPoint: FAR1,
+    distanceKm: 300,
+    priceRub: 80000,
+  })
+  const back = load({
+    id: "back",
+    fromCity: "Химки",
+    toCity: "Ярославль",
+    fromPoint: FAR1,
+    toPoint: BASE_POINT,
+    distanceKm: 280,
+    priceRub: 60000,
+  })
+  // Вторая обратка: маршрут уже закрыт первой — её причина должна быть иной
+  const back2 = load({
+    id: "back2",
+    fromCity: "Подольск",
+    toCity: "Ярославль",
+    fromPoint: FAR1,
+    toPoint: BASE_POINT,
+    distanceKm: 300,
+    priceRub: 61000,
+    loadingDate: "2026-11-05T00:00:00.000Z",
+  })
+  // Груз из далёкого угла: с ним маршрут не стыкуется
+  const far = load({
+    id: "far",
+    fromCity: "Казань",
+    toCity: "Пермь",
+    fromPoint: { lat: 55.79, lng: 49.12 },
+    toPoint: { lat: 58.01, lng: 56.24 },
+    distanceKm: 500,
+    priceRub: 120000,
+  })
+  const route = buildRoute(baseOptions([main, back, back2, far], { maxHours: 72 }))
+  assert.ok(route, "маршрут не собрался")
+  const reasons = new Map(route.excluded.map((item) => [item.load.id, item.reason]))
+  for (const [id, reason] of reasons) {
+    assert.notEqual(reason, "другое направление", `груз ${id} подписан общим ярлыком`)
+  }
+  const farReason = reasons.get("far") ?? ""
+  assert.match(farReason, /км от маршрута|не встал|обратка/, `причина далёкого груза: ${farReason}`)
+})
