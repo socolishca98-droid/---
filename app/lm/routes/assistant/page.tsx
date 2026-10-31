@@ -43,6 +43,9 @@ import {
   prevHoursStep,
   routeMapPoints,
   explainVehicleMismatch,
+  isFresh as isFreshLoad,
+  suggestVehicleFor,
+  loadFitsVehicle,
   AVG_DEADHEAD_KMH,
   AVG_LOADED_KMH,
   handlingHours,
@@ -471,11 +474,29 @@ export default function RouteAssistantPage() {
     return inRegion
   }, [loads, baseRegionName])
 
+  /**
+   * Сколько грузов региона выпало из работы, потому что дата загрузки прошла.
+   *
+   * Зачем считать отдельно: кэш биржи копит и вчерашние грузы, и позавчерашние.
+   * Раньше они оставались в пуле, показывались в списке («с 30 окт» при
+   * сегодняшнем 31-м) и попадали в разбор провала строкой «42 с прошедшей
+   * датой загрузки» — логист видел сломанные данные вместо причины.
+   */
+  const expiredLoads = useMemo(
+    () =>
+      regionLoads.filter(
+        (load) => load.status === "new" && !isFreshLoad(load),
+      ).length,
+    [regionLoads],
+  )
+
   const usableLoads = useMemo(
     () =>
       regionLoads.filter(
         (load) =>
           load.status === "new" &&
+          // Прошедшая дата загрузки — не кандидат: ехать некуда
+          isFreshLoad(load) &&
           (load.priceWithNds ?? load.priceRub ?? 0) > 0 &&
           shortCity(load.fromCity) !== "—" &&
           shortCity(load.toCity) !== "—",
@@ -1712,6 +1733,12 @@ export default function RouteAssistantPage() {
             }}
             onOtherCity={() => setPhase("setup")}
             onRefresh={refreshAll}
+            expiredCount={expiredLoads}
+            vehicleId={vehicleId}
+            onPickVehicle={(id) => {
+              setVehicleId(id)
+              runBuild(startCity, keepIds, excludeIds, maxHours, true)
+            }}
           />
         )}
       </div>
@@ -2241,6 +2268,9 @@ function SetupPhase({
             {vehicles.map((vehicle) => {
               const active = (vehicleId || vehicles[0]?.id) === vehicle.id
               const vehicleDriver = drivers.find((item) => item.vehicleId === vehicle.id) ?? null
+              // Сколько грузов пула влезает именно в эту машину — ДО нажатия.
+              // Иначе логист выбирает пятитонку вслепую и упирается в провал.
+              const fitsCount = fitLoads.filter((load) => loadFitsVehicle(load, vehicle)).length
               return (
                 <button
                   key={vehicle.id}
@@ -2257,6 +2287,15 @@ function SetupPhase({
                       {vehicle.type ?? "машина"}
                       {vehicle.capacity ? ` · ${formatWeightKg(vehicle.capacity)}` : ""}
                       {vehicleDriver ? ` · ${vehicleDriver.name}` : " · водитель не закреплён"}
+                    </span>
+                    <span
+                      className={`mt-0.5 block text-[11.5px] ${
+                        fitsCount === 0 ? "text-warning" : "text-muted-foreground/80"
+                      }`}
+                    >
+                      {fitsCount === 0
+                        ? "ни один груз региона в неё не влезает"
+                        : `подходит ${fitsCount} из ${fitLoads.length} грузов`}
                     </span>
                   </span>
                   {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
@@ -2470,10 +2509,19 @@ function FailedPhase({
   onMoreHours,
   sourceNote,
   fuelPrice,
+  vehicleId,
+  onPickVehicle,
+  expiredCount,
 }: {
   startCity: string
   loads: BuilderLoad[]
   vehicles: BuilderVehicle[]
+  /** Выбранная машина — по ней считаем, что вообще влезает */
+  vehicleId: string
+  /** Пересобрать на другой машине — кнопкой, а не советом */
+  onPickVehicle: (id: string) => void
+  /** Сколько грузов региона выкинуто из работы из-за прошедшей даты */
+  expiredCount: number
   startRadiusKm: number
   /** Точка базы — без неё «рядом» считается только по городу */
   startPoint: Point | null
@@ -2488,11 +2536,16 @@ function FailedPhase({
   /** Цена дизеля для расчёта — по региону базы, а не константа */
   fuelPrice: number
 }) {
+  const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
+
   // Причина провала — из тех же данных, что и сборка
   const reason = useMemo(
     () =>
       explainFailure({
         startCity,
+        // Пул отдаём ТОТ ЖЕ, что и сборщику: без грузов с прошедшей датой и
+        // без чужих регионов. Иначе экран считает причины по данным, которые
+        // в маршрут всё равно не пойдут.
         loads,
         vehicles,
         fuelPriceRubPerL: fuelPrice,
@@ -2522,11 +2575,20 @@ function FailedPhase({
   }, [loads, startPoint])
 
   // Города, из которых маршрут СТРОИТСЯ прямо сейчас — первыми кандидатами
+  /**
+   * Города, откуда маршрут реально соберётся — под ВЫБРАННУЮ машину.
+   *
+   * Было: считали все грузы со ставкой. Логист выбирал пятитонку, нажимал
+   * город из подсказки — и снова получал «не собралось», потому что грузы
+   * там были 20-тонные. Подсказка обязана вести туда, где есть что взять.
+   */
   const workingCities = useMemo(() => {
     const counts = new Map<string, number>()
     for (const load of loads) {
       if (load.status !== "new") continue
+      if (!isFreshLoad(load)) continue
       if ((load.priceWithNds ?? load.priceRub ?? 0) <= 0) continue
+      if (selected && !loadFitsVehicle(load, selected)) continue
       const city = shortCity(load.fromCity)
       counts.set(city, (counts.get(city) ?? 0) + 1)
     }
@@ -2534,7 +2596,29 @@ function FailedPhase({
       .filter(([city]) => city !== cityOfAddress(startCity))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
-  }, [loads, startCity])
+  }, [loads, startCity, selected])
+
+  /**
+   * Машина, под которую влезает больше всего грузов пула.
+   *
+   * Пятитонка в Ярославле не берёт ничего (единственный груз — ТНП на 82 м³
+   * при кузове 32 м³), и экран обязан предложить выход кнопкой: «собрать на
+   * этой машине», а не советом выбрать другую.
+   */
+  const betterVehicle = useMemo(() => {
+    if (!selected) return null
+    const priced = loads.filter(
+      (load) =>
+        load.status === "new" &&
+        isFreshLoad(load) &&
+        (load.priceWithNds ?? load.priceRub ?? 0) > 0,
+    )
+    const current = priced.filter((load) => loadFitsVehicle(load, selected)).length
+    if (current > 0) return null
+    const suggestion = suggestVehicleFor(priced, vehicles)
+    if (!suggestion || suggestion.vehicle.id === selected.id) return null
+    return suggestion
+  }, [loads, vehicles, selected])
 
   return (
     <div className="space-y-4 lg:mx-auto lg:max-w-3xl">
@@ -2551,14 +2635,24 @@ function FailedPhase({
                 · {reason.tooHeavy} груз(ов) тяжелее ваших машин
               </li>
             ) : null}
+            {reason.tooVolumetric > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.tooVolumetric} груз(ов) не влезают по объёму — кузов меньше груза
+              </li>
+            ) : null}
+            {reason.tooBody > 0 ? (
+              <li className="text-[12.5px] text-muted-foreground">
+                · {reason.tooBody} не встанут в ваш кузов (нужен тент или реф)
+              </li>
+            ) : null}
             {reason.noPrice > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
                 · {reason.noPrice} без озвученной ставки
               </li>
             ) : null}
-            {reason.overdue > 0 ? (
+            {expiredCount > 0 ? (
               <li className="text-[12.5px] text-muted-foreground">
-                · {reason.overdue} с прошедшей датой загрузки
+                · {expiredCount} уже неактуальны: дата загрузки прошла — обновите биржу
               </li>
             ) : null}
             {reason.unprofitable > 0 ? (
@@ -2572,6 +2666,28 @@ function FailedPhase({
               </li>
             ) : null}
           </ul>
+        ) : null}
+
+        {/* Выход кнопкой: под выбранную машину не влезает ничего, зато под
+            другую — влезает. Совет «выберите машину побольше» логист уже
+            прочитал в подсказке под списком машин и всё равно упёрся. */}
+        {betterVehicle ? (
+          <div className="mt-3 border-t border-warning/30 pt-3">
+            <p className="text-[12.5px] leading-snug text-foreground/90">
+              Под {selected ? `${selected.plate} (${formatWeightKg(selected.capacity ?? 0)})` : "эту машину"}{" "}
+              не влезает ни один груз. Под{" "}
+              {betterVehicle.vehicle.plate} ({formatWeightKg(betterVehicle.vehicle.capacity ?? 0)}) —
+              влезает {betterVehicle.fits} из {betterVehicle.total}.
+            </p>
+            <button
+              type="button"
+              onClick={() => onPickVehicle(betterVehicle.vehicle.id)}
+              className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+            >
+              <Truck className="h-4 w-4" />
+              Собрать на {betterVehicle.vehicle.plate}
+            </button>
+          </div>
         ) : null}
       </Card>
 
@@ -2595,6 +2711,27 @@ function FailedPhase({
               Строить от {nearestLoad.city}
             </button>
           ) : null}
+        </Card>
+      ) : null}
+
+      {/* Под выбранную машину грузов нет ни в одном городе — говорим прямо */}
+      {workingCities.length === 0 ? (
+        <Card>
+          <p className="text-[13px] font-medium text-foreground">Под эту машину грузов сейчас нет</p>
+          <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
+            {selected
+              ? `${selected.plate} берёт до ${formatWeightKg(selected.capacity ?? 0)}${
+                  selected.volume ? ` и ${selected.volume} м³` : ""
+                }. Грузов такого размера на бирже региона сейчас нет — обновите биржу или постройте на другой машине.`
+              : "Свободных машин нет — назначьте машину и вернитесь к сборке."}
+          </p>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border px-4 text-[14px] font-medium text-foreground active:opacity-70"
+          >
+            <RefreshCw className="h-4 w-4" /> Обновить биржу
+          </button>
         </Card>
       ) : null}
 

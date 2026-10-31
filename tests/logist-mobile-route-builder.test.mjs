@@ -32,6 +32,8 @@ const {
   routeMapPoints,
   routeSummaryLine,
   explainFailure,
+  isFresh,
+  suggestVehicleFor,
   handlingHours,
   driveHours,
   restForSegment,
@@ -1662,4 +1664,77 @@ test("круг либо закрыт с грузом, либо заканчив�
   assert.ok(open.returnDeadheadKm > 200, `порожний возврат ${open.returnDeadheadKm} км`)
   // Топливо на возврат уже в прибыли — иначе прибыль завышена на весь путь домой
   assert.ok(open.totalFuelCostRub > 0)
+})
+
+// ── 18. Причина «не влезает»: вес, объём и кузов — разные вещи ─────────────
+test("объяснение: груз не влезает по объёму, а не по весу", () => {
+  // Живой случай: пятитонка ГАЗон (32 м³), единственный груз из Ярославля —
+  // ТНП 5 т и 82 м³. Экран писал «1 груз тяжелее ваших машин» — логист шёл
+  // искать поломку, хотя вес ровно по машине, а кузов мал.
+  const reason = explainFailure({
+    startCity: "Ярославль",
+    loads: [
+      load({
+        id: "a",
+        fromCity: "Ярославль",
+        toCity: "Казань",
+        distanceKm: 893,
+        priceRub: 105000,
+        weightKg: 5000,
+        volumeM3: 82,
+      }),
+    ],
+    vehicles: [vehicle({ capacity: 5000, volume: 32, type: "Изотерм" })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.tooHeavy, 0, "по весу груз проходит")
+  assert.equal(reason.tooVolumetric, 1)
+  assert.match(reason.headline, /по объёму/)
+})
+
+test("объяснение: груз тяжелее любой машины — это про вес", () => {
+  const reason = explainFailure({
+    startCity: "Ярославль",
+    loads: [
+      load({ id: "a", fromCity: "Ярославль", distanceKm: 400, priceRub: 90000, weightKg: 20000, volumeM3: 60 }),
+    ],
+    vehicles: [vehicle({ capacity: 5000, volume: 32 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  assert.equal(reason.tooHeavy, 1)
+  assert.equal(reason.tooVolumetric, 0)
+})
+
+// ── 19. Под какую машину влезает больше всего ─────────────────────────────
+test("подбор машины: предлагаем ту, в которую влезает больше грузов", () => {
+  const loads = [
+    load({ id: "a", weightKg: 5000, volumeM3: 82 }),
+    load({ id: "b", weightKg: 18000, volumeM3: 60 }),
+    load({ id: "c", weightKg: 1500, volumeM3: 10 }),
+  ]
+  const small = vehicle({ id: "vh-small", plate: "К215СТ790", capacity: 5000, volume: 32 })
+  const big = vehicle({ id: "vh-big", plate: "А421ВС750", capacity: 20000, volume: 90 })
+  const pick = suggestVehicleFor(loads, [small, big])
+  assert.ok(pick)
+  assert.equal(pick.vehicle.id, "vh-big", "пятитонка берёт только один груз")
+  assert.equal(pick.fits, 3)
+  assert.equal(pick.total, 3)
+})
+
+test("подбор машины: нечего предложить — null, а не пустая кнопка", () => {
+  const loads = [load({ id: "a", weightKg: 30000, volumeM3: 100 })]
+  const pick = suggestVehicleFor(loads, [vehicle({ capacity: 5000, volume: 32 })])
+  assert.equal(pick, null)
+})
+
+// ── 20. Свежесть груза ────────────────────────────────────────────────────
+test("груз с прошедшей датой загрузки — не свежий", () => {
+  const past = load({ loadingDate: "2026-10-19T00:00:00.000Z" })
+  const today = load({ loadingDate: "2026-10-22T00:00:00.000Z" })
+  assert.equal(isFresh(past, NOW), false)
+  assert.equal(isFresh(today, NOW), true)
 })

@@ -281,7 +281,7 @@ export function loadPrice(load: BuilderLoad): number {
 }
 
 /** Груз ещё актуален: дата загрузки не в прошлом (сегодня — ещё можно). */
-function isFresh(load: BuilderLoad, now: Date): boolean {
+export function isFresh(load: BuilderLoad, now: Date = new Date()): boolean {
   if (!load.loadingDate) return true
   const date = new Date(load.loadingDate)
   if (Number.isNaN(date.getTime())) return true
@@ -1951,8 +1951,18 @@ export interface FailureReason {
   loadsNearbyPriced: number
   /** Без озвученной ставки — нечем мерить выгоду */
   noPrice: number
-  /** Не влезают ни в одну машину парка */
+  /** Не влезают ни в одну машину парка по ВЕСУ */
   tooHeavy: number
+  /**
+   * Не влезают по ОБЪЁМУ: груз не тяжелее машины, но кубатура больше кузова.
+   *
+   * Живой случай: логист выбрал 5-тонную изотерму (32 м³), а единственный
+   * подходящий по весу груз — ТНП на 82 м³. Экран писал «1 груз тяжелее ваших
+   * машин»: вес 5 т при пятитонке — и логист шёл проверять, что сломалось.
+   */
+  tooVolumetric: number
+  /** Не встают в кузов: тент в изотерму, реф в открытую площадку и т. п. */
+  tooBody: number
   /** Дата загрузки уже прошла */
   overdue: number
   /** Ставка ниже себестоимости или ниже порога ₽/км */
@@ -2006,9 +2016,26 @@ export function explainFailure(options: {
 
   const noPrice = fromCity.filter((load) => loadPrice(load) <= 0).length
   const overdue = fromCity.filter((load) => !isFresh(load, now)).length
-  const tooHeavy = fromCity.filter(
+  // Почему не влезает: вес, объём или кузов. Считаем по САМОЙ БОЛЬШОЙ машине
+  // парка — если груз не влезает даже в неё, причина в самом грузе.
+  const biggest = [...vehicles].sort(
+    (a, b) =>
+      (b.capacity ?? 0) - (a.capacity ?? 0) || (b.volume ?? 0) - (a.volume ?? 0),
+  )[0]
+  const unfit = fromCity.filter(
     (load) => loadPrice(load) > 0 && isFresh(load, now) && !fitsSomeVehicle(load),
-  ).length
+  )
+  const classifyUnfit = (load: BuilderLoad): "weight" | "volume" | "body" => {
+    if (!biggest) return "weight"
+    const capacity = biggest.capacity ?? 0
+    if (capacity > 0 && load.weightKg != null && load.weightKg > capacity) return "weight"
+    const volume = biggest.volume ?? 0
+    if (volume > 0 && load.volumeM3 != null && load.volumeM3 > volume) return "volume"
+    return "body"
+  }
+  const tooHeavy = unfit.filter((load) => classifyUnfit(load) === "weight").length
+  const tooVolumetric = unfit.filter((load) => classifyUnfit(load) === "volume").length
+  const tooBody = unfit.filter((load) => classifyUnfit(load) === "body").length
 
   let unprofitable = 0
   let tooLong = 0
@@ -2045,11 +2072,22 @@ export function explainFailure(options: {
     headline = `Из «${shortCity(city)}» есть грузы, но ставка нигде не озвучена`
   } else if (tooHeavy > 0 && tooHeavy + noPrice + overdue >= fromCity.length) {
     headline = `Грузы из «${shortCity(city)}» не влезают в ваши машины — нужна большегрузная`
-  } else if (unprofitable > 0 && unprofitable + noPrice + overdue + tooHeavy >= fromCity.length) {
+  } else if (
+    tooVolumetric > 0 &&
+    tooVolumetric + tooHeavy + tooBody + noPrice + overdue >= fromCity.length
+  ) {
+    // Отдельная строка: груз по весу проходит, а по кубатуре — нет
+    headline = `Грузы из «${shortCity(city)}» не влезают по объёму — нужна машина с большим кузовом`
+  } else if (
+    tooBody > 0 &&
+    tooBody + tooHeavy + tooVolumetric + noPrice + overdue >= fromCity.length
+  ) {
+    headline = `Грузы из «${shortCity(city)}» не встают в ваш кузов — нужен тент или реф`
+  } else if (unprofitable > 0 && unprofitable + noPrice + overdue + tooHeavy + tooVolumetric + tooBody >= fromCity.length) {
     headline = `Плеча из «${shortCity(city)}» не окупаются — ставка ниже расходов на топливо`
-  } else if (tooLong > 0 && tooLong + noPrice + tooHeavy + unprofitable >= fromCity.length) {
+  } else if (tooLong > 0 && tooLong + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length) {
     headline = `Грузы из «${shortCity(city)}» есть, но ехать дольше выбранного срока — увеличьте время маршрута`
-  } else if (overdue > 0 && overdue + noPrice + tooHeavy + unprofitable >= fromCity.length) {
+  } else if (overdue > 0 && overdue + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length) {
     headline = `Даты загрузки из «${shortCity(city)}» уже прошли`
   } else {
     headline = `Из «${shortCity(city)}» ничего не сложилось в окупаемую цепочку`
@@ -2062,11 +2100,43 @@ export function explainFailure(options: {
     loadsNearbyPriced: nearbyPriced,
     noPrice,
     tooHeavy,
+    tooVolumetric,
+    tooBody,
     overdue,
     unprofitable,
     tooLong,
     headline,
   }
+}
+
+/**
+ * Под какую машину парка влезает больше всего грузов из этого пула.
+ *
+ * Зачем: логист выбирает пятитонку, под неё в городе ничего не влезает — и
+ * экран упирается в «маршрут не собрался». Решение должно быть кнопкой, а не
+ * советом «выберите машину побольше»: считаем, какая машина заберёт больше
+ * всего грузов, и предлагаем пересобрать на ней.
+ *
+ * Возвращает null, если ни одна машина не берёт ни одного груза.
+ */
+export function suggestVehicleFor(
+  loads: readonly BuilderLoad[],
+  vehicles: readonly BuilderVehicle[],
+): { vehicle: BuilderVehicle; fits: number; total: number } | null {
+  const usable = usableVehicles([...vehicles])
+  if (usable.length === 0) return null
+  const total = loads.length
+  let best: { vehicle: BuilderVehicle; fits: number; total: number } | null = null
+  for (const vehicle of usable) {
+    const fits = loads.filter((load) => loadFitsVehicle(load, vehicle)).length
+    // При равенстве берём машину поменьше: незачем гонять фуру под 2 тонны
+    const better =
+      !best ||
+      fits > best.fits ||
+      (fits === best.fits && (vehicle.capacity ?? 0) < (best.vehicle.capacity ?? 0))
+    if (better) best = { vehicle, fits, total }
+  }
+  return best && best.fits > 0 ? best : null
 }
 
 /** Строка-итог маршрута для карточек и шапок. */
