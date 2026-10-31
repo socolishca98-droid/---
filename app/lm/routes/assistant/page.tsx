@@ -1559,6 +1559,20 @@ export default function RouteAssistantPage() {
   /** Отправить машину: грузы → заказы → рейс с экипажем. */
   async function sendRoute() {
     if (!route) return
+    // В рейс идут только согласованные заказы — это правило сервера (409
+    // orders_not_agreed). Проверяем то же условие ДО запроса и говорим, что
+    // именно нажать: иначе кнопка «Отправить машину» отдавала техническую
+    // ошибку, и было непонятно, что делать дальше.
+    const notAgreed = route.legs.filter((leg) => calls[leg.load.id] !== "agreed")
+    if (notAgreed.length > 0) {
+      toast.error(
+        notAgreed.length === route.legs.length
+          ? "Сначала согласуйте груз: нажмите ✓ у плеча — и отправляйте"
+          : `Не согласовано ${notAgreed.length} из ${route.legs.length}: нажмите ✓ у этих плеч`,
+        { duration: 7000 },
+      )
+      return
+    }
     setPhase("sending")
     try {
       const vehicle =
