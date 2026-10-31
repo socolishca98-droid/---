@@ -209,6 +209,14 @@ export default function RouteAssistantPage() {
   // ── Состояние помощника ──
   const [startCity, setStartCity] = useState("")
   const [vehicleId, setVehicleId] = useState("")
+  /**
+   * Выбранная машина «прямо сейчас».
+   *
+   * `setVehicleId` не меняет замыкание текущего рендера: кнопка «Собрать на
+   * <машина>» вызывала setVehicleId и тут же runBuild — сборка шла по ПРЕЖНЕЙ
+   * машине, экран снова показывал провал, и нажатие выглядело сломанным.
+   */
+  const vehicleIdRef = useRef("")
   /** Радиус «по пути», км: груз рядом с маршрутом тоже берём */
   const [detourKm, setDetourKm] = useState(150)
   /** Радиус поиска первого груза от базы, км: порожний выезд за грузом */
@@ -434,8 +442,14 @@ export default function RouteAssistantPage() {
   useEffect(() => {
     if (vehicleId) return
     const first = freeVehicles[0]
-    if (first) setVehicleId(first.id)
-  }, [freeVehicles, vehicleId])
+    if (first) pickVehicle(first.id)
+  })
+
+  /** Выбрать машину: состояние, ref (для немедленной пересборки) — вместе. */
+  function pickVehicle(id: string) {
+    vehicleIdRef.current = id
+    setVehicleId(id)
+  }
 
   /** Грузы, которые вообще могут поехать: свежие, со ставкой, известный маршрут. */
   /**
@@ -906,9 +920,12 @@ export default function RouteAssistantPage() {
       // 20-тонной, и в результат попадал груз на 10.8 т. На экране это
       // выглядело как «в пятитонку положили десять тонн». Проверка веса в
       // сборщике при этом работала — её просто не спрашивали.
+      // Машина — из ref: он обновляется в момент нажатия, а состояние ещё
+      // может не дойти до этого вызова.
+      const chosenId = vehicleIdRef.current || vehicleId
       const buildVehicles =
-        vehicleId && vehicles.some((item) => item.id === vehicleId)
-          ? vehicles.filter((item) => item.id === vehicleId)
+        chosenId && vehicles.some((item) => item.id === chosenId)
+          ? vehicles.filter((item) => item.id === chosenId)
           : vehicles
       const built = buildRouteVariants({
         startCity: startPlace,
@@ -1648,7 +1665,9 @@ export default function RouteAssistantPage() {
             vehicles={freeVehicles}
             allVehiclesBusy={freeVehicles.length === 0 && vehicles.length > 0}
             vehicleId={vehicleId}
-            setVehicleId={setVehicleId}
+            // Через pickVehicle: ref выбирает машину сразу, и первая сборка
+            // идёт по ней, а не по пустому значению
+            setVehicleId={(id) => pickVehicle(id)}
             drivers={drivers}
             usableLoadsCount={usableLoads.length}
             fitLoads={loadsWithPoints.length > 0 ? loadsWithPoints : loads}
@@ -1752,7 +1771,7 @@ export default function RouteAssistantPage() {
             expiredCount={expiredLoads}
             vehicleId={vehicleId}
             onPickVehicle={(id) => {
-              setVehicleId(id)
+              pickVehicle(id)
               runBuild(startCity, keepIds, excludeIds, maxHours, true)
             }}
           />
