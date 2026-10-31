@@ -9,6 +9,11 @@ import { PageTransition } from "@/components/visual/page-transition"
 import { WelcomeSplash } from "@/components/visual/welcome-splash"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 
+// Функции должны крутиться рядом с базой: основная база — eu-west-1 (Ирландия),
+// а по умолчанию Vercel ставит функции в США. Каждый запрос к БД тогда платит
+// ~350 мс на круг, а страница делает их десятками. dub1 — Дублин.
+export const preferredRegion = ["dub1"]
+
 export const metadata: Metadata = {
   title: "Loginex TMS — Система управления грузоперевозками",
   description: "Loginex TMS: управление грузоперевозками, мониторинг автопарка, координация рейсов и мобильное приложение водителя",

@@ -10,6 +10,8 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
+// Рядом с базой (eu-west-1), а не в США — см. app/layout.tsx
+export const preferredRegion = ["dub1"]
 
 /**
  * Разбор строки подключения без её раскрытия.
