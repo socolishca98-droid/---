@@ -401,6 +401,25 @@ export function truckTypeMatches(load: BuilderLoad, vehicle: BuilderVehicle): bo
   return false
 }
 
+/**
+ * Есть ли у груза ход: разные города и ненулевой километраж.
+ *
+ * Живой замер биржи (600 грузов с прода): семь объявлений «Раменское →
+ * Раменское», у двух из них distance = 0 и вес 2,24 т. Сборщик принимал такое
+ * за плечо и показывал маршрут «Раменское → Раменское, 0 км» с прибылью
+ * 14 923 ₽: машина никуда не едет, а деньги нарисованы. Это опечатка
+ * фрахтователя, а не груз, — в маршрут он попадать не должен ни при каких
+ * настройках, поэтому проверка стоит на входе в сборку.
+ */
+export function loadHasRoute(load: BuilderLoad): boolean {
+  const from = normalizeCityKey(load.fromCity)
+  const to = normalizeCityKey(load.toCity)
+  if (from.length === 0 || to.length === 0) return false
+  if (from === to) return false
+  if (load.distanceKm != null && load.distanceKm <= 0) return false
+  return true
+}
+
 export function loadFitsVehicle(load: BuilderLoad, vehicle: BuilderVehicle): boolean {
   if (load.weightKg != null) {
     const capacity = vehicle.capacity ?? 0
@@ -1425,6 +1444,10 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     }
     if (loadPrice(load) <= 0) {
       preExcluded.push({ load, reason: "ставка не озвучена" })
+      continue
+    }
+    if (!loadHasRoute(load)) {
+      preExcluded.push({ load, reason: "погрузка и выгрузка в одном городе" })
       continue
     }
     if (!isFresh(load, now)) {

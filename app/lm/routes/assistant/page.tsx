@@ -26,6 +26,7 @@ import { AlertTriangle, ArrowRight, Building2, Check, ChevronDown, ChevronUp, Cl
 import dynamic from "next/dynamic"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
+import { baseAreaPool, mergeLoads, regionRootOf } from "@/lib/logist-mobile/pool"
 import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import type { ApiMutationResult } from "@/hooks/use-json-api"
@@ -115,6 +116,55 @@ const HARVEST_PAGES = 25
 
 const START_CITY_KEY = "assistant-start-city"
 
+type ApiLoadRow = {
+  id: string
+  atiLoadId: string
+  routeFrom: string
+  routeTo: string
+  distance: number | null
+  weight: number | null
+  volume: number | null
+  cargoType: string | null
+  price: number | null
+  vatIncluded: boolean
+  loadingDate: string | null
+  firmName: string | null
+  /** Ссылка на паспорт фирмы в ATI — там телефон фрахтователя */
+  firmUrl?: string | null
+  contactPhone: string | null
+  status: string
+  truckType?: string | null
+  fromPoint: { lat: number; lng: number } | null
+  toPoint: { lat: number; lng: number } | null
+  /** Откуда груз: "boards" — площадка организации, "exchange" — общая биржа */
+  source?: "boards" | "exchange"
+}
+
+/** Ответ /api/ati/loads: список грузов + служебные поля экрана. */
+type LoadsResponse = {
+  items: ApiLoadRow[]
+  refreshError: string | null
+  stale: boolean
+  /** Сколько грузов всего в кэше организации — список отдаём частями */
+  total: number
+  /**
+   * Регион базы организации — по нему отфильтровываем грузы. Считает сервер:
+   * словарь городов, а если города в нём нет — геокодер. В браузере такой
+   * возможности не было, и для «Тулуна», «Кировска», «Надыма» фильтр молча
+   * выключался, показывая грузы со всей страны.
+   */
+  baseRegion?: { id: number; name: string } | null
+  /**
+   * Откуда берём грузы: площадки ATI организации. API ATI.SU отдаёт только
+   * их — общий поиск по бирже (как на сайте loads.ati.su) через API закрыт.
+   * Показываем это словами, иначе логист решает, что программа сломана.
+   */
+  source?: {
+    boards: Array<{ id: string; name: string }>
+    note: string
+  }
+}
+
 export default function RouteAssistantPage() {
   const router = useRouter()
   const { user } = useStaffSession()
@@ -158,51 +208,20 @@ export default function RouteAssistantPage() {
   const loadsUrl = user
     ? `/api/ati/loads?status=new&limit=300${regionRoot ? `&search=${encodeURIComponent(regionRoot)}` : ""}`
     : null
+  /**
+   * Вторая выборка — вся биржа организации, без фильтра по региону.
+   *
+   * Зачем: первая выборка ищет текст «Ярославская» в адресах, то есть отдаёт
+   * только грузы своего региона. Радиус при этом не работал: логист ставил
+   * 500 и 1200 км, а в пуле оставались те же грузы региона — из Москвы,
+   * Владимира и Костромы (они в радиусе) не приходило ничего. Живой замер:
+   * у пятитонки в регионе ноль подходящих грузов, а в 300 км есть.
+   */
+  const wideLoadsState = useJsonApi<{ items: ApiLoadRow[] }>(
+    user ? "/api/ati/loads?status=new&limit=300" : null,
+  )
 
-  const loadsState = useJsonApi<{
-    items: Array<{
-      id: string
-      atiLoadId: string
-      routeFrom: string
-      routeTo: string
-      distance: number | null
-      weight: number | null
-      volume: number | null
-      cargoType: string | null
-      price: number | null
-      vatIncluded: boolean
-      loadingDate: string | null
-      firmName: string | null
-      /** Ссылка на паспорт фирмы в ATI — там телефон фрахтователя */
-      firmUrl?: string | null
-      contactPhone: string | null
-      status: string
-      fromPoint: { lat: number; lng: number } | null
-      toPoint: { lat: number; lng: number } | null
-      /** Откуда груз: "boards" — площадка организации, "exchange" — общая биржа */
-      source?: "boards" | "exchange"
-    }>
-    refreshError: string | null
-    stale: boolean
-    /** Сколько грузов всего в кэше организации — список отдаём частями */
-    total: number
-    /**
-     * Регион базы организации — по нему отфильтровываем грузы. Считает
-     * сервер: словарь городов, а если города в нём нет — геокодер. В браузере
-     * такой возможности не было, и для «Тулуна», «Кировска», «Надыма» фильтр
-     * молча выключался, показывая грузы со всей страны.
-     */
-    baseRegion?: { id: number; name: string } | null
-    /**
-     * Откуда берём грузы: площадки ATI организации. API ATI.SU отдаёт только
-     * их — общий поиск по бирже (как на сайте loads.ati.su) через API закрыт.
-     * Показываем это словами, иначе логист решает, что программа сломана.
-     */
-    source?: {
-      boards: Array<{ id: string; name: string }>
-      note: string
-    }
-  }>(loadsUrl)
+  const loadsState = useJsonApi<LoadsResponse>(loadsUrl)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
@@ -398,7 +417,7 @@ export default function RouteAssistantPage() {
 
   const loads = useMemo<BuilderLoad[]>(
     () =>
-      (loadsState.data?.items ?? []).map((row) => ({
+      mergeLoads(loadsState.data?.items ?? [], wideLoadsState.data?.items ?? []).map((row) => ({
         id: row.id,
         loadId: row.atiLoadId,
         fromCity: row.routeFrom,
@@ -421,7 +440,7 @@ export default function RouteAssistantPage() {
         toPoint: row.toPoint ?? null,
         source: row.source ?? "boards",
       })),
-    [loadsState.data],
+    [loadsState.data, wideLoadsState.data],
   )
   const vehicles = useMemo<BuilderVehicle[]>(() => {
     // У машин часто не заполнен паспортный расход — прибыль тогда нечем
@@ -442,6 +461,9 @@ export default function RouteAssistantPage() {
 
   const drivers = driversState.data?.drivers ?? []
 
+  // Вторая выборка (вся биржа) не блокирует экран: она расширяет пул, а
+  // ошибку её загрузки показывать как «не удалось получить грузы» нельзя —
+  // основная выборка при этом могла прийти нормально.
   const loading = loadsState.loading || vehiclesState.loading
   const error = loadsState.error || vehiclesState.error
 
@@ -616,16 +638,15 @@ export default function RouteAssistantPage() {
    */
   const regionLoads = useMemo(() => {
     if (!baseRegionName) return loads
-    const regionRoot = baseRegionName.replace(/\s+(область|край|республика).*$/, "")
-    const start = basePointForSort
-    const radiusKm = startRadiusKm > 0 ? startRadiusKm : 0
-    return loads.filter((load) => {
-      const from = String(load.fromCity ?? "")
-      if (from.includes(regionRoot)) return true
-      // Не свой регион, но точка погрузки в радиусе от базы — берём
-      if (!start || radiusKm === 0 || !load.fromPoint) return false
-      return haversineKm(start, load.fromPoint) <= radiusKm
-    })
+    // Оба конца: погрузка в районе базы — с чего начать, выгрузка в районе —
+    // обратка домой. Раньше проверялась только погрузка, и все грузы «в
+    // регион» отбрасывались ещё до сборщика: обратки он не видел никогда.
+    const area = {
+      regionRoot: regionRootOf(baseRegionName),
+      basePoint: basePointForSort,
+      radiusKm: startRadiusKm > 0 ? startRadiusKm : 0,
+    }
+    return baseAreaPool(loads, area)
   }, [loads, baseRegionName, basePointForSort, startRadiusKm])
 
   /**
@@ -1619,6 +1640,7 @@ export default function RouteAssistantPage() {
   function refreshAll() {
     setRefreshing(true)
     loadsState.reload()
+    wideLoadsState.reload()
     vehiclesState.reload()
     driversState.reload()
     window.setTimeout(() => {
@@ -1819,6 +1841,7 @@ export default function RouteAssistantPage() {
             message={error}
             onRetry={() => {
               loadsState.reload()
+              wideLoadsState.reload()
               vehiclesState.reload()
             }}
           />
