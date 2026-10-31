@@ -1143,12 +1143,14 @@ export default function RouteAssistantPage() {
       )
     } else if (fresh.length === 0) {
       setRadiusNote(
-        `В радиусе ${wider} км от ${geo.name} биржа не отдала ни одного нового груза${
+        `В радиусе ${wider} км вокруг «${geo.name}» биржа не отдала ни одного нового груза${
           rows.length > 0 ? " (всё уже в базе или без ставки)" : ""
         }.`,
       )
     } else {
-      setRadiusNote(`В радиусе ${wider} км от ${geo.name} биржа отдала ${fresh.length} новых грузов — они участвуют в сборке.`)
+      setRadiusNote(
+        `В радиусе ${wider} км вокруг «${geo.name}» биржа отдала ${fresh.length} новых грузов — они участвуют в сборке.`,
+      )
       toast(`Нашлись грузы в радиусе ${wider} км`, {
         description: `${fresh.length} новых грузов с биржи вокруг ${geo.name}`,
       })
@@ -2814,6 +2816,24 @@ function FailedPhase({
     )
   }, [loads])
 
+  /**
+   * Почему самый лёгкий груз со ставкой не влезает в выбранную машину.
+   *
+   * Без этой строки экран выглядел глупо: «самый лёгкий — 3,6 т», а выше
+   * сказано «ни один груз не влезает». Причина в объёме, и её надо назвать.
+   */
+  const lightestWhy = useMemo(() => {
+    if (!lightestPriced || !selected) return null
+    if (loadFitsVehicle(lightestPriced, selected)) return null
+    const weight = lightestPriced.weightKg ?? 0
+    const cubic = lightestPriced.volumeM3 ?? 0
+    const capacity = selected.capacity ?? 0
+    const body = selected.volume ?? 0
+    if (capacity > 0 && weight > capacity) return "тяжелее машины"
+    if (body > 0 && cubic > body) return `объём ${cubic} м³ больше кузова ${body} м³`
+    return "не встаёт в кузов"
+  }, [lightestPriced, selected])
+
   /** Сколько грузов подходят по размеру, но без озвученной ставки. */
   const fitWithoutPrice = useMemo(() => {
     if (!selected) return 0
@@ -2947,17 +2967,18 @@ function FailedPhase({
             <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
               Самый лёгкий груз со ставкой в пуле —{" "}
               {formatWeightKg(lightestPriced.weightKg ?? 0)} (
-              {shortCity(lightestPriced.fromCity)} → {shortCity(lightestPriced.toCity)}).
+              {shortCity(lightestPriced.fromCity)} → {shortCity(lightestPriced.toCity)})
+              {lightestWhy ? `, но ${lightestWhy}` : ""}.
             </p>
           ) : null}
           {fitWithoutPrice > 0 ? (
             <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
               {loadsPhrase(
                 fitWithoutPrice,
-                "груз подходит по размеру, но ставка не озвучена",
-                "грузов подходят по размеру, но ставка не озвучена",
+                "подходит по размеру, но ставка не озвучена",
+                "подходят по размеру, но ставка не озвучена",
               )}{" "}
-              — цену узнают звонком, в сборку они не идут.
+              — цену узнают звонком, в сборку такие не идут.
             </p>
           ) : null}
           <button
