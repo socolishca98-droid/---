@@ -423,6 +423,20 @@ export default function RouteAssistantPage() {
     [vehicles],
   )
 
+  /**
+   * Машина по умолчанию — первая свободная.
+   *
+   * Было: список подсвечивал первую машину как выбранную, а состояние
+   * `vehicleId` оставалось пустым. Сборщик получал ВЕСЬ автопарк и брал самую
+   * выгодную: логист видел «выбрана Е774ОР750 (18 т)», а в результате стоял
+   * рефрижератор на 20 т. Теперь подсветка и сборка говорят об одном.
+   */
+  useEffect(() => {
+    if (vehicleId) return
+    const first = freeVehicles[0]
+    if (first) setVehicleId(first.id)
+  }, [freeVehicles, vehicleId])
+
   /** Грузы, которые вообще могут поехать: свежие, со ставкой, известный маршрут. */
   /**
    * Регион базы организации — из него берём грузы.
@@ -1671,7 +1685,7 @@ export default function RouteAssistantPage() {
             {rebuilding ? (
               <div className="mb-3 flex items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2 text-[12.5px] text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Пересобираю маршрут с учётом отказа…
+                Пересобираю маршрут…
               </div>
             ) : null}
           <RoutePhase
