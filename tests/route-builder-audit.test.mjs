@@ -24,7 +24,14 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { buildRoute, buildRouteVariants, loadFitsVehicle, loadHasRoute, haversineKm } = require(
+const {
+  buildRoute,
+  buildRouteVariants,
+  loadFitsVehicle,
+  loadHasRoute,
+  homeRadiusKmFor,
+  haversineKm,
+} = require(
   "../.test-build/lib/logist-mobile/route-builder.js",
 )
 
@@ -345,4 +352,74 @@ test("остаток биржи объясняется правдиво, а не
   }
   const farReason = reasons.get("far") ?? ""
   assert.match(farReason, /км от маршрута|не встал|обратка/, `причина далёкого груза: ${farReason}`)
+})
+
+test("«дом» для обратки — база и окрестности, а не весь радиус поиска", () => {
+  // Живой замер (А421ВС750, радиус 1200 км, лимит 168 ч): обраткой считался
+  // груз «Ярославль → Брянск» — он уезжает ИЗ базы в 600 км и кончается
+  // в 600 км от неё, но формально «в радиусе». Машина возвращалась домой и
+  // тут же уезжала снова, а настоящая обратка «Брянск → Ярославль» за
+  // 78 000 ₽ оставалась на бирже.
+  assert.equal(homeRadiusKmFor(1200, 150), 150, "радиус 1200 км не делает домом всю страну")
+  assert.equal(homeRadiusKmFor(300, 150), 150)
+  assert.equal(homeRadiusKmFor(120, 150), 120, "дом не шире радиуса старта")
+  assert.equal(homeRadiusKmFor(300, 400), 300, "широкий детур логиста уважаем, но не за радиусом")
+
+  const outFromBase = load({
+    id: "out",
+    fromCity: "Ярославль",
+    toCity: "Брянск",
+    fromPoint: BASE_POINT,
+    toPoint: { lat: 53.24, lng: 34.36 },
+    distanceKm: 661,
+    priceRub: 90000,
+    loadingDate: "2026-11-05T00:00:00.000Z",
+  })
+  const back = load({
+    id: "back",
+    fromCity: "Брянск",
+    toCity: "Ярославль",
+    fromPoint: { lat: 53.24, lng: 34.36 },
+    toPoint: BASE_POINT,
+    distanceKm: 661,
+    priceRub: 78000,
+  })
+  const route = buildRoute(
+    baseOptions([outFromBase, back], { startRadiusKm: 1200, maxHours: 168 }),
+  )
+  assert.ok(route, "маршрут не собрался")
+  const last = route.legs[route.legs.length - 1]
+  assert.equal(last.load.id, "back", "маршрут должен закрываться настоящей обраткой")
+  assert.equal(route.returnsHomeWithLoad, true, "круг не закрыт грузом")
+})
+
+test("обратка берётся, даже если прибыль на километр ниже порога", () => {
+  // Живой замер (Е774ОР750, лимит 120 ч): «Брянск → Ярославль» за 24 000 ₽ —
+  // это 15 ₽/км прибыли при пороге 25, и сборщик выбрасывал груз. Машина ехала
+  // 600 км пустой (−13 900 ₽ топлива) вместо +10 100 ₽ прибыли. Альтернатива
+  // обратке — порожний возврат, а не простой, поэтому порог не применяется.
+  const main = load({
+    id: "main",
+    fromCity: "Тутаев",
+    toCity: "Брянск",
+    fromPoint: CLOSE,
+    toPoint: { lat: 53.24, lng: 34.36 },
+    distanceKm: 650,
+    priceRub: 90000,
+  })
+  const cheapBack = load({
+    id: "cheap",
+    fromCity: "Брянск",
+    toCity: "Ярославль",
+    fromPoint: { lat: 53.24, lng: 34.36 },
+    toPoint: BASE_POINT,
+    distanceKm: 661,
+    priceRub: 24000,
+  })
+  const route = buildRoute(baseOptions([main, cheapBack], { maxHours: 120 }))
+  assert.ok(route, "маршрут не собрался")
+  assert.equal(route.legs.length, 2, "обратка не взята")
+  assert.equal(route.legs[1].load.id, "cheap")
+  assert.equal(route.returnsHomeWithLoad, true)
+  assert.equal(route.returnDeadheadKm, 0, "порожнего возврата быть не должно")
 })

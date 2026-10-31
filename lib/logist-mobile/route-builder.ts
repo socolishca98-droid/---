@@ -662,6 +662,24 @@ function legMoney(
 }
 
 /**
+ * Радиус «дома» для обратки: сколько километров от базы считается возвращением.
+ *
+ * Почему не радиус поиска первого груза: при радиусе 1200 км «домом» формально
+ * становился любой город в радиусе. Живой замер (А421ВС750, лимит 168 ч):
+ * обраткой считался груз «Ярославль → Брянск» — машина уезжала ИЗ базы в
+ * 600 км и бросала настоящую обратку «Брянск → Ярославль» за 78 000 ₽ на
+ * бирже, а маршрут заканчивался порожним возвратом в 600 км.
+ *
+ * Дом — это база и её окрестности: не дальше детура логиста (и не меньше
+ * 150 км, чтобы «свой регион» оставался домом), и не дальше радиуса старта.
+ */
+export function homeRadiusKmFor(startRadiusKm: number, detourKm: number): number {
+  const detour = Math.max(detourKm, 0)
+  const base = Math.max(detour, 150)
+  return startRadiusKm > 0 ? Math.min(startRadiusKm, base) : base
+}
+
+/**
  * Обратный груз домой — последнее плечо цепочки.
  *
  * Зачем: логист не возит пустую машину. Если на бирже есть груз из
@@ -749,14 +767,18 @@ function findBackHomeLeg(input: {
     return false
   })
 
-  // Сначала согласованные, потом готовые к нашей дате, потом выгодные
+  // Сначала согласованные, потом самые денежные. Сортируем по ПРИБЫЛИ, а не
+  // по ₽/км: на дороге домой важен итог, а не удельная ставка. Живой замер:
+  // «Брянск → Ярославль» 24 000 ₽ на 661 км (36 ₽/км) даёт 10 100 ₽ прибыли,
+  // а «Брянск → Бегоулево» 26 000 ₽ на 671 км — 11 700 ₽; по ₽/км они почти
+  // равны, по деньгам — нет.
+  const profitOf = (load: BuilderLoad): number =>
+    legMoney(load, Math.max(0, load.distanceKm ?? 0), vehicle, fuelPrice).profitRub ?? 0
   const ordered = [...candidates].sort((a, b) => {
     const aKeep = keepIds.includes(a.id) ? 0 : 1
     const bKeep = keepIds.includes(b.id) ? 0 : 1
     if (aKeep !== bKeep) return aKeep - bKeep
-    const aRate = loadRatePerKm(a) ?? -1
-    const bRate = loadRatePerKm(b) ?? -1
-    return bRate - aRate
+    return profitOf(b) - profitOf(a)
   })
 
   const last = legs[legs.length - 1]
@@ -787,8 +809,14 @@ function findBackHomeLeg(input: {
     const money = legMoney(load, totalKm, vehicle, fuelPrice)
     if (money.revenue <= 0) continue
     if (money.profitRub !== null && money.profitRub <= 0) continue
+    // Порог ₽/км к обратке НЕ применяем. Альтернатива обратке — порожний
+    // пробег до базы: он не приносит ничего, а топливо жжёт. Живой замер
+    // (Е774ОР750, лимит 120 ч): маршрут кончался в Брянске, оттуда стоял
+    // груз «Брянск → Ярославль» за 24 000 ₽ — 36 ₽ на километр при пороге
+    // 25, и сборщик его выбросил. Машина ехала 600 км пустой: −13 900 ₽
+    // топлива вместо +10 100 ₽ прибыли. Порог нужен там, где альтернатива —
+    // стоять на месте, а не возвращаться домой.
     const perKm = (money.profitRub ?? money.revenue) / totalKm
-    if (perKm < minProfitPerKm) continue
 
     const arriveHours = clock + deadheadKm / AVG_DEADHEAD_KMH
     const etaAt = new Date(departAt.getTime() + arriveHours * 3600000)
@@ -1543,9 +1571,13 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       currentCity: legs[legs.length - 1].load.toCity,
       currentPoint: legs[legs.length - 1].load.toPoint ?? null,
       startPoint: options.startPoint ?? null,
-      // «Дом» — район старта: именно из него машина выезжала и в него должна
-      // вернуться. Радиус берём тот же, что и для первого плеча.
-      homeRadiusKm: startRadiusKm,
+      // «Дом» — база и её окрестности, а НЕ весь радиус поиска первого груза.
+      // Живой замер (А421ВС750, радиус 1200 км, лимит 168 ч): обраткой считался
+      // груз «Ярославль → Брянск» — он кончается в 600 км от базы, но формально
+      // «в радиусе». Машина возвращалась домой и тут же уезжала в Брянск, а
+      // настоящая обратка «Брянск → Ярославль» за 78 000 ₽ оставалась на бирже.
+      // Дом = в пределах детура логиста (150 км) и не дальше радиуса старта.
+      homeRadiusKm: homeRadiusKmFor(startRadiusKm, detourKm),
       maxHours,
       minProfitPerKm,
       detourKm,
@@ -1596,7 +1628,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
           currentCity: last.load.toCity,
           currentPoint: last.load.toPoint ?? null,
           startPoint: options.startPoint ?? null,
-          homeRadiusKm: startRadiusKm,
+          homeRadiusKm: homeRadiusKmFor(startRadiusKm, detourKm),
           maxHours,
           minProfitPerKm,
           detourKm,
