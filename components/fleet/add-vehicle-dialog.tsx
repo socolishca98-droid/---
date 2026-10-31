@@ -252,7 +252,10 @@ export function AddVehicleDialog({
           {/* Размеры */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Грузоподъёмность и размеры</Label>
-            <div className="grid grid-cols-4 gap-3">
+            {/* На телефоне четыре поля в ряд не влезают: пятизначный тоннаж
+                («20000» кг) обрезался до «2000» — правкой легко было уронить
+                машину на два порядка. Поэтому два столбца на узком экране */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="space-y-1">
                 <Label htmlFor="capacity" className="text-xs text-muted-foreground">
                   Грузоп. (кг) *
