@@ -71,6 +71,15 @@ export interface BuilderLoad {
   fromPoint?: Point | null
   /** Координаты города выгрузки */
   toPoint?: Point | null
+  /**
+   * Логист решил взять груз, хотя кузов не совпадает («фрахтователь просит
+   * рефрижератор, у нас изотерм — уточню по телефону»).
+   *
+   * Зачем: биржа часто пишет «Рефрижератор» для обычного ТНП, и жёсткий
+   * фильтр выбрасывал такие грузы молча. Теперь они видны списком, и логист
+   * может взять их осознанно — но по умолчанию в маршрут не идут.
+   */
+  bodyOverride?: boolean
 }
 
 /** Машина автопарка, какая нужна билдеру. */
@@ -368,8 +377,33 @@ export function loadFitsVehicle(load: BuilderLoad, vehicle: BuilderVehicle): boo
     const volume = vehicle.volume ?? 0
     if (volume > 0 && load.volumeM3 > volume) return false
   }
-  if (!truckTypeMatches(load, vehicle)) return false
+  if (!load.bodyOverride && !truckTypeMatches(load, vehicle)) return false
   return true
+}
+
+/**
+ * Почему кузов не подходит — словами для экрана.
+ *
+ * Было: «не встаёт в кузов». Логист видел груз 3,6 т при машине 5 т и не
+ * понимал, что мешает: дело в том, что фрахтователь просит рефрижератор, а у
+ * нас изотерм. Это не приговор — такой груз берут, уточнив по телефону.
+ */
+export function bodyMismatchText(
+  load: BuilderLoad,
+  vehicle: BuilderVehicle,
+): string | null {
+  if (load.bodyOverride) return null
+  if (truckTypeMatches(load, vehicle)) return null
+  const required = bodyClasses(load.truckType)
+  const own = vehicleBodyClasses(vehicle)
+  const нуженРеф = required.has("reefer") && !own.has("reefer")
+  if (нуженРеф) {
+    return `фрахтователь просит рефрижератор, у нас ${vehicle.type ?? "другой кузов"}`
+  }
+  if (required.has("insulated") && !own.has("insulated") && !own.has("reefer")) {
+    return `фрахтователь просит изотермический кузов, у нас ${vehicle.type ?? "другой кузов"}`
+  }
+  return `груз не встаёт в ${vehicle.type ?? "наш кузов"} (просят: ${load.truckType ?? "—"})`
 }
 
 /**

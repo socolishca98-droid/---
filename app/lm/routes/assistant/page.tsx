@@ -46,6 +46,7 @@ import {
   isFresh as isFreshLoad,
   suggestVehicleFor,
   loadFitsVehicle,
+  bodyMismatchText,
   AVG_DEADHEAD_KMH,
   AVG_LOADED_KMH,
   handlingHours,
@@ -240,6 +241,14 @@ export default function RouteAssistantPage() {
   }, [route])
   /** Договорённости по грузам: позвонил → согласовано / отказ */
   const [calls, setCalls] = useState<Record<string, CallStatus>>({})
+  /**
+   * Грузы, которые логист согласился взять, хотя кузов не совпадает.
+   *
+   * Живой случай: Ярославль → Брянск, 3,6 т, ТНП, 90 000 ₽ — фрахтователь
+   * просит рефрижератор, у нас изотерм. По весу груз проходит, и логист такой
+   * берёт, уточнив по телефону. Раньше он просто исчезал из пула.
+   */
+  const [bodyOverrides, setBodyOverrides] = useState<string[]>([])
   /** Согласованные звонком грузы — пересборка их сохраняет */
   const [keepIds, setKeepIds] = useState<string[]>([])
   /** Грузы, которые убираем: отказались или логист исключил */
@@ -921,7 +930,10 @@ export default function RouteAssistantPage() {
       // оставался из одного плеча — пересборка шла по прошлому списку.
       const seen = new Set(loadsWithPoints.map((load) => load.id))
       const extra = extraLoads.filter((load) => !seen.has(load.id))
-      const pool = extra.length > 0 ? [...loadsWithPoints, ...extra] : loadsWithPoints
+      const basePool = extra.length > 0 ? [...loadsWithPoints, ...extra] : loadsWithPoints
+      const pool = basePool.map((load) =>
+        bodyOverrides.includes(load.id) ? { ...load, bodyOverride: true } : load,
+      )
       // Запреты: из аргумента ПЛЮС актуальные из ref. Аргумент мог прийти от
       // обработчика, который ещё не дождался setExcludeIds.
       const excludeAll = Array.from(new Set([...exclude, ...excludeRef.current]))
@@ -1086,6 +1098,21 @@ export default function RouteAssistantPage() {
     found?: number
     loads?: Array<Record<string, unknown>>
     error?: string
+  }
+
+  /** Взять груз, хотя кузов не совпадает: логист уточнит у фрахтователя. */
+  function allowBodyMismatch(loadId: string) {
+    setBodyOverrides((prev) => (prev.includes(loadId) ? prev : [...prev, loadId]))
+    const load = loadsWithPoints.find((item) => item.id === loadId)
+    if (load) {
+      toast.success("Груз добавлен в пул", {
+        description: "Кузов не совпадает — уточните у фрахтователя перед отправкой",
+      })
+    }
+    window.setTimeout(
+      () => runBuild(startCity, keepIds, excludeIds, maxHours, true),
+      0,
+    )
   }
 
   /**
@@ -1902,6 +1929,7 @@ export default function RouteAssistantPage() {
             onOtherCity={() => setPhase("setup")}
             onRefresh={refreshAll}
             expiredCount={expiredLoads}
+            onAllowBody={allowBodyMismatch}
             vehicleId={vehicleId}
             onPickVehicle={(id) => {
               pickVehicle(id)
@@ -2682,6 +2710,7 @@ function FailedPhase({
   vehicleId,
   onPickVehicle,
   expiredCount,
+  onAllowBody,
 }: {
   startCity: string
   loads: BuilderLoad[]
@@ -2692,6 +2721,8 @@ function FailedPhase({
   onPickVehicle: (id: string) => void
   /** Сколько грузов региона выкинуто из работы из-за прошедшей даты */
   expiredCount: number
+  /** Взять груз, хотя кузов не совпадает (логист уточнит у фрахтователя) */
+  onAllowBody: (loadId: string) => void
   startRadiusKm: number
   /** Точка базы — без неё «рядом» считается только по городу */
   startPoint: Point | null
@@ -2831,8 +2862,28 @@ function FailedPhase({
     const body = selected.volume ?? 0
     if (capacity > 0 && weight > capacity) return "тяжелее машины"
     if (body > 0 && cubic > body) return `объём ${cubic} м³ больше кузова ${body} м³`
-    return "не встаёт в кузов"
+    return bodyMismatchText(lightestPriced, selected) ?? "не встаёт в кузов"
   }, [lightestPriced, selected])
+
+  /**
+   * Грузы, которые проходят по весу и объёму, но фрахтователь просит другой
+   * кузов. Показываем списком: такой груз берут, уточнив по телефону, —
+   * выбрасывать его молча нельзя.
+   */
+  const bodyMismatched = useMemo(() => {
+    if (!selected) return []
+    return loads
+      .filter((load) => load.status === "new" && isFreshLoad(load))
+      .filter((load) => (load.priceWithNds ?? load.priceRub ?? 0) > 0)
+      .filter((load) => {
+        const capacity = selected.capacity ?? 0
+        const body = selected.volume ?? 0
+        if (capacity > 0 && (load.weightKg ?? 0) > capacity) return false
+        if (body > 0 && (load.volumeM3 ?? 0) > body) return false
+        return bodyMismatchText(load, selected) !== null
+      })
+      .slice(0, 5)
+  }, [loads, selected])
 
   /** Сколько грузов подходят по размеру, но без озвученной ставки. */
   const fitWithoutPrice = useMemo(() => {
@@ -2942,6 +2993,50 @@ function FailedPhase({
               Строить от {nearestLoad.city}
             </button>
           ) : null}
+        </Card>
+      ) : null}
+
+      {/* Подходят по весу и объёму, но кузов другой: не выбрасываем молча */}
+      {bodyMismatched.length > 0 ? (
+        <Card className="border-primary/25 bg-primary/[0.06]">
+          <p className="text-[13px] font-medium text-foreground">
+            {loadsPhrase(
+              bodyMismatched.length,
+              "подходит по весу, но фрахтователь просит другой кузов",
+              "подходят по весу, но фрахтователь просит другой кузов",
+            )}
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+            Такие грузы берут, уточнив по телефону: биржа часто пишет
+            «рефрижератор» для обычного сухого груза. Нажмите — груз пойдёт в
+            сборку.
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {bodyMismatched.map((load) => (
+              <div
+                key={load.id}
+                className="flex items-center gap-2 rounded-xl border border-border px-3 py-2"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium text-foreground">
+                    {shortCity(load.fromCity)} → {shortCity(load.toCity)} ·{" "}
+                    {formatWeightKg(load.weightKg ?? 0)}
+                  </span>
+                  <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-foreground">
+                    {bodyMismatchText(load, selected as BuilderVehicle)}
+                    {load.priceRub ? ` · ${formatMoney(load.priceRub)}` : ""}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onAllowBody(load.id)}
+                  className="shrink-0 rounded-lg border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary active:opacity-70"
+                >
+                  Взять, уточню
+                </button>
+              </div>
+            ))}
+          </div>
         </Card>
       ) : null}
 

@@ -34,6 +34,7 @@ const {
   explainFailure,
   isFresh,
   suggestVehicleFor,
+  bodyMismatchText,
   handlingHours,
   driveHours,
   restForSegment,
@@ -1737,4 +1738,68 @@ test("груз с прошедшей датой загрузки — не све
   const today = load({ loadingDate: "2026-10-22T00:00:00.000Z" })
   assert.equal(isFresh(past, NOW), false)
   assert.equal(isFresh(today, NOW), true)
+})
+
+// ── 21. Кузов: груз не выбрасываем молча ──────────────────────────────────
+test("груз с «Рефрижератор» не встаёт в изотерм — и причина названа словами", () => {
+  const cargo = load({
+    id: "bryansk",
+    fromCity: "Ярославль",
+    toCity: "Брянск",
+    weightKg: 3600,
+    volumeM3: null,
+    priceRub: 90000,
+    truckType: "Рефрижератор",
+  })
+  const izoterm = vehicle({ id: "vh-5", plate: "К215СТ790", type: "Изотерм", capacity: 5000, volume: 32 })
+
+  // По весу груз проходит — именно это видел логист
+  assert.ok(3600 <= 5000)
+  assert.equal(bodyMismatchText(cargo, izoterm), "фрахтователь просит рефрижератор, у нас Изотерм")
+})
+
+test("тот же груз идёт в сборку, если логист взял его осознанно", () => {
+  const cargo = load({
+    id: "bryansk",
+    fromCity: "Ярославль",
+    toCity: "Брянск",
+    weightKg: 3600,
+    priceRub: 90000,
+    distanceKm: 900,
+    truckType: "Рефрижератор",
+    bodyOverride: true,
+  })
+  const izoterm = vehicle({ id: "vh-5", plate: "К215СТ790", type: "Изотерм", capacity: 5000, volume: 32 })
+
+  assert.equal(bodyMismatchText(cargo, izoterm), null, "переопределение снимает запрет")
+  const route = buildRoute({
+    startCity: "Ярославль",
+    loads: [cargo],
+    vehicles: [izoterm],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(route, "маршрут должен собраться из взятого вручную груза")
+  assert.equal(route.legs.length, 1)
+})
+
+test("без переопределения тот же груз в маршрут не попадает", () => {
+  const cargo = load({
+    id: "bryansk",
+    fromCity: "Ярославль",
+    toCity: "Брянск",
+    weightKg: 3600,
+    priceRub: 90000,
+    distanceKm: 900,
+    truckType: "Рефрижератор",
+  })
+  const izoterm = vehicle({ id: "vh-5", plate: "К215СТ790", type: "Изотерм", capacity: 5000, volume: 32 })
+  const route = buildRoute({
+    startCity: "Ярославль",
+    loads: [cargo],
+    vehicles: [izoterm],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.equal(route, null)
 })
