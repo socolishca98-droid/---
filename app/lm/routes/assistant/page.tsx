@@ -249,6 +249,12 @@ export default function RouteAssistantPage() {
    * берёт, уточнив по телефону. Раньше он просто исчезал из пула.
    */
   const [bodyOverrides, setBodyOverrides] = useState<string[]>([])
+  /**
+   * То же в ref: пересборка запускается сразу после нажатия и читает ref.
+   * С состоянием она видела ПУСТОЙ список и собирала маршрут без взятого
+   * груза — кнопка «Взять, уточню» выглядела сломанной.
+   */
+  const bodyOverridesRef = useRef<string[]>([])
   /** Согласованные звонком грузы — пересборка их сохраняет */
   const [keepIds, setKeepIds] = useState<string[]>([])
   /** Грузы, которые убираем: отказались или логист исключил */
@@ -710,6 +716,15 @@ export default function RouteAssistantPage() {
     return withPoints(unique)
   }, [usableLoads, foundLoads, cityPoints])
 
+  /** Пул с учётом грузов, которые логист взял, несмотря на чужой кузов. */
+  const loadsForScreen = useMemo<BuilderLoad[]>(
+    () =>
+      loadsWithPoints.map((load) =>
+        bodyOverrides.includes(load.id) ? { ...load, bodyOverride: true } : load,
+      ),
+    [loadsWithPoints, bodyOverrides],
+  )
+
   /**
    * Города погрузки, где сейчас есть грузы.
    *
@@ -931,8 +946,9 @@ export default function RouteAssistantPage() {
       const seen = new Set(loadsWithPoints.map((load) => load.id))
       const extra = extraLoads.filter((load) => !seen.has(load.id))
       const basePool = extra.length > 0 ? [...loadsWithPoints, ...extra] : loadsWithPoints
+      const overrides = bodyOverridesRef.current
       const pool = basePool.map((load) =>
-        bodyOverrides.includes(load.id) ? { ...load, bodyOverride: true } : load,
+        overrides.includes(load.id) ? { ...load, bodyOverride: true } : load,
       )
       // Запреты: из аргумента ПЛЮС актуальные из ref. Аргумент мог прийти от
       // обработчика, который ещё не дождался setExcludeIds.
@@ -1102,17 +1118,14 @@ export default function RouteAssistantPage() {
 
   /** Взять груз, хотя кузов не совпадает: логист уточнит у фрахтователя. */
   function allowBodyMismatch(loadId: string) {
-    setBodyOverrides((prev) => (prev.includes(loadId) ? prev : [...prev, loadId]))
-    const load = loadsWithPoints.find((item) => item.id === loadId)
-    if (load) {
-      toast.success("Груз добавлен в пул", {
-        description: "Кузов не совпадает — уточните у фрахтователя перед отправкой",
-      })
+    if (!bodyOverridesRef.current.includes(loadId)) {
+      bodyOverridesRef.current = [...bodyOverridesRef.current, loadId]
+      setBodyOverrides(bodyOverridesRef.current)
     }
-    window.setTimeout(
-      () => runBuild(startCity, keepIds, excludeIds, maxHours, true),
-      0,
-    )
+    toast.success("Груз добавлен в пул", {
+      description: "Кузов не совпадает — уточните у фрахтователя перед отправкой",
+    })
+    runBuild(startCity, keepIds, excludeIds, maxHours, true)
   }
 
   /**
@@ -1904,7 +1917,7 @@ export default function RouteAssistantPage() {
         ) : (
           <FailedPhase
             startCity={cityOfAddress(startCity) || startCity}
-            loads={loadsWithPoints}
+            loads={loadsForScreen}
             // Только свободные: предлагать «собрать на А421ВС750», которая уже
             // в рейсе, — совет, который нельзя выполнить
             vehicles={freeVehicles}
