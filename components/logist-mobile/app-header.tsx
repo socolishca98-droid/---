@@ -46,7 +46,7 @@ export function LogistHeader({
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div
-        className={`mx-auto flex max-w-md items-center gap-3 px-4 py-3 lg:px-6 lg:py-3.5 ${panelWidth(pathname)} lg:pl-[calc(250px+24px)]`}
+        className={`mx-auto flex max-w-md items-center gap-2 px-4 py-3 lg:px-6 lg:py-3.5 ${panelWidth(pathname)} lg:pl-[calc(250px+24px)]`}
       >
         {back ? (
           <Link
@@ -59,7 +59,7 @@ export function LogistHeader({
         ) : null}
 
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[17px] font-semibold leading-tight text-foreground">{title}</h1>
+          <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-foreground">{title}</h1>
           {subtitle ? <p className="truncate text-[12px] text-muted-foreground">{subtitle}</p> : null}
         </div>
 
