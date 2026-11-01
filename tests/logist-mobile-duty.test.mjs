@@ -28,6 +28,8 @@ const {
   nextWorkingStart,
   normalizeDutySettings,
   vehicleHints,
+  cleanCity,
+  buildDutyFeedDetailed,
   inCity,
   fromCity,
   InCity,
@@ -47,7 +49,7 @@ function load(overrides = {}) {
     weightKg: 18000,
     volumeM3: null,
     cargoType: "Палеты",
-    priceRub: 52000,
+    priceRub: 90000,
     priceWithNds: null,
     distanceKm: 526,
     firmName: "ООО «Ромашка»",
@@ -164,16 +166,17 @@ test("nextWorkingStart возвращает ближайшее рабочее в
 // ── 4. Что попадает в ленту ───────────────────────────────────────────────
 test("новый груз от базы попадает в ленту с деньгами после топлива и работы", () => {
   const items = buildDutyFeed(
-    feedInput({ loads: [load({ fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 52000 })] }),
+    feedInput({ loads: [load({ fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 90000 })] }),
   )
 
   assert.equal(items.length, 1)
   const item = items[0]
   assert.equal(item.kind, "new")
-  // Топливо считается с поправкой на загрузку (18 т из 20 т), работа — 24 ₽/км
-  const fuel = Math.round(estimateFuelL(vehicle(), 526, 18000) * FUEL)
-  assert.equal(item.netRub, 52000 - fuel - WORK * 526)
-  assert.ok(item.netRub < 52000, "из ставки вычтены топливо и работа машины")
+  // Круг: 526 км туда и столько же обратно — топливо с поправкой на загрузку
+  // (18 т из 20 т) и работа машины 24 ₽/км считаются на весь круг
+  const fuel = Math.round(estimateFuelL(vehicle(), 1052, 18000) * FUEL)
+  assert.equal(item.netRub, 90000 - fuel - WORK * 1052)
+  assert.ok(item.netRub < 90000, "из ставки вычтены топливо и работа машины")
   assert.match(item.title, /Новый груз/)
   assert.match(item.note, /E774OP750/, "видно, под какую машину груз")
 })
@@ -203,24 +206,24 @@ test("цена ниже порога ₽/км не повод звонить", (
 
 // ── 5. Память: новое отличается от старого ────────────────────────────────
 test("груз, который дежурный уже показывал, второй раз не всплывает", () => {
-  const seen = [{ atiLoadId: "ati-load-1", firstSeenAt: "2026-11-01T08:00:00", priceRub: 52000 }]
+  const seen = [{ atiLoadId: "ati-load-1", firstSeenAt: "2026-11-01T08:00:00", priceRub: 90000 }]
   const items = buildDutyFeed(feedInput({ loads: [load()], seen }))
   assert.deepEqual(items, [], "тот же груз по той же цене — уже видели")
 })
 
 test("подорожавший груз возвращается в ленту с прибавкой", () => {
-  const seen = [{ atiLoadId: "ati-load-1", firstSeenAt: "2026-11-01T08:00:00", priceRub: 50000 }]
-  const items = buildDutyFeed(feedInput({ loads: [load({ priceRub: 60000 })], seen }))
+  const seen = [{ atiLoadId: "ati-load-1", firstSeenAt: "2026-11-01T08:00:00", priceRub: 80000 }]
+  const items = buildDutyFeed(feedInput({ loads: [load({ priceRub: 95000 })], seen }))
 
   assert.equal(items.length, 1)
   assert.equal(items[0].kind, "rate-up")
   assert.match(items[0].title, /Подорожал/)
-  assert.match(items[0].note, /Было 50/)
+  assert.match(items[0].note, /Было 80/)
 })
 
 test("груз с загрузкой в ближайшие сутки помечен «скоро уйдёт»", () => {
   const now = new Date("2026-11-01T09:40:00")
-  const seen = [{ atiLoadId: "ati-load-1", firstSeenAt: "2026-11-01T08:00:00", priceRub: 52000 }]
+  const seen = [{ atiLoadId: "ati-load-1", firstSeenAt: "2026-11-01T08:00:00", priceRub: 90000 }]
   const items = buildDutyFeed(
     feedInput({ now, seen, loads: [load({ loadingDate: "2026-11-01T18:00:00" })] }),
   )
@@ -354,4 +357,68 @@ test("название из двух слов склоняется целико�
 test("фраза с заглавной буквы — для начала предложения", () => {
   assert.equal(InCity("Казань"), "В Казани")
   assert.equal(FromCity("Пермь"), "Из Перми")
+})
+
+// ── 10. Что нашла проверка на живых данных ────────────────────────────────
+test("название города чистится от типа пункта и района", () => {
+  assert.equal(cleanCity("Обухово рп. (Богородский г.о.), Московская область"), "Обухово")
+  assert.equal(cleanCity("Красулино с., Ярославская область"), "Красулино")
+  assert.equal(cleanCity("Ленина п., Московская область"), "Ленина")
+  assert.equal(cleanCity("Новосибирск, Новосибирская область"), "Новосибирск")
+})
+
+test("без координат выгрузки возврат домой не считается нулевым", () => {
+  // Ярославль → Новосибирск: 4 000 км со ставкой 410 000 ₽. Если возврат
+  // посчитать нулём, рейс выглядит выгодным; на самом деле 4 000 км надо
+  // ещё проехать обратно — и он убыточен.
+  const items = buildDutyFeed(
+    feedInput({
+      baseCity: "Ярославль",
+      loads: [
+        load({
+          id: "far",
+          loadId: "far-1",
+          fromCity: "Ярославль",
+          toCity: "Новосибирск",
+          distanceKm: 4000,
+          priceRub: 410000,
+          loadingDate: null,
+        }),
+      ],
+    }),
+  )
+  assert.deepEqual(items, [], "без обратного хода такой рейс не окупается")
+})
+
+test("дальний рейс не попадает в ленту, но назван числом", () => {
+  const { items, farCount } = buildDutyFeedDetailed(
+    feedInput({
+      loads: [
+        load({ id: "far", loadId: "far-1", fromCity: "Москва", toCity: "Красноярск", distanceKm: 4100, priceRub: 900000 }),
+        load({ id: "near", loadId: "near-1", fromCity: "Москва", toCity: "Тула", distanceKm: 180, priceRub: 40000 }),
+      ],
+    }),
+  )
+  assert.equal(items.length, 1)
+  assert.equal(items[0].atiLoadId, "near-1")
+  assert.equal(farCount, 1, "дальний рейс посчитан, а не потерян")
+  assert.match(dutyHeadline(items, farCount), /Плюс 1 дальних|Плюс 1 дальний/)
+})
+
+test("одна и та же заявка от двух фирм — одна строка", () => {
+  const items = buildDutyFeed(
+    feedInput({
+      loads: [
+        load({ id: "a1", loadId: "id-1" }),
+        load({ id: "a2", loadId: "id-2" }),
+      ],
+    }),
+  )
+  assert.equal(items.length, 1)
+})
+
+test("пустая лента с дальними рейсами предлагает сборщик, а не молчит", () => {
+  const headline = dutyHeadline([], 3)
+  assert.match(headline, /Дальних выгодных рейсов на бирже: 3/)
+  assert.match(headline, /помощнике сборки/)
 })

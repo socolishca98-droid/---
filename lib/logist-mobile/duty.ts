@@ -25,7 +25,7 @@ import {
   type Point,
 } from "./route-builder"
 import { samePlace } from "./city-norm"
-import { formatCount, formatMoney, shortCity } from "./format"
+import { displayCity, formatCount, formatMoney, shortCity } from "./format"
 
 /** Как часто смотрим и в какие часы организации это имеет смысл. */
 export interface DutySettings {
@@ -198,7 +198,7 @@ function nounForm(word: string, prepositional: boolean): string | null {
 }
 
 function cityForm(city: string | null | undefined, prepositional: boolean): string | null {
-  const name = shortCity(city ?? "").trim()
+  const name = cleanCity(city).trim()
   if (!name || name === "—") return null
   // Дефисные и служебные части названия («Ростов-на-Дону») не склоняем:
   // ошибиться в них проще, чем сказать нейтрально.
@@ -216,10 +216,23 @@ function cityForm(city: string | null | undefined, prepositional: boolean): stri
   return out.join(" ")
 }
 
+/**
+ * Название города для фраз дежурного: «Обухово рп. (Богородский г.о.)» →
+ * «Обухово», «Красулино с.» → «Красулино». Биржа присылает адрес с типом
+ * населённого пункта и уточнением района — в короткой строке это мусор.
+ */
+export function cleanCity(address?: string | null): string {
+  const base = displayCity(address)
+  const trimmed = base
+    .replace(/\s+(?:рп|пгт|г|город|с|село|п|пос|посёлок|поселок|д|дер|деревня|х|хутор|ст-ца|станица|мкр|аул|сл|слобода)\.?$/i, "")
+    .trim()
+  return trimmed || base
+}
+
 /** «в Казани» / «в городе Мытищи» — всегда грамотно, даже если падеж не угадан. */
 export function inCity(city: string | null | undefined): string {
   const form = cityForm(city, true)
-  return form ? `в ${form}` : `в городе ${shortCity(city ?? "")}`
+  return form ? `в ${form}` : `в городе ${cleanCity(city)}`
 }
 
 /** То же с заглавной буквы — для начала фразы. */
@@ -231,7 +244,7 @@ export function InCity(city: string | null | undefined): string {
 /** «из Перми» / «из города Мытищи». */
 export function fromCity(city: string | null | undefined): string {
   const form = cityForm(city, false)
-  return form ? `из ${form}` : `из города ${shortCity(city ?? "")}`
+  return form ? `из ${form}` : `из города ${cleanCity(city)}`
 }
 
 /** «Из Перми» — для начала фразы. */
@@ -291,6 +304,12 @@ export interface DutyFeedInput {
   radiusKm?: number
   /** Порог «ради чего вообще звонить», ₽/км остатка */
   minNetPerKm?: number
+  /**
+   * Круг (гружёное плечо + подъезд + возврат), который дежурный считает
+   * «взять сейчас». Длиннее — это уже рейс на несколько дней, его собирают
+   * в помощнике сборки. 0 — не ограничивать.
+   */
+  maxRoundTripKm?: number
   now?: Date
   /** Сколько пунктов максимум отдать */
   limit?: number
@@ -304,21 +323,37 @@ export interface DutyFeedInput {
  *   2. после топлива и работы машины он обязан что-то оставлять (порог ₽/км);
  *   3. обратка из города, где стоит или окажется наша машина, важнее прочего:
  *      она заменяет порожний ход, а не добавляет рейс;
- *   4. новый груз важнее подорожавшего, подорожавший важнее «скоро уйдёт».
+ *   4. новый груз важнее подорожавшего, подорожавший важнее «скоро уйдёт»;
+ *   5. круг длиннее 2 500 км — не «взять сейчас»: он отбрасывается и
+ *      считается отдельно, чтобы экран предложил сборщик, а не молчал.
  */
 export function buildDutyFeed(input: DutyFeedInput): DutyItem[] {
+  return buildDutyFeedDetailed(input).items
+}
+
+/**
+ * То же, что buildDutyFeed, плюс счётчик отброшенных дальних рейсов: экран
+ * обязан сказать «рядом пусто, но есть три дальних», а не молчать.
+ */
+export function buildDutyFeedDetailed(input: DutyFeedInput): {
+  items: DutyItem[]
+  farCount: number
+} {
   const now = input.now ?? new Date()
   const limit = input.limit ?? 12
   const minNetPerKm = input.minNetPerKm ?? 8
   const radiusKm = input.radiusKm ?? 0
   const available = (input.vehicles ?? []).filter((vehicle) => vehicle.status !== "maintenance")
-  if (available.length === 0) return []
+  if (available.length === 0) return { items: [], farCount: 0 }
 
   const seenById = new Map<string, DutySeenRow>()
   for (const row of input.seen ?? []) seenById.set(row.atiLoadId, row)
   const away = input.away ?? []
 
+  const maxRoundTripKm = input.maxRoundTripKm ?? 2500
   const items: DutyItem[] = []
+  /** Сколько выгодных грузов отброшено как «дальние» — экран скажет об этом. */
+  let farCount = 0
 
   for (const load of input.loads ?? []) {
     if (!isFresh(load, now)) continue
@@ -334,7 +369,20 @@ export function buildDutyFeed(input: DutyFeedInput): DutyItem[] {
     // Один конец рейса у базы — это либо выезд из дома, либо обратка домой.
     const pickupKm =
       input.basePoint && load.fromPoint ? roadKm(input.basePoint, load.fromPoint) : 0
-    const homeKm = input.basePoint && load.toPoint ? roadKm(load.toPoint, input.basePoint) : 0
+
+    // Обратный путь. Координат выгрузки часто нет (биржа отдаёт их не всегда),
+    // и раньше возврат считался нулевым: рейс Ярославль → Новосибирск за
+    // 410 000 ₽ выглядел как 38 ₽/км остатка, хотя 6 600 км надо ещё проехать
+    // обратно. Без координат берём длину гружёного плеча — это честнее нуля.
+    // Исключение — груз домой: там возврата нет вовсе.
+    const endsAtBase = samePlace(load.toCity, input.baseCity)
+    const homeKm = endsAtBase
+      ? input.basePoint && load.toPoint
+        ? roadKm(load.toPoint, input.basePoint)
+        : 0
+      : input.basePoint && load.toPoint
+        ? roadKm(load.toPoint, input.basePoint)
+        : loadedKm
     const nearBase =
       samePlace(load.fromCity, input.baseCity) ||
       samePlace(load.toCity, input.baseCity) ||
@@ -354,6 +402,14 @@ export function buildDutyFeed(input: DutyFeedInput): DutyItem[] {
     const netRub = Math.round(revenue - fuelRub - workRub)
     const netPerKm = totalKm > 0 ? netRub / totalKm : 0
     if (netRub <= 0 || netPerKm < minNetPerKm) continue
+
+    // Дежурный отвечает на вопрос «что взять сейчас», а не «куда уехать на
+    // неделю». Дальние круги (по умолчанию больше 2 500 км туда и обратно)
+    // считаем отдельно: их место — в помощнике сборки, где видно весь маршрут.
+    if (maxRoundTripKm > 0 && totalKm > maxRoundTripKm) {
+      farCount += 1
+      continue
+    }
 
     // Сколько стоило бы уехать из точки выгрузки порожнем — столько экономит
     // обратка. Именно поэтому она в приоритете: это не новый рейс, а
@@ -404,13 +460,25 @@ export function buildDutyFeed(input: DutyFeedInput): DutyItem[] {
     })
   }
 
-  return items
+  const unique = items
     .sort((a, b) => b.score - a.score)
     .filter((item, index, all) => {
       // Один груз — одна строка, даже если он пришёл из двух источников
-      return all.findIndex((other) => other.atiLoadId === item.atiLoadId) === index
+      if (all.findIndex((other) => other.atiLoadId === item.atiLoadId) !== index) return false
+      // Одна и та же заявка от разных фирм — тоже одна строка: логисту звонить
+      // по одному маршруту и одной ставке, а не читать список дважды.
+      const twin = all.findIndex(
+        (other) =>
+          cleanCity(other.load.fromCity) === cleanCity(item.load.fromCity) &&
+          cleanCity(other.load.toCity) === cleanCity(item.load.toCity) &&
+          loadPrice(other.load) === loadPrice(item.load) &&
+          (other.load.weightKg ?? 0) === (item.load.weightKg ?? 0),
+      )
+      return twin === index
     })
     .slice(0, limit)
+
+  return { items: unique, farCount }
 }
 
 /**
@@ -435,7 +503,7 @@ function dutyTitle(
   fromAway: AwayVehicle | undefined,
   oldPrice: number | null,
 ): string {
-  const where = `${shortCity(load.fromCity)} → ${shortCity(load.toCity)}`
+  const where = `${cleanCity(load.fromCity)} → ${cleanCity(load.toCity)}`
   if (kind === "backhaul" && fromAway) {
     const tail = fromAway.kind === "стоит" ? "стоит" : "приедет"
     return `Обратка: ${where} · ${formatMoney(revenue)}`
@@ -490,8 +558,14 @@ function formatDateShortRu(value: Date | string | null | undefined): string {
 }
 
 /** Итог для экрана: одной фразой, что нашёл дежурный. */
-export function dutyHeadline(items: DutyItem[]): string {
+export function dutyHeadline(items: DutyItem[], farCount = 0): string {
   if (items.length === 0) {
+    if (farCount > 0) {
+      return (
+        `Рядом нового нет. Дальних выгодных рейсов на бирже: ${farCount} — ` +
+        "их место в помощнике сборки, дежурный показывает только то, что можно взять сейчас."
+      )
+    }
     return "Нового ничего: всё, что есть на бирже, дежурный уже показывал."
   }
   const backhauls = items.filter((item) => item.kind === "backhaul")
@@ -505,7 +579,11 @@ export function dutyHeadline(items: DutyItem[]): string {
     )
   }
   parts.push(`лучший: ${best.title}`)
-  return `${parts.join(", ")}.`
+  const tail =
+    farCount > 0
+      ? ` Плюс ${farCount} дальних — в помощнике сборки.`
+      : ""
+  return `${parts.join(", ")}.${tail}`
 }
 
 // ---------------------------------------------------------------------------

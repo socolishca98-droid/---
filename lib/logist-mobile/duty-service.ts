@@ -13,7 +13,7 @@ import { mergeLoads } from "@/lib/logist-mobile/pool"
 import type { BuilderLoad, BuilderVehicle, Point } from "@/lib/logist-mobile/route-builder"
 import { DEFAULT_OPERATING_COST_PER_KM } from "@/lib/logist-mobile/route-builder"
 import {
-  buildDutyFeed,
+  buildDutyFeedDetailed,
   dutyHeadline,
   dutyIsDue,
   normalizeDutySettings,
@@ -215,7 +215,7 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     take: 50000,
   })
 
-  const found = buildDutyFeed({
+  const feed = buildDutyFeedDetailed({
     loads: pool,
     seen,
     vehicles: vehicles as unknown as BuilderVehicle[],
@@ -227,6 +227,7 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     radiusKm: 400,
     now,
   })
+  const found = feed.items
 
   // Что показал прошлый просмотр. Само по себе «виденное» означает, что
   // повторно дежурный этот груз не покажет, и экран оставался пустым сразу
@@ -255,7 +256,7 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
       loads: pool,
       vehicles: vehicles as unknown as BuilderVehicle[],
     }),
-    headline: dutyHeadline(items),
+    headline: dutyHeadline(items, feed.farCount),
   }
 }
 
@@ -340,7 +341,7 @@ export async function runDuty(
     },
   })
   const away = await awayVehicles(organizationId)
-  const items = buildDutyFeed({
+  const feed = buildDutyFeedDetailed({
     loads: pool,
     seen: seenRows,
     vehicles: vehicles as unknown as BuilderVehicle[],
@@ -352,6 +353,7 @@ export async function runDuty(
     radiusKm: 400,
     now,
   })
+  const items = feed.items
 
   // Запоминаем всё, что видели: следующая лента покажет только новое.
   //
