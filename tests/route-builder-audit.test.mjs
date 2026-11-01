@@ -31,6 +31,8 @@ const {
   loadHasRoute,
   homeRadiusKmFor,
   haversineKm,
+  roadKm,
+  DEFAULT_OPERATING_COST_PER_KM,
 } = require(
   "../.test-build/lib/logist-mobile/route-builder.js",
 )
@@ -567,4 +569,57 @@ test("просроченный соседний груз не выдаётся �
     !/поставьте срок/i.test(hint),
     `совет увеличить срок на просроченный груз: ${hint}`,
   )
+})
+
+test("подъезд считается по дороге, а не по прямой", () => {
+  // Живой замер: Ярославль → Брянск по прямой 601 км, по дороге (данные АТИ по
+  // тому же грузу) — 661 км, на 10% больше. Подъезды считались по прямой, то
+  // есть время и топливо были занижены, а прибыль завышена.
+  const far = { lat: 53.24, lng: 34.36 }
+  const straight = haversineKm(BASE_POINT, far)
+  const road = roadKm(BASE_POINT, far)
+  assert.ok(road > straight, "дорога должна быть длиннее прямой")
+  assert.equal(road, Math.round(straight * 1.2))
+})
+
+test("«прибыль» — это то, что остаётся после работы машины", () => {
+  const route = buildRoute(
+    baseOptions([
+      load({
+        id: "big",
+        fromCity: "Тутаев",
+        toCity: "Москва",
+        fromPoint: CLOSE,
+        toPoint: FAR1,
+        distanceKm: 300,
+        priceRub: 90000,
+      }),
+    ]),
+  )
+  assert.ok(route, "маршрут не собрался")
+  assert.ok(route.netProfitRub !== null, "остаток после работы машины не посчитан")
+  assert.equal(route.operatingCostPerKm, DEFAULT_OPERATING_COST_PER_KM)
+  assert.ok(
+    Math.abs(route.netProfitRub - (route.totalProfitRub - route.operatingCostRub)) <= 1,
+    "остаток ≠ (после топлива) − (работа машины)",
+  )
+  assert.ok(
+    route.netProfitRub < route.totalProfitRub,
+    "остаток должен быть меньше «после топлива»",
+  )
+  assert.ok(
+    Math.abs(route.operatingCostRub - Math.round(route.operatingCostPerKm * route.totalDistanceKm)) <= 2,
+    "работа машины считается на весь пробег, включая порожний возврат",
+  )
+
+  // 0 ₽/км — вычет отключается (для тех, кто считает по-своему)
+  const without = buildRoute(
+    baseOptions(
+      [load({ id: "big", fromCity: "Тутаев", toCity: "Москва", fromPoint: CLOSE, toPoint: FAR1, distanceKm: 300, priceRub: 90000 })],
+      { operatingCostPerKmRub: 0 },
+    ),
+  )
+  assert.ok(without)
+  assert.equal(without.operatingCostRub, null)
+  assert.equal(without.netProfitRub, without.totalProfitRub)
 })

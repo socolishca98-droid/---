@@ -1019,7 +1019,7 @@ export default function RouteAssistantPage() {
           const nowIds = after.legs.map((leg) => leg.load.id).join(",")
           if (before && wasIds !== nowIds) {
             toast.success(
-              `Маршрут пересобран: ${after.legs.length} плеч, ${formatMoney(after.totalProfitRub ?? after.totalRevenue)} прибыли`,
+              `Маршрут пересобран: ${after.legs.length} плеч, ${formatMoney(after.netProfitRub ?? after.totalRevenue)} прибыли`,
             )
           }
         }
@@ -3399,21 +3399,36 @@ function RoutePhase({
               .join(" · ")}
           </p>
         ) : null}
+        {/* Главная цифра — то, что РЕАЛЬНО остаётся: выручка минус топливо и
+            работа машины (водитель, износ, ТО, платные дороги). Раньше здесь
+            стояла выручка минус топливо, и на рейсе «Ярославль → Казань» экран
+            показывал +99 715 ₽ прибыли, хотя после водителя и износа остаётся
+            ~58 500 ₽ — завышение на 37%. */}
         <p className="mt-1 text-[30px] font-bold leading-none text-foreground lg:text-[40px]">
-          {route.totalProfitRub !== null ? (
+          {route.netProfitRub !== null ? (
             <>
-              {route.totalProfitRub < 0 ? "−" : "+"}
-              {formatMoney(Math.abs(route.totalProfitRub))}
+              {route.netProfitRub < 0 ? "−" : "+"}
+              {formatMoney(Math.abs(route.netProfitRub))}
             </>
           ) : (
             "Прибыль не посчитана"
           )}
         </p>
-        {route.totalProfitRub === null ? (
+        {route.netProfitRub !== null ? (
+          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+            после топлива и работы машины
+            {route.operatingCostRub !== null
+              ? ` (${route.operatingCostPerKm} ₽/км: водитель, износ, ТО, платные дороги)`
+              : ""}
+            {route.totalProfitRub !== null
+              ? ` · после одного топлива ${formatMoney(route.totalProfitRub)}`
+              : ""}
+          </p>
+        ) : (
           <p className="mt-1 text-[12px] text-muted-foreground">
             У машины не заполнен расход топлива — прибыль нечем оценить
           </p>
-        ) : null}
+        )}
 
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-primary/15 pt-3 sm:grid-cols-3 lg:grid-cols-4">
           <SummaryCell label="Выручка" value={formatMoney(route.totalRevenue)} />
@@ -3423,6 +3438,11 @@ function RoutePhase({
             /* Цена литра — не константа «на глаз»: регион и дата среза видны
                сразу. Логист должен понимать, на каких ценах посчитана прибыль. */
             hint={fuelNote}
+          />
+          <SummaryCell
+            label="Работа машины"
+            value={route.operatingCostRub !== null ? `≈ ${formatMoney(route.operatingCostRub)}` : "—"}
+            hint={`${route.operatingCostPerKm} ₽/км на весь пробег: водитель, износ, ТО, шины, платные дороги`}
           />
           <SummaryCell label="Плеч" value={String(route.legs.length)} />
           <SummaryCell
@@ -3481,7 +3501,7 @@ function RoutePhase({
                 >
                   <span className="block text-[13px] font-medium">{variant.label}</span>
                   <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {variant.hint} · {formatMoney(variant.route.totalProfitRub ?? 0)}
+                    {variant.hint} · {formatMoney(variant.route.netProfitRub ?? variant.route.totalProfitRub ?? 0)}
                   </span>
                 </button>
               ))}

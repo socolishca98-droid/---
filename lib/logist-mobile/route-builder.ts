@@ -111,6 +111,12 @@ export interface BuilderVehicle {
 export interface BuildRouteOptions {
   /** Служебное: не проверять подсказку «поставьте срок N» повторной сборкой */
   skipGrowthCheck?: boolean
+  /**
+   * Стоимость работы машины без топлива, ₽/км: водитель, износ, ТО, шины,
+   * платные дороги, стоянки. По умолчанию — DEFAULT_OPERATING_COST_PER_KM.
+   * 0 отключает вычет: тогда «прибыль» снова станет «после топлива».
+   */
+  operatingCostPerKmRub?: number
   /** Город, где стоит машина (база). Пусто — начнём от самого выгодного груза */
   startCity: string
   /** Грузы биржи */
@@ -238,8 +244,22 @@ export interface BuiltRoute {
   totalRevenue: number
   totalFuelCostRub: number | null
   totalProfitRub: number | null
-  /** Прибыль на километр всего маршрута */
+  /**
+   * Прибыль после топлива — НЕ прибыль: не вычтена работа машины.
+   * Оставлено для расчётов отбора плеч и для честного сравнения «сколько
+   * остаётся на топливо и работу».
+   */
   profitPerKm: number | null
+  /** Стоимость работы машины за рейс, ₽ (водитель, износ, ТО, платные дороги) */
+  operatingCostRub: number | null
+  /** Сколько ₽/км заложено в работу машины */
+  operatingCostPerKm: number
+  /** Что реально остаётся: выручка − топливо − работа машины */
+  netProfitRub: number | null
+  /** Прибыль на километр после работы машины */
+  netProfitPerKm: number | null
+  /** И то же на час времени машины */
+  netProfitPerHour: number | null
   /**
    * Прибыль на ЧАС всего маршрута — главный показатель выбора машины.
    *
@@ -525,6 +545,57 @@ export function haversineKm(a: Point, b: Point): number {
 }
 
 /**
+ * Километраж груза.
+ *
+ * У груза АТИ приходит дорожный километраж — берём его. Если фрахтователь
+ * километраж не указал, а точки городов известны, считаем сами: прямая ×
+ * коэффициент дороги. Раньше такой груз получал 0 км и молча выпадал из
+ * сборки — «груз есть, но его не видно».
+ */
+export function loadedDistanceKm(load: BuilderLoad): number {
+  if (load.distanceKm && load.distanceKm > 0) return load.distanceKm
+  if (load.fromPoint && load.toPoint) return roadKm(load.fromPoint, load.toPoint)
+  return 0
+}
+
+/**
+ * Коэффициент «прямая → дорога».
+ *
+ * Живой замер: Ярославль → Брянск по прямой 601 км, а по дороге (данные АТИ по
+ * этому же грузу) — 661 км, то есть на 10% больше. На коротких подъездах
+ * расхождение такое же, а иногда и больше: через реку или объездом.
+ *
+ * Зачем это здесь: загруженные плечи считаются по километражу АТИ (это дорога),
+ * а подъезды и порожний возврат считались по прямой. Два разных масштаба в
+ * одном маршруте: подъезд «35 км» на деле 42, часы и топливо занижены, прибыль
+ * завышена. Теперь всё, что считается по координатам, переводится в дорожные
+ * километры этим коэффициентом. 1,2 — осторожная оценка из практики
+ * (извилистость + объезды); для радиуса поиска грузов коэффициент НЕ
+ * применяется: радиус логиста — географический.
+ */
+/**
+ * Работа машины: всё, что стоит денег КРОМЕ топлива, — на километр.
+ *
+ * Зачем: экран называл «прибылью» выручку минус топливо. Живой замер
+ * (Е774ОР750, 72 ч, «Ярославль → Казань»): 1494 км, выручка 135 000 ₽,
+ * топливо 35 285 ₽, экран показывал «+99 715 ₽ прибыли» — а водителю за две
+ * смены, износ, ТО, шины, платные дороги и стоянки стоят ещё ~36 800 ₽.
+ * Реально остаётся 62 870 ₽, то есть экран завышал на 37%.
+ *
+ * Ставка — ориентир для 18-тонника: водитель ~10 ₽/км (6 500 ₽ за смену при
+ * 650 км в сутки), износ и ТО ~9, шины ~2,5, платные дороги и Платон ~1,5,
+ * страховка/налоги/стоянки ~2. Меняется опцией `operatingCostPerKmRub`.
+ */
+export const DEFAULT_OPERATING_COST_PER_KM = 24
+
+export const ROAD_FACTOR = 1.2
+
+/** Дорожные километры между точками: прямая × коэффициент дороги. */
+export function roadKm(a: Point, b: Point): number {
+  return Math.round(haversineKm(a, b) * ROAD_FACTOR)
+}
+
+/**
  * Оценка времени плеча: гружёный путь ~55 км/ч, подъезд ~60 км/ч,
  * погрузка + выгрузка — по весу груза. Ориентир для планирования смен — не
  * обещание: точное время известно после согласования с фрахтователем.
@@ -752,7 +823,7 @@ function findBackHomeLeg(input: {
   // «Липецк → Ярославль» не брался, потому что детур 150 км. Машина проедет
   // эти 559 км в любом случае — question только в том, с грузом или пустой.
   const homeKm =
-    startPoint && currentPoint ? haversineKm(startPoint, currentPoint) : 0
+    startPoint && currentPoint ? roadKm(startPoint, currentPoint) : 0
   const pickupRadiusKm = Math.max(detourKm, homeKm)
 
   const candidates = pool.filter((load) => {
@@ -784,7 +855,7 @@ function findBackHomeLeg(input: {
   // а «Брянск → Бегоулево» 26 000 ₽ на 671 км — 11 700 ₽; по ₽/км они почти
   // равны, по деньгам — нет.
   const profitOf = (load: BuilderLoad): number =>
-    legMoney(load, Math.max(0, load.distanceKm ?? 0), vehicle, fuelPrice).profitRub ?? 0
+    legMoney(load, loadedDistanceKm(load), vehicle, fuelPrice).profitRub ?? 0
   const ordered = [...candidates].sort((a, b) => {
     const aKeep = keepIds.includes(a.id) ? 0 : 1
     const bKeep = keepIds.includes(b.id) ? 0 : 1
@@ -800,8 +871,8 @@ function findBackHomeLeg(input: {
     const deadheadKm =
       sameCity || !currentPoint || !lastPoint || !load.fromPoint
         ? 0
-        : haversineKm(currentPoint, load.fromPoint)
-    const loadedKm = Math.max(0, load.distanceKm ?? 0)
+        : roadKm(currentPoint, load.fromPoint)
+    const loadedKm = loadedDistanceKm(load)
     const totalKm = deadheadKm + loadedKm
     if (totalKm <= 0) continue
     // Обратка тоже идёт по нормам: после длинной цепочки вождение упирается
@@ -815,7 +886,7 @@ function findBackHomeLeg(input: {
     const backHours =
       backHome || !startPoint || !load.toPoint
         ? 0
-        : legHours(haversineKm(startPoint, load.toPoint), 0, null, input.clock % DRIVE_LIMIT_HOURS)
+        : legHours(roadKm(startPoint, load.toPoint), 0, null, input.clock % DRIVE_LIMIT_HOURS)
     if (clock + hours + backHours > maxHours) continue
     const money = legMoney(load, totalKm, vehicle, fuelPrice)
     if (money.revenue <= 0) continue
@@ -1081,7 +1152,7 @@ function buildChain(
     function backHomeHours(load: BuilderLoad, sinceRest = driveSinceRest): number {
       if (samePlace(load.toCity, startCity)) return 0
       if (!startPoint || !load.toPoint) return 0
-      return legHours(haversineKm(startPoint, load.toPoint), 0, null, sinceRest)
+      return legHours(roadKm(startPoint, load.toPoint), 0, null, sinceRest)
     }
 
     let best: {
@@ -1112,8 +1183,8 @@ function buildChain(
       const deadheadKm =
         sameCity || !currentPoint || !load.fromPoint
           ? 0
-          : haversineKm(currentPoint, load.fromPoint)
-      const loadedKm = Math.max(0, load.distanceKm ?? 0)
+          : roadKm(currentPoint, load.fromPoint)
+      const loadedKm = loadedDistanceKm(load)
       const totalKm = deadheadKm + loadedKm
       // Часы плеча: дорога + погрузка/выгрузка по весу + отдых, если норма
       // вождения уже выработана.
@@ -1206,7 +1277,7 @@ function buildChain(
     legs.push({
       load: best.load,
       deadheadKm: best.deadheadKm,
-      loadedKm: Math.max(0, best.load.distanceKm ?? 0),
+      loadedKm: loadedDistanceKm(best.load),
       hours: best.hours,
       revenue: best.money.revenue,
       fuelLiters: best.money.fuelLiters === null ? null : Math.round(best.money.fuelLiters),
@@ -1352,7 +1423,7 @@ export function hoursSpan(hours: number): string {
  * больше. Это оценка, и на экране она должна быть помечена как оценка.
  */
 export const DISTANCE_NOTE =
-  "Километры — по прямой между точками грузов: реальный пробег обычно на 15–20% больше"
+  "Километры грузов — из данных АТИ; подъезды и возврат — по прямой с коэффициентом дороги 1,2. Погрешность остаётся в пределах 5–10%"
 
 /**
  * Почему цепочка перестала расти — по одному-двум предложениями на причину.
@@ -1583,7 +1654,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       const back =
         backHome || !options.startPoint || !last.load.toPoint
           ? 0
-          : haversineKm(options.startPoint, last.load.toPoint)
+          : roadKm(options.startPoint, last.load.toPoint)
       // Считаем ТАК ЖЕ, как итог маршрута (totalHours): часы плеч + ожидание
       // дат загрузки + дорога домой. Раньше ожидание в проверку не входило, и
       // маршрут с простоя под дату загрузки вылезал за лимит, а экран честно
@@ -1653,7 +1724,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       const deadHomeFrom = (leg: RouteLeg) =>
         samePlace(leg.load.toCity, effectiveStart) || !options.startPoint || !leg.load.toPoint
           ? 0
-          : haversineKm(options.startPoint, leg.load.toPoint)
+          : roadKm(options.startPoint, leg.load.toPoint)
       // Сколько денег даёт текущий финиш: все плечи минус топливо на порожний
       // возврат с последней точки.
       let bestValue =
@@ -1732,6 +1803,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
       minProfitPerKm,
       detourKm,
       maxHours,
+      operatingCostPerKmRub: options.operatingCostPerKmRub,
       stop,
       trimmedByHours,
     })
@@ -1829,6 +1901,8 @@ interface FinalizeInput {
   minProfitPerKm: number
   detourKm: number
   maxHours: number
+  /** Ставка работы машины, ₽/км — из настроек или по умолчанию */
+  operatingCostPerKmRub?: number
   /** Почему цепочка перестала расти — точная причина, а не «грузы были» */
   stop: ChainStop
   /** Хвост цепочки сняли: с дорогой домой маршрут не влезал в лимит */
@@ -1882,13 +1956,13 @@ function leftoverReason(
     }
     return `погрузка в ${Math.round(nearestKm)} км от маршрута — не по пути`
   }
-  const km = Math.max(0, load.distanceKm ?? 0)
+  const km = loadedDistanceKm(load)
   const money = legMoney(load, km, vehicle, fuelPrice)
   if (money.profitRub !== null && money.profitRub <= 0) return "плечо в убыток"
   if (km > 0 && (money.profitRub ?? money.revenue) / km < input.minProfitPerKm) {
     return "слишком низкая ставка"
   }
-  const backKm = load.toPoint && input.startPoint ? haversineKm(load.toPoint, input.startPoint) : 0
+  const backKm = load.toPoint && input.startPoint ? roadKm(load.toPoint, input.startPoint) : 0
   const hours = legHours(nearestKm ?? 0, km) + legHours(backKm, 0)
   if (input.maxHours > 0 && hours > input.maxHours) {
     return `не влезает в лимит ${input.maxHours} ч`
@@ -1927,7 +2001,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   // Дорога домой: если последнее плечо не привело на базу, считаем порожний
   // возврат — иначе прибыль маршрута была бы завышена на весь обратный путь.
   const lastPoint = legs[legs.length - 1].load.toPoint ?? null
-  const returnDeadheadKm = atHome || !startPoint || !lastPoint ? 0 : haversineKm(startPoint, lastPoint)
+  const returnDeadheadKm = atHome || !startPoint || !lastPoint ? 0 : roadKm(startPoint, lastPoint)
   const returnFuelLiters =
     returnDeadheadKm > 0 ? estimateFuelL(vehicle, returnDeadheadKm, 0) : null
   const returnFuelCostRub =
@@ -1970,6 +2044,22 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     totalProfitRub !== null && totalDistanceKm > 0 ? Math.round(totalProfitRub / totalDistanceKm) : null
   const profitPerHour =
     totalProfitRub !== null && totalHours > 0 ? Math.round(totalProfitRub / totalHours) : null
+  // Работа машины: водитель, износ, ТО, шины, платные дороги. Считаем на весь
+  // пробег рейса, включая порожний возврат: он тоже жжёт ресурс и оплачивается.
+  const operatingCostPerKm =
+    input.operatingCostPerKmRub ?? DEFAULT_OPERATING_COST_PER_KM
+  const operatingCostRub =
+    operatingCostPerKm > 0 && totalDistanceKm > 0
+      ? Math.round(operatingCostPerKm * totalDistanceKm)
+      : null
+  const netProfitRub =
+    totalProfitRub !== null ? totalProfitRub - (operatingCostRub ?? 0) : null
+  const netProfitPerKm =
+    netProfitRub !== null && totalDistanceKm > 0
+      ? Math.round(netProfitRub / totalDistanceKm)
+      : null
+  const netProfitPerHour =
+    netProfitRub !== null && totalHours > 0 ? Math.round(netProfitRub / totalHours) : null
   const needsFuelSetup = vehicle.fuelConsumptionPer100 == null || vehicle.fuelConsumptionPer100 <= 0
 
   // Что осталось за бортом — с причинами. Сначала отсеянные до цепочки
@@ -2192,6 +2282,11 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     totalProfitRub,
     profitPerKm,
     profitPerHour,
+    operatingCostRub,
+    operatingCostPerKm,
+    netProfitRub,
+    netProfitPerKm,
+    netProfitPerHour,
     needsFuelSetup,
     unprofitable: totalProfitRub !== null && totalProfitRub < 0,
     excluded,
@@ -2333,7 +2428,7 @@ export function explainFailure(options: {
   for (const load of fromCity) {
     if (loadPrice(load) <= 0 || !isFresh(load, now)) continue
     if (!fitsSomeVehicle(load)) continue
-    const km = Math.max(0, load.distanceKm ?? 0)
+    const km = loadedDistanceKm(load)
     if (km === 0) continue
     // Ожидание даты загрузки входит в срок маршрута: груз со загрузкой через
     // четыре дня в трёхдневный рейс не встаёт

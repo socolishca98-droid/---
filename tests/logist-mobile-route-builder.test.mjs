@@ -820,6 +820,7 @@ test("среди двух грузов берём тот, к дате загру
   const VORONEZH = { lat: 51.67, lng: 39.21 }
   const PERM = { lat: 58.01, lng: 56.25 }
   const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const TULA = { lat: 54.19, lng: 37.62 }
   // Первое плечо — общее. Дальше выбор: «дорогой» груз, к загрузке которого
   // мы не успеваем, и спокойный рядом. Логист возьмёт спокойный: груз,
   // который уедет, не купить никакой ставкой.
@@ -1121,13 +1122,13 @@ test("маршрут не вылезает за лимит времени — с
 test("длинный груз не влез — берём более короткий, а не останавливаем цепочку", () => {
   const MOSCOW = { lat: 55.75, lng: 37.62 }
   const VORONEZH = { lat: 51.67, lng: 39.21 }
-  const LIPETSK = { lat: 52.61, lng: 39.59 }
+  const TULA = { lat: 54.19, lng: 37.62 }
   const loads = [
     // Выгоднее за километр, но ехать 700 км — в 24 ч вместе с отдыхом и
     // возвратом не влезает никак
     load({ id: "long", fromCity: "Москва", toCity: "Воронеж", distanceKm: 700, weightKg: 5000, priceRub: 250000, fromPoint: MOSCOW, toPoint: VORONEZH }),
     // Короче и дешевле за километр, но в лимит укладывается
-    load({ id: "short", fromCity: "Москва", toCity: "Липецк", distanceKm: 150, weightKg: 5000, priceRub: 40000, fromPoint: MOSCOW, toPoint: LIPETSK }),
+    load({ id: "short", fromCity: "Москва", toCity: "Тула", distanceKm: 180, weightKg: 5000, priceRub: 40000, fromPoint: MOSCOW, toPoint: TULA }),
   ]
   const route = buildRoute({
     startCity: "Москва",
@@ -1372,25 +1373,27 @@ test("обратка везёт домой и в свой городской о�
 
 test("обратка не берётся, если не влезает в лимит времени", () => {
   const MOSCOW = { lat: 55.75, lng: 37.62 }
-  const VORONEZH = { lat: 51.67, lng: 39.21 }
+  const TULA = { lat: 54.19, lng: 37.62 }
   const loads = [
-    load({ id: "a", fromCity: "Москва", toCity: "Воронеж", distanceKm: 526, priceRub: 120000, fromPoint: MOSCOW, toPoint: VORONEZH }),
-    load({ id: "back", fromCity: "Воронеж", toCity: "Москва", distanceKm: 526, priceRub: 120000, fromPoint: VORONEZH, toPoint: MOSCOW }),
+    load({ id: "a", fromCity: "Москва", toCity: "Тула", distanceKm: 180, priceRub: 60000, loadingDate: null, fromPoint: MOSCOW, toPoint: TULA }),
+    load({ id: "back", fromCity: "Тула", toCity: "Москва", distanceKm: 180, priceRub: 55000, loadingDate: null, fromPoint: TULA, toPoint: MOSCOW }),
   ]
-  // 526 км — это 9.6 ч вождения: по нормам нужен отдых, поэтому плечо занимает
-  // ~25 ч. Ровно столько лимит и даёт: туда влезает, обратка — уже нет.
+  // Плечо с погрузкой и выгрузкой — около 5 ч, с дорогой домой выезд выходит за
+  // 12 ч. Поэтому в лимит встаёт только первое плечо, а «домой» машина едет
+  // порожнем — и это видно в маршруте.
   const route = buildRoute({
     startCity: "Москва",
     loads,
     vehicles: [vehicle()],
     fuelPriceRubPerL: FUEL,
     now: NOW,
-    maxHours: 40,
+    maxHours: 12,
     startPoint: MOSCOW,
   })
   assert.ok(route)
   assert.equal(route.legs.length, 1, "обратка не влезла в срок")
   assert.ok(route.totalHours <= route.maxHours, "лимит не нарушен")
+  assert.ok(route.returnDeadheadKm > 0, "порожний возврат посчитан")
 })
 
 test("машина пришла на базу — маршрут закончен, плечо «после дома» не берём", () => {
