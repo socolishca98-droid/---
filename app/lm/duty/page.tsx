@@ -331,7 +331,7 @@ export default function DutyPage() {
                   description="Переключите фильтр — остальные грузы никуда не делись."
                 />
               ) : (
-                <div className="space-y-2.5 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
+                <div className="space-y-2.5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
                   {shownItems.map((item) => {
                     const meta = KIND_META[item.kind] ?? KIND_META.new
                     return (
