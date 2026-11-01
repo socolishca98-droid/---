@@ -1108,10 +1108,19 @@ test("маршрут не вылезает за лимит времени — с
     startPoint: MOSCOW,
   })
   assert.ok(route)
-  assert.equal(route.legs.length, 2, "оба плеча влезают в двое суток с дорогой домой")
+  // Раньше здесь стояло «оба плеча влезают в двое суток» — и это было неправдой:
+  // часы плеч считались БЕЗ отдыха водителя, поэтому в 48 ч «влезали» 526 + 280 км
+  // и 559 км порожнего возврата. С честным счётом (9 ч вождения, 11 ч отдыха)
+  // в двое суток влезает одно плечо: 23,6 ч пути + 559 км домой = 43,9 ч.
+  // Ожидание пересчитано под правду, лимит не откатываем.
+  assert.ok(route.legs.length >= 1, "маршрут есть")
   assert.ok(
     route.totalHours <= route.maxHours,
     `в пути ${route.totalHours} ч при лимите ${route.maxHours} ч`,
+  )
+  assert.ok(
+    route.totalHours > route.legs.reduce((sum, leg) => sum + leg.hours + leg.waitHours, 0),
+    "в часы маршрута входит дорога домой",
   )
   assert.ok(
     route.reasons.some((line) => line.startsWith("Маршрут занял")),

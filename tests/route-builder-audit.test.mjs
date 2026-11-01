@@ -388,8 +388,11 @@ test("«дом» для обратки — база и окрестности, �
     // обратка грузится уже после того, как машина доедет до Брянска
     loadingDate: "2026-11-06T00:00:00.000Z",
   })
+  // Часы пересчитаны честно: груз грузится 5 ноября, обратка — 6-го, до выезда
+  // машина стоит под датой загрузки, и на каждом плече есть отдых водителя.
+  // Восемь суток (192 ч) — это правда этого рейса; 168 ч он не влезает.
   const route = buildRoute(
-    baseOptions([outFromBase, back], { startRadiusKm: 1200, maxHours: 168 }),
+    baseOptions([outFromBase, back], { startRadiusKm: 1200, maxHours: 192 }),
   )
   assert.ok(route, "маршрут не собрался")
   const last = route.legs[route.legs.length - 1]
@@ -515,7 +518,9 @@ test("подсказка «поставьте срок N» не обещает �
     priceRub: 78000,
     loadingDate: "2026-10-30T00:00:00.000Z", // уже ушёл
   })
-  const options = baseOptions([firstName, lateNeighbour], { maxHours: 72 })
+  // Срок 96 ч, а не 72: под честный счёт (ожидание даты загрузки 16 ч, отдых
+  // водителя на плече и на возврате) рейс занимает ~76 ч.
+  const options = baseOptions([firstName, lateNeighbour], { maxHours: 96 })
   const route = buildRoute(options)
   assert.ok(route, "маршрут не собрался")
   if (route.growthHours === null) {
@@ -622,4 +627,68 @@ test("«прибыль» — это то, что остаётся после р�
   assert.ok(without)
   assert.equal(without.operatingCostRub, null)
   assert.equal(without.netProfitRub, without.totalProfitRub)
+})
+
+test("«укоротить ради обратки» не отменяет более выгодную цепочку", () => {
+  // Живой замер (А421ВС750, лимит 120 ч): связка «Казань → Елабуга → Рамонь»
+  // давала 149 968 ₽, но «укоротить ради гружёного возврата» молча затирало
+  // её вариантом с обраткой на 121 611 ₽. Проверяем главное: сборщик обязан
+  // отдать лучший по деньгам из двух вариантов, а не тот, что получился
+  // последним.
+  const YAR = { lat: 57.6508, lng: 39.8718 }
+  const LIP = { lat: 52.61, lng: 39.59 }
+  const VOR = { lat: 51.67, lng: 39.21 }
+  const SMO = { lat: 54.78, lng: 32.05 }
+  const leg = (id, fromCity, toCity, km, price, fromPoint, toPoint) => ({
+    id,
+    loadId: id,
+    fromCity,
+    toCity,
+    weightKg: 5000,
+    volumeM3: null,
+    cargoType: "ТНП",
+    truckType: null,
+    priceRub: price,
+    priceWithNds: null,
+    distanceKm: km,
+    firmName: "Фирма",
+    firmUrl: null,
+    contactPhone: null,
+    loadingDate: null,
+    status: "new",
+    fromPoint,
+    toPoint,
+  })
+  const a = leg("a", "Ярославль", "Липецк", 700, 110000, YAR, LIP)
+  const b = leg("b", "Липецк", "Воронеж", 130, 40000, LIP, VOR)
+  const c = leg("c", "Воронеж", "Смоленск", 700, 150000, VOR, SMO)
+  const back = leg("d", "Воронеж", "Ярославль", 750, 95000, VOR, YAR)
+  const options = (loads) => ({
+    startCity: "Ярославль",
+    loads,
+    vehicles: [vehicle({ capacity: 20000 })],
+    fuelPriceRubPerL: FUEL,
+    keepIds: [],
+    excludeIds: [],
+    detourKm: 150,
+    startRadiusKm: 300,
+    maxHours: 120,
+    startPoint: YAR,
+    now: new Date("2026-11-01T11:48:40.442Z"),
+  })
+
+  const full = buildRoute(options([a, b, c, back]))
+  assert.ok(full)
+  // Второй вариант — «укоротить и уехать домой гружёным»:
+  const cut = buildRoute(options([a, b, back]))
+  assert.ok(cut)
+  assert.ok(
+    full.netProfitRub > cut.netProfitRub,
+    `полная цепочка (${full.netProfitRub} ₽) должна быть выгоднее укороченной (${cut.netProfitRub} ₽)`,
+  )
+  assert.deepEqual(
+    full.legs.map((item) => item.load.id),
+    ["a", "b", "c"],
+    "выбран вариант с хвостом, а не укороченный",
+  )
 })
