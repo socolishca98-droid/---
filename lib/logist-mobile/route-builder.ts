@@ -1714,7 +1714,7 @@ const EMPTY_SHARE_GAIN = 0.1
  *   2. убыточный рейс не предлагаем вовсе;
  *   3. среди прибыльных берём самый денежный;
  *   4. НО если у него больше 35% пробега порожним, а есть вариант, где
- *      порожняка на 15 п.п. меньше и он теряет не больше 8% денег — берём
+ *      порожняка на 10 п.п. меньше и он теряет не больше 10% денег — берём
  *      ближний и честно пишем, почему.
  *
  * Пункт 4 — ответ на «не уводи так далеко»: рейс с 720 км пустого пробега
@@ -2424,8 +2424,20 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
 
   // Дорога домой: если последнее плечо не привело на базу, считаем порожний
   // возврат — иначе прибыль маршрута была бы завышена на весь обратный путь.
-  const lastPoint = legs[legs.length - 1].load.toPoint ?? null
-  const returnDeadheadKm = atHome || !startPoint || !lastPoint ? 0 : roadKm(startPoint, lastPoint)
+  const lastLeg = legs[legs.length - 1]
+  const lastPoint = lastLeg.load.toPoint ?? null
+  // Без координат выгрузки возврат нельзя посчитать по карте — но и нулём его
+  // считать нельзя: рейс «Ярославль → Ростов-на-Дону» показывал 112 414 ₽
+  // остатка, как будто 1 336 км обратно ехать не надо. Берём длину гружёного
+  // плеча: обратная дорога из точки выгрузки почти всегда не короче прямой,
+  // и это честная оценка «не меньше чем». В подписи называем её оценкой.
+  const returnEstimated = !atHome && Boolean(startPoint) && !lastPoint
+  const returnDeadheadKm =
+    atHome || !startPoint
+      ? 0
+      : lastPoint
+        ? roadKm(startPoint, lastPoint)
+        : Math.round(loadedDistanceKm(lastLeg.load))
   const returnFuelLiters =
     returnDeadheadKm > 0 ? estimateFuelL(vehicle, returnDeadheadKm, 0) : null
   const returnFuelCostRub =
@@ -2602,6 +2614,13 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   }
   if (returnsHomeWithLoad) {
     reasons.push("Возврат домой с грузом — машина не поедет пустой")
+  } else if (returnEstimated) {
+    // Оценка — первой: иначе ветка «возврат посчитан» перекрывает её и экран
+    // выдаёт оценку по длине плеча за измеренное расстояние.
+    reasons.push(
+      `Обратно в ${shortCity(effectiveStart)} — порожним, ${returnDeadheadKm} км по длине гружёного ` +
+        "плеча (координат выгрузки нет, точное расстояние посчитает навигатор) — учтено в прибыли",
+    )
   } else if (returnDeadheadKm > 0) {
     reasons.push(
       `Обратно в ${shortCity(effectiveStart)}: ${returnDeadheadKm} км порожнем — учтено в прибыли`,

@@ -714,6 +714,51 @@ test("объяснение: город в родительном падеже", 
   assert.match(reason.headline, /из «Ярославля»/)
 })
 
+test("без координат выгрузки возврат домой не считается нулевым", () => {
+  // Живой дефект: «Ярославль → Ростов-на-Дону», 1 336 км, 180 000 ₽. У груза
+  // не было координат выгрузки, и возврат считался нулём — экран показывал
+  // 112 414 ₽ остатка, как будто 1 336 км обратно ехать не надо. Подпись при
+  // этом честно обещала «точное расстояние посчитает навигатор».
+  const route = buildRoute({
+    startCity: "Ярославль",
+    loads: [
+      load({
+        id: "far",
+        fromCity: "Ярославль",
+        toCity: "Ростов-на-Дону",
+        distanceKm: 1336,
+        priceRub: 180000,
+        fromPoint: { lat: 57.6508, lng: 39.8718 },
+        toPoint: null,
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startPoint: { lat: 57.6508, lng: 39.8718 },
+    maxHours: 168,
+  })
+  assert.ok(route, "рейс должен собираться")
+  assert.ok(
+    route.returnDeadheadKm >= 1336,
+    `возврат учтён по длине гружёного плеча, получено ${route.returnDeadheadKm}`,
+  )
+  assert.ok(
+    route.totalDistanceKm >= 1336 * 2,
+    `общий пробег включает обратную дорогу, получено ${route.totalDistanceKm}`,
+  )
+  assert.ok(
+    route.reasons.some((reason) => /по длине гружёного плеча/.test(reason)),
+    "подпись должна называть возврат оценкой, а не молчать о нём",
+  )
+  // И деньги не должны быть «как без возврата»: 180 000 ₽ на 2 672 км
+  assert.ok(route.netProfitRub !== null)
+  assert.ok(
+    route.netProfitRub < 110000,
+    `остаток не может быть как без обратной дороги, получено ${route.netProfitRub}`,
+  )
+})
+
 test("объяснение: пустой город — null", () => {
   assert.equal(explainFailure({ startCity: "", loads: [], vehicles: [], fuelPriceRubPerL: null }), null)
 })
