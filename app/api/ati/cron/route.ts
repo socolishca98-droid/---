@@ -176,7 +176,10 @@ async function runScheduledScan(mode: string) {
  * решает, пора ли: рабочие часы, интервал с прошлого просмотра. Вне часов и
  * раньше интервала он честно отвечает «не пора» и не тратит запросы к бирже.
  *
- * Скан здесь не повторяем (scan: false) — его только что сделал cron.
+ * Скан делается здесь же (scan: true): расписание в GitHub дёргает только
+ * «дежурного», а ему нужны свежие грузы, а не вчерашняя база. Внутри runDuty
+ * скан идёт ТОЛЬКО когда действительно пора: вне рабочих часов и раньше
+ * интервала запросов к бирже не будет.
  */
 async function runDutyForOrganizations(now: Date = new Date()) {
   const configs = await prisma.fleetSettings.findMany({
@@ -202,7 +205,7 @@ async function runDutyForOrganizations(now: Date = new Date()) {
     const organizationId = config.organizationId
     if (!organizationId) continue
     try {
-      const result = await runDuty(organizationId, { scan: false, now })
+      const result = await runDuty(organizationId, { scan: true, now })
       results.push({
         organizationId,
         ran: result.ran,
