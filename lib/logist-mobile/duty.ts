@@ -360,7 +360,10 @@ export function buildDutyFeedDetailed(input: DutyFeedInput): {
     const revenue = loadPrice(load)
     if (revenue <= 0) continue
 
-    const vehicle = available.find((item) => loadFitsVehicle(load, item))
+    // Машина под груз — самая маленькая из подходящих: для 3 т логист возьмёт
+    // пятитонку, а не 20-тонник. Раньше бралась первая по списку, и все грузы
+    // выглядели так, будто их повезёт одна и та же машина.
+    const vehicle = smallestFitting(load, available)
     if (!vehicle) continue
 
     const loadedKm = loadedDistanceKm(load)
@@ -393,11 +396,13 @@ export function buildDutyFeedDetailed(input: DutyFeedInput): {
 
     // Часть пути машина проедет в любом случае: к погрузке и домой.
     const totalKm = loadedKm + pickupKm + homeKm
-    const fuelLiters = estimateFuelL(vehicle, totalKm, load.weightKg ?? 0)
+    // Расход в карточке машины часто не заполнен. Тогда топливо считалось
+    // НУЛЁМ, и «останется» было неправдой: Ярославль → Самара показывался как
+    // 82 832 ₽ остатка вместо 31 856 ₽. Теперь на такой случай есть типовой
+    // расход по классу машины, а в подписи честно сказано, что он типовой.
+    const fuel = fuelFor(vehicle, totalKm, load.weightKg ?? 0)
     const fuelRub =
-      fuelLiters !== null && input.fuelPriceRubPerL !== null
-        ? fuelLiters * input.fuelPriceRubPerL
-        : 0
+      input.fuelPriceRubPerL !== null ? fuel.liters * input.fuelPriceRubPerL : 0
     const workRub = input.operatingCostPerKm * totalKm
     const netRub = Math.round(revenue - fuelRub - workRub)
     const netPerKm = totalKm > 0 ? netRub / totalKm : 0
@@ -418,7 +423,7 @@ export function buildDutyFeedDetailed(input: DutyFeedInput): {
       homeKm > 0
         ? Math.round(
             (input.fuelPriceRubPerL !== null
-              ? (estimateFuelL(vehicle, homeKm, 0) ?? 0) * input.fuelPriceRubPerL
+              ? fuelFor(vehicle, homeKm, 0).liters * input.fuelPriceRubPerL
               : 0) + input.operatingCostPerKm * homeKm,
           )
         : 0
@@ -448,6 +453,7 @@ export function buildDutyFeedDetailed(input: DutyFeedInput): {
       note: dutyNote({
         kind,
         load,
+        fuelAssumed: fuel.assumed,
         netRub,
         netPerKm: Math.round(netPerKm),
         vehicle,
@@ -479,6 +485,51 @@ export function buildDutyFeedDetailed(input: DutyFeedInput): {
     .slice(0, limit)
 
   return { items: unique, farCount }
+}
+
+/**
+ * Типовой расход топлива по классу машины, л/100 км.
+ *
+ * Нужен только как запасной вариант: если в карточке машины расход задан, он
+ * и берётся. Логист, который не заполнил поле, всё равно должен видеть
+ * правдоподобные деньги, а не нулевое топливо.
+ */
+const TYPICAL_CONSUMPTION_L_PER_100: Array<{ upToKg: number; l: number }> = [
+  { upToKg: 2500, l: 12 },
+  { upToKg: 6000, l: 18 },
+  { upToKg: 12000, l: 24 },
+  { upToKg: Number.POSITIVE_INFINITY, l: 30 },
+]
+
+export function fuelFor(
+  vehicle: BuilderVehicle,
+  distanceKm: number,
+  loadKg: number,
+): { liters: number; assumed: boolean } {
+  const known = estimateFuelL(vehicle, distanceKm, loadKg)
+  if (known !== null) return { liters: known, assumed: false }
+  const capacity = Number(vehicle.capacity)
+  const typical = Number.isFinite(capacity) && capacity > 0 ? capacity : 20000
+  const row = TYPICAL_CONSUMPTION_L_PER_100.find((item) => typical <= item.upToKg)
+  const liters = estimateFuelL(
+    { ...vehicle, fuelConsumptionPer100: row?.l ?? 30 },
+    distanceKm,
+    loadKg,
+  )
+  return { liters: liters ?? 0, assumed: true }
+}
+
+/** Самая маленькая машина, в которую влезает груз. */
+function smallestFitting(load: BuilderLoad, vehicles: BuilderVehicle[]): BuilderVehicle | undefined {
+  return vehicles
+    .filter((vehicle) => loadFitsVehicle(load, vehicle))
+    .sort(
+      (a, b) =>
+        (Number(a.capacity) || Number.POSITIVE_INFINITY) -
+          (Number(b.capacity) || Number.POSITIVE_INFINITY) ||
+        (Number(a.volume) || Number.POSITIVE_INFINITY) -
+          (Number(b.volume) || Number.POSITIVE_INFINITY),
+    )[0]
 }
 
 /**
@@ -519,6 +570,8 @@ function dutyTitle(
 function dutyNote(input: {
   kind: DutyKind
   load: BuilderLoad
+  /** Расход топлива взят типовой: в карточке машины он не задан */
+  fuelAssumed: boolean
   netRub: number
   netPerKm: number
   vehicle: BuilderVehicle
@@ -530,6 +583,9 @@ function dutyNote(input: {
 }): string {
   const { kind, load, netRub, netPerKm, vehicle, fromAway, oldPrice, emptyCost } = input
   const money = `останется ${formatMoney(netRub)} (${netPerKm} ₽/км), машина ${vehicle.plate}`
+  const fuelNote = input.fuelAssumed
+    ? " Топливо — по типовому расходу: в карточке машины он не задан."
+    : ""
 
   if (kind === "backhaul" && fromAway) {
     const tail = fromAway.kind === "стоит" ? "уже стоит" : "приедет"
@@ -539,15 +595,15 @@ function dutyNote(input: {
         : ""
     // Госномер уже назван в начале фразы — второй раз «машина <номер>» лишний.
     const moneyNoPlate = `останется ${formatMoney(netRub)} (${netPerKm} ₽/км)`
-    return `${fromAway.plate} ${tail} ${inCity(fromAway.city)}. ${moneyNoPlate}, груз везёт эта же машина.${saving}`
+    return `${fromAway.plate} ${tail} ${inCity(fromAway.city)}. ${moneyNoPlate}, груз везёт эта же машина.${saving}${fuelNote}`
   }
   if (kind === "rate-up" && oldPrice !== null) {
-    return `Было ${formatMoney(oldPrice)}, стало ${formatMoney(input.revenue)}. ${money}.`
+    return `Было ${formatMoney(oldPrice)}, стало ${formatMoney(input.revenue)}. ${money}.${fuelNote}`
   }
   if (kind === "expiring") {
-    return `Загрузка ${formatDateShortRu(load.loadingDate)} — времени договориться мало. ${money}.`
+    return `Загрузка ${formatDateShortRu(load.loadingDate)} — времени договориться мало. ${money}.${fuelNote}`
   }
-  return `${money}. Раньше дежурный его не видел.`
+  return `${money}. Раньше дежурный его не видел.${fuelNote}`
 }
 
 function formatDateShortRu(value: Date | string | null | undefined): string {

@@ -29,6 +29,7 @@ const {
   normalizeDutySettings,
   vehicleHints,
   cleanCity,
+  fuelFor,
   buildDutyFeedDetailed,
   inCity,
   fromCity,
@@ -421,4 +422,42 @@ test("пустая лента с дальними рейсами предлаг�
   const headline = dutyHeadline([], 3)
   assert.match(headline, /Дальних выгодных рейсов на бирже: 3/)
   assert.match(headline, /помощнике сборки/)
+})
+
+// ── 11. Топливо и подбор машины ───────────────────────────────────────────
+test("без расхода в карточке топливо не превращается в ноль", () => {
+  const unknown = vehicle({ fuelConsumptionPer100: null, capacity: 20000 })
+  const fuel = fuelFor(unknown, 1000, 18000)
+  assert.equal(fuel.assumed, true)
+  assert.ok(fuel.liters > 0, "типовой расход даёт литры, а не ноль")
+  assert.ok(fuel.liters > 250 && fuel.liters < 400, `30 л/100 на 1000 км с загрузкой: ${fuel.liters}`)
+
+  const known = fuelFor(vehicle({ fuelConsumptionPer100: 22 }), 1000, 0)
+  assert.equal(known.assumed, false)
+  assert.equal(Math.round(known.liters), 220)
+})
+
+test("груз 3 т везёт пятитонка, а не 20-тонник", () => {
+  const items = buildDutyFeed(
+    feedInput({
+      vehicles: [
+        vehicle({ id: "big", plate: "А421ВС750", capacity: 20000, volume: 86 }),
+        vehicle({ id: "small", plate: "К215СТ790", capacity: 5000, volume: 32 }),
+      ],
+      loads: [load({ weightKg: 3000, volumeM3: 20, distanceKm: 400, priceRub: 60000 })],
+    }),
+  )
+  assert.equal(items.length, 1)
+  assert.match(items[0].note, /машина К215СТ790/)
+})
+
+test("в подписи сказано, что расход топлива типовой", () => {
+  const items = buildDutyFeed(
+    feedInput({
+      vehicles: [vehicle({ fuelConsumptionPer100: null })],
+      loads: [load({ priceRub: 120000 })],
+    }),
+  )
+  assert.equal(items.length, 1)
+  assert.match(items[0].note, /по типовому расходу/)
 })
