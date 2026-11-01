@@ -92,9 +92,7 @@ export function mobileLogistTarget(pathname: string): string | null {
 const TAB_SECTIONS = new Set([
   "/lm/orders",
   "/lm/routes",
-  // Дежурный — постоянный раздел, а не настройка: он в нижнем меню, поэтому
-  // его родитель «/lm», а не «Ещё».
-  "/lm/duty",
+  // «Дежурного» в меню нет: экран переделывается, вход в него закрыт.
   "/lm/map",
   "/lm/more",
 ])
@@ -105,6 +103,10 @@ const TAB_SECTIONS = new Set([
  * со страницы «Организация».
  */
 const SECTION_PARENTS: Record<string, string> = {
+  // «Дежурный» снят с показа, но страница жива (переделывается). Родитель —
+  // «Главная»: если старую ссылку кто-то откроет, страница уведёт на /lm, и
+  // стрелка «назад» не должна вести в «Ещё», где раздела нет.
+  "/lm/duty": "/lm",
   "/lm/fuel": "/lm/fleet",
   "/lm/settings": "/lm/fleet",
   "/lm/audit": "/lm/organization",

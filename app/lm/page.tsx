@@ -72,7 +72,6 @@ export default function LogistHomePage() {
   const { user, isLoading: sessionLoading } = useStaffSession()
   // Дежурный смотрит биржу сам; главный экран лишь показывает, есть ли от него
   // что-то новое. Никаких сканов здесь — только накопленное состояние.
-  const duty = useJsonApi<DutyHomeDto>(user ? "/api/logist/duty" : null)
 
   const orders = useJsonApi<{ orders: MobileOrder[] }>(user ? "/api/orders?limit=200" : null)
   // includeClosed=1: завершённые рейсы нужны для пункта «рейс закрыт, а для
@@ -232,36 +231,9 @@ export default function LogistHomePage() {
       <LogistHeader title="Главная" subtitle={today} userName={user?.name} />
 
       <PullToRefresh onRefresh={refresh} className="px-4 pt-4">
-        {/* Дежурный: одна строка о том, следит ли он за биржей и есть ли новое.
-            Постоянное наблюдение, а не сводка раз в сутки, — поэтому вход
-            сюда с главного экрана, без захода в «Ещё». */}
-        {duty.data ? (
-          <Link
-            href="/lm/duty"
-            className={`mb-3 flex min-h-[56px] items-center gap-3 rounded-xl border px-4 active:opacity-90 ${
-              duty.data.settings.enabled
-                ? "border-primary/30 bg-primary/[0.07]"
-                : "border-border bg-card"
-            }`}
-          >
-            <BellRing
-              className={`h-5 w-5 shrink-0 ${
-                duty.data.settings.enabled ? "text-primary" : "text-muted-foreground"
-              }`}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[14px] font-semibold text-foreground">
-                {duty.data.settings.enabled ? "Дежурный" : "Дежурный выключен"}
-              </span>
-              <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
-                {duty.data.settings.enabled
-                  ? duty.data.headline || "следит за биржей по графику"
-                  : "включите его — и он будет следить за биржей сам"}
-              </span>
-            </span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </Link>
-        ) : null}
+        {/* Карточка дежурного убрана вместе с экраном: возвращаемся к нему
+            позже, когда будет ясно, каким он должен быть. Наблюдение за
+            биржей живёт в помощнике сборки — там же, где принимают решение. */}
 
         <SectionTitle title="Сделать сейчас" />
         {loading ? (

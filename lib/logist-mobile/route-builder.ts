@@ -167,6 +167,21 @@ export interface BuildRouteOptions {
    * звонком. Пересборка «заменить отказавшего» не должна выкидывать их.
    */
   keepIds?: readonly string[]
+  /**
+   * Разрешить рейс в одну сторону — без груза обратно.
+   *
+   * Зачем: логист знает больше машины. Бывает, что обратки на бирже нет
+   * СЕЙЧАС, но перевозчик всё равно едет: обратный груз появится к моменту
+   * выгрузки, либо машина нужна в том регионе. Раньше такой рейс не
+   * собирался вовсе — порог «не меньше 12 ₽/км» отбрасывал его молча, и
+   * экран говорил «тупик». Это была неправда: рейс существует, просто
+   * зарабатывает меньше.
+   *
+   * При включении порог ₽/км снимается, но убыточный рейс по-прежнему не
+   * показывается, а возврат домой порожним считается в деньгах как обычно —
+   * мы не делаем рейс выгоднее, чем он есть.
+   */
+  allowOneWay?: boolean
   /** Грузы, которые не берём: отказались, уже в работе, скрыты логистом */
   excludeIds?: readonly string[]
   now?: Date
@@ -294,6 +309,13 @@ export interface BuiltRoute {
   needsFuelSetup: boolean
   /** Маршрут в убыток — отправлять только осознанно */
   unprofitable: boolean
+  /**
+   * Рейс в одну сторону: домой машина вернётся порожней, обратного груза на
+   * бирже не нашлось. Считается по явному требованию логиста.
+   */
+  oneWay: boolean
+  /** Сколько километров машина проедет порожней — цена «поехать всё равно» */
+  emptyReturnKm: number
   /** Не влезло/не подошло — с причинами, ничего не пропадает молча */
   excluded: ExcludedLoad[]
   /**
@@ -1720,10 +1742,23 @@ const EMPTY_SHARE_GAIN = 0.1
  * Пункт 4 — ответ на «не уводи так далеко»: рейс с 720 км пустого пробега
  * на 1 614 км логисту не нужен, даже если формально он прибыльный.
  */
-function pickRoute(routes: BuiltRoute[], keepIds: readonly string[] = []): BuiltRoute | null {
+function pickRoute(
+  routes: BuiltRoute[],
+  keepIds: readonly string[] = [],
+  allowOneWay = false,
+): BuiltRoute | null {
   // Убыточные и «перегонные» варианты не показываем: убыточный рейс не нужен,
   // а рейс на 2 000 км с 7 000 ₽ остатка — это не заработок, а износ.
-  const live = routes.filter((item) => routeMoney(item) > 0 && routeNetPerKm(item) >= MIN_NET_PER_KM)
+  //
+  // Порог ₽/км снимается, когда логист прямо попросил рейс в одну сторону:
+  // он знает про обратную загрузку больше, чем биржа. Убыточный рейс при этом
+  // не показываем всё равно — деньги после топлива и работы машины должны
+  // остаться хотя бы в нуле.
+  const live = routes.filter((item) =>
+    allowOneWay
+      ? routeMoney(item) > 0
+      : routeMoney(item) > 0 && routeNetPerKm(item) >= MIN_NET_PER_KM,
+  )
   if (live.length === 0) return null
   const keepHits = (item: BuiltRoute): number =>
     item.legs.reduce((sum, leg) => sum + (keepIds.includes(leg.load.id) ? 1 : 0), 0)
@@ -2230,7 +2265,7 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     }
 
     // 3. Выбор маршрута: деньги, потом — «не уводить далеко».
-    const route = pickRoute(routes, keepIds)
+    const route = pickRoute(routes, keepIds, options.allowOneWay === true)
     if (!route) continue
 
     // Лучший маршрут — тот, который приносит больше денег за ВЫБРАННЫЙ СРОК.
@@ -2777,6 +2812,10 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     netProfitPerHour,
     needsFuelSetup,
     unprofitable: totalProfitRub !== null && totalProfitRub < 0,
+    // «В одну сторону» — это про отсутствие обратного груза, а не про
+    // прибыльность: маршрут кончается выгрузкой, дальше машина едет пустой.
+    oneWay: returnDeadheadKm > 0 && !returnsHomeWithLoad,
+    emptyReturnKm: returnDeadheadKm,
     excluded,
     leftover,
     reasons,

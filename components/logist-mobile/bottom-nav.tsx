@@ -7,15 +7,17 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BellRing, Home, Package, Route as RouteIcon, Map as MapIcon, Menu } from "lucide-react"
+import { Home, Package, Route as RouteIcon, Map as MapIcon, Menu } from "lucide-react"
 
 const TABS = [
   { href: "/lm", label: "Главная", icon: Home, exact: true },
   { href: "/lm/orders", label: "Заказы", icon: Package },
   { href: "/lm/routes", label: "Рейсы", icon: RouteIcon },
-  // Дежурный — не отчёт, а постоянное наблюдение за биржей: он и должен быть
-  // на виду, иначе про него вспоминают только когда груз уже уехал.
-  { href: "/lm/duty", label: "Дежурный", icon: BellRing },
+  // «Дежурного» здесь нет осознанно: экран переделывается с нуля, а половина
+  // сделанного (лента «стоит внимания») логисту не подошла. Пока его нет в
+  // меню, наблюдение за биржей живёт в помощнике сборки — там же, где решение.
+  // Данные и расписание в базе продолжают копиться, чтобы вернуться к экрану,
+  // когда будет понятно, каким он должен быть.
   { href: "/lm/map", label: "Карта", icon: MapIcon },
   { href: "/lm/more", label: "Ещё", icon: Menu },
 ]

@@ -763,6 +763,83 @@ test("объяснение: пустой город — null", () => {
   assert.equal(explainFailure({ startCity: "", loads: [], vehicles: [], fuelPriceRubPerL: null }), null)
 })
 
+// ── 17b. Рейс в одну сторону: обратки нет, но ехать надо ──────────────────
+test("без обратки: рейс не собирается, пока логист не попросил", () => {
+  // Живой случай (борт 10 т): единственный подходящий груз — Елабуга, 1 063 км,
+  // 100 000 ₽. Порожний возврат съедает почти всё, плотность ниже 12 ₽/км,
+  // и помощник отвечал «нет маршрута» — тупик, хотя рейс существует.
+  const input = {
+    startCity: "Ярославль",
+    loads: [
+      load({
+        id: "elabuga",
+        fromCity: "Ярославль",
+        toCity: "Елабуга г., Республика Татарстан",
+        distanceKm: 1063,
+        priceRub: 100000,
+        weightKg: 6200,
+        toPoint: { lat: 55.76, lng: 52.05 },
+      }),
+    ],
+    vehicles: [vehicle({ capacity: 10000, fuelConsumptionPer100: 30 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startPoint: { lat: 57.6508, lng: 39.8718 },
+    maxHours: 120,
+    operatingCostPerKmRub: 24,
+  }
+  assert.equal(buildRoute(input), null, "по правилу «не меньше 12 ₽/км» рейс не проходит")
+
+  const oneWay = buildRoute({ ...input, allowOneWay: true })
+  assert.ok(oneWay, "по просьбе логиста рейс должен собраться")
+  assert.equal(oneWay.oneWay, true, "рейс в одну сторону помечен")
+  assert.ok(oneWay.emptyReturnKm > 900, `пустой возврат посчитан, получено ${oneWay.emptyReturnKm}`)
+  assert.ok(
+    (oneWay.netProfitRub ?? 0) > 0,
+    "убыточный рейс не показываем даже по просьбе",
+  )
+  // Возврат учтён в деньгах: без него остаток был бы на 24 ₽ × 900 км больше
+  const безВозврата = 100000 - (oneWay.totalFuelCostRub ?? 0)
+  assert.ok(
+    oneWay.netProfitRub < безВозврата,
+    "пустая дорога домой должна уменьшать остаток",
+  )
+})
+
+test("закрытый круг не помечается «в одну сторону»", () => {
+  const route = buildRoute({
+    startCity: "Москва",
+    loads: [
+      load({
+        id: "there",
+        fromCity: "Москва",
+        toCity: "Тула",
+        distanceKm: 180,
+        priceRub: 45000,
+        fromPoint: { lat: 55.7558, lng: 37.6173 },
+        toPoint: { lat: 54.1961, lng: 37.6182 },
+      }),
+      load({
+        id: "back",
+        fromCity: "Тула",
+        toCity: "Москва",
+        distanceKm: 180,
+        priceRub: 42000,
+        fromPoint: { lat: 54.1961, lng: 37.6182 },
+        toPoint: { lat: 55.7558, lng: 37.6173 },
+      }),
+    ],
+    vehicles: [vehicle()],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    startPoint: { lat: 55.7558, lng: 37.6173 },
+    maxHours: 48,
+  })
+  assert.ok(route)
+  assert.equal(route.returnDeadheadKm, 0)
+  assert.equal(route.oneWay, false)
+})
+
 // ── 18. Радиус поиска первого груза от базы ────────────────────────────────
 test("первый груз берётся шире «по пути»: радиус поиска отдельный", () => {
   // База — Коломна (~55.10, 38.76). Груз из Воронежа (~51.67, 39.18) — ~530 км:

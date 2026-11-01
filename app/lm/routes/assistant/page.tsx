@@ -21,11 +21,12 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { AlertTriangle, ArrowRight, Building2, Check, ChevronDown, ChevronUp, Clock, Download, Home, Info, Loader2, MapPin, Package, Phone, RefreshCw, Route as RouteIcon, Search, Truck, X } from "lucide-react"
+import { AlertTriangle, ArrowRight, Building2, Check, ChevronDown, ChevronRight, ChevronUp, Clock, Download, Home, Info, Loader2, MapPin, Package, Phone, RefreshCw, Route as RouteIcon, Search, Truck, X } from "lucide-react"
 
 import dynamic from "next/dynamic"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
+import { LoadSheet } from "@/components/logist-mobile/load-sheet"
 import { baseAreaPool, mergeLoads, regionRootOf } from "@/lib/logist-mobile/pool"
 import { Card, EmptyState, ErrorState, ListSkeleton } from "@/components/logist-mobile/ui"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
@@ -951,6 +952,17 @@ export default function RouteAssistantPage() {
      * асинхронно, и без явной передачи пересборка увидела бы старый список.
      */
     extraLoads: BuilderLoad[] = [],
+    /**
+     * Рейс в одну сторону: порог «не меньше N ₽/км» снимается, потому что
+     * логист прямо просит рассмотреть рейс без обратной загрузки. Убыточный
+     * рейс всё равно не покажем, а пустая дорога домой остаётся в деньгах.
+     */
+    oneWay = false,
+    /**
+     * Собрать рейс только из этого груза: логист ткнул в карточку и хочет
+     * одно плечо, без цепочки «по пути». Пусто — обычная сборка.
+     */
+    onlyLoadId: string | null = null,
   ) {
     // Своя сборка — свой счётчик додоборов: иначе одна автоматическая
     // догрузка «съедала» бы попытки всех следующих нажатий. Пересборку после
@@ -995,9 +1007,13 @@ export default function RouteAssistantPage() {
       const extra = extraLoads.filter((load) => !seen.has(load.id))
       const basePool = extra.length > 0 ? [...loadsWithPoints, ...extra] : loadsWithPoints
       const overrides = bodyOverridesRef.current
-      const pool = basePool.map((load) =>
+      const scoped = basePool.map((load) =>
         overrides.includes(load.id) ? { ...load, bodyOverride: true } : load,
       )
+      // «Только этот рейс»: в пул попадает один груз, и помощник не ищет
+      // цепочку. Иначе он честно добавит грузы «по пути», и логист получит
+      // не то, что просил.
+      const pool = onlyLoadId ? scoped.filter((load) => load.id === onlyLoadId) : scoped
       // Запреты: из аргумента ПЛЮС актуальные из ref. Аргумент мог прийти от
       // обработчика, который ещё не дождался setExcludeIds.
       const excludeAll = Array.from(new Set([...exclude, ...excludeRef.current]))
@@ -1034,6 +1050,7 @@ export default function RouteAssistantPage() {
         // Ставка работы машины из настроек организации: без неё «прибыль» на
         // экране снова станет «после одного топлива».
         operatingCostPerKmRub: operatingCostPerKm,
+        allowOneWay: oneWay,
       })
       setVariants(built)
       setVariantIndex(0)
@@ -1909,6 +1926,16 @@ export default function RouteAssistantPage() {
             pointsLoading={pointsLoading}
             noStartPoint={cityPoints !== null && startCity.trim().length > 0 && !startPoint}
             onBuild={() => runBuild(startCity, keepIds, excludeIds, maxHours)}
+            onBuildFrom={(load) => runBuild(startCity, [load.id], excludeIds, maxHours, true)}
+            onBuildOnly={(load) =>
+              runBuild(startCity, [load.id], excludeIds, maxHours, true, [], false, load.id)
+            }
+            sheetContext={{
+              vehicle: freeVehicles.find((item) => item.id === vehicleId) ?? freeVehicles[0] ?? null,
+              fuelPrice,
+              operatingCostPerKm,
+              basePoint: startPoint,
+            }}
             sourceNote={loadsState.data?.source?.note ?? null}
             searchProps={{
               from: searchFrom,
@@ -1985,6 +2012,7 @@ export default function RouteAssistantPage() {
               setMaxHours(longer)
               runBuild(startCity, keepIds, excludeIds, longer, true)
             }}
+            onOneWay={() => runBuild(startCity, keepIds, excludeIds, maxHours, true, [], true)}
             onWiderRadius={() => void widenRadius()}
             radiusBusy={radiusBusy}
             radiusNote={radiusNote}
@@ -2293,6 +2321,9 @@ function SetupPhase({
   pointsLoading,
   noStartPoint,
   onBuild,
+  onBuildFrom,
+  onBuildOnly,
+  sheetContext,
   sourceNote,
   searchProps,
 }: {
@@ -2331,6 +2362,17 @@ function SetupPhase({
   /** Для выбранного города нет координат — только точное совпадение городов */
   noStartPoint: boolean
   onBuild: () => void
+  /** Собрать маршрут, поставив этот груз первым */
+  onBuildFrom: (load: BuilderLoad) => void
+  /** Собрать один рейс из этого груза, без цепочки и без обратки */
+  onBuildOnly: (load: BuilderLoad) => void
+  /** Что показать в карточке груза: машина, топливо, база */
+  sheetContext: {
+    vehicle: BuilderVehicle | null
+    fuelPrice: number
+    operatingCostPerKm: number
+    basePoint: { lat: number; lng: number } | null
+  }
   /** Честная подпись об источнике грузов (площадки ATI организации) */
   sourceNote: string | null
   /** Живой поиск по бирже — те же поля, что на сайте ATI */
@@ -2361,11 +2403,13 @@ function SetupPhase({
   }
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
+  // Какой груз открыт в карточке: нажатие на строку в списке биржи.
+  const [sheetLoad, setSheetLoad] = useState<{ load: BuilderLoad; km: number | null } | null>(null)
   const driver = selected ? drivers.find((item) => item.vehicleId === selected.id) ?? null : null
   // Радиусы — редкость: свёрнуты, чтобы первый экран был «город → машина → ехать»
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
-  return (
+  const body = (
     <div className="space-y-5 lg:mx-auto lg:max-w-3xl">
       {/* Откуда едем */}
       <Card>
@@ -2441,8 +2485,18 @@ function SetupPhase({
             Грузы на бирже — ближе к вашей базе
           </p>
           <div className="mt-2 divide-y divide-border">
+            {/* Строка груза — нажимаемая. Логист видел «Ярославль →
+                Санкт-Петербург, 59 266 ₽» и не мог узнать, что внутри: ни
+                объёма, ни кузова, ни даты, ни денег после топлива. И не мог
+                ничего сделать сам — только попросить помощника собрать всё
+                сразу. Теперь нажатие открывает карточку груза. */}
             {nearestLoads.map(({ load, km }) => (
-              <div key={load.id} className="flex items-center gap-2 py-2">
+              <button
+                key={load.id}
+                type="button"
+                onClick={() => setSheetLoad({ load, km })}
+                className="-mx-1 flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left transition-colors active:bg-secondary/60"
+              >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-medium text-foreground">
                     {shortCity(load.fromCity)} → {shortCity(load.toCity)}
@@ -2460,12 +2514,13 @@ function SetupPhase({
                 <p className="shrink-0 text-[13px] font-semibold text-success">
                   {formatMoney(load.priceRub)}
                 </p>
-              </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
             ))}
           </div>
           <p className="mt-1.5 text-[11.5px] leading-snug text-muted-foreground">
-            Это грузы, где сейчас можно строить. Нажмите «Собрать маршрут» — помощник сложит их в
-            цепочку от вашей базы.
+            Нажмите на груз, чтобы посмотреть объём, кузов, дату и что останется после топлива, — и
+            собрать рейс от него. Кнопка «Собрать маршрут» складывает цепочку от вашей базы сама.
           </p>
         </Card>
       ) : null}
@@ -2708,6 +2763,31 @@ function SetupPhase({
       </Card>
     </div>
   )
+
+  return (
+    <>
+      {body}
+      {sheetLoad ? (
+        <LoadSheet
+          load={sheetLoad.load}
+          vehicle={sheetContext.vehicle}
+          fuelPrice={sheetContext.fuelPrice}
+          operatingCostPerKm={sheetContext.operatingCostPerKm}
+          basePoint={sheetContext.basePoint}
+          kmFromBase={sheetLoad.km}
+          onBuildFrom={(load) => {
+            setSheetLoad(null)
+            onBuildFrom(load)
+          }}
+          onBuildOnly={(load) => {
+            setSheetLoad(null)
+            onBuildOnly(load)
+          }}
+          onClose={() => setSheetLoad(null)}
+        />
+      ) : null}
+    </>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -2772,6 +2852,7 @@ function FailedPhase({
   onRefresh,
   maxHours,
   onMoreHours,
+  onOneWay,
   sourceNote,
   fuelPrice,
   operatingCostPerKm,
@@ -2804,6 +2885,11 @@ function FailedPhase({
   onOtherCity: () => void
   onRefresh: () => void
   onMoreHours: () => void
+  /**
+   * Собрать рейс в одну сторону: обратного груза нет, но ехать надо.
+   * Порог ₽/км снимается, пустая дорога домой остаётся в деньгах.
+   */
+  onOneWay: () => void
   /** Честная подпись об источнике грузов — чтобы провал не выглядел поломкой */
   sourceNote: string | null
   /** Цена дизеля для расчёта — по региону базы, а не константа */
@@ -3304,6 +3390,17 @@ function FailedPhase({
           <MapPin className="h-4 w-4" />
           Другой город
         </button>
+        {/* Тупик «нет обратки» — не тупик: рейс в одну сторону существует.
+            Перевозчик часто едет, зная, что обратная загрузка появится к
+            выгрузке. Раньше помощник такой рейс не показывал вовсе. */}
+        <button
+          type="button"
+          onClick={onOneWay}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70"
+        >
+          <Truck className="h-4 w-4" />
+          Ехать без обратки
+        </button>
         {maxHours < 168 ? (
           <button
             type="button"
@@ -3423,6 +3520,16 @@ function RoutePhase({
           Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}
           {route.vehicle?.plate ? ` · ${route.vehicle.plate}` : ""}
         </p>
+        {/* Рейс в одну сторону: обратного груза на бирже нет, и это сказано
+            вслух, а не спрятано в «почему собрал так». Логист имеет право
+            уехать — но должен видеть, за сколько километров пустого хода. */}
+        {route.oneWay && route.emptyReturnKm > 0 ? (
+          <p className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[12px] leading-snug text-amber-700 dark:text-amber-300">
+            Рейс в одну сторону: обратного груза домой на бирже нет, {route.emptyReturnKm} км машина
+            проедет порожней — эти километры уже вычтены из суммы выше. Появится обратка — останется
+            больше.
+          </p>
+        ) : null}
         {/* Что за машина: логист должен видеть, под что собрано — иначе
             «пятитонка с грузом на десять тонн» выглядит как ошибка сборщика. */}
         {route.vehicle ? (
