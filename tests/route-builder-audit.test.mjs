@@ -383,6 +383,8 @@ test("«дом» для обратки — база и окрестности, �
     toPoint: BASE_POINT,
     distanceKm: 661,
     priceRub: 78000,
+    // обратка грузится уже после того, как машина доедет до Брянска
+    loadingDate: "2026-11-06T00:00:00.000Z",
   })
   const route = buildRoute(
     baseOptions([outFromBase, back], { startRadiusKm: 1200, maxHours: 168 }),
@@ -415,6 +417,7 @@ test("обратка берётся, даже если прибыль на ки�
     toPoint: BASE_POINT,
     distanceKm: 661,
     priceRub: 24000,
+    loadingDate: "2026-11-02T00:00:00.000Z",
   })
   const route = buildRoute(baseOptions([main, cheapBack], { maxHours: 120 }))
   assert.ok(route, "маршрут не собрался")
@@ -442,4 +445,45 @@ test("выгрузка рядом с базой — это «дома с гру�
   assert.equal(route.returnsHomeWithLoad, true, "круг не признан закрытым грузом")
   assert.ok(route.returnDeadheadKm > 0, "последние километры до базы всё равно едем порожнем")
   assert.ok(route.returnDeadheadKm <= 25, `порожний хвост слишком длинный: ${route.returnDeadheadKm}`)
+})
+
+test("опоздавшая обратка в маршрут не встаёт", () => {
+  // Живой замер (К215СТ790, лимит 120 ч): вторым плечом вставал
+  // «Брянск → Бегоулево» с датой загрузки 2 ноября, хотя машина приезжает в
+  // Брянск 5-го — сначала она 64 часа ждёт загрузку первого груза (дата
+  // 4 ноября). На экране это выглядело нормальным маршрутом, а на деле —
+  // 74 часа опоздания: такой груз уже уехал.
+  const first = load({
+    id: "first",
+    fromCity: "Тутаев",
+    toCity: "Брянск",
+    fromPoint: CLOSE,
+    toPoint: { lat: 53.24, lng: 34.36 },
+    distanceKm: 650,
+    priceRub: 90000,
+    // груз встаёт только через трое суток — машина ждёт
+    loadingDate: "2026-11-04T00:00:00.000Z",
+  })
+  const staleBack = load({
+    id: "stale-back",
+    fromCity: "Брянск",
+    toCity: "Ярославль",
+    fromPoint: { lat: 53.24, lng: 34.36 },
+    toPoint: BASE_POINT,
+    distanceKm: 661,
+    priceRub: 78000,
+    // а эта загрузка уже прошла, пока машина ждала
+    loadingDate: "2026-11-02T00:00:00.000Z",
+  })
+  const route = buildRoute(baseOptions([first, staleBack], { maxHours: 168 }))
+  assert.ok(route, "маршрут не собрался")
+  assert.equal(route.legs.length, 1, "опоздавшая обратка всё-таки встала в маршрут")
+  assert.ok(route.returnDeadheadKm > 0, "порожний возврат должен считаться честно")
+
+  // Согласованный звонком груз не выбрасываем: логист уже договорился
+  const kept = buildRoute(
+    baseOptions([first, staleBack], { maxHours: 168, keepIds: ["stale-back"] }),
+  )
+  assert.ok(kept, "с согласованным грузом маршрут должен собраться")
+  assert.equal(kept.legs.length, 2, "согласованная обратка должна остаться в маршруте")
 })
