@@ -243,6 +243,9 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     items.push(item)
   }
   items.sort((a, b) => b.score - a.score)
+  // Итог считаем по тому, что реально показано: «20 грузов» при двенадцати
+  // строках — это ошибка, а не подробность.
+  const shown = items.slice(0, DUTY_FEED_LIMIT)
 
   return {
     settings: config.settings,
@@ -251,13 +254,13 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     nextAt: due.nextAt ? due.nextAt.toISOString() : null,
     lastRunAt: lastRun?.startedAt ? lastRun.startedAt.toISOString() : null,
     poolSize: pool.length,
-    items: items.slice(0, DUTY_FEED_LIMIT),
+    items: shown,
     hints: vehicleHints({
       away,
       loads: pool,
       vehicles: vehicles as unknown as BuilderVehicle[],
     }),
-    headline: dutyHeadline(items, feed.farCount),
+    headline: dutyHeadline(shown, feed.farCount),
   }
 }
 
