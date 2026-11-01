@@ -14,6 +14,7 @@ import type { BuilderLoad, BuilderVehicle, Point } from "@/lib/logist-mobile/rou
 import { DEFAULT_OPERATING_COST_PER_KM } from "@/lib/logist-mobile/route-builder"
 import {
   buildDutyFeedDetailed,
+  DUTY_FEED_LIMIT,
   dutyHeadline,
   dutyIsDue,
   normalizeDutySettings,
@@ -250,7 +251,7 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     nextAt: due.nextAt ? due.nextAt.toISOString() : null,
     lastRunAt: lastRun?.startedAt ? lastRun.startedAt.toISOString() : null,
     poolSize: pool.length,
-    items: items.slice(0, 20),
+    items: items.slice(0, DUTY_FEED_LIMIT),
     hints: vehicleHints({
       away,
       loads: pool,

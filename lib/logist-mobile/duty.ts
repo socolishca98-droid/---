@@ -257,6 +257,13 @@ export function FromCity(city: string | null | undefined): string {
 // Что показывать
 // ---------------------------------------------------------------------------
 
+/**
+ * Сколько строк дежурный показывает за раз. Одна цифра на все места: лента
+ * просмотра, экран и итог обязаны совпадать, иначе «нашёл 12» и «показываю 20»
+ * выглядят как ошибка.
+ */
+export const DUTY_FEED_LIMIT = 12
+
 export type DutyKind = "backhaul" | "new" | "rate-up" | "expiring"
 
 /** Груз, который дежурный уже видел раньше. */
@@ -340,7 +347,7 @@ export function buildDutyFeedDetailed(input: DutyFeedInput): {
   farCount: number
 } {
   const now = input.now ?? new Date()
-  const limit = input.limit ?? 12
+  const limit = input.limit ?? DUTY_FEED_LIMIT
   const minNetPerKm = input.minNetPerKm ?? 8
   const radiusKm = input.radiusKm ?? 0
   const available = (input.vehicles ?? []).filter((vehicle) => vehicle.status !== "maintenance")
