@@ -75,6 +75,7 @@
     "../lib/fleet/fuel-price.ts",
     "../lib/fleet/vehicle-features.ts",
     "../lib/logist-mobile/route-builder.ts",
+    "../lib/logist-mobile/city-case.ts",
     "../lib/logist-mobile/duty.ts",
     "../lib/logist-mobile/pool.ts",
     "../lib/ati/boards-mapping.ts",

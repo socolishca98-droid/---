@@ -20,6 +20,7 @@
 // tests/logist-mobile-route-builder.test.mjs.
 
 import { estimateFuelL } from "../fleet/fuel"
+import { cityGenitive } from "./city-case"
 import { normalizeCityKey, samePlace } from "./city-norm"
 import { formatCount, formatDateShort, formatMoney, plural, shortCity } from "./format"
 
@@ -2869,107 +2870,208 @@ export function explainFailure(options: {
   const fitsSomeVehicle = (load: BuilderLoad) =>
     vehicles.length > 0 && vehicles.some((vehicle) => loadFitsVehicle(load, vehicle))
 
-  const noPrice = fromCity.filter((load) => loadPrice(load) <= 0).length
-  const overdue = fromCity.filter((load) => !isFresh(load, now)).length
+  // ── Разбор провала: каждый груз попадает ровно в одну причину ────────────
+  //
+  // Было: категории считались независимыми фильтрами и пересекались (груз без
+  // ставки и с прошедшей датой попадал в обе), поэтому «сумма причин» легко
+  // превышала число грузов и любая ветка объяснения считалась исчерпывающей.
+  // Живой случай: пятитонка в Ярославле. Экран писал «грузов из Ярославля не
+  // влезают в ваши машины — нужна большегрузная», хотя 18 грузов влезают, а
+  // два из них просто загружаются через два дня. Логист шёл искать «сломанную»
+  // машину вместо того, чтобы увеличить срок.
+  type Reject =
+    | "noPrice"
+    | "overdue"
+    | "tooHeavy"
+    | "tooVolumetric"
+    | "tooBody"
+    | "tooLong"
+    | "waitingLate"
+    | "unprofitable"
+
+  const buckets: Record<Reject, number> = {
+    noPrice: 0,
+    overdue: 0,
+    tooHeavy: 0,
+    tooVolumetric: 0,
+    tooBody: 0,
+    tooLong: 0,
+    waitingLate: 0,
+    unprofitable: 0,
+  }
+  /** Грузы, которые проходят все проверки одного плеча: их не берут не из-за груза */
+  let fitting = 0
+
   // Почему не влезает: вес, объём или кузов. Считаем по САМОЙ БОЛЬШОЙ машине
   // парка — если груз не влезает даже в неё, причина в самом грузе.
   const biggest = [...vehicles].sort(
     (a, b) =>
       (b.capacity ?? 0) - (a.capacity ?? 0) || (b.volume ?? 0) - (a.volume ?? 0),
   )[0]
-  const unfit = fromCity.filter(
-    (load) => loadPrice(load) > 0 && isFresh(load, now) && !fitsSomeVehicle(load),
-  )
-  const classifyUnfit = (load: BuilderLoad): "weight" | "volume" | "body" => {
-    if (!biggest) return "weight"
+  const classifyUnfit = (load: BuilderLoad): "tooHeavy" | "tooVolumetric" | "tooBody" => {
+    if (!biggest) return "tooHeavy"
     const capacity = biggest.capacity ?? 0
-    if (capacity > 0 && load.weightKg != null && load.weightKg > capacity) return "weight"
+    if (capacity > 0 && load.weightKg != null && load.weightKg > capacity) return "tooHeavy"
     const volume = biggest.volume ?? 0
-    if (volume > 0 && load.volumeM3 != null && load.volumeM3 > volume) return "volume"
-    return "body"
+    if (volume > 0 && load.volumeM3 != null && load.volumeM3 > volume) return "tooVolumetric"
+    return "tooBody"
   }
-  const tooHeavy = unfit.filter((load) => classifyUnfit(load) === "weight").length
-  const tooVolumetric = unfit.filter((load) => classifyUnfit(load) === "volume").length
-  const tooBody = unfit.filter((load) => classifyUnfit(load) === "body").length
 
-  let unprofitable = 0
-  let tooLong = 0
-  let waitingLate = 0
   for (const load of fromCity) {
-    if (loadPrice(load) <= 0 || !isFresh(load, now)) continue
-    if (!fitsSomeVehicle(load)) continue
-    const km = loadedDistanceKm(load)
-    if (km === 0) continue
-    // Ожидание даты загрузки входит в срок маршрута: груз со загрузкой через
-    // четыре дня в трёхдневный рейс не встаёт
-    const date = loadDate(load)
-    const waitHours = date
-      ? Math.max(0, (date.getTime() - now.getTime()) / 3600000)
-      : 0
-    const travelHours = legHours(0, km)
-    // Сначала — «дорога сама не влезает» (это tooLong), и только потом
-    // «дорога влезает, а ожидание даты — нет» (waitingLate): иначе причина
-    // называлась бы неверно.
-    if (travelHours + waitHours > maxHours) {
-      if (travelHours > maxHours) {
-        tooLong += 1
-      } else {
-        waitingLate += 1
-      }
+    if (loadPrice(load) <= 0) {
+      buckets.noPrice += 1
       continue
     }
-    // Считаем по лучшей машине, в которую груз влезает
+    if (!isFresh(load, now)) {
+      buckets.overdue += 1
+      continue
+    }
     const vehicle = vehicles.find((item) => loadFitsVehicle(load, item))
-    if (!vehicle) continue
+    if (!vehicle) {
+      buckets[classifyUnfit(load)] += 1
+      continue
+    }
+    const km = loadedDistanceKm(load)
+    if (km <= 0) {
+      // Расстояние неизвестно — планировать нечего. Считаем «дольше срока»,
+      // чтобы груз не пропал из объяснения вовсе.
+      buckets.tooLong += 1
+      continue
+    }
+    // Ожидание даты загрузки входит в срок маршрута: груз с загрузкой через
+    // четыре дня в трёхдневный рейс не встаёт. Сначала — «дорога сама не
+    // влезает», и только потом «дорога влезает, а ожидание даты — нет».
+    const date = loadDate(load)
+    const waitHours = date ? Math.max(0, (date.getTime() - now.getTime()) / 3600000) : 0
+    const travelHours = legHours(0, km)
+    if (travelHours > maxHours) {
+      buckets.tooLong += 1
+      continue
+    }
+    if (travelHours + waitHours > maxHours) {
+      buckets.waitingLate += 1
+      continue
+    }
     const money = legMoney(load, km, vehicle, options.fuelPriceRubPerL)
     // Работа машины вычитается, когда известна: иначе «окупаемо» считалось бы
     // только по топливу, а на экране стояли другие деньги.
-    const rate =
-      vehicle.operatingCostPerKm ?? options.operatingCostPerKmRub ?? 0
+    const rate = vehicle.operatingCostPerKm ?? options.operatingCostPerKmRub ?? 0
     const net = money.profitRub !== null ? money.profitRub - rate * km : null
-    if (net !== null && net <= 0) {
-      // Топливо и работа машины дороже ставки — плечо в чистый убыток
-      unprofitable += 1
+    const perKm = net !== null ? net / km : loadPrice(load) / km
+    if ((net !== null && net <= 0) || perKm < minPerKm) {
+      buckets.unprofitable += 1
       continue
     }
-    const perKm = net !== null ? net / km : loadPrice(load) / km
-    if (perKm < minPerKm) unprofitable += 1
+    fitting += 1
   }
+
+  const { noPrice, overdue, tooHeavy, tooVolumetric, tooBody, tooLong, waitingLate, unprofitable } =
+    buckets
+  const cityShort = shortCity(city)
+  // В фразах «грузов из «Ярославля»» город стоит в родительном падеже: без
+  // него экран писал «из «Ярославль»» — машинный текст, который логист
+  // читает как ошибку вёрстки. Не угадали падеж — оставляем как есть.
+  const cityGen = cityGenitive(city) ?? cityShort
+  const plural = (count: number, forms: [string, string, string]) => {
+    const mod10 = count % 10
+    const mod100 = count % 100
+    if (mod10 === 1 && mod100 !== 11) return forms[0]
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1]
+    return forms[2]
+  }
+
+  const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
+
+  /** Причина, которая мешает больше всего, — одной фразой. */
+  const phrases: Array<{ key: Reject; count: number; text: string }> = [
+    {
+      key: "tooHeavy",
+      count: tooHeavy,
+      text: `Грузы из «${cityGen}» не влезают в ваши машины по весу — нужна машина больше`,
+    },
+    {
+      key: "tooVolumetric",
+      count: tooVolumetric,
+      text: `Грузы из «${cityGen}» не влезают в ваши машины по объёму — нужен кузов побольше`,
+    },
+    {
+      key: "tooBody",
+      count: tooBody,
+      text: `Грузы из «${cityGen}» не встают в ваш кузов — нужен тент или реф`,
+    },
+    {
+      key: "unprofitable",
+      count: unprofitable,
+      text: `Плечи из «${cityGen}» не окупаются: ставка ниже топлива и работы машины`,
+    },
+    {
+      key: "noPrice",
+      count: noPrice,
+      text: `Из «${cityGen}» есть грузы, но ставка нигде не озвучена`,
+    },
+    {
+      key: "overdue",
+      count: overdue,
+      text: `Даты загрузки из «${cityGen}» уже прошли`,
+    },
+  ]
 
   let headline: string
   if (fromCity.length === 0) {
     headline =
       nearbyPriced > 0
-        ? `Из «${shortCity(city)}» прямо сейчас грузов нет, но рядом в радиусе ${radiusKm} км — ${nearbyPriced} со ставкой: постройте маршрут от ближайшего`
-        : `Из «${shortCity(city)}» и рядом (${radiusKm} км) грузов на бирже сейчас нет`
-  } else if (noPrice === fromCity.length) {
-    headline = `Из «${shortCity(city)}» есть грузы, но ставка нигде не озвучена`
-  } else if (tooHeavy > 0 && tooHeavy + noPrice + overdue >= fromCity.length) {
-    headline = `Грузы из «${shortCity(city)}» не влезают в ваши машины — нужна большегрузная`
-  } else if (
-    tooVolumetric > 0 &&
-    tooVolumetric + tooHeavy + tooBody + noPrice + overdue >= fromCity.length
-  ) {
-    // Отдельная строка: груз по весу проходит, а по кубатуре — нет
-    headline = `Грузы из «${shortCity(city)}» не влезают по объёму — нужна машина с большим кузовом`
-  } else if (
-    tooBody > 0 &&
-    tooBody + tooHeavy + tooVolumetric + noPrice + overdue >= fromCity.length
-  ) {
-    headline = `Грузы из «${shortCity(city)}» не встают в ваш кузов — нужен тент или реф`
-  } else if (unprofitable > 0 && unprofitable + noPrice + overdue + tooHeavy + tooVolumetric + tooBody >= fromCity.length) {
-    headline = `Плеча из «${shortCity(city)}» не окупаются — ставка ниже расходов на топливо`
-  } else if (
-    waitingLate > 0 &&
-    waitingLate + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length
-  ) {
-    headline = `Грузы из «${shortCity(city)}» загружаются позже выбранного срока — увеличьте время маршрута`
-  } else if (tooLong > 0 && tooLong + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length) {
-    headline = `Грузы из «${shortCity(city)}» есть, но ехать дольше выбранного срока — увеличьте время маршрута`
-  } else if (overdue > 0 && overdue + noPrice + tooHeavy + tooVolumetric + tooBody + unprofitable >= fromCity.length) {
-    headline = `Даты загрузки из «${shortCity(city)}» уже прошли`
+        ? `Из «${cityGen}» прямо сейчас грузов нет, но рядом в радиусе ${radiusKm} км — ${nearbyPriced} со ставкой: постройте маршрут от ближайшего`
+        : `Из «${cityGen}» и рядом (${radiusKm} км) грузов на бирже сейчас нет`
   } else {
-    headline = `Из «${shortCity(city)}» ничего не сложилось в окупаемую цепочку`
+    // Главная причина — самая массовая из «физических» (вес, объём, кузов,
+    // деньги, ставка, даты), а неудобные сроки называются отдельной фразой:
+    // это то, что логист может исправить одним движением ползунка.
+    const sorted = [...phrases].sort((a, b) => b.count - a.count)
+    const main = sorted[0]
+    const lateOnly = waitingLate + tooLong > 0 && (!main || main.count === 0) && fitting === 0
+    let leadWaiting = false
+
+    if (lateOnly) {
+      // Мешает только срок — так и говорим: это правится одним движением.
+      headline =
+        `Грузы из «${cityGen}» загружаются позже выбранного срока — ` +
+        "увеличьте время маршрута, и они встанут в кольцо"
+    } else if (fitting > 0) {
+      // Главное: груз ЕСТЬ. Раньше на этом месте стояла самая массовая
+      // причина отказа — и пятитонка в Ярославле читала «нужна большегрузная»,
+      // хотя под неё подходило 18 грузов. Логист шёл менять машину вместо
+      // того, чтобы удлинить срок.
+      headline =
+        `Из «${cityGen}» подходит ${fitting} ${plural(fitting, ["груз", "груза", "грузов"])}, ` +
+        "но кольцо с возвратом домой не собралось: обратный груз либо не влезает, " +
+        "либо не окупает порожний пробег"
+      if (main && main.count > 0) {
+        headline += `. Остальные не взяли: ${lowerFirst(main.text)}`
+      }
+    } else if (waitingLate > 0 && main && main.count > 0) {
+      // Под вес и деньги грузы проходят, мешает только срок. Это правится
+      // ползунком «время маршрута», поэтому говорим об этом первым, а не о
+      // том, что большинство грузов тяжелее машины: сменить машину — не
+      // действие на один тап.
+      headline =
+        `Грузы из «${cityGen}» подходят по весу и деньгам, но загружаются позже выбранного срока — ` +
+        `увеличьте время маршрута, и они встанут в кольцо. Остальные не взяли: ${lowerFirst(main.text)}`
+      // Срок уже назван — второй раз ту же мысль в хвосте не повторяем.
+      leadWaiting = true
+    } else if (main && main.count > 0) {
+      headline = main.text
+    } else {
+      headline = `Из «${cityGen}» ничего не сложилось в окупаемую цепочку`
+    }
+
+    const late = waitingLate + tooLong
+    if (late > 0 && !lateOnly && !leadWaiting) {
+      headline +=
+        `. Плюс ${late} ${plural(late, ["груз", "груза", "грузов"])} ` +
+        `${late === 1 ? "подходит" : "подходят"} по весу и деньгам, но ` +
+        `${late === 1 ? "не влезает" : "не влезают"} в выбранный срок — ` +
+        "загрузка позже или дорога длиннее: увеличьте время маршрута"
+    }
   }
 
   return {

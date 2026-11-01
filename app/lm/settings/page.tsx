@@ -105,6 +105,18 @@ export default function MobileSettingsPage() {
 
   // Пришли по ссылке «Заполнить реквизиты» (/lm/settings#requisites) —
   // сразу раскрываем нужный раздел, чтобы не искать его руками.
+  // Пришли по ссылке «Настроить дежурного» — раскрываем раздел и подводим
+  // к нему экран: иначе человек попадает в общий список и ищет глазами.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (window.location.hash !== "#duty") return
+    setOpenSection("duty")
+    const timer = window.setTimeout(() => {
+      document.getElementById("duty")?.scrollIntoView({ block: "start", behavior: "smooth" })
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [])
+
   useEffect(() => {
     if (typeof window === "undefined") return
     if (window.location.hash === "#requisites") setOpenSection("requisites")
@@ -336,6 +348,8 @@ export default function MobileSettingsPage() {
               ) : null}
             </Card>
 
+            {/* Якорь #duty: на него ведёт «Настроить дежурного» с экрана
+                дежурного — раздел раскрывается выше по коду (useEffect). */}
             <Card className="space-y-3">
               <button
                 type="button"

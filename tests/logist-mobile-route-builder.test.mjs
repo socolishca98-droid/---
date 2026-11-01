@@ -642,6 +642,78 @@ test("объяснение: плечо в убыток", () => {
   assert.match(reason.headline, /не окупаются/)
 })
 
+test("объяснение: каждая причина считается один раз", () => {
+  // Живой провал пятитонки в Ярославле: старый разбор считал причины
+  // независимыми фильтрами, и груз «без ставки и с прошедшей датой» попадал
+  // сразу в две. Сумма причин превышала число грузов, и любая ветка
+  // объяснения выглядела исчерпывающей.
+  const reason = explainFailure({
+    startCity: "Ярославль",
+    loads: [
+      // слишком тяжёлый
+      load({ id: "heavy", fromCity: "Ярославль", toCity: "Пермь", distanceKm: 1200, priceRub: 200000, weightKg: 20000 }),
+      // без ставки И с прошедшей датой — раньше считался дважды
+      load({ id: "old", fromCity: "Ярославль", toCity: "Тверь", distanceKm: 300, priceRub: 0, priceWithNds: null, loadingDate: "2026-10-20T08:00:00Z" }),
+      // нормальный
+      load({ id: "ok", fromCity: "Ярославль", toCity: "Кострома", distanceKm: 90, priceRub: 25000, weightKg: 3000 }),
+    ],
+    vehicles: [vehicle({ capacity: 5000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 72,
+  })
+  assert.ok(reason)
+  const sum =
+    reason.noPrice + reason.overdue + reason.tooHeavy + reason.tooVolumetric +
+    reason.tooBody + reason.tooLong + reason.waitingLate + reason.unprofitable
+  assert.ok(
+    sum <= reason.loadsFromCity,
+    `причины (${sum}) не могут быть больше грузов (${reason.loadsFromCity})`,
+  )
+  assert.equal(reason.tooHeavy, 1)
+  assert.equal(reason.noPrice, 1)
+  assert.equal(reason.overdue, 0, "груз без ставки не должен попадать ещё и в «даты прошли»")
+})
+
+test("объяснение: грузы подходят, но кольцо не собралось — не «нужна большегрузная»", () => {
+  // Тот же Ярославль: 72 груза не влезают в пятитонку, но 18 влезают. Экран
+  // писал «не влезают в ваши машины — нужна большегрузная», и логист шёл
+  // менять машину вместо того, чтобы дать рейсу больше времени.
+  const reason = explainFailure({
+    startCity: "Ярославль",
+    loads: [
+      load({ id: "heavy1", fromCity: "Ярославль", toCity: "Пермь", distanceKm: 1200, priceRub: 200000, weightKg: 20000 }),
+      load({ id: "heavy2", fromCity: "Ярославль", toCity: "Пермь", distanceKm: 1200, priceRub: 200000, weightKg: 18000 }),
+      load({ id: "ok1", fromCity: "Ярославль", toCity: "Кострома", distanceKm: 90, priceRub: 25000, weightKg: 3000 }),
+      load({ id: "ok2", fromCity: "Ярославль", toCity: "Тутаев", distanceKm: 40, priceRub: 14000, weightKg: 2000 }),
+    ],
+    vehicles: [vehicle({ capacity: 5000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+    maxHours: 72,
+  })
+  assert.ok(reason)
+  assert.match(reason.headline, /подходит 2 груза/)
+  assert.doesNotMatch(
+    reason.headline,
+    /^Грузы из .* не влезают/,
+    "нельзя начинать с «нужна большегрузная», когда грузы подходят",
+  )
+})
+
+test("объяснение: город в родительном падеже", () => {
+  const reason = explainFailure({
+    startCity: "Ярославль",
+    loads: [load({ id: "a", fromCity: "Ярославль", toCity: "Пермь", distanceKm: 1200, priceRub: 200000, weightKg: 20000 })],
+    vehicles: [vehicle({ capacity: 5000 })],
+    fuelPriceRubPerL: FUEL,
+    now: NOW,
+  })
+  assert.ok(reason)
+  // «из «Ярославля»», а не «из «Ярославль»»
+  assert.match(reason.headline, /из «Ярославля»/)
+})
+
 test("объяснение: пустой город — null", () => {
   assert.equal(explainFailure({ startCity: "", loads: [], vehicles: [], fuelPriceRubPerL: null }), null)
 })

@@ -27,9 +27,20 @@ import { LogistBottomNav, LogistSideNav } from "./bottom-nav"
  */
 const WIDE_SCREENS = /^\/lm\/routes\/assistant/
 
+/**
+ * Экраны с двумя колонками на компьютере: лента + боковая колонка.
+ *
+ * Дежурному нужны 340 px справа под состояние и машины. В 4xl (896 px) минус
+ * боковое меню 250 px на ленту остаётся 280 px — карточки грузов становятся
+ * уже телефона. Поэтому у дежурного своя ширина.
+ */
+const TWO_COLUMN_SCREENS = /^\/lm\/duty/
+
 /** Ширина сцены: узкая «читаемая» для списков, полная — для рабочих экранов. */
 export function panelWidth(pathname: string): string {
-  return WIDE_SCREENS.test(pathname) ? "lg:max-w-[1500px]" : "lg:max-w-4xl"
+  if (WIDE_SCREENS.test(pathname)) return "lg:max-w-[1500px]"
+  if (TWO_COLUMN_SCREENS.test(pathname)) return "lg:max-w-[1200px]"
+  return "lg:max-w-4xl"
 }
 
 /** Экраны, где нижнее меню прячем (переписка с водителем) */
