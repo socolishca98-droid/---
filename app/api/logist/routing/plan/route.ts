@@ -113,11 +113,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Ответ — не архив расчёта, а то, что экран покажет. Экран берёт
+    // рекомендацию и не больше трёх вариантов, поэтому отдавать все семь
+    // вариантов по каждой машине значит гнать в браузер мегабайты ради
+    // данных, которые никто не увидит (замер на пяти машинах: 143 КБ против
+    // 1,8 МБ в худшем случае полного ответа). Сколько всего нашлось — сказано
+    // числом `variantsTotal`, чтобы «показали три» не выглядело как «нашли три».
+    const VARIANTS_PER_VEHICLE = 3
     const perVehicle = result.plan.perVehicle.map((item) => ({
       vehicleId: item.vehicleId,
       organisationId: item.organisationId,
       recommended: item.recommended ? serializePlan(item.recommended) : null,
-      variants: item.variants.map(serializePlan),
+      variants: item.variants.slice(0, VARIANTS_PER_VEHICLE).map(serializePlan),
+      variantsTotal: item.variants.length,
       rejected: item.rejected,
       stats: item.stats,
     }))
