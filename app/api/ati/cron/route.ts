@@ -34,7 +34,7 @@ export const dynamic = "force-dynamic"
  */
 export const maxDuration = 60
 
-const ACTIONS = ["all", "scan", "clean"] as const
+const ACTIONS = ["all", "scan", "clean", "duty"] as const
 type Action = (typeof ACTIONS)[number]
 
 function secretMatches(provided: string | null | undefined): boolean {
@@ -167,6 +167,61 @@ async function runScheduledScan(mode: string) {
   }
 }
 
+/**
+ * Дежурный логист по расписанию.
+ *
+ * Дежурный — не экран, а постоянное наблюдение: он должен смотреть биржу и
+ * когда никто не открыл приложение. Поэтому cron после скана обходит
+ * организации с включённым дежурным и запускает его. Внутри runDuty сам
+ * решает, пора ли: рабочие часы, интервал с прошлого просмотра. Вне часов и
+ * раньше интервала он честно отвечает «не пора» и не тратит запросы к бирже.
+ *
+ * Скан здесь не повторяем (scan: false) — его только что сделал cron.
+ */
+async function runDutyForOrganizations(now: Date = new Date()) {
+  const configs = await prisma.fleetSettings.findMany({
+    where: { dutyEnabled: true },
+    select: { organizationId: true, dutyIntervalMin: true, dutyFromHour: true, dutyToHour: true },
+  })
+
+  if (configs.length === 0) {
+    return { organizations: 0, reason: "дежурный нигде не включён" }
+  }
+
+  const { runDuty } = await import("@/lib/logist-mobile/duty-service")
+  const results: Array<{
+    organizationId: string
+    ran: boolean
+    itemsCount?: number
+    reason?: string
+    error?: string
+  }> = []
+
+  for (const config of configs) {
+    // Настройки без организации — наследие общей базы: дежурному они не нужны
+    const organizationId = config.organizationId
+    if (!organizationId) continue
+    try {
+      const result = await runDuty(organizationId, { scan: false, now })
+      results.push({
+        organizationId,
+        ran: result.ran,
+        itemsCount: result.itemsCount,
+        reason: result.reason,
+      })
+    } catch (error) {
+      // Одна организация не должна ломать обход остальных
+      results.push({
+        organizationId,
+        ran: false,
+        error: error instanceof Error ? error.message : "ошибка дежурного",
+      })
+    }
+  }
+
+  return { organizations: results.length, results }
+}
+
 async function runActions(action: Action, mode: string) {
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
@@ -184,6 +239,13 @@ async function runActions(action: Action, mode: string) {
   if (action === "scan" || action === "all") {
     console.log("[CRON] Starting scan...")
     results.scan = await runScheduledScan(mode)
+  }
+
+  // Дежурный идёт после скана: биржа уже опрошена, ему остаётся решить,
+  // что из этого стоит внимания логиста.
+  if (action === "duty" || action === "all") {
+    console.log("[CRON] Starting duty...")
+    results.duty = await runDutyForOrganizations()
   }
 
   return results

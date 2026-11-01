@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
+  BellRing,
   Building2,
   ChevronDown,
   FileText,
@@ -191,6 +192,12 @@ export default function MobileSettingsPage() {
       if ((form.operatingCostPerKm ?? "") !== "") {
         payload.operatingCostPerKm = Number(form.operatingCostPerKm)
       }
+      // Дежурный: включает/выключает постоянное наблюдение за биржей.
+      // Приходит строкой из формы («true»/«false»), в API — boolean.
+      payload.dutyEnabled = (form.dutyEnabled ?? "true") === "true"
+      for (const field of ["dutyIntervalMin", "dutyFromHour", "dutyToHour"] as const) {
+        if ((form[field] ?? "") !== "") payload[field] = Number(form[field])
+      }
 
       const response = await fetch("/api/fleet/settings", {
         method: "POST",
@@ -325,6 +332,76 @@ export default function MobileSettingsPage() {
                     inputMode="decimal"
                     hint="Ориентир для 20-тонника — 25–30 ₽/км, для пятитонки — 15–18 ₽/км. Отдельной машине можно поставить свою ставку в её карточке. 0 — не вычитать."
                   />
+                </div>
+              ) : null}
+            </Card>
+
+            <Card className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setOpenSection(openSection === "duty" ? null : "duty")}
+                className="flex w-full items-center justify-between gap-3"
+              >
+                <SectionHeading icon={<BellRing className="h-4 w-4" />} title="Дежурный" />
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${openSection === "duty" ? "rotate-180" : ""}`}
+                />
+              </button>
+              <p className="-mt-1 text-[12.5px] text-muted-foreground">
+                Следит за биржей в рабочие часы и показывает только то, что стоит внимания:
+                влезает в машину, оставляет деньги и не уводит далеко. Ночью молчит — грузы
+                выкладывают днём.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => set("dutyEnabled", (form.dutyEnabled ?? "true") === "true" ? "false" : "true")}
+                className="flex min-h-[48px] w-full items-center justify-between rounded-xl border border-border bg-card px-3.5"
+              >
+                <span className="text-[14.5px] text-foreground">
+                  {(form.dutyEnabled ?? "true") === "true" ? "Дежурный включён" : "Дежурный выключен"}
+                </span>
+                <span
+                  className={`relative h-6 w-11 rounded-full transition-colors ${
+                    (form.dutyEnabled ?? "true") === "true" ? "bg-primary" : "bg-muted"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                      (form.dutyEnabled ?? "true") === "true" ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+
+              {openSection === "duty" ? (
+                <div className="space-y-3">
+                  <Field
+                    label="Смотреть биржу каждые, минут"
+                    value={form.dutyIntervalMin ?? ""}
+                    onChange={(value) => set("dutyIntervalMin", value)}
+                    placeholder="Как часто смотреть"
+                    inputMode="numeric"
+                    hint="15 минут — рабочий ритм: груз успевает полежать, пока вы звоните по прошлому."
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="Рабочие часы с, ч"
+                      value={form.dutyFromHour ?? ""}
+                      onChange={(value) => set("dutyFromHour", value)}
+                      placeholder="Начало"
+                      inputMode="numeric"
+                      hint="Например, 7 — начало смены"
+                    />
+                    <Field
+                      label="по, ч"
+                      value={form.dutyToHour ?? ""}
+                      onChange={(value) => set("dutyToHour", value)}
+                      placeholder="Конец"
+                      inputMode="numeric"
+                      hint="Например, 21 — конец смены"
+                    />
+                  </div>
                 </div>
               ) : null}
             </Card>

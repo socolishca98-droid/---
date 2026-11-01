@@ -277,6 +277,24 @@ export default function RouteAssistantPage() {
   const bodyOverridesRef = useRef<string[]>([])
   /** Согласованные звонком грузы — пересборка их сохраняет */
   const [keepIds, setKeepIds] = useState<string[]>([])
+  /**
+   * Пришли из дежурного по конкретному грузу (`?keep=<id>`): груз кладём в
+   * «согласованные», чтобы сборка его учитывала, а не выбрасывала молча.
+   * Собирать не запускаем сами — логист сначала видит, что взято в расчёт.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const keep = params.get("keep") || params.get("load")
+    if (!keep) return
+    const ids = keep.split(",").map((id) => id.trim()).filter(Boolean)
+    if (ids.length === 0) return
+    keepRef.current = ids
+    setKeepIds(ids)
+    toast.message("Груз из дежурного взят в расчёт", {
+      description: "Нажмите «Собрать» — маршрут будет строиться вокруг него",
+    })
+  }, [])
   /** Грузы, которые убираем: отказались или логист исключил */
   const [excludeIds, setExcludeIds] = useState<string[]>([])
   const [refreshing, setRefreshing] = useState(false)

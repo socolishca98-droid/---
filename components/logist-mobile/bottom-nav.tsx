@@ -1,18 +1,21 @@
 // components/logist-mobile/bottom-nav.tsx
 //
-// Нижняя навигация мобильной панели логиста: пять разделов, крупные зоны
+// Нижняя навигация мобильной панели логиста: шесть разделов, крупные зоны
 // нажатия, учёт «безопасной зоны» iPhone (env(safe-area-inset-bottom)).
 
 "use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Package, Route as RouteIcon, Map as MapIcon, Menu } from "lucide-react"
+import { BellRing, Home, Package, Route as RouteIcon, Map as MapIcon, Menu } from "lucide-react"
 
 const TABS = [
   { href: "/lm", label: "Главная", icon: Home, exact: true },
   { href: "/lm/orders", label: "Заказы", icon: Package },
   { href: "/lm/routes", label: "Рейсы", icon: RouteIcon },
+  // Дежурный — не отчёт, а постоянное наблюдение за биржей: он и должен быть
+  // на виду, иначе про него вспоминают только когда груз уже уехал.
+  { href: "/lm/duty", label: "Дежурный", icon: BellRing },
   { href: "/lm/map", label: "Карта", icon: MapIcon },
   { href: "/lm/more", label: "Ещё", icon: Menu },
 ]
@@ -51,7 +54,7 @@ export function LogistBottomNav() {
  * Левое меню компьютерной версии.
  *
  * На мониторе нижняя полоса неудобна: она отбирает высоту у списков и требует
- * тянуться вниз. Здесь те же пять разделов, но постоянной колонкой слева —
+ * тянуться вниз. Здесь те же разделы, но постоянной колонкой слева —
  * рабочее место логиста за столом, а не в поле.
  */
 export function LogistSideNav() {

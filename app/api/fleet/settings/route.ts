@@ -76,6 +76,18 @@ const COST_LIMITS: Record<(typeof COST_FIELDS)[number], { min: number; max: numb
   operatingCostPerKm: { min: 0, max: 300 },
 }
 
+/**
+ * Дежурный: включён ли, как часто смотрит биржу и в каких часах.
+ * Часы — рабочее время организации: грузы выкладывают днём, ночью смотреть
+ * нечего, и дежурный не должен будить логиста ради пустого списка.
+ */
+const DUTY_INT_FIELDS = ["dutyIntervalMin", "dutyFromHour", "dutyToHour"] as const
+const DUTY_INT_LIMITS: Record<(typeof DUTY_INT_FIELDS)[number], { min: number; max: number }> = {
+  dutyIntervalMin: { min: 5, max: 180 },
+  dutyFromHour: { min: 0, max: 23 },
+  dutyToHour: { min: 1, max: 24 },
+}
+
 /** Целочисленные нормы: минуты непрерывного движения и минуты перерыва. */
 const INT_FIELDS = ["restDriveLimitMin", "restMinBreakMin"] as const
 
@@ -101,7 +113,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
 
-    const allowed = new Set<string>([...TEXT_FIELDS, ...NUMBER_FIELDS, ...INT_FIELDS, ...COST_FIELDS])
+    const allowed = new Set<string>([
+      ...TEXT_FIELDS,
+      ...NUMBER_FIELDS,
+      ...INT_FIELDS,
+      ...COST_FIELDS,
+      ...DUTY_INT_FIELDS,
+      "dutyEnabled",
+    ])
     const unknownFields = Object.keys(body).filter((key) => !allowed.has(key))
     if (unknownFields.length > 0) {
       return NextResponse.json(
@@ -110,7 +129,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const data: Record<string, string | number | null> = {}
+    const data: Record<string, string | number | boolean | null> = {}
 
     for (const field of TEXT_FIELDS) {
       if (!(field in body)) continue
@@ -183,6 +202,32 @@ export async function POST(request: NextRequest) {
       }
       const limits = COST_LIMITS[field]
       data[field] = Math.min(limits.max, Math.max(limits.min, value))
+    }
+
+    for (const field of DUTY_INT_FIELDS) {
+      if (!(field in body)) continue
+      const raw = body[field]
+      if (raw === null || raw === undefined || raw === "") continue
+      const value = Number(raw)
+      if (!Number.isFinite(value)) {
+        return NextResponse.json(
+          { success: false, error: `Поле «${field}» должно быть числом` },
+          { status: 400 },
+        )
+      }
+      const limits = DUTY_INT_LIMITS[field]
+      data[field] = Math.round(Math.min(limits.max, Math.max(limits.min, value)))
+    }
+
+    if ("dutyEnabled" in body) {
+      const raw = body.dutyEnabled
+      if (typeof raw !== "boolean") {
+        return NextResponse.json(
+          { success: false, error: "Поле «dutyEnabled» должно быть true или false" },
+          { status: 400 },
+        )
+      }
+      data.dutyEnabled = raw
     }
 
     const parkName = typeof data.parkName === "string" ? data.parkName : undefined

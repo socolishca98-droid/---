@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T19:06:02.613Z",
+  "generatedAt": "2026-11-01T14:19:36.582Z",
   "endpoints": [
     {
       "method": "GET",
@@ -425,6 +425,16 @@
       "method": "POST",
       "route": "/api/logist-mobile/assistant/compare",
       "group": "logist-mobile"
+    },
+    {
+      "method": "GET",
+      "route": "/api/logist/duty",
+      "group": "logist"
+    },
+    {
+      "method": "POST",
+      "route": "/api/logist/duty",
+      "group": "logist"
     },
     {
       "method": "POST",

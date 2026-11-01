@@ -89,7 +89,15 @@ export function mobileLogistTarget(pathname: string): string | null {
 }
 
 /** Разделы нижнего меню: это первый уровень, стрелки «назад» у них нет. */
-const TAB_SECTIONS = new Set(["/lm/orders", "/lm/routes", "/lm/map", "/lm/more"])
+const TAB_SECTIONS = new Set([
+  "/lm/orders",
+  "/lm/routes",
+  // Дежурный — постоянный раздел, а не настройка: он в нижнем меню, поэтому
+  // его родитель «/lm», а не «Ещё».
+  "/lm/duty",
+  "/lm/map",
+  "/lm/more",
+])
 
 /**
  * Экраны, которые открываются не из «Ещё», а изнутри другого раздела:

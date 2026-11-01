@@ -770,6 +770,15 @@ model FleetSettings {
   /// дороги, стоянки). Из этого числа помощник считает «сколько останется»,
   /// поэтому оно должно быть своё у каждой организации, а не зашито в код.
   operatingCostPerKm Float @default(24)
+  // ── Дежурный: смотрит биржу регулярно в рабочих часах организации.
+  //    Ночью новых грузов почти нет: компании выкладывают их в рабочее время,
+  //    поэтому «ночная сводка» опаздывала бы на весь день.
+  dutyEnabled     Boolean @default(true)
+  /// Интервал просмотра, минуты. 0 — только вручную.
+  dutyIntervalMin Int     @default(15)
+  /// Рабочие часы организации: с какого и по какой час дежурный смотрит.
+  dutyFromHour    Int     @default(7)
+  dutyToHour      Int     @default(21)
   updatedAt   DateTime @updatedAt
 
   @@index([organizationId])
@@ -999,6 +1008,8 @@ model Organization {
   /// Подключение к ATI.SU (одно на организацию) и строки накопленной базы грузов
   atiConnection AtiConnection?
   atiCacheRows  AtiCache[]
+  dutyRuns      DutyRun[]
+  dutySeen      DutySeen[]
 
 }
 
@@ -1216,4 +1227,46 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
   @@index([organizationId])
+}
+
+// ============================================
+// ДЕЖУРНЫЙ ЛОГИСТ
+// ============================================
+
+/// Один просмотр биржи дежурным: когда смотрел, сколько увидел, что нашёл.
+/// Нужен и для графика (интервал), и для честного «смотрели 09:40».
+model DutyRun {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  startedAt      DateTime      @default(now())
+  finishedAt     DateTime?
+  /// Сколько грузов было в накопленной базе на момент просмотра
+  poolSize       Int           @default(0)
+  /// Сколько из них дежурный увидел впервые
+  freshCount     Int           @default(0)
+  /// Сколько пунктов попало в ленту «стоит внимания»
+  itemsCount     Int           @default(0)
+  /// Что произошло словами (ошибка биржи, пусто, «вне рабочих часов»)
+  note           String?
+
+  @@index([organizationId, startedAt])
+}
+
+/// Груз, который дежурный уже показывал: по этой таблице «новое» отличается
+/// от «давно висит». Без неё каждый просмотр показывал бы всю биржу заново.
+model DutySeen {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  atiLoadId      String
+  firstSeenAt    DateTime      @default(now())
+  lastSeenAt     DateTime      @default(now())
+  /// Ставка на момент первой встречи: по ней видно, что груз подорожал
+  priceRub       Int?
+  fromCity       String
+  toCity         String
+
+  @@unique([organizationId, atiLoadId])
+  @@index([organizationId, firstSeenAt])
 }
