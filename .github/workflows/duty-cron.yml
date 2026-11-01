@@ -1,0 +1,40 @@
+name: Дежурный логист
+
+# Дежурный — не экран, а постоянное наблюдение: он должен смотреть биржу и
+# тогда, когда никто не открыл приложение. Vercel на тарифе Hobby запускает
+# собственные cron-задачи только раз в сутки, поэтому ритм задаёт GitHub:
+# каждые 15 минут дёргаем /api/ati/cron?action=duty.
+#
+# Что происходит внутри: эндпоинт обходит организации с включённым дежурным и
+# для каждой решает сам — рабочие часы, интервал с прошлого просмотра. Вне
+# часов и раньше интервала он отвечает «не пора» и не тратит запросы к бирже.
+# Поэтому частый запуск безопасен: лишнего сбора не будет.
+#
+# Секрет хранится в настройках репозитория (Settings → Secrets → Actions),
+# в коде и файлах его нет.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  duty:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Позвать дежурного
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET не задан в секретах репозитория — дежурный не запустится"
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/duty.json -w "%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "https://loginex-ochre.vercel.app/api/ati/cron?action=duty")
+          echo "HTTP $code"
+          cat /tmp/duty.json
+          # 500 — реальная поломка, о ней должен узнать человек.
+          # 503 (не задан CRON_SECRET на сервере) и 401 — тоже.
+          if [ "$code" -ge 400 ]; then exit 1; fi
