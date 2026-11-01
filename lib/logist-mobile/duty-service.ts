@@ -23,6 +23,7 @@ import {
   type DutySettings,
   type DutyVehicleHint,
 } from "@/lib/logist-mobile/duty"
+import { displayCity } from "@/lib/logist-mobile/format"
 
 /** Что видит экран дежурного. */
 export interface DutyState {
@@ -120,7 +121,10 @@ export async function dutySettingsFor(organizationId: string): Promise<{
       toHour: settings?.dutyToHour ?? 21,
     }),
     operatingCostPerKm: settings?.operatingCostPerKm ?? DEFAULT_OPERATING_COST_PER_KM,
-    baseCity: (settings?.baseAddress ?? "").split(/[,.;]/)[0].trim(),
+    // Город базы, а не область: в адресе «Московская область, Домодедово, …»
+    // первым идёт регион, и проверка «груз у базы» не срабатывала ни на одном
+    // грузе — дежурный молчал при полной бирже.
+    baseCity: settings?.baseAddress ? displayCity(settings.baseAddress) : "",
     basePoint,
   }
 }
@@ -149,10 +153,33 @@ export async function awayVehicles(organizationId: string): Promise<AwayVehicle[
     away.push({
       plate,
       city,
-      kind: route.status === "planned" ? "доедет" : "доедет",
+      // В плане машина ещё на базе, в пути — уже едет: и то и другое значит
+      // «скоро будет в этом городе», поэтому вид один.
+      kind: "доедет",
     })
   }
   return away
+}
+
+/**
+ * Разбор сохранённой ленты прошлого просмотра.
+ * Битый JSON — не повод падать: дежурный просто покажет новое.
+ */
+function parseFeed(raw: string | null): DutyItem[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (item): item is DutyItem =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        typeof (item as DutyItem).atiLoadId === "string" &&
+        typeof (item as DutyItem).score === "number",
+    )
+  } catch {
+    return []
+  }
 }
 
 /** Что показать на экране дежурного — без запуска сбора. */
@@ -185,11 +212,10 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
   const seen = await prisma.dutySeen.findMany({
     where: { organizationId },
     select: { atiLoadId: true, firstSeenAt: true, priceRub: true },
-    orderBy: { firstSeenAt: "desc" },
-    take: 2000,
+    take: 50000,
   })
 
-  const items = buildDutyFeed({
+  const found = buildDutyFeed({
     loads: pool,
     seen,
     vehicles: vehicles as unknown as BuilderVehicle[],
@@ -202,6 +228,20 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     now,
   })
 
+  // Что показал прошлый просмотр. Само по себе «виденное» означает, что
+  // повторно дежурный этот груз не покажет, и экран оставался пустым сразу
+  // после нажатия «Посмотреть». Поэтому лента прошлого просмотра остаётся,
+  // пока груз висит на бирже; новые грузы встают рядом и сортируют её заново.
+  const lastFeed = parseFeed(lastRun?.itemsJson ?? null)
+  const poolIds = new Set(pool.map((load) => load.loadId || load.id))
+  const items = [...found]
+  for (const item of lastFeed) {
+    if (!poolIds.has(item.atiLoadId)) continue
+    if (items.some((existing) => existing.atiLoadId === item.atiLoadId)) continue
+    items.push(item)
+  }
+  items.sort((a, b) => b.score - a.score)
+
   return {
     settings: config.settings,
     due: due.due,
@@ -209,7 +249,7 @@ export async function getDutyState(organizationId: string, now: Date = new Date(
     nextAt: due.nextAt ? due.nextAt.toISOString() : null,
     lastRunAt: lastRun?.startedAt ? lastRun.startedAt.toISOString() : null,
     poolSize: pool.length,
-    items,
+    items: items.slice(0, 20),
     hints: vehicleHints({
       away,
       loads: pool,
@@ -278,7 +318,9 @@ export async function runDuty(
   const seenRows = await prisma.dutySeen.findMany({
     where: { organizationId },
     select: { atiLoadId: true, firstSeenAt: true, priceRub: true },
-    take: 5000,
+    // Без orderBy: нужны просто «все, кого уже видели». Ограничение большое,
+    // чтобы давно висящий груз не всплывал как новый на большой базе.
+    take: 50000,
   })
   const seenIds = new Set(seenRows.map((row) => row.atiLoadId))
   const fresh = pool.filter((load) => !seenIds.has(load.loadId || load.id))
@@ -312,20 +354,48 @@ export async function runDuty(
   })
 
   // Запоминаем всё, что видели: следующая лента покажет только новое.
-  for (const load of pool) {
-    const atiLoadId = load.loadId || load.id
-    await prisma.dutySeen.upsert({
-      where: { organizationId_atiLoadId: { organizationId, atiLoadId } },
-      create: {
-        organizationId,
-        atiLoadId,
-        firstSeenAt: now,
-        lastSeenAt: now,
-        priceRub: load.priceRub,
-        fromCity: load.fromCity,
-        toCity: load.toCity,
-      },
-      update: { lastSeenAt: now },
+  //
+  // Пачками, а не по строке: пул региона — это тысячи грузов, и по одному
+  // upsert на каждый просмотр превращал «посмотреть биржу» в минуту ожидания.
+  // Новые вставляем одним createMany (повторы пропускаем — их видела
+  // параллельная вкладка), известным просто обновляем отметку времени.
+  const knownIds = new Set(seenRows.map((row) => row.atiLoadId))
+  const freshRows = pool
+    .filter((load) => !knownIds.has(load.loadId || load.id))
+    .map((load) => ({
+      organizationId,
+      atiLoadId: load.loadId || load.id,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      priceRub: load.priceRub,
+      fromCity: load.fromCity,
+      toCity: load.toCity,
+    }))
+
+  for (let index = 0; index < freshRows.length; index += 500) {
+    const batch = freshRows.slice(index, index + 500)
+    try {
+      await prisma.dutySeen.createMany({ data: batch })
+    } catch {
+      // Кто-то успел записать тот же груз между чтением и вставкой (две
+      // вкладки, cron и кнопка) — досыпаем по одной, повтор пропускаем.
+      for (const row of batch) {
+        await prisma.dutySeen.upsert({
+          where: { organizationId_atiLoadId: { organizationId, atiLoadId: row.atiLoadId } },
+          create: row,
+          update: { lastSeenAt: now },
+        })
+      }
+    }
+  }
+
+  const seenNow = pool
+    .map((load) => load.loadId || load.id)
+    .filter((atiLoadId) => knownIds.has(atiLoadId))
+  for (let index = 0; index < seenNow.length; index += 500) {
+    await prisma.dutySeen.updateMany({
+      where: { organizationId, atiLoadId: { in: seenNow.slice(index, index + 500) } },
+      data: { lastSeenAt: now },
     })
   }
 
@@ -337,6 +407,8 @@ export async function runDuty(
       freshCount: fresh.length,
       itemsCount: items.length,
       note: note || null,
+      // Лента этого просмотра: следующий GET покажет её, а не пустоту
+      itemsJson: JSON.stringify(items),
     },
   })
 

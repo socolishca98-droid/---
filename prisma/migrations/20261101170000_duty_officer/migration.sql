@@ -36,3 +36,6 @@ ALTER TABLE "DutyRun" DROP CONSTRAINT IF EXISTS "DutyRun_organizationId_fkey";
 ALTER TABLE "DutyRun" ADD CONSTRAINT "DutyRun_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "DutySeen" DROP CONSTRAINT IF EXISTS "DutySeen_organizationId_fkey";
 ALTER TABLE "DutySeen" ADD CONSTRAINT "DutySeen_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Лента последнего просмотра: экран показывает её, пока не появится новое
+ALTER TABLE "DutyRun" ADD COLUMN IF NOT EXISTS "itemsJson" TEXT;

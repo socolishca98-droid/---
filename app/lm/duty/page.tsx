@@ -32,7 +32,7 @@ import { toast } from "sonner"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { Card, EmptyState, ErrorState, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
-import { useJsonApi } from "@/hooks/use-json-api"
+import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { formatMoney } from "@/lib/logist-mobile/format"
 
@@ -112,35 +112,30 @@ export default function DutyPage() {
 
   const lookNow = async () => {
     setBusy(true)
-    try {
-      const response = await fetch("/api/logist/duty", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ force: true }),
+    // apiSend сам добавляет CSRF-заголовок: без него сервер отвечает 403, и
+    // кнопка «Посмотреть» молча не работала бы.
+    const result = await apiSend<DutyStateDto & { result?: { itemsCount: number; note: string } }>(
+      "/api/logist/duty",
+      "POST",
+      { force: true },
+    )
+    setBusy(false)
+
+    if (!result.ok || !result.data?.success) {
+      toast.error(result.error || result.data?.error || "Не удалось посмотреть биржу")
+      return
+    }
+
+    duty.reload()
+    const count = result.data.result?.itemsCount ?? 0
+    if (count > 0) {
+      toast.success(`${count} ${count === 1 ? "груз" : "грузов"} стоит внимания`, {
+        description: result.data.result?.note ?? result.data.headline,
       })
-      const payload = (await response.json().catch(() => null)) as
-        | (DutyStateDto & { result?: { itemsCount: number; note: string } })
-        | null
-      if (!response.ok || !payload?.success) {
-        toast.error(payload?.error || "Не удалось посмотреть биржу")
-        return
-      }
-      duty.reload()
-      const count = payload.result?.itemsCount ?? 0
-      if (count > 0) {
-        toast.success(`${count} ${count === 1 ? "груз" : "грузов"} стоит внимания`, {
-          description: payload.result?.note ?? payload.headline,
-        })
-      } else {
-        toast.message("Нового ничего", {
-          description: payload.headline || "Всё, что есть, дежурный уже показывал",
-        })
-      }
-    } catch {
-      toast.error("Сервер недоступен")
-    } finally {
-      setBusy(false)
+    } else {
+      toast.message("Нового ничего", {
+        description: result.data.headline || "Всё, что есть, дежурный уже показывал",
+      })
     }
   }
 

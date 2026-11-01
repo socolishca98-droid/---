@@ -413,12 +413,19 @@ export function buildDutyFeed(input: DutyFeedInput): DutyItem[] {
     .slice(0, limit)
 }
 
+/**
+ * «Скоро уйдёт»: загрузка в ближайшие 12 часов.
+ *
+ * Окно узкое намеренно. С сутками в него попадало почти всё, и на каждом
+ * просмотре дежурный повторял один и тот же список — лента превращалась в
+ * шум, а логист перестаёт читать шум. 12 часов — это «звонить сейчас».
+ */
 function isAlmostGone(load: BuilderLoad, now: Date): boolean {
   if (!load.loadingDate) return false
   const date = new Date(load.loadingDate)
   if (Number.isNaN(date.getTime())) return false
   const hours = (date.getTime() - now.getTime()) / 3600000
-  return hours >= -12 && hours <= 24
+  return hours >= -12 && hours <= 12
 }
 
 function dutyTitle(
@@ -472,7 +479,7 @@ function dutyNote(input: {
   if (kind === "expiring") {
     return `Загрузка ${formatDateShortRu(load.loadingDate)} — времени договориться мало. ${money}.`
   }
-  return `${money}. Дежурный увидел его первым разом.`
+  return `${money}. Раньше дежурный его не видел.`
 }
 
 function formatDateShortRu(value: Date | string | null | undefined): string {
@@ -548,7 +555,9 @@ export function vehicleHints(input: {
     }
     hints.push({
       plate: away.plate,
-      city: away.city,
+      // Город, а не адрес: «Калуга, улица Московская, 289» в строке «машина → …»
+      // читается как ошибка вёрстки.
+      city: shortCity(away.city),
       kind: away.kind,
       loadsThere: there.length,
       fitting,
