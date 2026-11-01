@@ -65,6 +65,17 @@ const TEXT_FIELDS = [
 
 const NUMBER_FIELDS = ["baseLat", "baseLng"] as const
 
+/**
+ * Ставка работы машины, ₽/км. Из неё помощник считает, сколько ОСТАНЕТСЯ
+ * после топлива и работы машины, поэтому это число должно приходить из
+ * настроек организации, а не быть зашитым в код.
+ * 0 — не вычитать (тогда «остаётся» = «после топлива»).
+ */
+const COST_FIELDS = ["operatingCostPerKm"] as const
+const COST_LIMITS: Record<(typeof COST_FIELDS)[number], { min: number; max: number }> = {
+  operatingCostPerKm: { min: 0, max: 300 },
+}
+
 /** Целочисленные нормы: минуты непрерывного движения и минуты перерыва. */
 const INT_FIELDS = ["restDriveLimitMin", "restMinBreakMin"] as const
 
@@ -90,7 +101,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
 
-    const allowed = new Set<string>([...TEXT_FIELDS, ...NUMBER_FIELDS, ...INT_FIELDS])
+    const allowed = new Set<string>([...TEXT_FIELDS, ...NUMBER_FIELDS, ...INT_FIELDS, ...COST_FIELDS])
     const unknownFields = Object.keys(body).filter((key) => !allowed.has(key))
     if (unknownFields.length > 0) {
       return NextResponse.json(
@@ -157,6 +168,21 @@ export async function POST(request: NextRequest) {
       const limits = INT_LIMITS[field]
       const clamped = Math.round(Math.min(limits.max, Math.max(limits.min, value)))
       data[field] = clamped
+    }
+
+    for (const field of COST_FIELDS) {
+      if (!(field in body)) continue
+      const raw = body[field]
+      if (raw === null || raw === undefined || raw === "") continue
+      const value = Number(raw)
+      if (!Number.isFinite(value)) {
+        return NextResponse.json(
+          { success: false, error: `Поле «${field}» должно быть числом ₽/км` },
+          { status: 400 },
+        )
+      }
+      const limits = COST_LIMITS[field]
+      data[field] = Math.min(limits.max, Math.max(limits.min, value))
     }
 
     const parkName = typeof data.parkName === "string" ? data.parkName : undefined

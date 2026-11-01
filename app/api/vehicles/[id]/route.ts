@@ -134,7 +134,12 @@ export async function PATCH(request: NextRequest,
       data.capacity = Number.isNaN(c) ? 0 : c
     }
     // Топливные поля: число, пусто — сброс в null
-    for (const key of ["fuelTankL", "fuelConsumptionPer100", "fuelLevelL"] as const) {
+    for (const key of [
+      "fuelTankL",
+      "fuelConsumptionPer100",
+      "fuelLevelL",
+      "operatingCostPerKm",
+    ] as const) {
       const raw = (body as Record<string, unknown>)[key]
       if (raw === undefined) continue
       if (raw === null || raw === "") {

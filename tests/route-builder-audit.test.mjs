@@ -692,3 +692,71 @@ test("«укоротить ради обратки» не отменяет бо�
     "выбран вариант с хвостом, а не укороченный",
   )
 })
+
+test("работа машины: своя ставка у машины, иначе — ставка организации", () => {
+  // Раньше это была константа 24 ₽/км на всех: на пятитонке она завышала
+  // расходы, на 20-тоннике занижала. Теперь ставка приходит из настроек
+  // организации, а у конкретной машины может быть своя.
+  const MOSCOW = { lat: 55.75, lng: 37.62 }
+  const load1 = load({
+    id: "l1",
+    fromCity: BASE,
+    toCity: "Москва",
+    fromPoint: BASE_POINT,
+    toPoint: MOSCOW,
+    distanceKm: 500,
+    priceRub: 120000,
+    weightKg: 5000,
+  })
+
+  const build = (over = {}, vehicleOver = {}) =>
+    buildRoute({
+      startCity: BASE,
+      loads: [load1],
+      vehicles: [vehicle(vehicleOver)],
+      fuelPriceRubPerL: FUEL,
+      keepIds: [],
+      excludeIds: [],
+      detourKm: 150,
+      startRadiusKm: 300,
+      maxHours: 96,
+      startPoint: BASE_POINT,
+      now: NOW,
+      ...over,
+    })
+
+  // 1. Ставка организации: 20 ₽/км
+  const org = build({ operatingCostPerKmRub: 20 })
+  assert.ok(org)
+  assert.equal(org.operatingCostPerKm, 20, "взята ставка организации")
+  assert.equal(
+    org.operatingCostRub,
+    Math.round(20 * org.totalDistanceKm),
+    "работа машины = ставка × весь пробег",
+  )
+  assert.equal(
+    org.netProfitRub,
+    (org.totalProfitRub ?? 0) - (org.operatingCostRub ?? 0),
+    "остаток = после топлива − работа машины",
+  )
+
+  // 2. У машины своя ставка — она главнее ставки организации
+  const own = build({ operatingCostPerKmRub: 20 }, { operatingCostPerKm: 33 })
+  assert.ok(own)
+  assert.equal(own.operatingCostPerKm, 33, "ставка машины переопределяет организацию")
+  assert.ok(
+    (own.netProfitRub ?? 0) < (org.netProfitRub ?? 0),
+    "дороже машина — меньше остаётся",
+  )
+
+  // 3. Нулевая ставка у машины — не вычитаем вовсе
+  const free = build({ operatingCostPerKmRub: 20 }, { operatingCostPerKm: 0 })
+  assert.ok(free)
+  assert.equal(free.operatingCostRub, null)
+  assert.equal(free.netProfitRub, free.totalProfitRub, "0 ₽/км отключает вычет")
+
+  // 4. Ничего не задано — ориентир по умолчанию, а не ноль
+  const fallback = build()
+  assert.ok(fallback)
+  assert.equal(fallback.operatingCostPerKm, DEFAULT_OPERATING_COST_PER_KM)
+})

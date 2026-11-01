@@ -40,6 +40,7 @@ export interface EditableVehicle {
   fuelTankL?: number | string | null
   fuelConsumptionPer100?: number | string | null
   fuelLevelL?: number | string | null
+  operatingCostPerKm?: number | string | null
 }
 
 interface AddVehicleDialogProps {
@@ -65,6 +66,8 @@ export interface VehicleFormData {
   fuelTankL: string
   fuelConsumptionPer100: string
   fuelLevelL: string
+  /** Работа ЭТОЙ машины, ₽/км. Пусто — ставка организации из настроек. */
+  operatingCostPerKm: string
 }
 
 const vehicleTypes = ["Фура", "Газель", "Рефрижератор", "Бортовая", "Тент", "Изотерм"]
@@ -88,6 +91,7 @@ const initialFormData: VehicleFormData = {
   fuelTankL: "",
   fuelConsumptionPer100: "",
   fuelLevelL: "",
+  operatingCostPerKm: "",
 }
 
 const text = (value: unknown): string =>
@@ -131,6 +135,7 @@ export function AddVehicleDialog({
       fuelTankL: text(vehicle.fuelTankL),
       fuelConsumptionPer100: text(vehicle.fuelConsumptionPer100),
       fuelLevelL: text(vehicle.fuelLevelL),
+      operatingCostPerKm: text(vehicle.operatingCostPerKm),
     })
   }, [open, vehicle])
 
@@ -356,6 +361,21 @@ export function AddVehicleDialog({
                   placeholder="25"
                   value={formData.fuelConsumptionPer100}
                   onChange={(e) => setFormData({ ...formData, fuelConsumptionPer100: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="operatingCostPerKm" className="text-xs text-muted-foreground">
+                  Работа машины, ₽/км
+                </Label>
+                <Input
+                  id="operatingCostPerKm"
+                  type="number"
+                  placeholder="как в настройках"
+                  value={formData.operatingCostPerKm}
+                  onChange={(e) =>
+                    setFormData({ ...formData, operatingCostPerKm: e.target.value })
+                  }
                   disabled={isSubmitting}
                 />
               </div>

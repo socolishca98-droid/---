@@ -35,6 +35,7 @@ import { findRegionByNameLocal } from "@/lib/ati/regions"
 import { fuelPriceForRegion, fuelPriceNote } from "@/lib/fleet/fuel-price"
 import {
   buildRouteVariants,
+  DEFAULT_OPERATING_COST_PER_KM,
   explainFailure,
   haversineKm,
   HOURS_STEPS,
@@ -388,6 +389,8 @@ export default function RouteAssistantPage() {
         }
         // Координаты стоянки. Без них близость городов не посчитать —
         // подсказки останутся просто списком без километража.
+        const cost = Number(data?.settings?.operatingCostPerKm)
+        if (alive && Number.isFinite(cost) && cost >= 0) setOperatingCostPerKm(cost)
         const lat = Number(data?.settings?.baseLat)
         const lng = Number(data?.settings?.baseLng)
         if (alive && Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0)) {
@@ -898,6 +901,12 @@ export default function RouteAssistantPage() {
   // Розница по округам различается на 16 ₽/л (ЦФО 81 ₽ против ДФО 97 ₽), а в
   // расчёте была зашита одна цифра 62 ₽ — прибыль выходила выше реальной.
   // Берём цену региона базы: там машина заправляется перед выездом.
+  // Работа машины, ₽/км — из настроек организации. Раньше это была константа
+  // 24 ₽/км на всех: на пятитонке она завышала расходы, на 20-тоннике
+  // занижала. Ставка своя у каждой организации, у машины может быть своя.
+  const [operatingCostPerKm, setOperatingCostPerKm] = useState<number>(
+    DEFAULT_OPERATING_COST_PER_KM,
+  )
   const fuelPrice = useMemo(() => fuelPriceForRegion(baseRegionName), [baseRegionName])
   const fuelNote = useMemo(() => fuelPriceNote(baseRegionName), [baseRegionName])
 
@@ -1004,6 +1013,9 @@ export default function RouteAssistantPage() {
         startRadiusKm,
         maxHours: hoursLimit ?? maxHours,
         startPoint,
+        // Ставка работы машины из настроек организации: без неё «прибыль» на
+        // экране снова станет «после одного топлива».
+        operatingCostPerKmRub: operatingCostPerKm,
       })
       setVariants(built)
       setVariantIndex(0)
@@ -1949,6 +1961,7 @@ export default function RouteAssistantPage() {
             maxHours={maxHours}
             sourceNote={loadsState.data?.source?.note ?? null}
             fuelPrice={fuelPrice}
+            operatingCostPerKm={operatingCostPerKm}
             onMoreHours={() => {
               const longer = nextHoursStep(maxHours)
               setMaxHours(longer)
@@ -2743,6 +2756,7 @@ function FailedPhase({
   onMoreHours,
   sourceNote,
   fuelPrice,
+  operatingCostPerKm,
   vehicleId,
   onPickVehicle,
   expiredCount,
@@ -2776,6 +2790,8 @@ function FailedPhase({
   sourceNote: string | null
   /** Цена дизеля для расчёта — по региону базы, а не константа */
   fuelPrice: number
+  /** Работа машины, ₽/км — из настроек организации */
+  operatingCostPerKm: number
 }) {
   const selected = vehicles.find((vehicle) => vehicle.id === vehicleId) ?? vehicles[0] ?? null
 
@@ -2790,11 +2806,14 @@ function FailedPhase({
         loads,
         vehicles,
         fuelPriceRubPerL: fuelPrice,
+        // Та же ставка работы машины, что у сборщика: иначе причины считаются
+        // по одним деньгам, а маршрут — по другим.
+        operatingCostPerKmRub: operatingCostPerKm,
         maxHours,
         startRadiusKm,
         startPoint,
       }),
-    [startCity, loads, vehicles, fuelPrice, maxHours, startRadiusKm, startPoint],
+    [startCity, loads, vehicles, fuelPrice, operatingCostPerKm, maxHours, startRadiusKm, startPoint],
   )
 
   /**

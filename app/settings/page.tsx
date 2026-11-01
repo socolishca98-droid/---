@@ -132,6 +132,10 @@ export default function SettingsPage() {
       for (const field of REQUISITE_FIELDS) payload[field.key] = form[field.key] ?? null
       if (form.restDriveLimitMin) payload.restDriveLimitMin = Number(form.restDriveLimitMin)
       if (form.restMinBreakMin) payload.restMinBreakMin = Number(form.restMinBreakMin)
+      // Работа машины, ₽/км — из неё помощник считает «сколько останется»
+      if (form.operatingCostPerKm !== "" && form.operatingCostPerKm !== undefined) {
+        payload.operatingCostPerKm = Number(form.operatingCostPerKm)
+      }
 
       const response = await fetch("/api/fleet/settings", {
         method: "POST",
@@ -301,6 +305,37 @@ export default function SettingsPage() {
                     placeholder="45"
                   />
                   {breakHint && <p className="text-xs text-muted-foreground">это {breakHint}</p>}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/50">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Fuel className="h-4 w-4" />
+                  Работа машины
+                </CardTitle>
+                <CardDescription>
+                  Водитель, износ, ТО, шины, платные дороги, стоянки — всё, кроме топлива.
+                  Помощник вычитает это из выручки и показывает, сколько реально останется.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="operatingCostPerKm">Ставка на километр, ₽</Label>
+                  <Input
+                    id="operatingCostPerKm"
+                    inputMode="decimal"
+                    value={form.operatingCostPerKm ?? ""}
+                    onChange={(event) =>
+                      set("operatingCostPerKm", event.target.value.replace(/[^\d.,]/g, "").replace(",", "."))
+                    }
+                    placeholder="25"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    20-тонник — 25–30 ₽/км, пятитонка — 15–18 ₽/км. Отдельной машине
+                    можно поставить свою ставку в её карточке. 0 — не вычитать.
+                  </p>
                 </div>
               </CardContent>
             </Card>

@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(zodErrorResponse(parsed.error), { status: 400 })
     }
 
-    const { plate, type, brand, model, year, capacity, volume, length, width, height, features, fuelTankL, fuelConsumptionPer100, fuelLevelL } = parsed.data
+    const { plate, type, brand, model, year, capacity, volume, length, width, height, features, fuelTankL, fuelConsumptionPer100, fuelLevelL, operatingCostPerKm } = parsed.data
 
     const featuresJson = Array.isArray(features) || typeof features === "string" ? JSON.stringify(features) : "[]"
 
@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
         fuelTankL: fuelTankL ?? null,
         fuelConsumptionPer100: fuelConsumptionPer100 ?? null,
         fuelLevelL: fuelLevelL ?? null,
+        operatingCostPerKm: operatingCostPerKm ?? null,
         status: "available",
       },
     })

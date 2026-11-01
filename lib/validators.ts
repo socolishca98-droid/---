@@ -204,6 +204,8 @@ export const createVehicleSchema = z.object({
   fuelTankL: floatOrNull,
   fuelConsumptionPer100: floatOrNull,
   fuelLevelL: floatOrNull,
+  // Работа ЭТОЙ машины, ₽/км. Пусто — ставка организации из настроек.
+  operatingCostPerKm: floatOrNull,
 })
 
 export const updateVehicleSchema = createVehicleSchema.partial()

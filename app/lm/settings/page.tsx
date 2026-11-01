@@ -20,6 +20,7 @@ import {
   Save,
   Sparkles,
   Timer,
+  Wallet,
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
@@ -185,6 +186,11 @@ export default function MobileSettingsPage() {
       for (const field of REQUISITE_FIELDS) payload[field.key] = form[field.key] ?? null
       if ((form.restDriveLimitMin ?? "") !== "") payload.restDriveLimitMin = Number(form.restDriveLimitMin)
       if ((form.restMinBreakMin ?? "") !== "") payload.restMinBreakMin = Number(form.restMinBreakMin)
+      // Ставка работы машины: из неё помощник считает, сколько ОСТАНЕТСЯ после
+      // топлива. Пустое поле не отправляем — останется прежнее значение.
+      if ((form.operatingCostPerKm ?? "") !== "") {
+        payload.operatingCostPerKm = Number(form.operatingCostPerKm)
+      }
 
       const response = await fetch("/api/fleet/settings", {
         method: "POST",
@@ -291,6 +297,36 @@ export default function MobileSettingsPage() {
                 {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Найти координаты по адресу
               </button>
+            </Card>
+
+            <Card className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setOpenSection(openSection === "cost" ? null : "cost")}
+                className="flex w-full items-center justify-between gap-3"
+              >
+                <SectionHeading icon={<Wallet className="h-4 w-4" />} title="Работа машины, ₽/км" />
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${openSection === "cost" ? "rotate-180" : ""}`}
+                />
+              </button>
+              <p className="-mt-1 text-[12.5px] text-muted-foreground">
+                Водитель, износ, ТО, шины, платные дороги, стоянки — всё, кроме топлива.
+                Помощник вычитает это из выручки и показывает, сколько реально останется.
+              </p>
+
+              {openSection === "cost" ? (
+                <div className="space-y-3">
+                  <Field
+                    label="Ставка на километр, ₽"
+                    value={form.operatingCostPerKm ?? ""}
+                    onChange={(value) => set("operatingCostPerKm", value)}
+                    placeholder="Сколько стоит километр"
+                    inputMode="decimal"
+                    hint="Ориентир для 20-тонника — 25–30 ₽/км, для пятитонки — 15–18 ₽/км. Отдельной машине можно поставить свою ставку в её карточке. 0 — не вычитать."
+                  />
+                </div>
+              ) : null}
             </Card>
 
             <Card className="space-y-3">

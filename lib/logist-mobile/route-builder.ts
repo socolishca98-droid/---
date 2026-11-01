@@ -101,6 +101,11 @@ export interface BuilderVehicle {
   /** Паспортный расход, л/100 км */
   fuelConsumptionPer100?: number | null
   /**
+   * Работа ЭТОЙ машины, ₽/км (водитель, износ, ТО, шины, платные дороги,
+   * стоянки). Пусто — берётся ставка организации из настроек.
+   */
+  operatingCostPerKm?: number | null
+  /**
    * Расход не заполнен в карточке машины — стоит оценка по типу кузова.
    * Экран честно пишет об этом: прибыль примерная, точные литры появятся,
    * когда расход заполнят.
@@ -2212,7 +2217,10 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
               width: options.beam?.width ?? BEAM_WIDTH,
               branch: options.beam?.branch ?? BEAM_BRANCH,
               chains: options.beam?.chains ?? BEAM_CHAINS,
-              operatingCostPerKm: options.operatingCostPerKmRub ?? DEFAULT_OPERATING_COST_PER_KM,
+              operatingCostPerKm:
+                vehicle.operatingCostPerKm ??
+                options.operatingCostPerKmRub ??
+                DEFAULT_OPERATING_COST_PER_KM,
             },
           )
     for (const candidateLegs of beamLegs) {
@@ -2466,8 +2474,9 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     totalProfitRub !== null && totalHours > 0 ? Math.round(totalProfitRub / totalHours) : null
   // Работа машины: водитель, износ, ТО, шины, платные дороги. Считаем на весь
   // пробег рейса, включая порожний возврат: он тоже жжёт ресурс и оплачивается.
+  // Ставка работы машины: своя у машины, иначе — организации, иначе ориентир.
   const operatingCostPerKm =
-    input.operatingCostPerKmRub ?? DEFAULT_OPERATING_COST_PER_KM
+    vehicle.operatingCostPerKm ?? input.operatingCostPerKmRub ?? DEFAULT_OPERATING_COST_PER_KM
   const operatingCostRub =
     operatingCostPerKm > 0 && totalDistanceKm > 0
       ? Math.round(operatingCostPerKm * totalDistanceKm)
@@ -2823,6 +2832,8 @@ export function explainFailure(options: {
   loads: BuilderLoad[]
   vehicles: BuilderVehicle[]
   fuelPriceRubPerL: number | null
+  /** Ставка работы машины, ₽/км — та же, что у сборщика */
+  operatingCostPerKmRub?: number
   minProfitPerKm?: number
   /** Лимит времени маршрута, часы — чтобы объяснить «дольше, чем выбрано» */
   maxHours?: number
@@ -2911,12 +2922,17 @@ export function explainFailure(options: {
     const vehicle = vehicles.find((item) => loadFitsVehicle(load, item))
     if (!vehicle) continue
     const money = legMoney(load, km, vehicle, options.fuelPriceRubPerL)
-    if (money.profitRub !== null && money.profitRub <= 0) {
-      // Топливо дороже ставки — плечо в чистый убыток
+    // Работа машины вычитается, когда известна: иначе «окупаемо» считалось бы
+    // только по топливу, а на экране стояли другие деньги.
+    const rate =
+      vehicle.operatingCostPerKm ?? options.operatingCostPerKmRub ?? 0
+    const net = money.profitRub !== null ? money.profitRub - rate * km : null
+    if (net !== null && net <= 0) {
+      // Топливо и работа машины дороже ставки — плечо в чистый убыток
       unprofitable += 1
       continue
     }
-    const perKm = money.profitRub !== null ? money.profitRub / km : loadPrice(load) / km
+    const perKm = net !== null ? net / km : loadPrice(load) / km
     if (perKm < minPerKm) unprofitable += 1
   }
 

@@ -474,6 +474,10 @@ model Vehicle {
   fuelTankL           Float?
   fuelConsumptionPer100 Float?
   fuelLevelL          Float?
+  /// Работа ЭТОЙ машины, ₽/км: водитель, износ, ТО, шины, платные дороги,
+  /// стоянки. Пусто — берётся ставка организации из FleetSettings.
+  /// Пятитонка и 20-тонник стоят по-разному, одной ставкой на всех не обойтись.
+  operatingCostPerKm  Float?
   insuranceExpiry     DateTime?
   inspectionExpiry    DateTime?
   createdAt           DateTime         @default(now())
@@ -762,6 +766,10 @@ model FleetSettings {
   //    Значения по умолчанию — ориентир ЕСТП: 4,5 ч движения / 45 мин отдых.
   restDriveLimitMin Int @default(270)
   restMinBreakMin   Int @default(45)
+  /// Работа машины по умолчанию, ₽/км (водитель, износ, ТО, шины, платные
+  /// дороги, стоянки). Из этого числа помощник считает «сколько останется»,
+  /// поэтому оно должно быть своё у каждой организации, а не зашито в код.
+  operatingCostPerKm Float @default(24)
   updatedAt   DateTime @updatedAt
 
   @@index([organizationId])
