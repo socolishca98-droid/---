@@ -775,7 +775,7 @@ test("груз, к дате которого не успеть, вторым п�
   assert.equal(route.legs.length, 1, "опаздывающее плечо в цепочку не берём")
   assert.equal(route.legs[0].load.id, "a")
   assert.ok(
-    route.reasons.some((line) => /не (успе|влез)/.test(line)),
+    route.reasons.some((line) => /приедет позже|не (успе|влез)/.test(line)),
     `причины: ${route.reasons.join(" | ")}`,
   )
 })

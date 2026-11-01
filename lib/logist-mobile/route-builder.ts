@@ -109,6 +109,8 @@ export interface BuilderVehicle {
 }
 
 export interface BuildRouteOptions {
+  /** Служебное: не проверять подсказку «поставьте срок N» повторной сборкой */
+  skipGrowthCheck?: boolean
   /** Город, где стоит машина (база). Пусто — начнём от самого выгодного груза */
   startCity: string
   /** Грузы биржи */
@@ -268,8 +270,17 @@ export interface BuiltRoute {
   reasons: string[]
   /** Что изменить, чтобы маршрут стал длиннее (иначе null) */
   growthHint: string | null
-  /** На сколько часов поднять лимит, чтобы вchain встал следующий груз */
+  /** На сколько часов поднять лимит, чтобы в цепочку встал следующий груз */
   growthHours: number | null
+  /**
+   * Груз, который подсказка обещает добрать на большем сроке.
+   *
+   * Нужен, чтобы обещание можно было ПРОВЕРИТЬ, а не просто написать:
+   * живой замер на бирже показал, что все пять подсказок «поставьте срок N —
+   * помощник доберёт его в цепочку» были ложью — на большем сроке сборщик
+   * выбирал другую цепочку, и обещанного груза в ней не было.
+   */
+  growthLoadId: string | null
 }
 
 /** Разбор «что осталось на бирже» по причинам — без двойного счёта. */
@@ -888,6 +899,16 @@ export type ChainStopKind =
   | "legs"
   /** Машина вернулась на базу — выезд закончен, дальше начинается другой рейс */
   | "home"
+  /**
+   * Груз уже загружается раньше, чем машина до него доедет.
+   *
+   * Отдельно от «hours»: увеличение срока тут не помогает — поезд уже ушёл.
+   * Живой экран (К215СТ790, лимит 120 ч): под маршрутом «Ярославль → Брянск»
+   * стояло «Следующий груз (готов 2 ноя) … поставьте срок 7 дней — помощник
+   * доберёт его в цепочку». Логист поставил бы 7 дней и получил тот же
+   * маршрут: машина приезжает в Брянск 5-го, а груз грузился 2-го.
+   */
+  | "late"
 
 export interface ChainStop {
   kind: ChainStopKind
@@ -1076,6 +1097,7 @@ function buildChain(
     // Причина остановки на этом шаге — по факту, а не на глазок.
     // Часы важнее ставки: «не хватило срока» логист исправит лимитом,
     // а «низкая ставка» — только звонком фрахтователю.
+    let byLate: ChainStop | null = null
     let byHours: ChainStop | null = null
     let byProfit: ChainStop | null = null
     const noStop: ChainStop | null =
@@ -1117,7 +1139,7 @@ function buildChain(
       // машина опаздывает на сутки, и вопрос «разве это грамотный маршрут»
       // был ровно по делу: уехавший груз не купить никакой ставкой.
       if (legs.length > 0 && !keepIds.includes(load.id) && isLate(load)) {
-        byHours ??= { kind: "hours", load, waitHours, hours }
+        byLate ??= { kind: "late", load, waitHours, hours }
         continue
       }
       // Маршрут планируется по времени. Плечо не влезло — это ещё не конец:
@@ -1160,7 +1182,7 @@ function buildChain(
       if (legs.length >= maxLegs) {
         return { legs, stop: { ...EMPTY_STOP, kind: "legs" } }
       }
-      return { legs, stop: byHours ?? byProfit ?? noStop ?? EMPTY_STOP }
+      return { legs, stop: byHours ?? byLate ?? byProfit ?? noStop ?? EMPTY_STOP }
     }
 
     // ЕТА погрузки: выезд + часы в пути. Если фрахтователь назвал дату
@@ -1356,6 +1378,18 @@ function stopReasons(stop: ChainStop, maxHours: number, detourKm: number, legs: 
       }
       return [
         `${where}, но плечо ${hoursSpan(stop.hours)} плюс дорога домой — в ${limitText} уже не влезало`,
+      ]
+    }
+    case "late": {
+      // Груз уже ушёл: к его дате загрузки машина не успевает. Это НЕ «не
+      // хватило срока маршрута» — увеличение лимита тут не поможет.
+      const load = stop.load
+      const where = load
+        ? `${shortCity(load.fromCity)} → ${shortCity(load.toCity)}`
+        : "Следующий груз"
+      const date = load?.loadingDate ? formatDateShort(load.loadingDate) : null
+      return [
+        `${where} грузится${date ? ` ${date}` : ""} — машина приедет позже: этот груз уже не взять`,
       ]
     }
     case "profit":
@@ -1732,6 +1766,43 @@ function buildRouteFor(options: BuildRouteOptions, maxHoursOption?: number): Bui
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Проверка обещания «поставьте срок N — помощник доберёт этот груз».
+  // ---------------------------------------------------------------------
+  // Подсказка считается по тому, на чём встала цепочка на ТЕКУЩЕМ сроке.
+  // Но цепочка жадная: на большем сроке она может пойти иначе — и тогда
+  // обещанного груза в ней нет. Живой замер на бирже (300 + 300 грузов,
+  // 4 машины × 5 лимитов × 4 радиуса): все 5 подсказок оказались ложью.
+  // Поэтому обещание проверяем повторной сборкой и, если оно не сбылось,
+  // говорим правду: либо про деньги («на 72 ч маршрут выгоднее на N ₽»),
+  // либо молчим вовсе.
+  if (bestRoute && bestRoute.growthHours && !options.skipGrowthCheck) {
+    const longerHours = bestRoute.growthHours
+    const promisedId = bestRoute.growthLoadId
+    const longer = buildRouteFor(
+      { ...options, maxHours: longerHours, skipGrowthCheck: true },
+      longerHours,
+    )
+    const promisedIncluded =
+      promisedId !== null && longer !== null && longer.legs.some((leg) => leg.load.id === promisedId)
+    if (!promisedIncluded) {
+      const now = bestRoute.totalProfitRub ?? 0
+      const then = longer?.totalProfitRub ?? null
+      if (longer && then !== null && then - now > 1000) {
+        bestRoute.growthHint =
+          `На сроке ${hoursLabel(longerHours)} (${longerHours} ч) помощник соберёт маршрут ` +
+          `на ${formatMoney(then - now)} выгоднее — другой состав плеч.`
+        bestRoute.growthHours = longerHours
+        bestRoute.growthLoadId = null
+      } else {
+        // Обещанного не будет — не обещаем.
+        bestRoute.growthHint = null
+        bestRoute.growthHours = null
+        bestRoute.growthLoadId = null
+      }
+    }
+  }
+
   return bestRoute
 }
 
@@ -2039,18 +2110,28 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
   // расширить радиус. Всё остальное — не наша забота.
   let growthHint: string | null = null
   let growthHours: number | null = null
+  let growthLoadId: string | null = null
   const stopLoad = input.stop.load
   const lastLoadCity = legs.length > 0 ? legs[legs.length - 1].load.toCity : ""
   if (input.stop.kind === "hours" && stopLoad) {
     const longer = nextHoursStep(maxHours)
     if (longer > maxHours) {
       growthHours = longer
+      growthLoadId = stopLoad.id
       const date = stopLoad.loadingDate ? formatDateShort(stopLoad.loadingDate) : null
       const ready = date ? ` (готов ${date})` : ""
       growthHint =
         `Следующий груз${ready}: ${shortCity(stopLoad.fromCity)} → ${shortCity(stopLoad.toCity)}. ` +
         `Чтобы взять его, поставьте срок ${hoursLabel(longer)} (${longer} ч) — помощник доберёт его в цепочку.`
     }
+  } else if (input.stop.kind === "late" && stopLoad) {
+    // Правда вместо совета «увеличьте срок»: этот груз уже не взять, сколько
+    // ни ставь дней. Логист должен искать груз с более поздней датой.
+    const date = stopLoad.loadingDate ? formatDateShort(stopLoad.loadingDate) : null
+    growthHint =
+      `Груз «${shortCity(stopLoad.fromCity)} → ${shortCity(stopLoad.toCity)}»` +
+      `${date ? ` грузится ${date}` : " грузится раньше"}: машина приедет позже. ` +
+      "Срок маршрута тут не поможет — нужен груз с более поздней датой загрузки."
   } else if (input.stop.kind === "none" && legs.length > 0 && !input.atHome) {
     // Совет «расширьте радиус» нужен, только если маршрут НЕ закрылся на базе.
     // Живой экран ПК-версии: машина вернулась домой с грузом («Ярославль →
@@ -2118,6 +2199,7 @@ function finalize(input: FinalizeInput): BuiltRoute | null {
     reasons,
     growthHint,
     growthHours,
+    growthLoadId,
   }
 }
 

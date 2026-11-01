@@ -487,3 +487,84 @@ test("опоздавшая обратка в маршрут не встаёт", 
   assert.ok(kept, "с согласованным грузом маршрут должен собраться")
   assert.equal(kept.legs.length, 2, "согласованная обратка должна остаться в маршруте")
 })
+
+test("подсказка «поставьте срок N» не обещает того, чего не будет", () => {
+  // Живой замер на бирже: все 5 подсказок «помощник доберёт его в цепочку»
+  // были ложью — на большем сроке цепочка шла иначе и обещанного груза в ней
+  // не было. Обещание теперь проверяется повторной сборкой: либо груз
+  // действительно добавляется (growthLoadId), либо подсказка говорит про
+  // деньги без имён грузов, либо её нет вовсе.
+  const firstName = load({
+    id: "first",
+    fromCity: "Тутаев",
+    toCity: "Брянск",
+    fromPoint: CLOSE,
+    toPoint: { lat: 53.24, lng: 34.36 },
+    distanceKm: 650,
+    priceRub: 90000,
+  })
+  const lateNeighbour = load({
+    id: "late-neighbour",
+    fromCity: "Брянск",
+    toCity: "Ярославль",
+    fromPoint: { lat: 53.24, lng: 34.36 },
+    toPoint: BASE_POINT,
+    distanceKm: 661,
+    priceRub: 78000,
+    loadingDate: "2026-10-30T00:00:00.000Z", // уже ушёл
+  })
+  const options = baseOptions([firstName, lateNeighbour], { maxHours: 72 })
+  const route = buildRoute(options)
+  assert.ok(route, "маршрут не собрался")
+  if (route.growthHours === null) {
+    // Подсказка может быть про радиус — это не обещание по срокам
+    assert.ok(
+      !/поставьте срок/i.test(route.growthHint ?? ""),
+      "совет про срок без срока",
+    )
+    assert.equal(route.growthLoadId, null)
+    return
+  }
+  // Проверяем обещание тем же способом, что и сборщик: пересборкой
+  const longer = buildRoute({ ...options, maxHours: route.growthHours })
+  if (route.growthLoadId) {
+    assert.ok(
+      longer && longer.legs.some((leg) => leg.load.id === route.growthLoadId),
+      `обещали добрать груз ${route.growthLoadId}, а на ${route.growthHours} ч его нет`,
+    )
+  } else {
+    assert.match(route.growthHint ?? "", /выгоднее/, "подсказка должна говорить про деньги")
+    const delta = (longer?.totalProfitRub ?? 0) - (route.totalProfitRub ?? 0)
+    assert.ok(delta > 1000, `обещали выгоду, а её нет: ${Math.round(delta)} ₽`)
+  }
+})
+
+test("просроченный соседний груз не выдаётся за «поставьте срок подольше»", () => {
+  const firstName = load({
+    id: "first",
+    fromCity: "Тутаев",
+    toCity: "Брянск",
+    fromPoint: CLOSE,
+    toPoint: { lat: 53.24, lng: 34.36 },
+    distanceKm: 650,
+    priceRub: 90000,
+    loadingDate: "2026-11-04T00:00:00.000Z",
+  })
+  const stale = load({
+    id: "stale",
+    fromCity: "Брянск",
+    toCity: "Ярославль",
+    fromPoint: { lat: 53.24, lng: 34.36 },
+    toPoint: BASE_POINT,
+    distanceKm: 661,
+    priceRub: 78000,
+    loadingDate: "2026-11-02T00:00:00.000Z",
+  })
+  const route = buildRoute(baseOptions([firstName, stale], { maxHours: 168 }))
+  assert.ok(route, "маршрут не собрался")
+  const hint = route.growthHint ?? ""
+  assert.ok(
+    !/поставьте срок/i.test(hint),
+    `совет увеличить срок на просроченный груз: ${hint}`,
+  )
+})
