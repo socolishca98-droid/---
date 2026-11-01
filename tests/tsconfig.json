@@ -26,6 +26,7 @@
     "sourceMap": false
   },
   "include": [
+    "../lib/routing/**/*.ts",
     "../lib/auth/constants.ts",
     "../lib/profile.ts",
     "../lib/auth/access.ts",

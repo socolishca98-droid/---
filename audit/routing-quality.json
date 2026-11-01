@@ -1,0 +1,198 @@
+{
+  "generatedAt": "2026-11-01T23:20:14.196Z",
+  "checks": {
+    "vsBruteForce": {
+      "cases": 120,
+      "mismatches": 0,
+      "worstGapShare": 0,
+      "worstSeed": null,
+      "engineBetter": 0
+    },
+    "vsBruteCalendar": {
+      "cases": 60,
+      "mismatches": 0,
+      "worstGapShare": 0
+    },
+    "consolidation": {
+      "cases": 40,
+      "improved": 1,
+      "worsened": 0,
+      "totalGainRub": 73,
+      "invalidPlans": 0
+    },
+    "consolidationVsBruteForce": {
+      "same-origin": {
+        "cases": 30,
+        "matches": 27,
+        "behind": 3,
+        "worstGapShare": 0.007349197013084689,
+        "consolidatedWins": 30,
+        "consolidatedGainRub": 1017026,
+        "invalidPlans": 0,
+        "avgMs": 23
+      },
+      "corridor": {
+        "cases": 30,
+        "matches": 30,
+        "behind": 0,
+        "worstGapShare": 0.000014736368456426784,
+        "consolidatedWins": 26,
+        "consolidatedGainRub": 270838,
+        "invalidPlans": 0,
+        "avgMs": 3
+      },
+      "scattered": {
+        "cases": 30,
+        "matches": 28,
+        "behind": 2,
+        "worstGapShare": 0.1939038651079872,
+        "consolidatedWins": 21,
+        "consolidatedGainRub": 227130,
+        "invalidPlans": 0,
+        "avgMs": 2
+      }
+    },
+    "designedConsolidation": [
+      {
+        "name": "три партии из Ярославля в одну сторону",
+        "orders": 3,
+        "sequentialOnlyNet": 1111,
+        "withConsolidationNet": 67966,
+        "bestConsolidatedNet": 67966,
+        "bestConsolidatedOrders": [
+          "d1",
+          "d2",
+          "d3"
+        ],
+        "gainRub": 66855,
+        "valid": true,
+        "seedIndex": 0
+      },
+      {
+        "name": "две партии в Кострому и обратный груз",
+        "orders": 3,
+        "sequentialOnlyNet": 56259,
+        "withConsolidationNet": 61572,
+        "bestConsolidatedNet": 61572,
+        "bestConsolidatedOrders": [
+          "e1",
+          "e2",
+          "e3"
+        ],
+        "gainRub": 5313,
+        "valid": true,
+        "seedIndex": 1
+      },
+      {
+        "name": "попутные грузы через Москву",
+        "orders": 4,
+        "sequentialOnlyNet": 46167,
+        "withConsolidationNet": 87830,
+        "bestConsolidatedNet": 87830,
+        "bestConsolidatedOrders": [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        "gainRub": 41663,
+        "valid": true,
+        "seedIndex": 2
+      }
+    ],
+    "performance": [
+      {
+        "orders": 8,
+        "elapsedMs": 16,
+        "states": 5326,
+        "pruned": 2610,
+        "distanceCalls": 5458,
+        "cacheHits": 5332,
+        "exact": true,
+        "variants": 6,
+        "bestNet": 89374,
+        "valid": true
+      },
+      {
+        "orders": 12,
+        "elapsedMs": 76,
+        "states": 13984,
+        "pruned": 10775,
+        "distanceCalls": 18852,
+        "cacheHits": 18726,
+        "exact": true,
+        "variants": 7,
+        "bestNet": 149688,
+        "valid": true
+      },
+      {
+        "orders": 20,
+        "elapsedMs": 26,
+        "states": 2955,
+        "pruned": 4383,
+        "distanceCalls": 9734,
+        "cacheHits": 9633,
+        "exact": false,
+        "variants": 7,
+        "bestNet": 229154,
+        "valid": true
+      },
+      {
+        "orders": 40,
+        "elapsedMs": 29,
+        "states": 2668,
+        "pruned": 3824,
+        "distanceCalls": 7356,
+        "cacheHits": 7258,
+        "exact": false,
+        "variants": 7,
+        "bestNet": 306618,
+        "valid": true
+      },
+      {
+        "orders": 60,
+        "elapsedMs": 17,
+        "states": 2177,
+        "pruned": 4187,
+        "distanceCalls": 10140,
+        "cacheHits": 10044,
+        "exact": false,
+        "variants": 7,
+        "bestNet": 629154,
+        "valid": true
+      }
+    ],
+    "consolidationPerformance": [
+      {
+        "orders": 12,
+        "elapsedMs": 471,
+        "states": 300966,
+        "groups": 145,
+        "consolidatedVariants": 1,
+        "valid": true
+      },
+      {
+        "orders": 40,
+        "elapsedMs": 429,
+        "states": 300966,
+        "groups": 145,
+        "consolidatedVariants": 1,
+        "valid": true
+      },
+      {
+        "orders": 120,
+        "elapsedMs": 377,
+        "states": 300966,
+        "groups": 145,
+        "consolidatedVariants": 1,
+        "valid": true
+      }
+    ],
+    "isolation": {
+      "foreignOrdersLeak": false,
+      "baseChangesFirstLeg": true,
+      "yarFirstLegKm": 300,
+      "krdFirstLegKm": null
+    }
+  }
+}

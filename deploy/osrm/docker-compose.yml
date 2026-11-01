@@ -1,0 +1,33 @@
+# OSRM для Loginex: подготовка данных и сервис маршрутизации.
+#
+# Данные лежат в ./data (в git не попадают): там же .osm.pbf и собранный граф.
+# Подготовка — отдельный профиль compose, чтобы случайный `docker compose up`
+# не начинал часовую пересборку карты.
+
+services:
+  osrm-prepare:
+    image: osrm/osrm-backend:latest
+    profiles: ["prepare"]
+    volumes:
+      - ./data:/data
+    command: >
+      sh -c "osrm-extract -p /opt/car.lua /data/map.osm.pbf &&
+             osrm-partition /data/map.osrm &&
+             osrm-customize /data/map.osrm &&
+             echo 'граф готов'"
+
+  osrm:
+    image: osrm/osrm-backend:latest
+    restart: unless-stopped
+    command: osrm-routed --algorithm mld --max-table-size 10000 --max-matching-size 1000 /data/map.osrm
+    volumes:
+      - ./data:/data
+    ports:
+      # Только на своей машине: наружу открываем через nginx с лимитами,
+      # иначе маршрутизатор быстро превращается в бесплатный сервис для всех.
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:5000/route/v1/driving/37.6,55.7;37.6,55.8?overview=false' | grep -q '\"code\":\"Ok\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

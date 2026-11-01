@@ -34,8 +34,8 @@ import type { ApiMutationResult } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import { findRegionByNameLocal } from "@/lib/ati/regions"
 import { fuelPriceForRegion, fuelPriceNote } from "@/lib/fleet/fuel-price"
+import { requestServerPlan } from "@/lib/routing/client"
 import {
-  buildRouteVariants,
   DEFAULT_OPERATING_COST_PER_KM,
   explainFailure,
   haversineKm,
@@ -1034,7 +1034,16 @@ export default function RouteAssistantPage() {
         chosenId && vehicles.some((item) => item.id === chosenId)
           ? vehicles.filter((item) => item.id === chosenId)
           : vehicles
-      const built = buildRouteVariants({
+      // Считает СЕРВЕР: цепочки перебираются целиком, километры и деньги —
+      // по правилам организации. Экран только показывает ответ.
+      //
+      // Почему не в браузере: строгий перебор цепочек с проверкой на каждом
+      // участке — это второй сборщик, который неизбежно разойдётся с
+      // серверным. Два разных ответа на один вопрос хуже, чем один медленный.
+      // Если сервер недоступен или отказал по данным, `requestServerPlan`
+      // честно собирает упрощённо здесь и пишет это в причинах маршрута —
+      // пустого экрана не бывает.
+      const outcome = await requestServerPlan({
         startCity: startPlace,
         loads: pool,
         vehicles: buildVehicles,
@@ -1051,7 +1060,16 @@ export default function RouteAssistantPage() {
         // экране снова станет «после одного топлива».
         operatingCostPerKmRub: operatingCostPerKm,
         allowOneWay: oneWay,
+        // «Сборка под эту машину»: сервер обязан считать именно её, иначе
+        // получится «в пятитонку положили десять тонн», как было раньше.
+        vehicleId: chosenId || null,
       })
+      const built = outcome.variants
+      // Кто посчитал — словами и в каждом варианте: логист должен знать,
+      // серверная это цепочка или упрощённая.
+      for (const variant of built) {
+        if (!variant.route.reasons.includes(outcome.note)) variant.route.reasons.unshift(outcome.note)
+      }
       setVariants(built)
       setVariantIndex(0)
       setPhase("route")

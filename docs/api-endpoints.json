@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T14:19:36.582Z",
+  "generatedAt": "2026-11-01T23:17:11.085Z",
   "endpoints": [
     {
       "method": "GET",
@@ -434,6 +434,11 @@
     {
       "method": "POST",
       "route": "/api/logist/duty",
+      "group": "logist"
+    },
+    {
+      "method": "POST",
+      "route": "/api/logist/routing/plan",
       "group": "logist"
     },
     {
