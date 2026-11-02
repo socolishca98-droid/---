@@ -22,7 +22,7 @@
 // идентификаторами, без координат.
 
 import { prisma } from "@/lib/prisma"
-import { plainPlace } from "@/lib/geo/nominatim"
+import { plainPlace, placeWithoutFacility } from "@/lib/geo/nominatim"
 import { canonicalCityName } from "@/lib/logist-mobile/city-norm"
 
 export type Coordinates = { lat: number; lng: number }
@@ -137,16 +137,41 @@ async function geocodeYandex(address: string): Promise<Coordinates | null> {
 let nominatimBlockedUntil = 0
 const NOMINATIM_BLOCK_MS = 60_000
 
-async function geocodeNominatimOnce(address: string, attempt = 0): Promise<Coordinates | null> {
+async function geocodeNominatimOnce(
+  address: string,
+  attempt = 0,
+  /**
+   * Ограничивать ли поиск Россией.
+   *
+   * Ограничение нужно: без него «Москва» и «Минск» уезжают в чужие страны, а
+   * «Шарапово» находится в Псковской области вместо нужной. Но оно же
+   * обнуляло целые направления: Бердянск (Запорожская область) и Харцызск
+   * (Донецкая Народная Республика) в данных OSM числятся за Украиной, и
+   * страна «Россия» их вырезала — груз оставался без координат, хотя город
+   * есть. Замер: «Бердянск, Запорожская область» без countrycodes находит
+   * город 46.756, 36.789; с countrycodes=ru — ноль ответов.
+   *
+   * Поэтому второй проход идёт без ограничения: если в России ничего нет,
+   * точка в другой стране лучше, чем отсутствие точки — расстояние до неё
+   * считается так же.
+   */
+  restrictCountry = true,
+): Promise<Coordinates | null> {
   if (Date.now() < nominatimBlockedUntil) return null
-  const query = /росси/i.test(address) ? address : `${address}, Россия`
+  // Во втором проходе «Россия» к запросу не приписываем: «Бердянск,
+  // Запорожская область, Россия» геокодер честно не находит нигде.
+  const query = restrictCountry
+    ? /росси/i.test(address)
+      ? address
+      : `${address}, Россия`
+    : address
 
   try {
     const url = new URL(NOMINATIM_URL)
     url.searchParams.set("q", query)
     url.searchParams.set("format", "json")
     url.searchParams.set("limit", "1")
-    url.searchParams.set("countrycodes", "ru")
+    if (restrictCountry) url.searchParams.set("countrycodes", "ru")
 
     const response = await fetch(url.toString(), {
       headers: { "User-Agent": USER_AGENT, "Accept-Language": "ru" },
@@ -165,7 +190,10 @@ async function geocodeNominatimOnce(address: string, attempt = 0): Promise<Coord
     if (!response.ok) return null
 
     const data = await response.json()
-    if (!Array.isArray(data) || data.length === 0) return null
+    if (!Array.isArray(data) || data.length === 0) {
+      // В России не нашлось — пробуем без ограничения по стране (см. выше).
+      return restrictCountry ? geocodeNominatimOnce(address, attempt, false) : null
+    }
 
     const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
     if (!isCoordinates(coords)) return null
@@ -204,6 +232,16 @@ function addressVariants(address: string): string[] {
   const plain = plainPlace(base)
 
   const out: string[] = []
+  // Объект внутри адреса («аэропорт Стригино», «нефтегазоконденсатное
+  // месторождение») — не населённый пункт. Замер: «Нижний Новгород аэропорт
+  // Стригино, Нижегородская область» — ноль ответов, «Нижний Новгород,
+  // Нижегородская область» — город. Пробуем такой вариант первым.
+  const withoutFacility = placeWithoutFacility(base)
+  if (withoutFacility && withoutFacility !== base) {
+    const plainFacility = plainPlace(withoutFacility)
+    if (plainFacility) out.push(plainFacility)
+    if (!out.includes(withoutFacility)) out.push(withoutFacility)
+  }
   // Сначала очищенный вариант, и только потом сырой. Замер: «Москва, Москва
   // (регион), Россия» геокодер отвечает Новой Москвой в Приморском крае, а
   // «Москва, Москва, Россия» — самой Москвой. То же и с приставками: сырой
