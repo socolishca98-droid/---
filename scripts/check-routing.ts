@@ -73,11 +73,24 @@ async function main() {
         plan.economics.emptyShare * 100,
       )} %), ${Math.round(hours)} ч, смен ${plan.schedule.shifts}`,
     )
+    // Статьи печатаем только те, что реально заполнены. «водитель 0 ₽» —
+    // это не «водитель работает бесплатно», а «в настройках организации
+    // раздельной статьи нет: его оплата внутри ставки ₽/км». Писать ноль
+    // рядом с работающей статьёй значит врать о структуре расходов.
+    const articles: string[] = [`топливо ${plan.economics.fuelRub} ₽`]
+    if (plan.economics.driverRub > 0) articles.push(`водитель ${plan.economics.driverRub} ₽`)
+    if (plan.economics.maintenanceRub > 0) articles.push(`износ и ТО ${plan.economics.maintenanceRub} ₽`)
+    if (plan.economics.tiresRub > 0) articles.push(`шины ${plan.economics.tiresRub} ₽`)
+    if (plan.economics.otherRub > 0) articles.push(`прочее ${plan.economics.otherRub} ₽`)
+    if (plan.economics.tollsRub !== null && plan.economics.tollsRub > 0) {
+      articles.push(`платные дороги ${plan.economics.tollsRub} ₽`)
+    }
     console.log(
-      `  выручка ${plan.economics.revenue} ₽ − топливо ${plan.economics.fuelRub} − водитель ${
-        plan.economics.driverRub
-      } − износ ${plan.economics.maintenanceRub} = ${plan.economics.netRub} ₽`,
+      `  выручка ${plan.economics.revenue} ₽ − ${articles.join(" − ")} = ${plan.economics.netRub} ₽`,
     )
+    // Платные дороги отдельной строкой: «неизвестны» — это не ноль в расчёте,
+    // и ставить его в цепочку вычитания нельзя.
+    if (plan.economics.tollsRub === null) console.log("  ~  платные участки не размечены — в остатке их нет")
     console.log(
       `  достоверность: ${plan.confidence}, оптимум доказан: ${plan.exact ? "да" : "нет"}`,
     )
