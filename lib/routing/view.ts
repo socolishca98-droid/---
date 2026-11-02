@@ -80,6 +80,11 @@ export interface ServerVehiclePlan {
   organisationId: string
   recommended: ServerPlan | null
   variants: ServerPlan[]
+  /**
+   * Сколько вариантов нашлось всего. Сервер отдаёт экрану не больше трёх,
+   * и без этого числа «показали три» читается как «нашли три».
+   */
+  variantsTotal?: number
   rejected: Array<{ orderId: string; reason: string }>
   /** Независимая проверка ядра: нарушения правил, если есть */
   validations?: Array<{ planId: string; ok: boolean; issues: string[] }>
@@ -381,7 +386,12 @@ export function variantsFromServer(response: {
       label: index === 0 && entry.recommended ? "Рекомендация" : plan.model === "consolidated" ? "Сборная перевозка" : "Другой порядок",
       hint:
         `${route.legs.length} плеч, ${route.totalDistanceKm} км, ${Math.round(route.totalHours / 24 * 10) / 10} сут` +
-        (plan.exact ? " · оптимум доказан" : " · эвристика"),
+        (plan.exact ? " · оптимум доказан" : " · эвристика") +
+        // Честность о полноте: экран показывает три варианта из найденных, и
+        // логист должен видеть, что поиск был шире, а не «всего три».
+        (typeof entry.variantsTotal === "number" && entry.variantsTotal > ordered.length
+          ? ` · найдено ${entry.variantsTotal}`
+          : ""),
       hours: route.totalHours,
       route,
     })

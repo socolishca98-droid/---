@@ -336,3 +336,46 @@ test("client: отказ сервера по данным объясняется
     `причина отказа должна дойти до экрана словами, получено: ${outcome.note}`,
   )
 })
+
+test("view: экран говорит, сколько вариантов нашлось всего, а не только сколько показал", async () => {
+  const { tile, result } = await planFor(3)
+  const plan = result.recommended ?? result.variants[0]
+  const shown = VIEW.variantsFromServer(
+    {
+      perVehicle: [
+        {
+          ...result,
+          variants: [serialize(plan)],
+          recommended: serialize(plan),
+          // Сервер отдаёт экрану три варианта из семи найденных.
+          variantsTotal: 7,
+        },
+      ],
+    },
+    {
+      loads: builderLoads(tile.orders),
+      vehicles: [tile.vehicle],
+      startCity: tile.vehicle.homeBase.city,
+      startPoint: tile.vehicle.homeBase.point,
+      maxHours: 72,
+    },
+  )
+  assert.match(shown[0].hint, /найдено 7/, `в подписи нет полноты поиска: ${shown[0].hint}`)
+
+  // Если найдено столько же, сколько показано, лишняя цифра не нужна.
+  const exact = VIEW.variantsFromServer(
+    {
+      perVehicle: [
+        { ...result, variants: [serialize(plan)], recommended: serialize(plan), variantsTotal: 1 },
+      ],
+    },
+    {
+      loads: builderLoads(tile.orders),
+      vehicles: [tile.vehicle],
+      startCity: tile.vehicle.homeBase.city,
+      startPoint: tile.vehicle.homeBase.point,
+      maxHours: 72,
+    },
+  )
+  assert.ok(!/найдено/.test(exact[0].hint), `лишняя цифра при полном совпадении: ${exact[0].hint}`)
+})
