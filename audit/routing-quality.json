@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T17:06:42.384Z",
+  "generatedAt": "2026-11-02T18:25:03.248Z",
   "checks": {
     "vsBruteForce": {
       "cases": 120,
@@ -23,13 +23,13 @@
     "consolidationVsBruteForce": {
       "same-origin": {
         "cases": 30,
-        "matches": 27,
-        "behind": 3,
-        "worstGapShare": 0.007349197013084689,
+        "matches": 30,
+        "behind": 0,
+        "worstGapShare": 0.000007752790453723277,
         "consolidatedWins": 30,
-        "consolidatedGainRub": 1017026,
+        "consolidatedGainRub": 1017861,
         "invalidPlans": 0,
-        "avgMs": 16
+        "avgMs": 24
       },
       "corridor": {
         "cases": 30,
@@ -39,17 +39,17 @@
         "consolidatedWins": 26,
         "consolidatedGainRub": 270838,
         "invalidPlans": 0,
-        "avgMs": 2
+        "avgMs": 3
       },
       "scattered": {
         "cases": 30,
-        "matches": 28,
-        "behind": 2,
-        "worstGapShare": 0.1939038651079872,
+        "matches": 30,
+        "behind": 0,
+        "worstGapShare": 0.00007572136980030362,
         "consolidatedWins": 21,
-        "consolidatedGainRub": 227130,
+        "consolidatedGainRub": 228703,
         "invalidPlans": 0,
-        "avgMs": 1
+        "avgMs": 2
       }
     },
     "designedConsolidation": [
@@ -103,11 +103,11 @@
     "performance": [
       {
         "orders": 8,
-        "elapsedMs": 14,
-        "states": 5194,
-        "pruned": 2696,
-        "distanceCalls": 6252,
-        "cacheHits": 6126,
+        "elapsedMs": 21,
+        "states": 5611,
+        "pruned": 2551,
+        "distanceCalls": 7924,
+        "cacheHits": 7798,
         "exact": true,
         "variants": 7,
         "bestNet": 95242,
@@ -115,11 +115,11 @@
       },
       {
         "orders": 12,
-        "elapsedMs": 82,
-        "states": 17678,
-        "pruned": 13914,
-        "distanceCalls": 35088,
-        "cacheHits": 34962,
+        "elapsedMs": 79,
+        "states": 20066,
+        "pruned": 14578,
+        "distanceCalls": 37996,
+        "cacheHits": 37870,
         "exact": true,
         "variants": 7,
         "bestNet": 174895,
@@ -127,11 +127,11 @@
       },
       {
         "orders": 20,
-        "elapsedMs": 35,
-        "states": 6900,
-        "pruned": 7766,
-        "distanceCalls": 27736,
-        "cacheHits": 27635,
+        "elapsedMs": 22,
+        "states": 6935,
+        "pruned": 7738,
+        "distanceCalls": 28139,
+        "cacheHits": 28038,
         "exact": false,
         "variants": 7,
         "bestNet": 274801,
@@ -140,10 +140,10 @@
       {
         "orders": 40,
         "elapsedMs": 11,
-        "states": 3924,
-        "pruned": 4911,
-        "distanceCalls": 12347,
-        "cacheHits": 12249,
+        "states": 4143,
+        "pruned": 4825,
+        "distanceCalls": 13076,
+        "cacheHits": 12978,
         "exact": false,
         "variants": 7,
         "bestNet": 497691,
@@ -151,11 +151,11 @@
       },
       {
         "orders": 60,
-        "elapsedMs": 17,
-        "states": 6047,
-        "pruned": 7577,
-        "distanceCalls": 27723,
-        "cacheHits": 27627,
+        "elapsedMs": 28,
+        "states": 6069,
+        "pruned": 7555,
+        "distanceCalls": 27880,
+        "cacheHits": 27784,
         "exact": false,
         "variants": 7,
         "bestNet": 774801,
@@ -204,7 +204,7 @@
           "emptyShare": 32,
           "drivingHours": 76,
           "calendarHours": 179,
-          "netRub": 170329,
+          "netRub": 171290,
           "exact": false,
           "crossTimeZones": false,
           "valid": true
@@ -278,7 +278,7 @@
           "totalKm": 4532,
           "emptyShare": 30,
           "drivingHours": 80,
-          "calendarHours": 187,
+          "calendarHours": 193,
           "netRub": 197613,
           "exact": false,
           "crossTimeZones": true,
@@ -471,26 +471,26 @@
     "consolidationPerformance": [
       {
         "orders": 12,
-        "elapsedMs": 422,
-        "states": 300966,
+        "elapsedMs": 528,
+        "states": 300965,
         "groups": 145,
-        "consolidatedVariants": 1,
+        "consolidatedVariants": 2,
         "valid": true
       },
       {
         "orders": 40,
-        "elapsedMs": 386,
-        "states": 300966,
+        "elapsedMs": 537,
+        "states": 300965,
         "groups": 145,
-        "consolidatedVariants": 1,
+        "consolidatedVariants": 2,
         "valid": true
       },
       {
         "orders": 120,
-        "elapsedMs": 302,
-        "states": 300966,
+        "elapsedMs": 365,
+        "states": 300965,
         "groups": 145,
-        "consolidatedVariants": 1,
+        "consolidatedVariants": 2,
         "valid": true
       }
     ],

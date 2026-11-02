@@ -790,7 +790,7 @@ const PARETO_KEEP = 512
 const CONSOLIDATED_STATE_BUDGET = 250_000
 
 /** Сколько готовых порядков материализуется в план (материализация недешёвая). */
-const MATERIALIZE_LIMIT = 64
+const MATERIALIZE_LIMIT = 96
 
 interface ConsolidatedNode {
   pickedMask: number
@@ -799,6 +799,28 @@ interface ConsolidatedNode {
   location: number
   clock: number
   km: number
+  /**
+   * Из чего сложился пробег. Деньги зависят не только от суммы километров:
+   * литр на гружёном километре дороже, чем на порожнем (расход растёт с
+   * загрузкой). Без этого разделения поиск сравнивал пути «по километрам» и
+   * выбирал порядок, который короче, но дороже по топливу.
+   */
+  loadedKm: number
+  emptyKm: number
+  /**
+   * Деньги пробега накопительно: км-расходы плюс ТОЧНОЕ топливо по весу в
+   * кузове. Именно по этой величине сравниваются состояния: километры и
+   * время — разные единицы, а деньги у них общие.
+   */
+  cost: number
+  /**
+   * Часы за рулём. Нужны для честного сравнения: оплата водителя считается
+   * СМЕНАМИ (ceil(часы/норма)), поэтому состояние «раньше и дешевле, но с
+   * большим числом часов за рулём» может стоить дороже. Без этой величины
+   * доминирование отбрасывало такие состояния как «не хуже» — и лучший
+   * порядок терялся (замер: scattered-113 недобирал 4,5 %).
+   */
+  drivingHours: number
   kg: number
   m3: number
   /** Сколько грузов едет в кузове прямо сейчас */
@@ -1021,12 +1043,15 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
   // её улучшить — перебор можно прекращать. Это не эвристика: граница
   // (выручка минус минимальный мыслимый пробег) заведомо выше настоящей
   // прибыли, поэтому обрезание не выбрасывает лучший вариант.
-  let bestNetSoFar = 0
+  // «Лучшее уже найденное» — именно найденное, а не ноль. Пока ни один набор
+  // не посчитан, обрезать нечем: ноль как порог выбрасывал сборку целиком на
+  // убыточных пулах (см. комментарий к knownBestNet).
+  let bestNetSoFar: number | null = null
   let exhaustive = true
   const budget = { left: CONSOLIDATED_STATE_BUDGET }
   context.stats.consideredGroups = 0
   for (const { group, bound } of shortlist) {
-    if (bound <= bestNetSoFar) {
+    if (bestNetSoFar !== null && bound <= bestNetSoFar) {
       exhaustive = false
       context.stats.prunedStates += 1
       break
@@ -1039,12 +1064,13 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
       context,
       group,
       exactGroups && group.length <= 3,
-      bestNetSoFar,
+      bestNetSoFar ?? Number.NEGATIVE_INFINITY,
       budget,
     )
     if (!best) continue
     plans.push(best)
-    if (best.economics.netCommittedRub > bestNetSoFar) bestNetSoFar = best.economics.netCommittedRub
+    const net = best.economics.netCommittedRub
+    if (bestNetSoFar === null || net > bestNetSoFar) bestNetSoFar = net
   }
   // Если перебор прерван по границе, по бюджету состояний или короткий список
   // обрезан — оптимум не доказан, и планы обязаны это честно говорить.
@@ -1065,9 +1091,18 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
     .slice(0, 10)
 }
 
-/** Недоминируемость сборного состояния: не позже и не дальше — значит не хуже. */
+/**
+ * Недоминируемость сборного состояния: не позже и не дороже — значит не хуже.
+ *
+ * Раньше сравнивали время и КИЛОМЕТРЫ. Это не одно и то же: километр с грузом
+ * дороже порожнего, поэтому состояние «короче, но гружёнее» вытеснялось как
+ * «лучшее», хотя по деньгам было хуже. Сравнение по `cost` (деньги пробега)
+ * и времени — это ровно те две величины, которые определяют прибыль при
+ * одинаковой выручке набора.
+ */
 function dominatesConsolidated(a: ConsolidatedNode, b: ConsolidatedNode): boolean {
-  return a.clock <= b.clock && a.km <= b.km && (a.clock < b.clock || a.km < b.km)
+  if (a.clock > b.clock || a.cost > b.cost || a.drivingHours > b.drivingHours + 1e-9) return false
+  return a.clock < b.clock || a.cost < b.cost || a.drivingHours < b.drivingHours - 1e-9
 }
 
 /**
@@ -1095,8 +1130,16 @@ function bestConsolidatedOrder(
   context: BuildContext,
   group: LoadOrder[],
   exact: boolean,
-  /** Лучшая прибыль, уже найденная на этом пуле (для отсечения ветвей) */
-  knownBestNet = 0,
+  /**
+   * Лучшая прибыль, уже найденная на этом пуле (для отсечения ветвей).
+   *
+   * `-Infinity` по умолчанию — «лучшего ещё нет». Ноль здесь был ошибкой:
+   * на пуле, где всё убыточно (база далеко от грузов), отсечение «прибыль не
+   * выше нуля — не развиваем» убивало весь поиск, и логист видел самый
+   * убыточный одиночный рейс вместо наименее убыточной сборки. Замер (задача
+   * scattered-148): ядро −70 733 ₽, независимый перебор −13 043 ₽.
+   */
+  knownBestNet = Number.NEGATIVE_INFINITY,
   /** Общий бюджет состояний на машину (см. CONSOLIDATED_STATE_BUDGET) */
   budget: { left: number } = { left: CONSOLIDATED_STATE_BUDGET },
 ): RoutePlan | null {
@@ -1152,15 +1195,35 @@ function bestConsolidatedOrder(
   // короче дерева. С ней поиск отсекает целые ветки, которые заведомо дороже
   // уже найденного порядка.
   const boundCache = new Map<string, number>()
-  const remainingBound = (mask: number, at: number): number => {
-    const key = `${mask}|${at}`
+  /**
+   * Нижняя граница оставшегося пробега: минимальное остовное дерево по точкам,
+   * которые ещё НУЖНО посетить, плюс база (домой ехать придётся).
+   *
+   * Тонкость, из-за которой раньше терялся оптимум: «осталось загрузить» и
+   * «осталось выгрузить» — разные вещи. Если груз уже в кузове, ехать на его
+   * погрузку повторно не надо. Прежняя версия добавляла в дерево оба плеча
+   * любого невыгруженного заказа, граница получалась завышенной — и отсечение
+   * по деньгам выбрасывало лучшую сборку. Замер: scattered-31 давал −30 569 ₽
+   * против −29 964 ₽ у перебора, а весь перебор набора {c1,c3,c4} обрезался
+   * до нуля законченных маршрутов.
+   *
+   * Поэтому в дерево входят:
+   *   · база (0) — возврат домой;
+   *   · текущая точка `at`;
+   *   · груз не взят — обе точки: погрузка и выгрузка;
+   *   · груз взят, но не выгружен — только выгрузка;
+   *   · груз выгружен — ничего.
+   */
+  const remainingBound = (picked: number, done: number, at: number): number => {
+    const key = `${picked}|${done}|${at}`
     const cached = boundCache.get(key)
     if (cached !== undefined) return cached
     const members: number[] = [0, at]
     for (let index = 0; index < n; index += 1) {
       const bit = 1 << index
-      if (!(mask & bit)) continue
-      members.push(1 + index * 2, 2 + index * 2)
+      if (done & bit) continue
+      if (picked & bit) members.push(2 + index * 2)
+      else members.push(1 + index * 2, 2 + index * 2)
     }
     const unique = [...new Set(members)]
     const inTree = new Set<number>()
@@ -1197,6 +1260,10 @@ function bestConsolidatedOrder(
     location: 0,
     clock: context.now.getTime() + settings.preparationHours * MS_HOUR,
     km: 0,
+    loadedKm: 0,
+    emptyKm: 0,
+    cost: 0,
+    drivingHours: 0,
     kg: 0,
     m3: 0,
     count: 0,
@@ -1213,11 +1280,36 @@ function bestConsolidatedOrder(
   let frontier: ConsolidatedNode[] = [start]
   const finished: ConsolidatedNode[] = []
 
-  // Отсечение ветвей. Две границы:
-  //   · bestTotalKm — лучший полный пробег ВНУТРИ этого набора (сравнение
-  //     пробега корректно только при одинаковой выручке);
-  //   · по деньгам — «выручка набора минус самый дешёвый возможный пробег»;
-  //     если это не выше уже найденной прибыли, набор не может её улучшить.
+  // Стоимость пробега в деньгах — для ПОРЯДКА перебора, не для отсечения.
+  //
+  // Зачем: прибыль внутри набора заказов определяется не километрами, а
+  // деньгами за километр, а они разные у гружёного и порожнего хода. Раньше
+  // готовые порядки сортировались по километрам, и порядок с чуть большим
+  // пробегом, но меньшим гружёным плечом оказывался ниже отсечки — замер:
+  // scattered-113 давал 55 739 ₽ против 58 396 ₽ у перебора.
+  // Километровые расходы без топлива: топливо считается отдельно и точно —
+  // по весу в кузове на каждом участке.
+  const perKmCost =
+    vehicle.cost.maintenancePerKm +
+    vehicle.cost.tiresPerKm +
+    vehicle.cost.tollsPerKm +
+    vehicle.cost.otherPerKm
+  const costOf = (node: ConsolidatedNode): number => node.cost
+
+  // Отсечение ветвей по деньгам: «выручка набора минус самый дешёвый
+  // возможный пробег». Если это не выше уже найденной прибыли, набор не может
+  // её улучшить.
+  //
+  // Граница должна быть ДОПУСТИМОЙ (никогда не отрезать лучшее):
+  //   · расходы берём по нижней оценке `perKmLowerBound` — фактический
+  //     километр дороже (расход топлива растёт с загрузкой), поэтому оценка
+  //     расходов занижена, а значит условие отсечения срабатывает реже, чем
+  //     могло бы;
+  //   · выручка за километр (`basis = perKm`) растёт вместе с пробегом, и
+  //     считать её фиксированной нельзя — на таких наборах отсечение
+  //     выключается совсем. Иначе «длиннее, но выгоднее» отрезалось бы как
+  //     заведомо убыточное.
+  const revenueFixed = group.every((order) => order.rate.basis !== "perKm")
   const groupRevenue = group.reduce((sum, order) => sum + order.rate.amount, 0)
   const perKmLowerBound =
     vehicle.cost.maintenancePerKm +
@@ -1225,9 +1317,12 @@ function bestConsolidatedOrder(
     vehicle.cost.tollsPerKm +
     vehicle.cost.otherPerKm +
     (fuelLiters(100, 0, vehicle) / 100) * vehicle.cost.fuelPricePerL
+  // Метрика прогона: лучший полный пробег набора. В отсечении НЕ участвует —
+  // см. пояснение в отчёте §15: порядок с большим пробегом может быть выгоднее,
+  // потому что гружёный километр дороже порожнего.
   let bestTotalKm = Infinity
   const cannotWin = (projectedKm: number): boolean =>
-    groupRevenue - projectedKm * perKmLowerBound <= knownBestNet
+    revenueFixed && groupRevenue - projectedKm * perKmLowerBound <= knownBestNet
 
   let truncated = false
   for (let step = 0; step < n * 2; step += 1) {
@@ -1279,9 +1374,12 @@ function bestConsolidatedOrder(
 
           // Отсечение по границе: если даже при самом коротком продолжении
           // путь выйдет не короче уже найденного — ветку не развиваем.
-          const restMask = allDone & ~(kind === "unload" ? node.doneMask | bit : node.doneMask)
-          const projected = node.km + legKm + remainingBound(restMask, target)
-          if (projected > bestTotalKm + 1e-6 || cannotWin(projected)) {
+          // Состояния «взято» и «выгружено» после этой операции считаются
+          // честно: уже погруженный груз не требует возврата на погрузку.
+          const nextPicked = kind === "load" ? node.pickedMask | bit : node.pickedMask
+          const nextDone = kind === "unload" ? node.doneMask | bit : node.doneMask
+          const projected = node.km + legKm + remainingBound(nextPicked, nextDone, target)
+          if (cannotWin(projected)) {
             context.stats.prunedStates += 1
             continue
           }
@@ -1310,6 +1408,15 @@ function bestConsolidatedOrder(
             location: target,
             clock,
             km: node.km + legKm,
+            // Участок гружёный, если в кузове уже что-то едет: «порожний» —
+            // это состояние кузова, а не вид остановки, к которой едем.
+            loadedKm: node.loadedKm + (node.count > 0 ? legKm : 0),
+            emptyKm: node.emptyKm + (node.count > 0 ? 0 : legKm),
+            cost:
+              node.cost +
+              legKm * perKmCost +
+              fuelLiters(legKm, node.count > 0 ? node.kg : null, vehicle) * vehicle.cost.fuelPricePerL,
+            drivingHours: node.drivingHours + legHours,
             kg: weightAfter,
             m3: volumeAfter,
             count: countAfter,
@@ -1333,7 +1440,14 @@ function bestConsolidatedOrder(
           const kept = bucket.filter((other) => !dominatesConsolidated(candidate, other))
           kept.push(candidate)
           if (kept.length > PARETO_KEEP) {
-            kept.sort((a, b) => a.clock + a.km * 1000 - (b.clock + b.km * 1000))
+            // Излишек ведра отбрасываем по деньгам пробега, а при равенстве —
+            // по времени: раньше ключом был `clock + km*1000`, то есть время
+            // и километры в несопоставимых единицах.
+            kept.sort((a, b) => {
+              const costA = costOf(a)
+              const costB = costOf(b)
+              return costA !== costB ? costA - costB : a.clock - b.clock
+            })
             kept.length = PARETO_KEEP
             context.stats.prunedStates += 1
           }
@@ -1357,12 +1471,16 @@ function bestConsolidatedOrder(
   // закончившийся на Дальнем Востоке, мог «выиграть» по km и проиграть по
   // возврату. Из-за этого самый выгодный порядок не попадал в первые
   // MATERIALIZE_LIMIT — расхождение с перебором доходило до 2,5 %.
-  const backHome = (node: ConsolidatedNode): number => kmMatrix[node.location][0]
+  // Дорога домой — порожняя (если обратного груза нет), поэтому считается по
+  // порожней ставке.
+  const backHomeCost = (node: ConsolidatedNode): number =>
+    kmMatrix[node.location][0] * perKmCost +
+    fuelLiters(kmMatrix[node.location][0], null, vehicle) * vehicle.cost.fuelPricePerL
   const shortlist = [...finished]
     .sort((a, b) => {
-      const totalA = a.km + backHome(a)
-      const totalB = b.km + backHome(b)
-      return totalA !== totalB ? totalA - totalB : a.clock - b.clock
+      const costA = costOf(a) + backHomeCost(a)
+      const costB = costOf(b) + backHomeCost(b)
+      return costA !== costB ? costA - costB : a.clock - b.clock
     })
     .slice(0, MATERIALIZE_LIMIT)
 

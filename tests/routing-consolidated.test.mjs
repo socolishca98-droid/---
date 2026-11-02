@@ -246,3 +246,60 @@ test("сборка: последовательная и сборная моде�
     )
   }
 })
+
+// ── Регрессии по отсечениям ─────────────────────────────────────────────────
+//
+// Эти сценарии ловили два настоящих дефекта поиска, оба — «умное» отсечение
+// выбрасывало лучшую сборку:
+//
+//   1. «Лучшего ещё нет» трактовалось как «лучший равен нулю». На пуле, где
+//      всё убыточно, наборы отсекались целиком: scattered-148 давал −70 733 ₽
+//      вместо эталонных −13 043 ₽.
+//   2. Нижняя граница остатка пути добавляла в минимальное остовное дерево
+//      погрузку уже погруженного груза. Граница завышалась, отсечение по
+//      деньгам убивало набор: scattered-31 давал −30 569 ₽ вместо −29 964 ₽,
+//      а набор {c1,c3,c4} вообще не давал законченных маршрутов.
+//
+// Сверка — с независимым перебором, а не с прежним ответом ядра: тест обязан
+// падать, если ядро снова начнёт терять оптимум.
+
+test("сборка: убыточный пул не превращается в отсечение всего поиска", async () => {
+  const tile = makeConsolidatedCase(148, "scattered")
+  const result = await planOf(tile)
+  const plan = result.recommended ?? result.variants[0] ?? null
+  assert.ok(plan, "на убыточном пуле честный ответ — «ехать невыгодно», а не пустой экран")
+  const brute = Math.max(bruteConsolidated(tile).net, bruteSequential(tile).net)
+  assert.ok(
+    plan.economics.netCommittedRub >= brute - 1,
+    `ядро ${Math.round(plan.economics.netCommittedRub)} ₽ против эталона ${Math.round(brute)} ₽`,
+  )
+})
+
+test("сборка: нижняя граница остатка пути не считает погрузку уже загруженного груза", async () => {
+  const tile = makeConsolidatedCase(31, "scattered")
+  const result = await planOf(tile)
+  const plan = result.recommended ?? result.variants[0] ?? null
+  assert.ok(plan)
+  const brute = Math.max(bruteConsolidated(tile).net, bruteSequential(tile).net)
+  assert.ok(
+    plan.economics.netCommittedRub >= brute - 1,
+    `ядро ${Math.round(plan.economics.netCommittedRub)} ₽ против эталона ${Math.round(brute)} ₽`,
+  )
+})
+
+// Полный прогон сотен задач — в `npm run routing:mass-quality`; здесь короткая
+// выборка, чтобы отсечение, которое снова начнёт терять оптимум, падало уже на
+// обычных тестах, а не через десять минут.
+test("сборка: 10 задач каждого вида не отстают от независимого перебора", async () => {
+  for (const kind of ["same-origin", "corridor", "scattered"]) {
+    for (let seed = 1; seed <= 10; seed += 1) {
+      const tile = makeConsolidatedCase(seed, kind)
+      const result = await planOf(tile)
+      const plan = result.recommended ?? result.variants[0] ?? null
+      const core = plan ? plan.economics.netCommittedRub : 0
+      const brute = Math.max(bruteConsolidated(tile).net, bruteSequential(tile).net)
+      assert.ok(core >= brute - 1, `${kind}-${seed}: ядро ${Math.round(core)} ₽ против эталона ${Math.round(brute)} ₽`)
+      assert.ok(core <= brute + 1, `${kind}-${seed}: ядро обещает больше эталона: ${Math.round(core)} ₽ против ${Math.round(brute)} ₽`)
+    }
+  }
+})

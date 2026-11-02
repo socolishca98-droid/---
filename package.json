@@ -43,6 +43,8 @@
     "geo:warm": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/warm-geocache.ts",
     "routing:bases": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-bases.ts",
     "routing:plan": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-plan.ts",
+    "routing:mass": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/mass-check.ts",
+    "routing:mass-quality": "npm run test:build && node audit/mass-quality.mjs",
     "test:vitest": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "test:watch": "vitest",
