@@ -125,7 +125,20 @@ async function geocodeYandex(address: string): Promise<Coordinates | null> {
   }
 }
 
-async function geocodeNominatimOnce(address: string): Promise<Coordinates | null> {
+/**
+ * Пауза после ответа «слишком часто».
+ *
+ * Было: рекурсивный повтор без ограничения — на 16 адресах боевого пула
+ * геокодер отвечал 429, и функция уходила в бесконечный цикл «пауза → повтор».
+ * Прогрев справочника висел десять минут, а запрос приложения мог так и не
+ * ответить. Теперь повтор один, после него Nominatim на минуту исключается из
+ * работы, и координаты добирает Photon.
+ */
+let nominatimBlockedUntil = 0
+const NOMINATIM_BLOCK_MS = 60_000
+
+async function geocodeNominatimOnce(address: string, attempt = 0): Promise<Coordinates | null> {
+  if (Date.now() < nominatimBlockedUntil) return null
   const query = /росси/i.test(address) ? address : `${address}, Россия`
 
   try {
@@ -144,8 +157,10 @@ async function geocodeNominatimOnce(address: string): Promise<Coordinates | null
     // оставались без координат (Омск, Абакан, Улан-Удэ). Один повтор с
     // паузой их возвращает.
     if (response.status === 429 || response.status === 503) {
+      nominatimBlockedUntil = Date.now() + NOMINATIM_BLOCK_MS
+      if (attempt >= 1) return null
       await sleep(RETRY_PAUSE_MS)
-      return geocodeNominatimOnce(address)
+      return geocodeNominatimOnce(address, attempt + 1)
     }
     if (!response.ok) return null
 
@@ -208,6 +223,22 @@ function addressVariants(address: string): string[] {
   )
   if (cityOnly && !out.includes(cityOnly)) out.push(cityOnly)
 
+  // Адрес без запятых: «Москва улица Складская 6», «Ярославль машиностроителей
+  // 3». ATI иногда склеивает город и улицу через пробел, и тогда все варианты
+  // выше — это целая строка, которую геокодер не знает. Берём первое слово:
+  // для расчёта расстояний центр города лучше, чем «нет координат» — именно
+  // так груз с таким адресом выпадал из планирования.
+  const firstToken = base.split(/\s+/)[0] ?? ""
+  if (
+    !base.includes(",") &&
+    firstToken.length >= 3 &&
+    !/^\d/.test(firstToken) &&
+    !/^(ул|улица|пр-?кт?|проспект|пр-?т|пер|переулок|ш|шоссе|д|дом)\.?(?![a-zа-яё])/i.test(firstToken) &&
+    !out.includes(firstToken)
+  ) {
+    out.push(firstToken)
+  }
+
   // Город переименован («Свердловск» → «Екатеринбург», «Горький» → «Нижний
   // Новгород»): геокодер знает только нынешнее название, поэтому пробуем его,
   // пока не поздно. Регион из исходной строки сохраняем — он не менялся.
@@ -226,6 +257,74 @@ function addressVariants(address: string): string[] {
 }
 
 /**
+ * Запасной геокодер — Photon (собственный сервер OSM, без ключа).
+ *
+ * Зачем третий провайдер. Nominatim на пачке адресов отвечает 429 («слишком
+ * часто»), и город молча остаётся без координат: живой прогон на боевом пуле —
+ * 16 городов, которые не нашлись ни с первого раза, ни с очищенным названием
+ * («Армянск г., Республика Крым», «Дружный сп., Нижегородская область»).
+ * С геокодером Photon те же адреса находятся за один запрос.
+ *
+ * Почему ответ проверяется, а не берётся на веру: Photon на «Бердянск» отдаёт
+ * Бердянскую улицу в Краснодарском крае, а на «Харцызск» — Харцызскую улицу.
+ * Такая точка хуже отсутствия точки: маршрут «поехал» бы в другое место.
+ * Поэтому принимаем только населённый пункт (osm_key = place, тип город/село)
+ * и только если имя совпадает с тем, что просили.
+ */
+const PHOTON_URL = "https://photon.komoot.io/api/"
+/** Типы населённых пунктов Photon: улицы и районы не принимаем. */
+const PHOTON_PLACE_TYPES = new Set(["city", "town", "village", "hamlet", "locality"])
+const PHOTON_COUNTRIES = new Set(["ru", "by", "kz", "ua"])
+
+/** Сравнение названий: регистр, ё/е и хвостовые приставки не важны. */
+function samePlaceName(left: string, right: string): boolean {
+  const norm = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/ё/g, "е")
+      .replace(/\s+(г|сп|вп|п|с|д|пос|пгт|рп|нп)\.?$/i, "")
+      .replace(/[^\wа-я]+/g, " ")
+      .trim()
+  return norm(left) === norm(right)
+}
+
+async function geocodePhoton(address: string): Promise<Coordinates | null> {
+  // Спрашиваем два варианта и пять ответов: с limit=1 Photon на «Дружный»
+  // отдаёт одноимённую улицу, а сам посёлок оказывается вторым. Ответ
+  // проверяется, поэтому лишние строки — не риск, а шанс найти населённый пункт.
+  const variants = addressVariants(address)
+  const queries = [...new Set([variants[variants.length - 1], variants[0]].filter(Boolean) as string[])]
+  for (const query of queries) {
+    try {
+      const url = new URL(PHOTON_URL)
+      url.searchParams.set("q", query)
+      url.searchParams.set("limit", "5")
+      const response = await fetch(url.toString(), {
+        headers: { "User-Agent": USER_AGENT, "Accept-Language": "ru" },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+      if (!response.ok) continue
+      const data = await response.json()
+      const wanted = (query.split(",")[0] ?? query).trim()
+      for (const feature of data?.features ?? []) {
+        const properties = feature?.properties ?? {}
+        if (properties.osm_key !== "place") continue
+        if (!PHOTON_PLACE_TYPES.has(String(properties.osm_value))) continue
+        if (!PHOTON_COUNTRIES.has(String(properties.countrycode ?? "").toLowerCase())) continue
+        // Имя обязано совпасть: «Бердянск» ≠ «Бердянская улица».
+        if (!samePlaceName(String(properties.name ?? ""), wanted)) continue
+        const [lng, lat] = feature.geometry?.coordinates ?? []
+        const coords = { lat: Number(lat), lng: Number(lng) }
+        if (isCoordinates(coords)) return coords
+      }
+    } catch (error) {
+      console.error("[geocode] ошибка запроса к Photon:", error)
+    }
+  }
+  return null
+}
+
+/**
  * Один сетевой запрос координат. Сначала Яндекс (если ключ есть), затем
  * Nominatim: провайдер может отдать null, и тогда пробуем следующий.
  * Возвращает ещё и источник, чтобы интерфейс показывал правду.
@@ -240,6 +339,12 @@ async function geocodeRemote(
     const nominatim = await geocodeNominatim(variant)
     if (nominatim) return { coords: nominatim, source: "nominatim" }
   }
+
+  // Последний шанс: Photon. Источник честно называется «nominatim» —
+  // в интерфейсе это «данные OpenStreetMap», а не отдельная строка правды
+  // про то, какой из двух серверов OSM ответил.
+  const photon = await geocodePhoton(address)
+  if (photon) return { coords: photon, source: "nominatim" }
 
   return { coords: null, source: "none" }
 }

@@ -40,6 +40,8 @@
     "routing:compare": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/compare-builders.ts",
     "routing:audit": "npm run test:build && node audit/routing-quality.mjs",
     "routing:osrm": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-osrm.ts",
+    "geo:warm": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/warm-geocache.ts",
+    "routing:bases": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-bases.ts",
     "test:vitest": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "test:watch": "vitest",

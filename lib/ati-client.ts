@@ -4,7 +4,7 @@
 import { prisma } from "@/lib/prisma"
 import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 import { resolveAtiCities } from "./ati/ati-city-resolver"
-import { mapBoardsLoad, collectCityIds } from "./ati/boards-mapping"
+import { cityWithRegion, mapBoardsLoad, collectCityIds } from "./ati/boards-mapping"
 import { geocodeAddresses } from "./geo/geocode"
 import { searchExchange } from "./ati/exchange-client"
 import { loadMatchesGeo, type GeoQuery } from "./ati/search-geo"
@@ -647,8 +647,8 @@ async function saveToCache(
     const fromRegion = locFrom?.region || locFrom?.region_name || ""
     const toCity = locTo?.city || locTo?.cityName || "N/A"
     const toRegion = locTo?.region || locTo?.region_name || ""
-    const routeFrom = fromRegion && fromCity !== "N/A" ? `${fromCity}, ${fromRegion}` : fromCity
-    const routeTo = toRegion && toCity !== "N/A" ? `${toCity}, ${toRegion}` : toCity
+    const routeFrom = cityWithRegion(fromCity, fromRegion)
+    const routeTo = cityWithRegion(toCity, toRegion)
     const fromKey = makeCityKey(routeFrom)
     const toKey = makeCityKey(routeTo)
 

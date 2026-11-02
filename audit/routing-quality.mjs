@@ -366,6 +366,197 @@ async function consolidationPerformance() {
   return rows
 }
 
+// ── 4в. Разные города и разный вес ────────────────────────────────────────
+/**
+ * Один и тот же планировщик проверяется от пяти баз и на четырёх машинах.
+ *
+ * Зачем: тесты доказывают арифметику на одной базе, а требование к системе —
+ * мультирегиональность. Здесь видно, что от Краснодара и Красноярска маршрут
+ * строится так же, как от Ярославля, что часовые пояса не ломают календарь и
+ * что машина другого веса получает другой маршрут, а не «тот же самый».
+ */
+const BASE_CITIES = [
+  { city: "Ярославль", lat: 57.6261, lng: 39.8845, region: "Ярославская область", tz: "Europe/Moscow" },
+  { city: "Москва", lat: 55.7558, lng: 37.6173, region: "Москва", tz: "Europe/Moscow" },
+  { city: "Екатеринбург", lat: 56.8389, lng: 60.6057, region: "Свердловская область", tz: "Asia/Yekaterinburg" },
+  { city: "Краснодар", lat: 45.0355, lng: 38.9753, region: "Краснодарский край", tz: "Europe/Moscow" },
+  { city: "Красноярск", lat: 56.0095, lng: 92.8732, region: "Красноярский край", tz: "Asia/Krasnoyarsk" },
+]
+
+/** Города для выгрузок: вокруг каждой базы, в разных поясах. */
+const DESTINATIONS = [
+  { city: "Тула", lat: 54.1961, lng: 37.6182, region: "Тульская область", tz: "Europe/Moscow" },
+  { city: "Нижний Новгород", lat: 56.3269, lng: 44.0059, region: "Нижегородская область", tz: "Europe/Moscow" },
+  { city: "Казань", lat: 55.7963, lng: 49.1088, region: "Татарстан", tz: "Europe/Moscow" },
+  { city: "Самара", lat: 53.1959, lng: 50.1002, region: "Самарская область", tz: "Europe/Samara" },
+  { city: "Челябинск", lat: 55.1644, lng: 61.4368, region: "Челябинская область", tz: "Asia/Yekaterinburg" },
+  { city: "Новосибирск", lat: 55.0084, lng: 82.9357, region: "Новосибирская область", tz: "Asia/Novosibirsk" },
+  { city: "Ростов-на-Дону", lat: 47.2357, lng: 39.7015, region: "Ростовская область", tz: "Europe/Moscow" },
+  { city: "Воронеж", lat: 51.672, lng: 39.1843, region: "Воронежская область", tz: "Europe/Moscow" },
+]
+
+const CAPACITIES = [
+  { kg: 1500, m3: 12, consumption: 12 },
+  { kg: 5000, m3: 32, consumption: 17 },
+  { kg: 10000, m3: 60, consumption: 22 },
+  { kg: 20000, m3: 82, consumption: 30 },
+]
+
+const placeOfCity = (item) => ({
+  id: item.city.toLowerCase(),
+  city: item.city,
+  region: item.region,
+  point: { lat: item.lat, lng: item.lng },
+  timeZone: item.tz,
+})
+
+const regionsOf = (items) => [
+  ...new Map(items.map((item) => [item.region, item])).values(),
+].map((item) => ({ key: item.region, speedLoadedKmh: 55, speedEmptyKmh: 60, roadFactor: 1.2 }))
+
+function vehicleFor(base, capacity) {
+  return {
+    id: `veh-${capacity.kg}`,
+    organisationId: "org-base",
+    plate: `ПРОВЕРКА-${capacity.kg}`,
+    homeBase: placeOfCity(base),
+    capacityKg: capacity.kg,
+    capacityM3: capacity.m3,
+    body: ["tent"],
+    consumptionLPer100: capacity.consumption,
+    consumptionEstimated: false,
+    cost: {
+      fuelPricePerL: 70,
+      driverPay: { kind: "perShift", perShift: 8000 },
+      maintenancePerKm: 9,
+      tiresPerKm: 2.5,
+      tollsPerKm: 0,
+      otherPerKm: 2,
+      fixedPerDay: 4000,
+    },
+    status: "available",
+  }
+}
+
+/**
+ * Пул под конкретную базу: погрузки рядом с базой, выгрузки — в разные стороны.
+ *
+ * Ставка считается от расстояния, а не «средней по больнице»: иначе из
+ * Краснодара все рейсы выходили заведомо убыточными (дальние плечи по цене
+ * ближних), и проверка показывала «маршрута нет» там, где дело было в
+ * генераторе, а не в планировщике.
+ */
+function poolForBase(base) {
+  const others = DESTINATIONS.filter((item) => item.city !== base.city)
+  const distanceKm = (a, b) => {
+    const rad = (value) => (value * Math.PI) / 180
+    const dLat = rad(b.lat - a.lat)
+    const dLng = rad(b.lng - a.lng)
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+    return 2 * 6371 * Math.asin(Math.sqrt(h)) * 1.25
+  }
+  // Ближайшие направления: с «первых попавшихся» Красноярск получал только
+  // плечи по 3000–4000 км, которые не влезают в горизонт рейса, и проверка
+  // показывала «маршрута нет» вместо честного «нет близких грузов».
+  const nearest = [...others]
+    .sort((a, b) => distanceKm(base, a) - distanceKm(base, b))
+    .slice(0, 6)
+  return nearest.map((destination, index) => {
+    const km = distanceKm(base, destination)
+    return {
+      id: `${base.city}-${index}`,
+      organisationId: "org-base",
+      pickup: placeOfCity(index < 4 ? base : nearest[(index + 1) % nearest.length]),
+      delivery: placeOfCity(destination),
+      // Мелкие партии в начале списка: иначе полторы тонны не получают ни
+      // одного груза и «маршрута нет» относится к генератору, а не к машине.
+      weightKg: 500 + index * 650,
+      volumeM3: 4 + index * 2,
+      bodyRequired: ["tent"],
+      window: { pickup: {}, delivery: {} },
+      // Ставка ≈ рынок: круг «туда-обратно» окупается, иначе любая машина
+      // выходила убыточной, и проверка мерила генератор, а не планировщик.
+      rate: { amount: Math.round(Math.max(25000, km * 95)), vatIncluded: true },
+      exchangeKm: null,
+    }
+  })
+}
+
+async function basesAndWeights() {
+  const rows = []
+  const problems = []
+  const bases = new Set()
+
+  for (const base of BASE_CITIES) {
+    const orders = poolForBase(base)
+    const basePlace = placeOfCity(base)
+    const regions = regionsOf([base, ...DESTINATIONS])
+    const settings = {
+      ...R.DEFAULT_SETTINGS,
+      maxRouteHours: 240,
+      drivingLimitHours: 9,
+      restHours: 11,
+      openingHour: 8,
+      startRadiusKm: 100_000,
+      maxLegs: 6,
+      consolidationEnabled: true,
+      maxConcurrentOrders: 3,
+      handlingHoursPerTon: 0.15,
+    }
+
+    for (const capacity of CAPACITIES) {
+      const vehicle = vehicleFor(base, capacity)
+      // База у машины — своя: ядро не знает «главного» города.
+      vehicle.homeBase = basePlace
+      const result = await R.planVehicle(
+        { orders, vehicle, settings, regions, now: NOW },
+        vehicle,
+      )
+      const plan = result.recommended
+      if (!plan) {
+        rows.push({ base: base.city, capacityKg: capacity.kg, hasPlan: false })
+        continue
+      }
+      bases.add(base.city)
+      const check = R.validatePlan(plan, orders, vehicle, settings)
+      if (!check.ok) problems.push(`${base.city}/${capacity.kg}: ${check.issues.map((i) => i.message).join("; ")}`)
+
+      const crossTimeZones = plan.stops.some(
+        (stop) => stop.place.timeZone && stop.place.timeZone !== base.tz,
+      )
+      const calendarHours = (new Date(plan.schedule.endAt).getTime() - new Date(plan.schedule.startAt).getTime()) / 3_600_000
+      // Календарь не может быть короче чистой езды: если короче — время
+      // считается неверно, и это ошибка, а не «оптимизация».
+      if (calendarHours + 1e-6 < plan.schedule.drivingHours) {
+        problems.push(`${base.city}/${capacity.kg}: календарь ${calendarHours.toFixed(1)} ч короче езды ${plan.schedule.drivingHours.toFixed(1)} ч`)
+      }
+      if (plan.economics.emptyKm > plan.economics.totalKm + 1e-6) {
+        problems.push(`${base.city}/${capacity.kg}: порожний пробег больше общего`)
+      }
+
+      rows.push({
+        base: base.city,
+        capacityKg: capacity.kg,
+        hasPlan: true,
+        model: plan.model,
+        legs: plan.orderIds.length,
+        totalKm: Math.round(plan.economics.totalKm),
+        emptyShare: Math.round(plan.economics.emptyShare * 100),
+        drivingHours: Math.round(plan.schedule.drivingHours),
+        calendarHours: Math.round(calendarHours),
+        netRub: Math.round(plan.economics.netCommittedRub),
+        exact: plan.exact,
+        crossTimeZones,
+        valid: check.ok,
+      })
+    }
+  }
+
+  return { rows, problems, basesCovered: [...bases].length }
+}
+
 // ── 5. Изоляция организаций и независимость от города ──────────────────────
 async function isolation() {
   const vehicle = makeVehicleFixture()
@@ -464,6 +655,7 @@ const consolidation = await consolidationGain(40)
 const consolidationBlock = await consolidationVsBruteForce(30)
 const designed = await designedConsolidation()
 const perf = await performance()
+const basesBlock = await basesAndWeights()
 const consolidationPerf = await consolidationPerformance()
 const isolationBlock = await isolation()
 
@@ -476,6 +668,7 @@ results.checks = {
   ),
   designedConsolidation: designed,
   performance: perf,
+  basesAndWeights: basesBlock,
   consolidationPerformance: consolidationPerf,
   isolation: isolationBlock,
 }
@@ -526,6 +719,25 @@ for (const row of consolidationPerf) {
       `наборов ${row.groups ?? "—"}, сборных вариантов ${row.consolidatedVariants}, валидно: ${row.valid}`,
   )
 }
+console.log("\n── Разные базы и разный вес ──")
+for (const row of basesBlock.rows) {
+  if (!row.hasPlan) {
+    console.log(`  ${row.base} / ${row.capacityKg} кг: маршрута нет`)
+    continue
+  }
+  console.log(
+    `  ${row.base} / ${String(row.capacityKg).padStart(5)} кг: ${row.model === "consolidated" ? "сборный" : "последовательный"}, ` +
+      `плеч ${row.legs}, ${row.totalKm} км (порожним ${row.emptyShare} %), ${row.drivingHours} ч движ. ` +
+      `из ${row.calendarHours} ч календарных, остаток ${row.netRub} ₽, ` +
+      `${row.crossTimeZones ? "смена часового пояса, " : ""}` +
+      `оптимум ${row.exact ? "доказан" : "не доказан"}, ${row.valid ? "валидно" : "НАРУШЕНИЯ"}`,
+  )
+}
+console.log(
+  `  баз с маршрутом: ${basesBlock.basesCovered} из ${new Set(basesBlock.rows.map((row) => row.base)).size}, ` +
+    (basesBlock.problems.length === 0 ? "нарушений нет" : `нарушений ${basesBlock.problems.length}: ${basesBlock.problems[0]}`),
+)
+
 console.log("\n── Изоляция ──")
 console.log(JSON.stringify(isolationBlock, null, 2))
 console.log("\nОтчёт: audit/routing-quality.json")

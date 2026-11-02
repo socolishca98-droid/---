@@ -36,6 +36,30 @@ const LOADING_TYPES: Record<number, string> = {
 export type AtiCityMap = Map<number, { name: string; region: string }>
 
 /**
+ * «Город, регион» без повторения региона.
+ *
+ * ATI в части грузов отдаёт город уже с регионом внутри названия
+ * («Новороссийск, Краснодарский край»), а регион приходит отдельным полем.
+ * Склейка «как есть» давала «Новороссийск, Краснодарский край, Краснодарский
+ * край»: геокодер такой адрес не находит, и груз выпадал из маршрута с
+ * причиной «нет координат». В боевой базе так было записано 918 грузов.
+ */
+export function cityWithRegion(city: string, region: string): string {
+  const name = (city ?? "").trim()
+  const area = (region ?? "").trim()
+  if (!name) return name
+  if (!area || name === "N/A") return name
+  // Регион уже внутри названия города — второй раз не дописываем.
+  if (name.toLowerCase().includes(area.toLowerCase())) return name
+  // Регион может дублироваться и внутри себя («Татарстан, Республика
+  // Татарстан») — вторую половину не берём.
+  const halves = area.split(",").map((part) => part.trim()).filter(Boolean)
+  const tail = halves[halves.length - 1] ?? area
+  if (halves.length > 1 && name.toLowerCase().includes(tail.toLowerCase())) return name
+  return `${name}, ${area}`
+}
+
+/**
  * Груз byboards → внутренний формат сканера (loading/unloading.location,
  * route.distance, load.weight, rate.*, truck.*) — дальше идут общие
  * фильтры профиля, saveToCache и биржа.

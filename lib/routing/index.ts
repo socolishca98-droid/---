@@ -52,7 +52,13 @@ export const DEFAULT_SETTINGS: Settings = {
   minContributionPerKm: 0,
   preparationHours: 2,
   startRadiusKm: 300,
-  handlingHoursPerTon: 0.6,
+  /**
+   * Норма погрузки/выгрузки — 9 минут на тонну. Здесь было 0,6 ч/т, а адаптер
+   * организации уже считал 0,15: два разных значения одной нормы в одном ядре.
+   * Держим одно — то, что прошло проверку календаря (10,8 ч на 18 тонн давали
+   * половину суток на одну операцию).
+   */
+  handlingHoursPerTon: 0.15,
   minHandlingHours: 1.5,
   openingHour: 8,
   consolidationEnabled: true,

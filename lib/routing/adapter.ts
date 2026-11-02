@@ -360,6 +360,11 @@ export interface OrderBuildResult {
  * `distance` биржи — это гружёное плечо, и оно главнее маршрутизатора: по нему
  * фрахтователь считает ставку. Поэтому оно идёт в `exchangeKm`.
  */
+/** Организация строки: сервис передаёт `organisationId`, Prisma отдаёт `organizationId`. */
+function organisationOfRow(row: { organisationId?: string | null; organizationId?: string | null }) {
+  return row.organisationId ?? row.organizationId ?? ""
+}
+
 export function orderFromAtiRow(
   row: AtiLoadRow,
   places: Map<string, Place>,
@@ -378,7 +383,7 @@ export function orderFromAtiRow(
   return {
     order: {
       id: row.atiLoadId,
-      organisationId: row.organisationId,
+      organisationId: organisationOfRow(row),
       pickup,
       delivery,
       weightKg: row.weight ?? null,
@@ -413,7 +418,7 @@ export function orderFromOrderRow(
   return {
     order: {
       id: row.id,
-      organisationId: row.organisationId ?? organisationId,
+      organisationId: organisationOfRow(row) || organisationId,
       pickup,
       delivery,
       weightKg: row.weight ?? null,
