@@ -11,7 +11,7 @@
 
 import { materialize, searchConsolidated, searchSequential, type BuildContext } from "./builder"
 import { compatible } from "./compatibility"
-import { DistanceEngine } from "./distance"
+import { DistanceEngine, straightKm } from "./distance"
 import { rankVariants, explainRejections } from "./optimizer"
 import { validatePlan, type ValidationResult } from "./validator"
 import type {
@@ -227,6 +227,20 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
       (orderId) => {
         const order = compatibleOrders.find((item) => item.id === orderId)
         if (!order) return null
+        // Радиус относится к НАЧАЛУ маршрута — и в объяснении отказа тоже.
+        // Без этой проверки с далёкой базы (Краснодар, Екатеринбург) отказ
+        // звучал как «не влезает в лимит 72 ч: получилось 149 ч», хотя
+        // настоящая причина другая: погрузка в тысяче километров от базы.
+        // Считаем по прямой: дорога не короче прямой, значит «прямая дальше
+        // радиуса» — достаточное условие, ложных отказов не даёт.
+        const straightFromBase = straightKm(vehicle.homeBase.point, order.pickup.point)
+        if (straightFromBase > input.settings.startRadiusKm + 1) {
+          return {
+            reason:
+              `погрузка в ${Math.round(straightFromBase)} км от базы — дальше радиуса ` +
+              `${Math.round(input.settings.startRadiusKm)} км`,
+          }
+        }
         const single = materialize(
           context,
           [

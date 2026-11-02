@@ -42,6 +42,7 @@
     "routing:osrm": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-osrm.ts",
     "geo:warm": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/warm-geocache.ts",
     "routing:bases": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-bases.ts",
+    "routing:plan": "ts-node --project scripts/tsconfig.seed.json -r ./scripts/register-path-alias.cjs -r dotenv/config scripts/check-plan.ts",
     "test:vitest": "vitest run",
     "test:isolation": "vitest run --config vitest.isolation.config.ts",
     "test:watch": "vitest",

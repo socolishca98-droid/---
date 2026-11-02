@@ -123,15 +123,23 @@ async function main(): Promise<void> {
         // Не «первая причина», а раскладка: одна машина отбраковывает весь пул
         // по разным поводам, и по одной строке нельзя понять, дело в весе,
         // в кузове или в географии.
-        const counts = new Map<string, number>()
+        // Группируем по «скелету» причины (цифры заменены), чтобы «20 т тяжелее
+        // машины (1,5 т)» и «14 т тяжелее машины (1,5 т)» не считались разными
+        // поводами. Но показываем НАСТОЯЩУЮ причину: раньше в отчёте стояло
+        // «груз N т тяжелее машины (N т) (111)» — шаблон с цифрами-заглушками,
+        // по которому нельзя понять, о каком грузе и какой машине речь.
+        const counts = new Map<string, { count: number; example: string }>()
         for (const rejection of result?.rejected ?? []) {
           const key = rejection.reason.replace(/\d+([.,]\d+)?/g, "N").split(";")[0].trim()
-          counts.set(key, (counts.get(key) ?? 0) + 1)
+          const entry = counts.get(key)
+          if (entry) entry.count += 1
+          else counts.set(key, { count: 1, example: rejection.reason.split(";")[0].trim() })
         }
-        const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2)
+        // Сортируем по частоте: главный повод должен стоять первым.
+        const top = [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 2)
         const reason =
           top.length > 0
-            ? top.map(([text, count]) => `${text} (${count})`).join("; ")
+            ? top.map((item) => `${item.example} — таких ${item.count}`).join("; ")
             : "в пуле нет грузов, подходящих этой машине и этой базе"
         console.log(`  ${capacity} кг: маршрута нет — ${reason} (${elapsed} мс)`)
         continue

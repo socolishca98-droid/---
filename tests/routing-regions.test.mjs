@@ -229,3 +229,40 @@ test("машины разного веса получают разные мар�
   const bigSignature = `${big.recommended.orderIds.join(">")}|${Math.round(big.recommended.economics.totalKm)}`
   assert.notEqual(smallSignature, bigSignature, "маршрут не зависит от машины — вес не учитывается")
 })
+
+test("отказ называет радиус, а не лимит времени: причина соответствует настоящему препятствию", async () => {
+  // База в Краснодаре, а все грузы — в Сибири: ближе радиуса ничего нет.
+  // Раньше отказ в этом случае звучал «не влезает в лимит 72 ч: получилось
+  // 149.6 ч», и логист шёл менять лимит, хотя дело было в расстоянии до базы.
+  const base = place("Краснодар", 45.0355, 38.9753, "Краснодарский край", "Europe/Moscow")
+  const far = [
+    place("Новосибирск", 55.0084, 82.9357, "Новосибирская область", "Asia/Novosibirsk"),
+    place("Красноярск", 56.0095, 92.8732, "Красноярский край", "Asia/Krasnoyarsk"),
+  ]
+  const orders = far.map((destination, index) => ({
+    id: `far-${index}`,
+    organisationId: "org-1",
+    pickup: far[0],
+    delivery: far[1],
+    weightKg: 5000,
+    volumeM3: 20,
+    bodyRequired: ["tent"],
+    window: { pickup: {}, delivery: {} },
+    rate: { amount: 400000, vatIncluded: true },
+    exchangeKm: null,
+  }))
+  const settings = { ...SETTINGS, startRadiusKm: 300, maxRouteHours: 72 }
+  const vehicle = vehicleFor(base, 20000, 82, 30)
+  const result = await R.planVehicle(
+    { orders, vehicle, settings, regions: regionsOf([base, ...far]), now: NOW },
+    vehicle,
+  )
+
+  assert.equal(result.recommended, null, "из базы за 3000 км от грузов маршрут не должен строиться")
+  const reasons = result.rejected.map((item) => item.reason).join(" | ")
+  assert.match(reasons, /дальше радиуса 300 км/, `причина не про радиус: ${reasons}`)
+  assert.ok(
+    !/не влезает в лимит/.test(reasons),
+    `отказ списан на лимит времени, хотя дело в расстоянии от базы: ${reasons}`,
+  )
+})

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T00:21:34.430Z",
+  "generatedAt": "2026-11-02T05:24:02.825Z",
   "checks": {
     "vsBruteForce": {
       "cases": 120,
@@ -29,7 +29,7 @@
         "consolidatedWins": 30,
         "consolidatedGainRub": 1017026,
         "invalidPlans": 0,
-        "avgMs": 19
+        "avgMs": 16
       },
       "corridor": {
         "cases": 30,
@@ -39,7 +39,7 @@
         "consolidatedWins": 26,
         "consolidatedGainRub": 270838,
         "invalidPlans": 0,
-        "avgMs": 3
+        "avgMs": 1
       },
       "scattered": {
         "cases": 30,
@@ -49,7 +49,7 @@
         "consolidatedWins": 21,
         "consolidatedGainRub": 227130,
         "invalidPlans": 0,
-        "avgMs": 2
+        "avgMs": 1
       }
     },
     "designedConsolidation": [
@@ -103,7 +103,7 @@
     "performance": [
       {
         "orders": 8,
-        "elapsedMs": 17,
+        "elapsedMs": 10,
         "states": 5194,
         "pruned": 2696,
         "distanceCalls": 6252,
@@ -115,7 +115,7 @@
       },
       {
         "orders": 12,
-        "elapsedMs": 73,
+        "elapsedMs": 72,
         "states": 17678,
         "pruned": 13914,
         "distanceCalls": 35088,
@@ -127,7 +127,7 @@
       },
       {
         "orders": 20,
-        "elapsedMs": 33,
+        "elapsedMs": 21,
         "states": 6900,
         "pruned": 7766,
         "distanceCalls": 27736,
@@ -139,7 +139,7 @@
       },
       {
         "orders": 40,
-        "elapsedMs": 31,
+        "elapsedMs": 19,
         "states": 3924,
         "pruned": 4911,
         "distanceCalls": 12347,
@@ -151,7 +151,7 @@
       },
       {
         "orders": 60,
-        "elapsedMs": 19,
+        "elapsedMs": 13,
         "states": 6047,
         "pruned": 7577,
         "distanceCalls": 27723,
@@ -471,7 +471,7 @@
     "consolidationPerformance": [
       {
         "orders": 12,
-        "elapsedMs": 473,
+        "elapsedMs": 335,
         "states": 300966,
         "groups": 145,
         "consolidatedVariants": 1,
@@ -479,7 +479,7 @@
       },
       {
         "orders": 40,
-        "elapsedMs": 405,
+        "elapsedMs": 335,
         "states": 300966,
         "groups": 145,
         "consolidatedVariants": 1,
@@ -487,7 +487,7 @@
       },
       {
         "orders": 120,
-        "elapsedMs": 391,
+        "elapsedMs": 279,
         "states": 300966,
         "groups": 145,
         "consolidatedVariants": 1,
