@@ -81,7 +81,14 @@ async function main(): Promise<void> {
   // Справочник ATI получает те же координаты: расчёт сначала смотрит в него,
   // и это дешевле, чем идти в GeoCache по каждому городу.
   const filled = await fillAtiCity()
-  console.log(`[geo:warm] в справочнике AtiCity координаты проставлены для ${filled} городов`)
+  // «0» — это не ошибка: значит, у всех городов пула координаты в справочнике
+  // уже есть (их проставил прошлый прогрев). Пишем это словами, иначе строка
+  // «проставлены для 0 городов» читается как поломка.
+  console.log(
+    filled > 0
+      ? `[geo:warm] в справочнике AtiCity координаты проставлены для ${filled} городов`
+      : "[geo:warm] в справочнике AtiCity у городов пула координаты уже есть",
+  )
 
   console.log(`[geo:warm] итог: найдено ${found}, без координат ${missing.length}`)
   if (missing.length > 0) {
@@ -108,7 +115,12 @@ async function fillAtiCity(): Promise<number> {
     from geo
     where lower(trim(c.name)) = geo.city and (c.lat is null or c.lon is null)
     returning 1
-  `.catch(() => [])
+  `.catch((error: unknown) => {
+    // Молча глотать нельзя: «0 городов» и «запрос не выполнился» — разные
+    // вещи, и второе надо видеть, а не принимать за успех.
+    console.error("[geo:warm] не удалось обновить справочник AtiCity:", error)
+    return []
+  })
   return rows.length
 }
 
