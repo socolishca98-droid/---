@@ -9,10 +9,10 @@
 // чтения окружения внутри. Поэтому один и тот же вход гарантирует один и тот же
 // результат — воспроизводимость, которой не было у расчёта в браузере.
 
+import { materialize, searchConsolidated, searchSequential, type BuildContext } from "./builder"
 import { compatible } from "./compatibility"
 import { DistanceEngine } from "./distance"
 import { rankVariants, explainRejections } from "./optimizer"
-import { searchConsolidated, searchSequential, type BuildContext } from "./builder"
 import { validatePlan, type ValidationResult } from "./validator"
 import type {
   LoadOrder,
@@ -32,9 +32,9 @@ export { computeEconomics, driverPay, workingHours } from "./economics"
 export { validatePlan } from "./validator"
 export { rankVariants, explainRejections } from "./optimizer"
 export {
+  materialize,
   searchSequential,
   searchConsolidated,
-  materialize,
   handlingHours,
   fuelLiters,
 } from "./builder"
@@ -221,6 +221,31 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
       all,
       new Set(compatibleOrders.map((order) => order.id)),
       details,
+      // Одиночный рейс по этому грузу — чтобы отказ был с цифрой, а не
+      // «не окупает пробег». Материализация одного груза дешёвая, и считается
+      // только для грузов, которые в план не попали.
+      (orderId) => {
+        const order = compatibleOrders.find((item) => item.id === orderId)
+        if (!order) return null
+        const single = materialize(
+          context,
+          [
+            { kind: "load", order },
+            { kind: "unload", order },
+          ],
+          {
+            model: "sequential",
+            includeReturn: input.settings.returnMode !== "free",
+            exact: true,
+          },
+        )
+        if (!single.plan) return null
+        return {
+          netRub: single.plan.economics.netCommittedRub,
+          totalKm: Math.round(single.plan.economics.totalKm),
+          emptyKm: Math.round(single.plan.economics.emptyKm),
+        }
+      },
     ),
     stats,
   }

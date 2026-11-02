@@ -150,6 +150,12 @@ export function explainRejections(
   plans: RoutePlan[],
   compatibleIds: Set<string>,
   details: Map<string, string[]>,
+  /**
+   * Экономика одиночного рейса по этому грузу: до погрузки, с грузом, домой.
+   * Без неё отказ звучит «не окупает пробег» — а логисту нужно, СКОЛЬКО не
+   * хватает и на чём: возврат, порожний подъезд или низкая ставка.
+   */
+  standalone?: (orderId: string) => { netRub: number; totalKm: number; emptyKm: number } | null,
 ): Array<{ orderId: string; reason: string }> {
   const used = new Set<string>()
   for (const plan of plans) for (const id of plan.orderIds) used.add(id)
@@ -163,10 +169,24 @@ export function explainRejections(
       })
       continue
     }
-    out.push({
-      orderId: order.id,
-      reason: "не вошёл в лучшие цепочки: не окупает пробег в этом составе",
-    })
+    const single = standalone?.(order.id) ?? null
+    if (single) {
+      const money = Math.round(single.netRub)
+      const tail =
+        `${single.totalKm} км, из них порожним ${single.emptyKm}` +
+        `, остаток ${money < 0 ? "−" : ""}${Math.abs(money).toLocaleString("ru-RU")} ₽`
+      out.push({
+        orderId: order.id,
+        reason: single.netRub < 0
+          ? `не вошёл в лучшие цепочки: одиночный рейс убыточен (${tail})`
+          : `не вошёл в лучшие цепочки: одиночный рейс даёт меньше, чем другие цепочки (${tail})`,
+      })
+    } else {
+      out.push({
+        orderId: order.id,
+        reason: "не вошёл в лучшие цепочки: не окупает пробег в этом составе",
+      })
+    }
   }
   return out
 }

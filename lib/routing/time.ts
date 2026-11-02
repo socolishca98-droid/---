@@ -61,19 +61,35 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
  * границе перевода часов погрешность не выходит за минуты и всё равно
  * пересчитывается на следующих сутках.
  */
-const offsetCache = new Map<string, number>()
+const offsetCache = new Map<number, number>()
+/** Пояс → номер: числовой ключ кеша дешевле строки на каждом переходе поиска. */
+const zoneIds = new Map<string, number>()
 
-function dayKey(date: Date, timeZone: string): string {
-  return `${timeZone}|${Math.floor(date.getTime() / 86_400_000)}`
+function dayKey(ms: number, timeZone: string): number {
+  let id = zoneIds.get(timeZone)
+  if (id === undefined) {
+    id = zoneIds.size + 1
+    zoneIds.set(timeZone, id)
+  }
+  return id * 1_000_003 + Math.floor(ms / 86_400_000)
 }
 
 /** Смещение часового пояса в минутах для конкретного момента. */
 export function zoneOffsetMinutes(date: Date, timeZone: string | null | undefined): number {
+  return zoneOffsetMinutesAtMs(date.getTime(), timeZone)
+}
+
+/**
+ * То же по миллисекундам: объект `Date` создаётся только при промахе кеша.
+ * В переборе цепочек эта функция вызывается на каждом переходе, и лишняя
+ * аллокация на вызов — это и время, и работа сборщика мусора.
+ */
+export function zoneOffsetMinutesAtMs(ms: number, timeZone: string | null | undefined): number {
   if (!timeZone) return 0
-  const key = dayKey(date, timeZone)
+  const key = dayKey(ms, timeZone)
   const cached = offsetCache.get(key)
   if (cached !== undefined) return cached
-  const computed = computeZoneOffsetMinutes(date, timeZone)
+  const computed = computeZoneOffsetMinutes(new Date(ms), timeZone)
   if (offsetCache.size > 20_000) offsetCache.clear()
   offsetCache.set(key, computed)
   return computed
@@ -200,6 +216,36 @@ export function readyFrom(
     start = atLocalHour(start, place.timeZone, openingHour)
   }
   return { startAt: start, waitingHours: Math.max(0, (start.getTime() - arrival.getTime()) / 3600000) }
+}
+
+/**
+ * То же, что `readyFrom`, но в миллисекундах и без объектов.
+ *
+ * Зачем: в переборе цепочек эта функция вызывается на каждом переходе (сотни
+ * тысяч раз), а `new Date` в горячем цикле — это и время, и сборка мусора.
+ * Профиль поиска показывал 15 % в GC и 9 % в расчёте смещения пояса.
+ */
+export function readyFromMs(
+  arrivalMs: number,
+  timeZone: string | null | undefined,
+  windowFrom: string | null | undefined,
+  openingHour: number,
+): { startMs: number; waitingHours: number } {
+  let startMs = arrivalMs
+  if (windowFrom) {
+    const windowMs = Date.parse(windowFrom)
+    if (!Number.isNaN(windowMs) && windowMs > startMs) startMs = windowMs
+  }
+  if (openingHour > 0) {
+    const offset = zoneOffsetMinutesAtMs(startMs, timeZone)
+    const localMs = startMs + offset * 60000
+    const localHour = Math.floor((localMs % 86_400_000) / 3_600_000)
+    if (localHour < openingHour) {
+      // Начало местных рабочих часов: сдвигаем на (openingHour − localHour).
+      startMs += (openingHour - localHour) * 3_600_000 - (localMs % 3_600_000)
+    }
+  }
+  return { startMs, waitingHours: Math.max(0, (startMs - arrivalMs) / 3_600_000) }
 }
 
 /** Позже окна — опоздание: это предупреждение, а не отказ. */

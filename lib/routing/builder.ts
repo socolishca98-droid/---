@@ -22,7 +22,7 @@
 import { capacityProfile, type CapacityMove } from "./capacity"
 import { DistanceEngine, type SegmentInfo } from "./distance"
 import { computeEconomics } from "./economics"
-import { driveSegment, lateBy, readyFrom, type DriveState } from "./time"
+import { driveSegment, lateBy, readyFrom, readyFromMs, type DriveState } from "./time"
 import type {
   CapacityUse,
   Economics,
@@ -1295,12 +1295,12 @@ function bestConsolidatedOrder(
           const arrivalMs = node.clock + legHours * MS_HOUR
           const clock =
             windowFrom || settings.openingHour > 0
-              ? readyFrom(
-                  new Date(arrivalMs),
-                  kind === "load" ? order.pickup : order.delivery,
+              ? readyFromMs(
+                  arrivalMs,
+                  (kind === "load" ? order.pickup : order.delivery).timeZone,
                   windowFrom,
                   settings.openingHour,
-                ).startAt.getTime() +
+                ).startMs +
                 handle * MS_HOUR
               : arrivalMs + handle * MS_HOUR
 
