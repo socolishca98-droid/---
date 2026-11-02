@@ -155,7 +155,9 @@ export function explainRejections(
    * Без неё отказ звучит «не окупает пробег» — а логисту нужно, СКОЛЬКО не
    * хватает и на чём: возврат, порожний подъезд или низкая ставка.
    */
-  standalone?: (orderId: string) => { netRub: number; totalKm: number; emptyKm: number } | null,
+  standalone?: (
+    orderId: string,
+  ) => { netRub: number; totalKm: number; emptyKm: number } | { reason: string } | null,
 ): Array<{ orderId: string; reason: string }> {
   const used = new Set<string>()
   for (const plan of plans) for (const id of plan.orderIds) used.add(id)
@@ -170,6 +172,10 @@ export function explainRejections(
       continue
     }
     const single = standalone?.(order.id) ?? null
+    if (single && "reason" in single) {
+      out.push({ orderId: order.id, reason: `не вошёл в цепочку: ${single.reason}` })
+      continue
+    }
     if (single) {
       const money = Math.round(single.netRub)
       const tail =

@@ -239,7 +239,11 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
             exact: true,
           },
         )
-        if (!single.plan) return null
+        if (!single.plan) {
+          // Одиночный рейс не собирается вовсе (не влезает в горизонт, окно
+          // позже срока) — так и говорим, а не «не окупает пробег».
+          return { reason: single.infeasible ?? "рейс не собирается по времени" }
+        }
         return {
           netRub: single.plan.economics.netCommittedRub,
           totalKm: Math.round(single.plan.economics.totalKm),
