@@ -24,6 +24,9 @@ import { isProfileDue, parseProfileCities } from "@/lib/ati/scan-profile"
 import { markProfileScanned, getDueScanProfiles } from "@/lib/ati/scan-schedule"
 import { regionOfBaseAddress } from "@/lib/ati/base-region"
 import { prisma } from "@/lib/prisma"
+import { rateStatus } from "@/lib/pricing/status"
+import { describePrice } from "@/lib/pricing/format"
+import { quoteMany } from "@/lib/pricing/service"
 
 export const dynamic = "force-dynamic"
 
@@ -111,6 +114,65 @@ export async function GET(request: NextRequest) {
       return { ...rest, fromPoint, toPoint, source }
     })
 
+    // Цена: где её нет — считаем ориентир по аналогам ОДНИМ проходом по базе.
+    //
+    // Раньше на экране стояло «0 ₽» — то есть программа утверждала, что
+    // перевозка бесплатная. Теперь ноль показывается только как «стоимость не
+    // указана», а рядом — расчёт с диапазоном, числом аналогов и уверенностью
+    // либо честное «недостаточно данных».
+    let priceViews: Record<string, ReturnType<typeof describePrice>> = {}
+    let estimateMap: Awaited<ReturnType<typeof quoteMany>> = new Map()
+    try {
+      const needQuote = items.filter(
+        (row: any) => rateStatus({ amount: row.price ?? 0, status: row.priceStatus ?? null }) !== "CONFIRMED",
+      )
+      if (needQuote.length > 0) {
+        estimateMap = await quoteMany(
+          organizationId,
+          needQuote.map((row: any) => ({
+            refKind: "ati" as const,
+            refId: String(row.id),
+            fromCity: row.routeFrom,
+            toCity: row.routeTo,
+            km: row.distance && row.distance > 0 ? row.distance : null,
+            weightKg: row.weight ?? null,
+            volumeM3: row.volume ?? null,
+            bodyType: row.truckType ?? null,
+            temperature: null,
+            date: row.loadingDate ?? null,
+          })),
+        )
+        priceViews = Object.fromEntries(
+          needQuote.map((row: any) => {
+            const quote = estimateMap.get(String(row.id))
+            const status = rateStatus({ amount: row.price ?? 0, status: row.priceStatus ?? null })
+            return [
+              String(row.id),
+              describePrice(
+                {
+                  status,
+                  amountRub: status === "CONFIRMED" ? row.price : null,
+                  note: row.priceRaw ?? undefined,
+                  costFloorRub: quote && !quote.ok ? quote.costFloorRub : null,
+                },
+                quote && quote.ok ? quote.estimate : null,
+              ),
+            ]
+          }),
+        )
+      }
+    } catch {
+      // Оценка не должна ронять список: грузы покажем без расчёта, но и без
+      // придуманной цены.
+      priceViews = {}
+    }
+
+    const itemsWithPrice = items.map((row: any) => ({
+      ...row,
+      priceStatus: rateStatus({ amount: row.price ?? 0, status: row.priceStatus ?? null }),
+      priceDisplay: priceViews[String(row.id)] ?? null,
+    }))
+
     // Площадки организации: отдельным необязательным запросом. Не смогли
     // получить — не ошибка экрана, честную подпись просто не покажем.
     let sourceBoards: Array<{ id: string; name: string }> = []
@@ -144,7 +206,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...result,
-      items,
+      items: itemsWithPrice,
       lastScanAt: freshScannedAt,
       refreshed,
       refreshError,

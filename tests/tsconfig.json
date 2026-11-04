@@ -27,6 +27,8 @@
   },
   "include": [
     "../lib/routing/**/*.ts",
+    "../lib/pricing/**/*.ts",
+    "../lib/prisma.ts",
     "../lib/auth/constants.ts",
     "../lib/profile.ts",
     "../lib/auth/access.ts",

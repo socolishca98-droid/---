@@ -136,6 +136,20 @@ export default function SettingsPage() {
       if (form.operatingCostPerKm !== "" && form.operatingCostPerKm !== undefined) {
         payload.operatingCostPerKm = Number(form.operatingCostPerKm)
       }
+      // Оплата водителя: правило своё у каждой организации. Пусто — водитель
+      // считается внутри ставки ₽/км (историческая конвенция).
+      payload.driverPayKind = (form.driverPayKind ?? "").trim() || null
+      for (const field of [
+        "driverPayPerShift",
+        "driverPayPerKm",
+        "driverPayPerHour",
+        "driverPayPerTrip",
+        "driverPayBasePerShift",
+      ] as const) {
+        const raw = (form[field] ?? "").trim()
+        payload[field] = raw === "" ? null : Number(raw)
+      }
+      payload.operatingCostIncludesDriver = (form.operatingCostIncludesDriver ?? "true") === "true"
 
       const response = await fetch("/api/fleet/settings", {
         method: "POST",
@@ -337,6 +351,108 @@ export default function SettingsPage() {
                     можно поставить свою ставку в её карточке. 0 — не вычитать.
                   </p>
                 </div>
+
+                {/* Оплата водителя — своё правило у каждой организации. */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="driverPayKind">Оплата водителя</Label>
+                  <select
+                    id="driverPayKind"
+                    value={form.driverPayKind ?? "includedInPerKm"}
+                    onChange={(event) => set("driverPayKind", event.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="includedInPerKm">Уже внутри ставки ₽/км</option>
+                    <option value="perShift">За смену</option>
+                    <option value="perKm">За километр</option>
+                    <option value="perHour">За час работы</option>
+                    <option value="perTrip">За рейс</option>
+                    <option value="mixed">Оклад за смену + за километр</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Пока правило не выбрано, водитель считается внутри ставки ₽/км.
+                  </p>
+                </div>
+
+                {(form.driverPayKind ?? "") === "perShift" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="driverPayPerShift">Смена, ₽</Label>
+                    <Input
+                      id="driverPayPerShift"
+                      inputMode="decimal"
+                      value={form.driverPayPerShift ?? ""}
+                      onChange={(event) => set("driverPayPerShift", event.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
+                    />
+                  </div>
+                ) : null}
+                {(form.driverPayKind ?? "") === "perKm" || (form.driverPayKind ?? "") === "mixed" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="driverPayPerKm">Километр, ₽</Label>
+                    <Input
+                      id="driverPayPerKm"
+                      inputMode="decimal"
+                      value={form.driverPayPerKm ?? ""}
+                      onChange={(event) => set("driverPayPerKm", event.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
+                    />
+                  </div>
+                ) : null}
+                {(form.driverPayKind ?? "") === "mixed" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="driverPayBasePerShift">Оклад за смену, ₽</Label>
+                    <Input
+                      id="driverPayBasePerShift"
+                      inputMode="decimal"
+                      value={form.driverPayBasePerShift ?? ""}
+                      onChange={(event) => set("driverPayBasePerShift", event.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
+                    />
+                  </div>
+                ) : null}
+                {(form.driverPayKind ?? "") === "perHour" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="driverPayPerHour">Час работы, ₽</Label>
+                    <Input
+                      id="driverPayPerHour"
+                      inputMode="decimal"
+                      value={form.driverPayPerHour ?? ""}
+                      onChange={(event) => set("driverPayPerHour", event.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Час — это и движение, и погрузка, и ожидание окна.
+                    </p>
+                  </div>
+                ) : null}
+                {(form.driverPayKind ?? "") === "perTrip" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="driverPayPerTrip">Рейс, ₽</Label>
+                    <Input
+                      id="driverPayPerTrip"
+                      inputMode="decimal"
+                      value={form.driverPayPerTrip ?? ""}
+                      onChange={(event) => set("driverPayPerTrip", event.target.value.replace(/[^\d.,]/g, "").replace(",", "."))}
+                    />
+                  </div>
+                ) : null}
+                {(form.driverPayKind ?? "includedInPerKm") !== "includedInPerKm" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      set(
+                        "operatingCostIncludesDriver",
+                        (form.operatingCostIncludesDriver ?? "true") === "true" ? "false" : "true",
+                      )
+                    }
+                    className="flex w-full items-center justify-between gap-3 rounded-md border border-input px-3 py-2 text-left text-sm"
+                  >
+                    <span>
+                      Ставка ₽/км включает водителя
+                      <span className="block text-xs text-muted-foreground">
+                        Если платите водителю отдельно — выключите, иначе двойной учёт
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-medium">
+                      {(form.operatingCostIncludesDriver ?? "true") === "true" ? "да" : "нет"}
+                    </span>
+                  </button>
+                ) : null}
               </CardContent>
             </Card>
           </div>

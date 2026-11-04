@@ -157,8 +157,17 @@ export async function POST(request: NextRequest) {
         cargoType: cache.cargoType || "Груз",
         loadingType: cache.loadingType || "other",
         requirements: cache.note || null,
+        // Цена переносится вместе со статусом. Ноль остаётся нулём, но он
+        // означает «не указана», и в экономике это не доход: заказ помечен
+        // priceNegotiable и priceStatus = NEGOTIATION_REQUIRED.
         price: cache.price ?? 0,
         priceNegotiable: !cache.price,
+        priceStatus:
+          cache.priceStatus && cache.priceStatus !== "CONFIRMED" && cache.price && cache.price > 0
+            ? cache.priceStatus
+            : cache.price && cache.price > 0
+              ? "CONFIRMED"
+              : "NEGOTIATION_REQUIRED",
         paymentType: cache.paymentType || null,
         clientName: cache.firmName || null,
         clientContact: contactPhone || "",

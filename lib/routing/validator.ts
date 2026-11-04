@@ -145,6 +145,9 @@ export function validatePlan(
   }
 
   // 8. Деньги
+  //
+  // Тождества проверяются независимо от того, как их посчитала модель: если
+  // статьи не складываются в остаток, значит где-то двойной учёт или потеря.
   const e = plan.economics
   const sum =
     e.fuelRub + e.driverRub + e.maintenanceRub + e.tiresRub + (e.tollsRub ?? 0) + e.otherRub
@@ -153,6 +156,37 @@ export function validatePlan(
       rule: "экономика",
       message: `выручка − расходы ≠ остаток: ${e.revenue} − ${sum} ≠ ${e.netRub}`,
     })
+  }
+  if (Math.abs(e.knownCostRub - sum) > 1) {
+    issues.push({
+      rule: "экономика",
+      message: `известные расходы ${e.knownCostRub} ≠ сумма статей ${sum}`,
+    })
+  }
+  // Остаток с обязательством вернуться не может быть БОЛЬШЕ остатка рейса:
+  // обязательство только уменьшает. Разница должна совпадать с ценой возврата.
+  if (e.netCommittedRub > e.netRub + 1) {
+    issues.push({
+      rule: "экономика",
+      message: `остаток с возвратом ${e.netCommittedRub} больше остатка рейса ${e.netRub}`,
+    })
+  }
+  const commitment = e.netRub - e.netCommittedRub
+  const expected = plan.returned.kind === "none" ? plan.returned.costRub : 0
+  if (Math.abs(commitment - expected) > 1) {
+    issues.push({
+      rule: "экономика",
+      message:
+        `скидка за обязательство вернуться ${commitment} ₽ не равна цене возврата ${expected} ₽`,
+    })
+  }
+  // Неполный расчёт нельзя выдавать за прибыль — но и прятать его в предупреждение
+  // тоже нельзя: статус обязан быть проставлен моделью.
+  if (e.status === "complete" && (e.gaps?.length ?? 0) > 0) {
+    issues.push({ rule: "экономика", message: "статус «полный», а пробелы расчёта есть" })
+  }
+  if (e.status === "insufficient" && !(e.gaps?.length ?? 0)) {
+    issues.push({ rule: "экономика", message: "статус «неполный», но пробелы не названы" })
   }
   if (e.totalKm !== e.loadedKm + e.emptyKm) {
     issues.push({

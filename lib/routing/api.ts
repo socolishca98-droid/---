@@ -129,6 +129,13 @@ export function serializeVehiclePlan(item: PlanResult) {
     // как «нашли три», и логист не знает, что поиск был шире.
     variantsTotal: item.variants.length,
     rejected: item.rejected,
+    /**
+     * Грузы без цены и без оценки: они подходят машине, но денег по ним нет.
+     * Без этого списка логист видел только «грузов нет», хотя груз есть — и
+     * по нему надо позвонить. В расчёт маршрута они не попадают: 0 ₽ — это
+     * не бесплатная перевозка, а неизвестная.
+     */
+    unpriced: item.unpriced,
     stats: item.stats,
   }
 }

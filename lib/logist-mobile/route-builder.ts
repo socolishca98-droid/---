@@ -264,6 +264,11 @@ export interface BuiltRoute {
   /** Последнее плечо — домой с грузом */
   returnsHomeWithLoad: boolean
   totalDistanceKm: number
+  /** Сколько километров измерено дорогой (OSRM / биржа), а сколько оценено */
+  measuredKm?: number
+  estimatedKm?: number
+  /** Кто дал измеренные километры: osrm-own, osrm-public, exchange */
+  distanceProviders?: string[]
   /** Вся поездка в часах, включая возврат и погрузки/выгрузки */
   totalHours: number
   /** Лимит времени, на который собирали маршрут, часы */
@@ -275,6 +280,17 @@ export interface BuiltRoute {
   /** Сколько плеч с риском «не успеваем к дате загрузки» */
   lateRiskLegs: number
   totalRevenue: number
+  /**
+   * Из выручки — подтверждённая часть (ставка из источника или согласованная
+   * цена). Остальное (`revenueEstimated`) — расчёт Loginex.
+   */
+  revenueConfirmed?: number
+  /** Расчётная часть выручки: не деньги, а ожидание */
+  revenueEstimated?: number
+  /** confirmed | partly-estimated | unconfirmed */
+  revenueStatus?: "confirmed" | "partly-estimated" | "unconfirmed"
+  /** Прибыль держится на неподтверждённой цене — так и подписываем */
+  profitDependsOnEstimate?: boolean
   totalFuelCostRub: number | null
   totalProfitRub: number | null
   /**
@@ -287,8 +303,20 @@ export interface BuiltRoute {
   operatingCostRub: number | null
   /** Сколько ₽/км заложено в работу машины */
   operatingCostPerKm: number
-  /** Что реально остаётся: выручка − топливо − работа машины */
+  /**
+   * Что реально остаётся: выручка − известные статьи − обязательство вернуться
+   * на базу. Это же число сервер использует для выбора рекомендации.
+   */
   netProfitRub: number | null
+  /**
+   * Полнота денежного расчёта:
+   * complete — все статьи известны, netProfitRub можно называть прибылью;
+   * preliminary — есть неизвестное, но с оценкой, и оценка уже вычтена;
+   * insufficient — часть расходов неизвестна и в остатке отсутствует.
+   */
+  profitStatus?: "complete" | "preliminary" | "insufficient"
+  /** Что именно не посчитано — словами, чтобы это не спряталось в «прибыли» */
+  profitGaps?: Array<{ article: string; reason: string; estimateRub: number | null; inNet: boolean }>
   /** Прибыль на километр после работы машины */
   netProfitPerKm: number | null
   /** И то же на час времени машины */

@@ -322,9 +322,12 @@ export function bruteConsolidated({ orders, vehicle, settings }) {
     const picked = []
     for (let i = 0; i < n; i += 1) if (mask & (1 << i)) picked.push(i)
     if (picked.length > limit) continue
-    const kg = picked.reduce((sum, i) => sum + (orders[i].weightKg ?? 0), 0)
-    const m3 = picked.reduce((sum, i) => sum + (orders[i].volumeM3 ?? 0), 0)
-    if (kg > vehicle.capacityKg || m3 > vehicle.capacityM3) continue
+    // Сумма по набору НЕ проверяется — это был тот же дефект D1, что и в
+    // сборщике: два груза по 4 т в 5-тонник по сумме не проходят, а рейс
+    // исполнимо (взял первый, выгрузил, взял второй). Важно, сколько едет на
+    // КАЖДОМ участке, — это и проверяет walk() ниже. Эталон приёмки
+    // (acceptance/ref.mjs) устроен так же; здесь отсечение по сумме осталось
+    // по недосмотру и мешало видеть решения, которые сборщик находит законно.
     walk({
       used: mask,
       loaded: 0,

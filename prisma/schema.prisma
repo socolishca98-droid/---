@@ -57,6 +57,13 @@ model AtiCache {
   loadingType   String?
   price         Int?
   priceType     String?
+  /// Достоверность цены: CONFIRMED | ESTIMATED | NEGOTIATION_REQUIRED | UNKNOWN.
+  /// Ноль в price без статуса означает «не указана»; статус нужен, чтобы не
+  /// путать это с бесплатной перевозкой и с расчётной ценой.
+  priceStatus   String?
+  /// Исходное значение цены ровно как пришло из ATI (число, строка, null).
+  /// Нужно, чтобы «договорная» и битый формат не терялись при разборе.
+  priceRaw      String?
   paymentType   String?
   vatIncluded   Boolean   @default(false)
   loadingDate   DateTime?
@@ -90,8 +97,14 @@ model AtiCity {
   region   String @default("")
   lat      Float?
   lon      Float?
+  /// Ключ поиска пункта по названию (см. lib/routing/geo/address.ts,
+  /// cityLookupKey): без типа пункта, без района в скобках, без регистра и ё.
+  /// «Энгельс» находит «Энгельс, Саратовская область», чего точное совпадение
+  /// name не давало. Заполняется scripts/backfill-ati-city-keys.mjs.
+  nameKey  String?
 
   @@index([name])
+  @@index([nameKey])
 }
 
 // ============================================
@@ -139,14 +152,128 @@ model AtiSession {
 // КЭШИРОВАНИЕ ГЕОКОДИНГА
 // ============================================
 
+/// Кэш координат для адресов и населённых пунктов.
+///
+/// Раньше здесь были только address/lat/lng, и любая ошибка геокодера
+/// становилась «справочными данными» навсегда: «Шарапово д. (Новомосковский
+/// административный округ)» получило точку в Тверской области, и по ней
+/// считались расстояния и порожний пробег для всех организаций.
+///
+/// Теперь у записи есть происхождение и статус:
+///   · source  — откуда точка: geocoder | ati | manual;
+///   · region  — регион, к которому точка относится (для проверки);
+///   · status  — verified | rejected | unverified. Для маршрута годится только
+///               verified; всё остальное не используется, пока точку не
+///               подтвердят сверкой со справочником или вручную;
+///   · checkedAt — когда проверяли.
+/// Измеренные расстояния между точками — постоянный кэш маршрутизатора.
+///
+/// Зачем в базе, а не только в памяти процесса: километры между двумя городами
+/// не меняются от расчёта к расчёту, а запрос к публичному серверу стоит времени
+/// и чужого трафика. Плюс ТЗ требует ХРАНИТЬ источник и статус достоверности —
+/// им нужно место.
+///
+/// Ключ — идентификаторы точек (`Place.id`), а не координаты: идентификатор
+/// стабилен и переживает смену справочника координат.
+model RouteDistance {
+  id         String   @id @default(cuid())
+  /// Идентификатор точки отправления (cityKey или base:<key>)
+  fromId     String
+  /// Идентификатор точки назначения
+  toId       String
+  /// loaded — с грузом, deadhead — порожним (время зависит от режима)
+  mode       String
+  /// Километры по дороге
+  km         Float
+  /// osrm | exchange — измерено человеком или маршрутизатором
+  source     String
+  /// Имя точки входа: osrm-own, osrm-public, …
+  provider   String?
+  measuredAt DateTime @default(now())
+
+  @@unique([fromId, toId, mode])
+  @@index([fromId])
+}
+
+/// История расчётных цен.
+///
+/// Зачем отдельная таблица, а не поле в заказе:
+///   · одна и та же заявка оценивается несколько раз (данные обновляются), и
+///     нужно видеть, что показывали логисту раньше;
+///   · когда цена подтверждена звонком, оценка НЕ стирается — она остаётся
+///     здесь, чтобы потом можно было понять, насколько оценка расходилась с
+///     рынком;
+///   · данные одной организации не попадают в расчёт другой: выборка всегда
+///     фильтруется по organizationId (см. lib/pricing/service.ts).
+model PriceEstimate {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// К чему относится оценка: ati (заявка в AtiCache) | direction (направление без заявки)
+  refKind        String
+  refId          String
+  fromCity       String
+  toCity         String
+  km             Float?
+  amountRub      Int
+  lowRub         Int?
+  highRub        Int?
+  perKmRub       Int?
+  /// high | medium | low
+  confidence     String
+  samples        Int
+  /// Источники через запятую: history, ati-same-direction, ati-nearby
+  sources        String
+  /// Объяснение словами — то же, что видит логист
+  basis          String
+  costFloorRub   Int?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, refKind, refId])
+  @@index([organizationId, createdAt])
+  @@index([fromCity, toCity])
+}
+
+/// Результат звонка по цене.
+///
+/// Одна запись — один разговор. Последняя запись по заявке и есть текущее
+/// состояние переговоров; история не перезаписывается.
+model PriceCall {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// ati (заявка в AtiCache) | order (заказ в работе)
+  refKind        String
+  refId          String
+  /// confirmed | proposed_other | refused | undecided | no_answer | callback
+  outcome        String
+  /// Сумма, о которой договорились или которую предложили (если названа)
+  amountRub      Int?
+  note           String?
+  contactPhone   String?
+  authorId       String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, refKind, refId])
+  @@index([organizationId, createdAt])
+}
+
 model GeoCache {
   id        String   @id @default(cuid())
   address   String   @unique
   lat       Float
   lng       Float
+  /// Откуда координаты: geocoder, ati, manual
+  source    String?
+  /// Регион точки — по нему проверяется, что нашли то, что искали
+  region    String?
+  /// verified | rejected | unverified (null — запись до появления статусов)
+  status    String?
+  checkedAt DateTime?
   createdAt DateTime @default(now())
 
   @@index([address])
+  @@index([status])
 }
 
 // ============================================
@@ -262,6 +389,9 @@ model Order {
   requirements      String?
   price             Int?
   priceNegotiable   Boolean   @default(false)
+  /// Достоверность цены: CONFIRMED | ESTIMATED | NEGOTIATION_REQUIRED | UNKNOWN.
+  /// Расчётная цена в экономике маршрута считается отдельно от подтверждённой.
+  priceStatus       String?
   paymentType       String?
   vatType           String?
   deferredDays      Int?
@@ -745,6 +875,10 @@ model FleetSettings {
   baseAddress String?
   baseLat     Float?
   baseLng     Float?
+  /// Регион базы. Раньше его пытались вытащить из строки адреса делением по
+  /// запятой, и адрес «Ярославль. Ул. Докучалова 12» оставался без региона —
+  /// вместе с регионом терялись часовой пояс и цена топлива.
+  baseRegion  String?
   // ── Реквизиты перевозчика для печатных документов (задача 3, пункт 3) ──
   // Свои у каждой организации: ТТН, путевой лист и договор-заявка печатаются
   // от её имени. Пустое поле печатается как строка для заполнения от руки,
@@ -770,6 +904,20 @@ model FleetSettings {
   /// дороги, стоянки). Из этого числа помощник считает «сколько останется»,
   /// поэтому оно должно быть своё у каждой организации, а не зашито в код.
   operatingCostPerKm Float @default(24)
+  /// true — ставка ₽/км считается ВМЕСТЕ с оплатой водителя (историческая
+  /// конвенция). Снимается, когда организация задаёт водителю отдельное правило:
+  /// иначе одна и та же оплата попала бы и в ₽/км, и в статью «водитель».
+  operatingCostIncludesDriver Boolean @default(true)
+  // ── Правило оплаты водителя: у каждой организации своё (решение 94).
+  //    null — правило не задано, водитель считается включённым в ставку ₽/км.
+  //    perShift | perKm | perHour | perTrip | mixed | includedInPerKm
+  driverPayKind         String?
+  driverPayPerShift     Float?
+  driverPayPerKm        Float?
+  driverPayPerHour      Float?
+  driverPayPerTrip      Float?
+  /// Для смешанного правила: оклад за смену
+  driverPayBasePerShift Float?
   // ── Дежурный: смотрит биржу регулярно в рабочих часах организации.
   //    Ночью новых грузов почти нет: компании выкладывают их в рабочее время,
   //    поэтому «ночная сводка» опаздывала бы на весь день.
@@ -999,6 +1147,9 @@ model Organization {
   driverShifts      DriverShift[]
   shiftEvents       ShiftEvent[]
   fleetSettings     FleetSettings[]
+  /// История расчётных цен и звонков — только по этой организации
+  priceEstimates    PriceEstimate[]
+  priceCalls        PriceCall[]
   atiScanConfigs    AtiScanConfig[]
   auditLogs         AuditLog[]
   inviteCodes       InviteCode[]

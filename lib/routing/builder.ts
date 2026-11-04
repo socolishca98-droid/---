@@ -19,10 +19,11 @@
 // Модель Б (сборные) — отдельный поиск по состояниям «что уже погружено / что
 // уже выгружено», с проверкой профиля загрузки на каждом участке.
 
-import { capacityProfile, type CapacityMove } from "./capacity"
+import { canCarryTogether, capacityProfile, type CapacityMove } from "./capacity"
 import { DistanceEngine, type SegmentInfo } from "./distance"
-import { computeEconomics } from "./economics"
+import { computeEconomics, driverPay } from "./economics"
 import { driveSegment, lateBy, readyFrom, readyFromMs, type DriveState } from "./time"
+import { rateStatus } from "../pricing/status"
 import type {
   CapacityUse,
   Economics,
@@ -254,10 +255,18 @@ function driverPayStep(
  * часов за рулём, накопила не больше вождения с отдыха и заработала не меньше.
  */
 function dominates(a: Label, b: Label): boolean {
+  // Рабочие часы = вождение + погрузка/выгрузка + ожидание. Это ровно то, за что
+  // организация платит при правиле «за час работы» (этап 4). Без этого условия
+  // метка, приехавшая РАНЬШЕ, вытесняла более позднюю, хотя ждала под окно
+  // дольше и стоила дороже: раннее прибытие при почасовой оплате — не лучше,
+  // а иногда хуже. Разница видна только на почасовых правилах, но правило
+  // сравнения должно быть верным всегда, а не при удобной настройке.
+  const work = (label: Label) => label.waitHours + label.handleHours + label.state.drivingHours
   return (
     a.time <= b.time &&
     a.state.drivingHours <= b.state.drivingHours + 1e-9 &&
     a.state.sinceRest <= b.state.sinceRest + 1e-9 &&
+    work(a) <= work(b) + 1e-9 &&
     a.net >= b.net - 1e-6
   )
 }
@@ -293,6 +302,9 @@ export function materialize(
   let loadedKm = 0
   let liters = 0
   let revenue = 0
+  // Подтверждённая часть выручки: только заказы с ценой из источника или с
+  // согласованной ценой. Остальное — расчёт Loginex, и это не деньги.
+  let confirmedRevenue = 0
   let waitingHours = 0
   let handlingTotal = 0
   const stops: PlannedStop[] = []
@@ -395,24 +407,45 @@ export function materialize(
       const orderKm = segments
         .filter((segment) => segment.orderId === order.id && segment.kind === "loaded")
         .reduce((sum, segment) => sum + segment.km, 0)
-      revenue +=
+      const orderRevenue =
         order.rate.basis === "perKm" ? order.rate.amount * Math.max(orderKm, 0) : order.rate.amount
+      revenue += orderRevenue
+      if (rateStatus(order.rate) === "CONFIRMED") confirmedRevenue += orderRevenue
     }
   }
 
   // Возврат на базу
+  let returnLegHours = 0
   const atHome = samePlaceId(place.id, vehicle.homeBase.id)
   let returned: ReturnOption = { kind: "loaded", deadheadKm: 0, costRub: 0, satisfiesMode: true }
   if (!atHome) {
     const preview = distance.segment(place, vehicle.homeBase, "deadhead")
     if (preview.confidence !== "measured") measured = false
+    // Цена возврата — теми же статьями, что и настоящий рейс: топливо,
+    // километровые расходы И оплата водителя за эти часы.
+    //
+    // Раньше водителя здесь не было. На почасовом правиле это делало открытый
+    // рейс систематически выгоднее: обратная дорога в 8 часов стоит 7 200 ₽
+    // оплаты, а «обязательство» её не учитывало — и вариант «уехать и не
+    // вернуться» выигрывал сравнение не по делу (найдено независимым перебором
+    // на этапе 5).
+    returnLegHours = preview.hours
+    const returnState = driveSegment(clock, preview.hours, state, settings).state
+    const returnDriverPay = driverPayStep(vehicle.cost.driverPay, {
+      shiftDelta:
+        shiftCount(returnState.drivingHours, settings.drivingLimitHours) -
+        shiftCount(state.drivingHours, settings.drivingLimitHours),
+      km: preview.km,
+      hours: preview.hours,
+    })
     const returnCost = Math.round(
       fuelLiters(preview.km, null, vehicle) * vehicle.cost.fuelPricePerL +
         preview.km *
           (vehicle.cost.maintenancePerKm +
             vehicle.cost.tiresPerKm +
             vehicle.cost.tollsPerKm +
-            vehicle.cost.otherPerKm),
+            vehicle.cost.otherPerKm) +
+        returnDriverPay,
     )
     if (options.includeReturn) {
       const info = addSegment(vehicle.homeBase, "deadhead", null, null)
@@ -459,6 +492,10 @@ export function materialize(
   if (!capacity.feasible) {
     return { plan: null, infeasible: capacity.violation ?? "превышение вместимости" }
   }
+  // Неизвестная масса или объём не превращаются в ноль молча: профиль загрузки
+  // в этом случае проверен не полностью, и план обязан это сказать, а не
+  // показывать «влезает» с уверенностью, которой нет.
+  for (const note of capacity.unknown) warnings.push(note)
 
   const orderIds = [...new Set(moves.map((move) => move.order.id))]
   const shift = shiftCount(state.drivingHours, settings.drivingLimitHours)
@@ -474,18 +511,71 @@ export function materialize(
     timeZoneBreaks,
   }
 
+  // Оба остатка считает модель, а не этот файл: netRub — по рейсу как он
+  // исполняется, netCommittedRub — минус цена обязательства вернуться на базу.
+  // Маршрут без возврата при выключенном возврате обязан быть дороже ровно на
+  // эту цену, иначе «уехать и не вернуться» выигрывает сравнение у любого
+  // варианта с возвратом (п. 72: не уводить машину далеко без выгоды).
+  // Цена обязательства вернуться — РОВНО та же разница, которую дал бы рейс с
+  // возвратом, посчитанная теми же округлениями, что и в модели:
+  // топливо + километровые статьи на добавленный пробег + изменение оплаты
+  // водителя за добавленные часы и смены.
+  //
+  // Раньше здесь стояла «оценка стоимости возврата» — без водителя, а потом с
+  // водителем, но по неокруглённым часам. Из-за округления в 0,1 ч открытый
+  // рейс выигрывал у возвратного на десятки рублей, хотя маршрут тот же.
+  const returnCommitmentRub = (() => {
+    if (!(returned.kind === "none" && options.includeReturn === false)) return 0
+    const kmBase = Math.round(km)
+    const kmWith = Math.round(km + returned.deadheadKm)
+    const arriveHome = new Date(clock.getTime() + returnLegHours * MS_HOUR)
+    const scheduleWith: typeof schedule = {
+      ...schedule,
+      drivingHours: Math.round((state.drivingHours + returnLegHours) * 10) / 10,
+      // Смены пересчитываются: смена — это тоже статья оплаты (за смену и
+      // смешанное правило), и обратная дорога может добавить ещё одну.
+      shifts: shiftCount(state.drivingHours + returnLegHours, settings.drivingLimitHours),
+      endAt: arriveHome,
+    }
+    const money = (value: { totalKm: number; schedule: typeof schedule }) =>
+      driverPay(vehicle.cost.driverPay, {
+        revenue: 0,
+        totalKm: value.totalKm,
+        loadedKm,
+        fuelLiters: 0,
+        tollsRub: null,
+        schedule: value.schedule,
+        cost: vehicle.cost,
+      })
+    const driverDelta =
+      money({ totalKm: kmWith, schedule: scheduleWith }) -
+      money({ totalKm: kmBase, schedule: { ...schedule } })
+    const fuelRub = fuelLiters(returned.deadheadKm, null, vehicle) * vehicle.cost.fuelPricePerL
+    const perKmRub =
+      (kmWith - kmBase) *
+      (vehicle.cost.maintenancePerKm +
+        vehicle.cost.tiresPerKm +
+        vehicle.cost.tollsPerKm +
+        vehicle.cost.otherPerKm)
+    return Math.max(0, Math.round(fuelRub + perKmRub + driverDelta))
+  })()
   const economics: Economics = computeEconomics({
     revenue,
+    revenueConfirmed: confirmedRevenue,
     totalKm: km,
     loadedKm,
     fuelLiters: liters,
+    // Разметки платных участков в данных нет: передаём null, а не ноль —
+    // economics сам запишет это в gaps и не выдаст остаток за прибыль.
     tollsRub: null,
+    returnCommitmentRub,
     schedule,
     cost: vehicle.cost,
   })
-  economics.netCommittedRub =
-    economics.netRub -
-    (returned.kind === "none" && options.includeReturn === false ? returned.costRub : 0)
+  for (const gap of economics.gaps) {
+    const note = `${gap.article}: ${gap.reason}`
+    if (!assumptions.includes(note)) assumptions.push(note)
+  }
 
   if (vehicle.consumptionEstimated) {
     assumptions.push("расход топлива не задан в карточке машины — взята оценка")
@@ -498,8 +588,21 @@ export function materialize(
       "сборный рейс: несколько грузов одновременно, порядок погрузок и выгрузок проверен",
     )
   }
+  // Оптимум нельзя объявлять доказанным, если часть километров — ОЦЕНКА.
+  //
+  // Это не формальность. На приёмке (этап 7, сценарий 4) поиск уверенно
+  // выбрал маршрут через Москву и объявил оптимум доказанным, потому что
+  // плечо Тверь → Москва было посчитано оценкой 194 км вместо настоящих 179.
+  // Независимый перебор с настоящими километрами находил порядок на 582 ₽
+  // выгоднее. Числа, на которых построено «доказательство», сами были
+  // догадкой — значит доказательства не было.
+  const proven = options.exact && measured
   if (!options.exact) {
     assumptions.push("на большом пуле перебраны не все варианты — оптимум не гарантирован")
+  } else if (!measured) {
+    assumptions.push(
+      "перебор полный, но часть расстояний оценена — оптимум считается только по измеренным",
+    )
   }
   if (warnings.length === 0 && returned.kind === "empty") {
     warnings.push(`обратно порожним: ${returned.deadheadKm} км`)
@@ -535,7 +638,10 @@ export function materialize(
     capacity: capacity.perSegment as CapacityUse[],
     economics,
     returned,
-    exact: options.exact,
+    // Пометка о качестве — одна: proven / best-of-checked. Третье состояние
+    // (feasible) ставит вызывающий там, где о качестве не утверждается ничего.
+    optimality: proven ? "proven" : "best-of-checked",
+    exact: proven,
     confidence: measured ? "measured" : "estimated",
     assumptions,
     warnings,
@@ -628,12 +734,24 @@ export function searchSequential(context: BuildContext, options: SearchOptions =
   const completed: Label[] = []
   let guard = 0
   const maxStates = 400_000
+  /**
+   * Полнота перебора модели А.
+   *
+   * Потолок состояний — это ограничение, а не свойство задачи: если в него
+   * упёрлись, перебор не был полным, и называть результат оптимумом нельзя.
+   * Раньше упор молча оставлял `exact: true` — то есть ровно то, что запрещает
+   * правило «не считать маршрут оптимальным без доказательств».
+   */
+  let truncatedByStateCap = false
 
   for (let depth = 0; depth <= Math.min(settings.maxLegs, indices.length); depth += 1) {
     const current = [...layers.values()].flat().filter((label) => label.sequence.length === depth)
     if (current.length === 0) break
     for (const label of current) {
-      if (guard++ > maxStates) break
+      if (guard++ > maxStates) {
+        truncatedByStateCap = true
+        break
+      }
       for (const index of indices) {
         if (label.mask & (1 << index)) continue
         if (label.sequence.length >= settings.maxLegs) break
@@ -683,6 +801,16 @@ export function searchSequential(context: BuildContext, options: SearchOptions =
   const committed = (label: Label) => label.net - returnCostFor(context, label)
   const ordered = [...unique.values()].sort((a, b) => committed(b) - committed(a)).slice(0, maxResults)
 
+  // Упор в потолок состояний делает перебор неполным — и это переносится на
+  // каждый план, а не остаётся в комментарии.
+  if (truncatedByStateCap) {
+    exact = false
+    context.stats.truncations.push(
+      "модель А: упёрлись в потолок состояний — перебор неполный",
+    )
+  }
+  if (n > exactLimit) context.stats.truncations.push(`модель А: рассмотрено ${exactLimit} грузов из ${n}`)
+
   const plans: RoutePlan[] = []
   for (const label of ordered) {
     const moves: CapacityMove[] = []
@@ -704,7 +832,29 @@ export function searchSequential(context: BuildContext, options: SearchOptions =
       if (withoutReturn.plan) plans.push(withoutReturn.plan)
     }
   }
+  markBestOnly(plans)
   return plans
+}
+
+/**
+ * «Доказанный оптимум» — это утверждение ОБ ОДНОМ варианте: о лучшем.
+ *
+ * Остальные варианты — допустимые альтернативы: каждый исполним и посчитан, но
+ * утверждать, что он оптимален, нельзя по определению (лучший — другой). Раньше
+ * флаг `exact` стоял у всех подряд, и на экране три разных маршрута выглядели
+ * одинаково «доказанными».
+ */
+function markBestOnly(plans: RoutePlan[]): void {
+  if (plans.length === 0) return
+  let best: RoutePlan | null = null
+  for (const plan of plans) {
+    if (!best || plan.economics.netCommittedRub > best.economics.netCommittedRub) best = plan
+  }
+  for (const plan of plans) {
+    if (plan === best) continue
+    plan.exact = false
+    plan.optimality = "feasible"
+  }
 }
 
 /** Стоимость возврата на базу из конечной точки цепочки (0, если она на базе). */
@@ -1006,30 +1156,56 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
   // замкнутый маршрут через все точки не короче минимального остовного
   // дерева на этих точках. Значит выручка минус дерево — верхняя граница
   // прибыли, и она не отсекает выгодный набор.
-  const ranked: Array<{ group: LoadOrder[]; bound: number }> = []
+  const ranked: Array<{ group: LoadOrder[]; bound: number; boundUnsafe?: boolean }> = []
   for (let mask = 1; mask < 1 << n; mask += 1) {
     const picked: LoadOrder[] = []
     for (let i = 0; i < n; i += 1) if (mask & (1 << i)) picked.push(candidates[i])
     if (picked.length < 2 || picked.length > maxGroup) continue
 
-    const totalKg = picked.reduce((sum, order) => sum + (order.weightKg ?? 0), 0)
-    const totalM3 = picked.reduce((sum, order) => sum + (order.volumeM3 ?? 0), 0)
-    if (totalKg > vehicle.capacityKg || totalM3 > vehicle.capacityM3) {
+    // Проверка вместимости — по УЧАСТКАМ, а не по сумме набора (дефект D1).
+    //
+    // Было: «сумма масс больше вместимости — набор выбросить». Сумма отвечает
+    // не на тот вопрос. Два груза по 4 т в 5-тонник по сумме не проходят, а
+    // рейс исполнимо: взял первый, выгрузил, взял второй. Наоборот тоже
+    // бывает: сумма проходит, а одновременной перевозки не существует
+    // («масса влезает, объём превышен»).
+    //
+    // Теперь спрашиваем ровно то, что нужно: существует ли порядок погрузок и
+    // выгрузок, при котором на каждом участке не больше вместимости
+    // (`canCarryTogether`, полный перебор состояний). Решение точное, и модель
+    // проверена независимым перебором всех порядков событий:
+    // acceptance/capacity-ref.mjs.
+    const capacity = canCarryTogether(picked, vehicle, {
+      maxConcurrent: settings.maxConcurrentOrders,
+    })
+    if (!capacity.feasible) {
       context.stats.prunedStates += 1
       continue
     }
 
+    // Выручка набора. Для заказа со ставкой за километр «amount» — это цена
+    // КИЛОМЕТРА, а не сумма за рейс: складывать её как выручку значит занизить
+    // верхнюю границу, а заниженная граница отсекает выгодные наборы. Такие
+    // наборы считаем без отсечения (см. `hasPerKm` ниже).
+    const hasPerKm = picked.some((order) => order.rate.basis === "perKm")
     const revenue = picked.reduce((sum, order) => sum + order.rate.amount, 0)
     const indexes = [0]
     for (const order of picked) {
       const position = candidates.indexOf(order)
       indexes.push(1 + position * 2, 2 + position * 2)
     }
-    const bound = revenue - spanningKm(indexes, (a, b) => candidateKm[a][b]) * perKm
+    // Верхняя граница прибыли. Для наборов со ставкой за километр она не
+    // годится: выручка зависит от пробега, и «цена километра × 1» не оценка
+    // сверху. Такой набор не отсекаем вовсе, но и полным его перебор не
+    // объявляем — за это отвечает `boundUnsafe`.
+    const boundUnsafe = hasPerKm
+    const bound = boundUnsafe
+      ? Number.POSITIVE_INFINITY
+      : revenue - spanningKm(indexes, (a, b) => candidateKm[a][b]) * perKm
     // Приоритет — наборам, которые модель А уже видит: не в ущерб прочим, но
     // при равенстве границ первыми считаются они.
     const preferredCount = picked.filter((order) => preferred.has(order.id)).length
-    ranked.push({ group: picked, bound: bound + preferredCount * 1e-3 })
+    ranked.push({ group: picked, bound: (boundUnsafe ? Number.MAX_SAFE_INTEGER : bound) + preferredCount * 1e-3, boundUnsafe })
   }
 
   ranked.sort((a, b) => b.bound - a.bound)
@@ -1050,9 +1226,24 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
   let exhaustive = true
   const budget = { left: CONSOLIDATED_STATE_BUDGET }
   context.stats.consideredGroups = 0
-  for (const { group, bound } of shortlist) {
-    if (bestNetSoFar !== null && bound <= bestNetSoFar) {
+  for (const { group, bound, boundUnsafe } of shortlist) {
+    // Отсечение по границе допустимо только для БЕЗОПАСНОЙ границы: для наборов
+    // со ставкой за километр выручка зависит от пробега, и обычная оценка
+    // сверху занижена. Такой набор считается всегда, и перебор из-за него
+    // перестаёт быть полным — это и записывается в причины.
+    if (boundUnsafe) {
       exhaustive = false
+      context.stats.truncations.push(
+        "модель Б: набор со ставкой за километр — граница прибыли неприменима, перебор неполный",
+      )
+    } else if (bestNetSoFar !== null && bound <= bestNetSoFar) {
+      // Это НЕ неполнота перебора, а доказательство. Наборы идут по убыванию
+      // верхней границы прибыли, и граница (выручка минус остовное дерево по
+      // километровым расходам, без учёта топлива и водителя) заведомо не ниже
+      // настоящей прибыли. Значит у всех оставшихся наборов прибыль не больше
+      // уже найденной, и лучший вариант найден. Раньше здесь ставилось
+      // `exhaustive = false`, и модель Б не могла быть признана точной НИКОГДА,
+      // хотя перебор был полным по существу.
       context.stats.prunedStates += 1
       break
     }
@@ -1074,8 +1265,19 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
   }
   // Если перебор прерван по границе, по бюджету состояний или короткий список
   // обрезан — оптимум не доказан, и планы обязаны это честно говорить.
+  if (!exactGroups) {
+    context.stats.truncations.push(
+      `модель Б: рассмотрено ${CONSOLIDATED_GROUP_LIMIT} наборов из ${ranked.length}`,
+    )
+  }
+  if (budget.left <= 0) {
+    context.stats.truncations.push("модель Б: исчерпан бюджет состояний перебора")
+  }
   if (!exhaustive || !exactGroups || budget.left <= 0) {
-    for (const plan of plans) plan.exact = false
+    for (const plan of plans) {
+      plan.exact = false
+      plan.optimality = "best-of-checked"
+    }
   }
 
   // Один и тот же набор заказов может дать несколько порядков — оставляем
@@ -1086,9 +1288,11 @@ export function searchConsolidated(context: BuildContext, options: SearchOptions
     const previous = bySet.get(key)
     if (!previous || plan.economics.netCommittedRub > previous.economics.netCommittedRub) bySet.set(key, plan)
   }
-  return [...bySet.values()]
+  const ordered = [...bySet.values()]
     .sort((a, b) => b.economics.netCommittedRub - a.economics.netCommittedRub)
     .slice(0, 10)
+  markBestOnly(ordered)
+  return ordered
 }
 
 /**

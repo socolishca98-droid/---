@@ -97,6 +97,31 @@ const INT_LIMITS: Record<(typeof INT_FIELDS)[number], { min: number; max: number
   restMinBreakMin: { min: 5, max: 240 },
 }
 
+/**
+ * Правило оплаты водителя организации (решение 94: у каждой своё).
+ * Пустое значение — правило не задано, водитель считается внутри ставки ₽/км.
+ * Неизвестный вид правила — ошибка 400, а не «тихо ничего не записали».
+ */
+const PAY_KINDS = [
+  "includedInPerKm",
+  "perShift",
+  "perKm",
+  "perHour",
+  "perTrip",
+  "mixed",
+] as const
+type PayKind = (typeof PAY_KINDS)[number]
+
+/** Ставки оплаты водителя, ₽. Верхняя граница — чтобы в базу не уехал миллион. */
+const DRIVER_PAY_FIELDS = [
+  "driverPayPerShift",
+  "driverPayPerKm",
+  "driverPayPerHour",
+  "driverPayPerTrip",
+  "driverPayBasePerShift",
+] as const
+const DRIVER_PAY_LIMITS = { min: 0, max: 1_000_000 }
+
 /** Длинные значения не режем, но и не принимаем бесконечные. */
 const MAX_TEXT_LENGTH = 500
 
@@ -119,7 +144,10 @@ export async function POST(request: NextRequest) {
       ...INT_FIELDS,
       ...COST_FIELDS,
       ...DUTY_INT_FIELDS,
+      ...DRIVER_PAY_FIELDS,
       "dutyEnabled",
+      "driverPayKind",
+      "operatingCostIncludesDriver",
     ])
     const unknownFields = Object.keys(body).filter((key) => !allowed.has(key))
     if (unknownFields.length > 0) {
@@ -217,6 +245,53 @@ export async function POST(request: NextRequest) {
       }
       const limits = DUTY_INT_LIMITS[field]
       data[field] = Math.round(Math.min(limits.max, Math.max(limits.min, value)))
+    }
+
+    // Правило оплаты водителя: вид и суммы. Проверяем явно, потому что от
+    // этих чисел зависит, попадёт ли оплата водителя в остаток вообще.
+    if ("driverPayKind" in body) {
+      const raw = body.driverPayKind
+      if (raw === null || raw === undefined || raw === "") {
+        data.driverPayKind = null
+      } else if (typeof raw !== "string" || !(PAY_KINDS as readonly string[]).includes(raw)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Неизвестное правило оплаты водителя: «${String(raw)}». Допустимо: ${PAY_KINDS.join(", ")}`,
+          },
+          { status: 400 },
+        )
+      } else {
+        data.driverPayKind = raw as PayKind
+      }
+    }
+
+    for (const field of DRIVER_PAY_FIELDS) {
+      if (!(field in body)) continue
+      const raw = body[field]
+      if (raw === null || raw === undefined || raw === "") {
+        data[field] = null
+        continue
+      }
+      const value = Number(raw)
+      if (!Number.isFinite(value) || value < DRIVER_PAY_LIMITS.min || value > DRIVER_PAY_LIMITS.max) {
+        return NextResponse.json(
+          { success: false, error: `Поле «${field}» должно быть суммой в рублях` },
+          { status: 400 },
+        )
+      }
+      data[field] = value
+    }
+
+    if ("operatingCostIncludesDriver" in body) {
+      const raw = body.operatingCostIncludesDriver
+      if (typeof raw !== "boolean") {
+        return NextResponse.json(
+          { success: false, error: "Поле «operatingCostIncludesDriver» должно быть true или false" },
+          { status: 400 },
+        )
+      }
+      data.operatingCostIncludesDriver = raw
     }
 
     if ("dutyEnabled" in body) {

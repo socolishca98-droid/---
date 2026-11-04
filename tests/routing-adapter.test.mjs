@@ -155,6 +155,10 @@ test("груз без координат или без ставки не выд�
   assert.equal(noCoords.order, null)
   assert.ok(noCoords.problems.some((problem) => /Атлантида/.test(problem)))
 
+  // Груз без цены теперь НЕ выбрасывается: раньше он отбрасывался целиком с
+  // причиной «ставка не указана», и логист не видел заявку, по которой надо
+  // звонить. Деньги при этом не выдумываются: суммы нет, статус говорит, что
+  // цена не указана. Изменение поведения — по ТЗ этапа 8 (нулевая цена).
   const noPrice = A.orderFromAtiRow(
     {
       atiLoadId: "ati-3",
@@ -166,8 +170,11 @@ test("груз без координат или без ставки не выд�
     },
     PLACES,
   )
-  assert.equal(noPrice.order, null)
-  assert.ok(noPrice.problems.some((problem) => /ставка/.test(problem)))
+  assert.ok(noPrice.order, "заявка без цены остаётся в пуле")
+  assert.equal(noPrice.order.rate.amount, 0, "ноль — «не указана», а не бесплатная перевозка")
+  assert.equal(noPrice.order.rate.status, "NEGOTIATION_REQUIRED")
+  assert.equal(noPrice.order.rate.raw, null, "исходного значения не было — и не придумано")
+  assert.ok(noPrice.problems.some((problem) => /цен/i.test(problem)), "причина названа словами")
 })
 
 test("готовность: причина называется словами и с адресом, куда идти", () => {

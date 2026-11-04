@@ -39,6 +39,8 @@ export interface ServerSegment {
   km: number
   hours: number
   source: "osrm" | "exchange" | "estimate"
+  /** Кто дал километры: osrm-own, osrm-public, exchange…; null — оценка */
+  provider?: string | null
 }
 
 export interface ServerPlan {
@@ -66,6 +68,18 @@ export interface ServerPlan {
     emptyKm: number
     emptyShare: number
     unknown: string[]
+    /** Сумма известных расходов — то, что реально вычтено */
+    knownCostRub: number
+    /** Чего не хватает в расчёте: статья, причина, оценка сверху, вошло ли в остаток */
+    gaps: Array<{ article: string; reason: string; estimateRub: number | null; inNet: boolean }>
+    /** Полнота расчёта: complete | preliminary | insufficient */
+    status: "complete" | "preliminary" | "insufficient"
+    /** Подтверждённая часть дохода, ₽ — деньги */
+    revenueConfirmed: number
+    /** Расчётная часть дохода, ₽ — ожидание, не деньги */
+    revenueEstimated: number
+    revenueStatus: "confirmed" | "partly-estimated" | "unconfirmed"
+    profitDependsOnEstimate: boolean
   }
   returned: { kind: "loaded" | "empty" | "none"; deadheadKm: number; costRub: number; satisfiesMode: boolean }
   exact: boolean
@@ -234,6 +248,18 @@ function toBuiltRoute(
   // «расход оценён», «километры оценочные» — это то, что логист обязан знать.
   const reasons = [...plan.reasons]
   for (const assumption of plan.assumptions) if (!reasons.includes(assumption)) reasons.push(assumption)
+  // Прибыль, которая держится на расчётной цене, — не прибыль. Говорим это
+  // в причинах варианта, чтобы число не читалось как заработанное.
+  if (plan.economics.revenueEstimated > 0) {
+    const confirmed = Math.round(plan.economics.revenueConfirmed)
+    const estimated = Math.round(plan.economics.revenueEstimated)
+    reasons.push(
+      plan.economics.profitDependsOnEstimate
+        ? `прибыль зависит от расчётной цены: подтверждено ${confirmed} ₽, расчёт ${estimated} ₽ — нужен звонок перевозчику`
+        : `доход по рейсу расчётный: подтверждено ${confirmed} ₽, расчёт ${estimated} ₽ — это не гарантированные деньги`,
+    )
+  }
+
   if (plan.confidence !== "measured") {
     reasons.push(
       plan.confidence === "estimated"
@@ -252,6 +278,18 @@ function toBuiltRoute(
     returnDeadheadKm: plan.returned.kind === "empty" ? Math.round(plan.returned.deadheadKm) : returnKm,
     returnsHomeWithLoad: plan.returned.kind === "loaded",
     totalDistanceKm: Math.round(plan.economics.totalKm),
+    /**
+     * Сколько километров маршрута измерено дорогой, а сколько оценено.
+     * Без этого «маршрут построен» скрывает, что экономика стоит на догадке:
+     * замер этапа 6 показал ошибку оценки до −32 % (Краснодар → Сочи).
+     */
+    measuredKm: Math.round(
+      plan.segments.filter((segment) => segment.source !== "estimate").reduce((sum, segment) => sum + segment.km, 0),
+    ),
+    estimatedKm: Math.round(
+      plan.segments.filter((segment) => segment.source === "estimate").reduce((sum, segment) => sum + segment.km, 0),
+    ),
+    distanceProviders: [...new Set(plan.segments.map((segment) => segment.provider).filter(Boolean))] as string[],
     totalHours: Math.round(hours),
     maxHours: params.maxHours,
     departAt,
@@ -259,8 +297,8 @@ function toBuiltRoute(
     lateRiskLegs: 0,
     totalRevenue: Math.round(plan.economics.revenue),
     totalFuelCostRub: Math.round(plan.economics.fuelRub),
-    // На экране «прибыль» — то, что остаётся после работы машины: топливо,
-    // водитель, износ, шины, платные дороги. Так же считает сервер.
+    // «Остаток по рейсу» — выручка минус известные статьи: топливо, водитель,
+    // износ, шины, платные, прочее.
     totalProfitRub: Math.round(plan.economics.netRub),
     profitPerKm: plan.economics.netPerKm === null ? null : Math.round(plan.economics.netPerKm),
     profitPerHour: plan.economics.netPerHour === null ? null : Math.round(plan.economics.netPerHour),
@@ -272,13 +310,33 @@ function toBuiltRoute(
       plan.economics.totalKm > 0 && plan.economics.tollsRub !== null
         ? Math.round((operatingRub(plan) / plan.economics.totalKm) * 10) / 10
         : 0,
-    netProfitRub: Math.round(plan.economics.netRub),
+    // «Прибыль» на экране — то же число, по которому выбрана рекомендация:
+    // остаток с учётом обязательства вернуться на базу (netCommittedRub).
+    // Раньше здесь стоял netRub, и маршрут без возврата выглядел прибыльнее
+    // ровно на цену возврата.
+    netProfitRub: Math.round(plan.economics.netCommittedRub),
     netProfitPerKm: plan.economics.netPerKm === null ? null : Math.round(plan.economics.netPerKm),
     netProfitPerHour: plan.economics.netPerHour === null ? null : Math.round(plan.economics.netPerHour),
+    // Доход раздельно: подтверждённый — деньги, расчётный — ожидание.
+    // Раньше они складывались в одно число «выручка», и маршрут с расчётной
+    // ценой выглядел так же надёжно, как с подписанной ставкой.
+    revenueConfirmed: Math.round(plan.economics.revenueConfirmed),
+    revenueEstimated: Math.round(plan.economics.revenueEstimated),
+    revenueStatus: plan.economics.revenueStatus,
+    profitDependsOnEstimate: plan.economics.profitDependsOnEstimate,
     oneWay: plan.returned.kind === "none" || plan.returned.kind === "empty",
     emptyReturnKm: plan.returned.kind === "empty" ? Math.round(plan.returned.deadheadKm) : returnKm,
     needsFuelSetup: false,
-    unprofitable: plan.economics.netRub < 0,
+    unprofitable: plan.economics.netCommittedRub < 0,
+    // Полнота денежного расчёта. insufficient — часть расходов неизвестна, и
+    // цифра прибыли не прибыль, а «пока столько».
+    profitStatus: plan.economics.status,
+    profitGaps: plan.economics.gaps.map((gap) => ({
+      article: gap.article,
+      reason: gap.reason,
+      estimateRub: gap.estimateRub,
+      inNet: gap.inNet,
+    })),
     excluded,
     leftover: leftoverFromRejections(params.rejections),
     reasons,

@@ -11,11 +11,13 @@
 
 import { materialize, searchConsolidated, searchSequential, type BuildContext } from "./builder"
 import { compatible } from "./compatibility"
-import { DistanceEngine, straightKm } from "./distance"
+import { DistanceEngine, straightKm, type DistanceCacheStore, type RouterEndpoint } from "./distance"
 import { rankVariants, explainRejections } from "./optimizer"
 import { validatePlan, type ValidationResult } from "./validator"
+import { rateStatus } from "../pricing/status"
 import type {
   LoadOrder,
+  Place,
   PlanResult,
   PlanStats,
   RegionParams,
@@ -26,11 +28,20 @@ import type {
 
 export * from "./types"
 export { DistanceEngine, straightKm, regionKey } from "./distance"
+export type { DistanceCacheStore, DistanceEngineOptions, RouterEndpoint, SegmentInfo } from "./distance"
 export { compatible, acceptedBodies, bodyClass } from "./compatibility"
-export { capacityProfile } from "./capacity"
+export { capacityProfile, canCarryTogether } from "./capacity"
+export type { CapacityCheck, CapacityStep } from "./capacity"
 export { computeEconomics, driverPay, workingHours } from "./economics"
 export { validatePlan } from "./validator"
 export { rankVariants, explainRejections } from "./optimizer"
+// Эталон качества — только для проверок: полный перебор без отсечений.
+export {
+  referencePlan,
+  referenceSequential,
+  referenceConsolidated,
+  type ReferenceResult,
+} from "./reference"
 export {
   materialize,
   searchSequential,
@@ -72,8 +83,17 @@ export interface PlanInput {
   settings: Settings
   regions: RegionParams[]
   now: Date
-  /** Адрес OSRM; пусто — расстояния оцениваются и это видно в результате */
+  /** Адрес СВОЕГО OSRM; пусто — своего сервера нет */
   osrmUrl?: string | null
+  /**
+   * Запасные БЕСПЛАТНЫЕ точки входа маршрутизатора (порядок важен).
+   * Платные сервисы сюда не подставляются автоматически: их включает владелец.
+   */
+  fallbackEndpoints?: RouterEndpoint[]
+  /** Постоянный кэш расстояний между расчётами */
+  store?: DistanceCacheStore | null
+  /** Предел сетевых запросов на расчёт (вежливость к публичным серверам) */
+  requestBudget?: number
   /** Предел заказов, при котором перебор точный */
   exactLimit?: number
   fetchImpl?: typeof fetch
@@ -99,6 +119,7 @@ function emptyStats(exactLimit = 12): PlanStats {
     exactSequential: true,
     exactConsolidated: true,
     exactLimit,
+    truncations: [],
   }
 }
 
@@ -142,10 +163,33 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
   const stats = emptyStats(exactLimit)
   const orders = filterOrders(input.orders, vehicle.organisationId, input.now)
 
-  // 1–2. Совместимость
+  // 0. Цена. Груз без цены и без расчёта НЕ идёт в оптимизацию: ноль в ставке
+  //    означал бы «бесплатно», и рейс выглядел бы убыточным по причине,
+  //    которой нет. Такой груз возвращается отдельным списком — логист видит
+  //    его, звонит и вводит цену. Молча выбросить его было бы хуже: груз
+  //    «исчезает» из выдачи без объяснения.
   const details = new Map<string, string[]>()
-  const compatibleOrders: LoadOrder[] = []
+  const priced: LoadOrder[] = []
+  const unpriced: PlanResult["unpriced"] = []
   for (const order of orders) {
+    const status = rateStatus(order.rate)
+    if (status === "CONFIRMED" || status === "ESTIMATED") {
+      priced.push(order)
+      continue
+    }
+    unpriced.push({
+      orderId: order.id,
+      status,
+      reason:
+        status === "UNKNOWN"
+          ? "цена в источнике не распознана — нужен звонок перевозчику"
+          : "цена не указана — нужна расчётная оценка или звонок перевозчику",
+    })
+  }
+
+  // 1–2. Совместимость
+  const compatibleOrders: LoadOrder[] = []
+  for (const order of priced) {
     const result = compatible(order, vehicle)
     if (result.fits) compatibleOrders.push(order)
     else details.set(order.id, result.reasons)
@@ -154,6 +198,9 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
   // 3. Расстояния: предзагрузка (OSRM, если настроен)
   const distance = new DistanceEngine({
     osrmUrl: input.osrmUrl ?? null,
+    fallbackEndpoints: input.fallbackEndpoints ?? [],
+    store: input.store ?? null,
+    requestBudget: input.requestBudget,
     regions: input.regions,
     fetchImpl: input.fetchImpl,
   })
@@ -169,13 +216,53 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
   }
 
   // 4. Поиск: модель А (точно) и модель Б (сборные)
-  const sequential = searchSequential(context, { exactLimit })
-  // Сборная модель считает сначала самые перспективные по деньгам заказы, а не
-  // первые попавшиеся из пула.
+  //
+  // Поиск делается в два прохода. Первый считает по тем плечам, которые были
+  // предзагружены (наиболее вероятные). Но выбранный маршрут может содержать
+  // плечи, которых в предзагрузке не было, — и тогда его километры оценочные,
+  // хотя маршрутизатор жив. На приёмке это видно прямо: в сборном рейсе
+  // (сценарий 5) 4 из 6 плеч были оценены при нулевых отказах маршрутизатора.
+  // Поэтому второй проход: измеряем недостающие плечи ИМЕННО выбранных
+  // вариантов и пересчитываем. Не больше одного лишнего прохода — расчёт не
+  // должен зависеть от того, как долго отвечает сеть.
   const byLikelihood = [...compatibleOrders].sort(
     (a, b) => scoreForConsolidation(b) - scoreForConsolidation(a),
   )
-  const consolidated = searchConsolidated(context, { ordersByLikelihood: byLikelihood })
+  const runSearch = () => ({
+    sequential: searchSequential(context, { exactLimit }),
+    // Сборная модель считает сначала самые перспективные по деньгам заказы,
+    // а не первые попавшиеся из пула.
+    consolidated: searchConsolidated(context, { ordersByLikelihood: byLikelihood }),
+  })
+  let search = runSearch()
+  // Проходов не больше трёх. Измеряем ровно те плечи, которые ПОНАДОБИЛИСЬ
+  // ПОИСКУ, а не только попавшие в готовый маршрут: поиск сравнивает варианты
+  // между собой, и оценка на одном из них искажает само сравнение.
+  for (let pass = 0; pass < 3; pass += 1) {
+    const misses = distance.takeEstimateMisses()
+    if (misses.length === 0) break
+    const measured = await distance.prefetch(misses, { refreshEstimates: true })
+    // Пересчёт только если появилось настоящее измерение: иначе следующий
+    // проход ничего не изменит, а время съест.
+    if (measured <= 0) break
+    search = runSearch()
+  }
+  // Если после уточняющих проходов остались плечи, которые поиск видел как
+  // ОЦЕНКУ (сеть недоступна, бюджет исчерпан), оптимум не доказан: сравнение
+  // вариантов шло по числам, часть которых — догадка. Об этом говорится прямо.
+  const leftoverEstimates = distance.takeEstimateMisses()
+  if (leftoverEstimates.length > 0) {
+    stats.truncations.push(
+      `часть расстояний осталась оценкой (${leftoverEstimates.length} плеч) — оптимум не доказан`,
+    )
+    for (const plan of [...search.sequential, ...search.consolidated]) {
+      if (plan.exact) {
+        plan.exact = false
+        plan.optimality = "best-of-checked"
+      }
+    }
+  }
+  const { sequential, consolidated } = search
   const all = [...sequential, ...consolidated]
 
   // 5. Сравнение моделей — ДО ранжирования, чтобы рекомендация могла сказать,
@@ -196,17 +283,68 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
   // 6. Ранжирование
   const { variants, recommended } = rankVariants(all, input.settings)
 
+  // «Оптимум модели доказан» = лучший вариант этой модели помечен proven.
+  //
+  // Было: `sequential.every((plan) => plan.exact)`. У пустого массива `every`
+  // даёт true — модель, которая ничего не нашла, объявлялась «оптимум доказан».
+  // Затем наоборот: `every` требовал точности ото ВСЕХ альтернатив, хотя
+  // доказанным может быть только лучший вариант (этап 5, `markBestOnly`).
+  // Правильный вопрос один: доказан ли оптимум у победителя модели.
+  const bestOf = (plans: RoutePlan[]): RoutePlan | null => {
+    let best: RoutePlan | null = null
+    for (const plan of plans) {
+      if (!best || plan.economics.netCommittedRub > best.economics.netCommittedRub) best = plan
+    }
+    return best
+  }
+  const bestSequential = bestOf(sequential)
+  const bestConsolidated = bestOf(consolidated)
   const exactSequential =
-    compatibleOrders.length <= exactLimit && sequential.every((plan) => plan.exact)
-  const exactConsolidated = consolidated.every((plan) => plan.exact)
+    compatibleOrders.length > 0 &&
+    compatibleOrders.length <= exactLimit &&
+    bestSequential?.exact === true
+  const exactConsolidated = bestConsolidated?.exact === true
   stats.exactSequential = exactSequential
   stats.exactConsolidated = exactConsolidated
-  stats.exact =
-    recommended === null
-      ? exactSequential && exactConsolidated
-      : recommended.model === "sequential"
-        ? exactSequential
-        : exactConsolidated
+  // «Оптимум рекомендации доказан» — это утверждение ОБО ВСЕХ вариантах,
+  // которые могли бы её обойти, а не только о той модели, что победила.
+  //
+  // Было: если победила модель А, бралась точность модели А. Но модель Б в этот
+  // момент могла быть не перебрана до конца — и тогда более выгодный сборный
+  // рейс просто не нашёлся, а экран говорил «оптимум доказан». Проверка на
+  // независимом переборе это поймала: движок «доказывал» 38 646 ₽ там, где
+  // полный перебор находил 46 026 ₽.
+  stats.exact = exactSequential && exactConsolidated
+  if (recommended && recommended.model === "sequential" && !exactConsolidated) {
+    stats.truncations.push(
+      "модель Б перебрана не полностью — рекомендация может быть не лучшей из возможных",
+    )
+  }
+  if (recommended && recommended.model === "consolidated" && !exactSequential) {
+    stats.truncations.push(
+      "модель А перебрана не полностью — рекомендация может быть не лучшей из возможных",
+    )
+  }
+  // Откуда километры. Считается по ВАРИАНТАМ, которые увидит логист: доли
+  // измеренного и оценённого в том, что реально показано.
+  let measuredSegments = 0
+  let estimatedSegments = 0
+  for (const plan of variants) {
+    for (const segment of plan.segments) {
+      if (segment.source === "estimate") estimatedSegments += 1
+      else measuredSegments += 1
+    }
+  }
+  stats.router = {
+    providers: distance.routerStats.map((item) => ({
+      name: item.name,
+      requests: item.requests,
+      failures: item.failures,
+    })),
+    storeHits: distance.storeHits,
+    measuredSegments,
+    estimatedSegments,
+  }
   stats.distanceCalls = distance.calls
   stats.distanceCacheHits = distance.hits
   stats.elapsedMs = Date.now() - startedAt
@@ -216,8 +354,9 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
     vehicleId: vehicle.id,
     variants,
     recommended,
+    unpriced,
     rejected: explainRejections(
-      orders,
+      priced,
       all,
       new Set(compatibleOrders.map((order) => order.id)),
       details,

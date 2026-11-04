@@ -427,6 +427,23 @@ export interface MobileAtiLoad {
    * ATI.SU делает замечания (соглашение, п. 3.2.1.7).
    */
   firmUrl?: string | null
+  /**
+   * Достоверность цены: CONFIRMED | ESTIMATED | NEGOTIATION_REQUIRED | UNKNOWN.
+   * Цена 0 при статусе «не указана» — это НЕ бесплатная перевозка.
+   */
+  priceStatus?: "CONFIRMED" | "ESTIMATED" | "NEGOTIATION_REQUIRED" | "UNKNOWN"
+  /**
+   * Готовый текст цены для карточки: сумма либо «недостаточно данных»,
+   * диапазон, ₽/км, число аналогов, дата данных, источник, уверенность.
+   * Считается на сервере — чтобы экран и API говорили одно и то же.
+   */
+  priceDisplay?: {
+    headline: string
+    statusLabel: string
+    details: string[]
+    confirmed: boolean
+    hasAmount: boolean
+  } | null
   /** Точки погрузки/выгрузки — для расчёта «по пути» */
   fromPoint?: { lat: number; lng: number } | null
   toPoint?: { lat: number; lng: number } | null

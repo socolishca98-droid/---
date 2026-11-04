@@ -3566,6 +3566,16 @@ function RoutePhase({
             стояла выручка минус топливо, и на рейсе «Ярославль → Казань» экран
             показывал +99 715 ₽ прибыли, хотя после водителя и износа остаётся
             ~58 500 ₽ — завышение на 37%. */}
+        {/* Неполный расчёт нельзя называть прибылью: если часть расходов
+            неизвестна, над цифрой стоит честная пометка, а причина — под ней.
+            Раньше неизвестная статья молча равнялась нулю, и «прибыль»
+            оказывалась больше, чем есть. */}
+        {route.profitStatus === "insufficient" ? (
+          <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11.5px] font-medium text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            расчёт неполный — это пока не прибыль
+          </p>
+        ) : null}
         <p className="mt-1 text-[30px] font-bold leading-none text-foreground lg:text-[40px]">
           {route.netProfitRub !== null ? (
             <>
@@ -3578,7 +3588,7 @@ function RoutePhase({
         </p>
         {route.netProfitRub !== null ? (
           <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
-            после топлива и работы машины
+            после топлива, работы машины и возврата на базу
             {route.operatingCostRub !== null
               ? ` (${route.operatingCostPerKm} ₽/км: водитель, износ, ТО, платные дороги)`
               : ""}
@@ -3591,6 +3601,65 @@ function RoutePhase({
             У машины не заполнен расход топлива — прибыль нечем оценить
           </p>
         )}
+        {/*
+          Доход раздельно — требование ТЗ §8. Одно число «выручка» скрывало
+          главное: часть денег подтверждена заказчиком, а часть — расчёт
+          Loginex по аналогам. Пока цена не подтверждена, нижняя цифра — это
+          финансовый результат расчёта, а не заработанные деньги.
+        */}
+        {typeof route.revenueConfirmed === "number" &&
+        typeof route.revenueEstimated === "number" &&
+        (route.revenueConfirmed > 0 || route.revenueEstimated > 0) ? (
+          <div className="mt-2 rounded-lg border border-border bg-card px-2.5 py-2">
+            <p className="text-[11.5px] leading-snug text-muted-foreground">
+              доход: подтверждено {formatMoney(route.revenueConfirmed)}
+              {route.revenueEstimated > 0 ? ` · расчёт Loginex ${formatMoney(route.revenueEstimated)}` : ""}
+              {route.revenueEstimated === 0 ? " · весь подтверждён" : ""}
+            </p>
+            <p className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">
+              расходы: известно{" "}
+              {route.operatingCostRub !== null && route.totalFuelCostRub !== null
+                ? formatMoney(route.operatingCostRub + route.totalFuelCostRub)
+                : "—"}
+              {(route.profitGaps ?? []).length > 0
+                ? ` · неизвестно статей: ${(route.profitGaps ?? []).length}`
+                : " · всё известно"}
+            </p>
+            {route.profitDependsOnEstimate ? (
+              <p className="mt-1 flex items-start gap-1.5 text-[11.5px] font-medium leading-snug text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                прибыль зависит от неподтверждённой цены — это расчёт, а не заработанные деньги.
+                Позвоните перевозчику и внесите фактическую стоимость
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {/* Откуда километры. Замер этапа 6: оценка «прямая × 1,2» ошибается до
+            −32 % на горных и объездных участках, а экономика рейса считается по
+            километрам. Поэтому источник виден рядом с цифрами, а не в логах. */}
+        {typeof route.measuredKm === "number" && typeof route.estimatedKm === "number" ? (
+          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+            километры: дорожные {formatMoney(route.measuredKm)} км
+            {route.estimatedKm > 0
+              ? `, оценено ${formatMoney(route.estimatedKm)} км — на этом участке возможна ошибка`
+              : ""}
+            {route.distanceProviders && route.distanceProviders.length > 0
+              ? ` (${route.distanceProviders.join(", ")})`
+              : ""}
+          </p>
+        ) : null}
+        {(route.profitGaps ?? []).length > 0 ? (
+          <ul className="mt-1.5 space-y-0.5 text-[11.5px] leading-snug text-amber-600 dark:text-amber-400">
+            {(route.profitGaps ?? []).map((gap, index) => (
+              <li key={index}>
+                · {gap.article}: {gap.reason}
+                {gap.estimateRub !== null
+                  ? ` (не более ${formatMoney(gap.estimateRub)} ₽${gap.inNet ? ", уже вычтено" : ""})`
+                  : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-primary/15 pt-3 sm:grid-cols-3 lg:grid-cols-4">
           <SummaryCell label="Выручка" value={formatMoney(route.totalRevenue)} />

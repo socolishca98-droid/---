@@ -19,7 +19,9 @@ import { ActionButton, Card, EmptyState, ErrorState, ListSkeleton, SectionTitle 
 import { apiSend } from "@/hooks/use-json-api"
 import { useStaffSession } from "@/hooks/use-staff-session"
 import type { MobileAtiLoad, MobileAtiStats } from "@/lib/logist-mobile/types"
-import { formatKm, formatMoney, formatWeightKg, shortCity } from "@/lib/logist-mobile/format"
+import { formatKm, formatWeightKg, shortCity } from "@/lib/logist-mobile/format"
+import { describePrice, type PriceDisplay } from "@/lib/pricing/format"
+import { CALL_OUTCOMES, type CallOutcome } from "@/lib/pricing/call-outcomes"
 
 interface GeoCity {
   id: number | string
@@ -112,6 +114,8 @@ export default function LogistSearchPage() {
   /** Биржа отдала всё, что показывает по фильтру — дальше кнопка не поможет */
   const [deepEnd, setDeepEnd] = useState<string | null>(null)
   const [searchWarning, setSearchWarning] = useState<string | null>(null)
+  /** Поиск уже выполняли — только тогда «ничего не найдено» это факт, а не пустой экран */
+  const [searched, setSearched] = useState(false)
 
   async function takeLoad(load: MobileAtiLoad) {
     setTaking(load.id)
@@ -146,6 +150,7 @@ export default function LogistSearchPage() {
       return
     }
     setScanning(true)
+    setSearched(true)
     // «Показать ещё» дописывает к экрану: биржа отдаёт страницами примерно
     // по 12 грузов, один заход показывает только первую двадцатку.
     if (!pageStart) {
@@ -339,7 +344,13 @@ export default function LogistSearchPage() {
                   Показаны {loads.length} из {total}
                 </p>
                 {loads.map((load) => (
-                  <LoadCard key={load.id} load={load} busy={taking === load.id} onTake={() => void takeLoad(load)} />
+                  <LoadCard
+                    key={load.id}
+                    load={load}
+                    busy={taking === load.id}
+                    onTake={() => void takeLoad(load)}
+                    onPriced={() => void loadBase()}
+                  />
                 ))}
               </>
             )}
@@ -417,7 +428,13 @@ export default function LogistSearchPage() {
               ) : null}
               <div className="space-y-2.5">
                 {results.map((load) => (
-                  <LoadCard key={load.id} load={load} busy={taking === load.id} onTake={() => void takeLoad(load)} />
+                  <LoadCard
+                    key={load.id}
+                    load={load}
+                    busy={taking === load.id}
+                    onTake={() => void takeLoad(load)}
+                    onPriced={() => void loadBase()}
+                  />
                 ))}
               </div>
               {deepEnd ? (
@@ -435,6 +452,17 @@ export default function LogistSearchPage() {
                 </ActionButton>
               ) : null}
             </>
+          ) : null}
+
+          {/*
+            Сценарий «предложений нет» — отдельный и явный. Когда ATI не
+            вернула ни одного груза по направлению, программа не делает вид,
+            что всё хорошо и грузов просто нет: она проверяет направление по
+            сопоставимым данным и честно говорит, что это ЕЁ оценка, а не
+            найденная заявка.
+          */}
+          {searched && !scanning && results.length === 0 ? (
+            <DirectionEstimate from={from} to={to} />
           ) : null}
         </div>
       )}
@@ -467,15 +495,128 @@ function TabButton({
   )
 }
 
+/**
+ * Оценка стоимости направления, по которому предложений нет.
+ *
+ * Три обязательных свойства:
+ *   · это расчёт Loginex, и подписано именно так — не «предложение ATI»;
+ *   · при нехватке данных цены нет вовсе, вместо неё «недостаточно данных»;
+ *   · заявка не создаётся: оценка направления — справка, а не груз.
+ */
+function DirectionEstimate({ from, to }: { from: GeoCity | null; to: GeoCity | null }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{
+    ok: boolean
+    message?: string
+    reason?: string
+    display?: PriceDisplay
+    contact?: { available: boolean; note: string } | null
+    kmNote?: string | null
+    source?: string
+    used?: Array<{ id: string; origin: string; amountRub: number; adjustedRub: number; relation: string }>
+  } | null>(null)
+
+  async function estimate() {
+    if (!from || !to) return
+    setBusy(true)
+    try {
+      const res = await fetch("/api/pricing/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromCity: from.name, toCity: to.name }),
+      })
+      const data = await res.json()
+      if (!res.ok || data?.success === false) {
+        toast.error(data?.error || "Не удалось оценить направление")
+        return
+      }
+      setResult(data)
+    } catch {
+      toast.error("Не удалось оценить направление")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!from || !to) {
+    return (
+      <Card className="mt-2 space-y-2">
+        <p className="text-[13px] font-medium text-foreground">Предложений нет</p>
+        <p className="text-[12px] leading-snug text-muted-foreground">
+          Чтобы оценить стоимость направления, укажите город назначения: без него это не направление,
+          а «куда-нибудь».
+        </p>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="mt-2 space-y-2">
+      <p className="text-[13px] font-medium text-foreground">
+        Предложений {shortCity(from.name)} → {shortCity(to.name)} нет
+      </p>
+      <p className="text-[12px] leading-snug text-muted-foreground">
+        Проверено по вашим фильтрам и обоим источникам ATI. Стоимость можно оценить по сопоставимым
+        перевозкам — это будет расчёт Loginex, а не найденная заявка.
+      </p>
+
+      {!result ? (
+        <button
+          type="button"
+          onClick={() => void estimate()}
+          disabled={busy}
+          className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg border border-border bg-card text-[13px] font-medium text-foreground active:opacity-70 disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          Оценить стоимость направления
+        </button>
+      ) : (
+        <div className="space-y-1.5">
+          <p className={`text-[15px] font-semibold ${result.ok ? "text-foreground" : "text-muted-foreground"}`}>
+            {result.display?.headline ?? "Недостаточно данных для достоверной оценки"}
+          </p>
+          <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
+            {result.display?.statusLabel ?? result.message}
+          </p>
+          {result.display?.details?.length ? (
+            <ul className="space-y-0.5">
+              {result.display.details.map((line) => (
+                <li key={line} className="text-[11.5px] text-muted-foreground">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {!result.ok && result.reason ? (
+            <p className="text-[11.5px] text-muted-foreground">Причина: {result.reason}</p>
+          ) : null}
+          {result.kmNote ? (
+            <p className="text-[11.5px] text-muted-foreground">{result.kmNote}</p>
+          ) : null}
+          {result.source ? (
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground/80">{result.source}</p>
+          ) : null}
+          {result.contact?.note ? (
+            <p className="text-[11.5px] text-muted-foreground">{result.contact.note}</p>
+          ) : null}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 /** Одна карточка груза — общая для своей базы и живого поиска. */
 function LoadCard({
   load,
   busy,
   onTake,
+  onPriced,
 }: {
   load: MobileAtiLoad
   busy: boolean
   onTake: () => void
+  /** Заодно обновить список: после звонка цена могла стать подтверждённой */
+  onPriced?: () => void
 }) {
   // Контакты фрахтователя — ТОЛЬКО по нажатию. ATI.SU запрещает
   // автоматизированный сбор контактной информации (пользовательское
@@ -485,6 +626,80 @@ function LoadCard({
   const [contact, setContact] = useState<{ phone: string | null; name: string | null; email: string | null } | null>(
     load.contactPhone ? { phone: load.contactPhone, name: load.contactName, email: null } : null,
   )
+
+  // Результат звонка. Программа не звонит: логист звонит и выбирает, чем
+  // закончился разговор. Шесть исходов — те, что бывают в жизни.
+  const [callOpen, setCallOpen] = useState(false)
+  const [callBusy, setCallBusy] = useState(false)
+  const [callOutcome, setCallOutcome] = useState<CallOutcome | null>(null)
+  const [callAmount, setCallAmount] = useState("")
+  const [callNote, setCallNote] = useState<string | null>(null)
+  const [requiresAmount, setRequiresAmount] = useState(false)
+
+  async function startCall() {
+    setCallBusy(true)
+    setCallNote(null)
+    try {
+      // Контакт — только по нажатию (ATI.SU, п. 3.2.1.7). Если его нет,
+      // честно говорим: звонить некуда, номер искать в ATI вручную.
+      const result = await apiSend<{ phone: string | null; name: string | null; email: string | null }>(
+        "/api/ati/loads/contacts",
+        "POST",
+        { cacheId: load.id },
+      )
+      if (result.ok && result.data?.phone) {
+        setContact({ phone: result.data.phone, name: result.data.name, email: result.data.email })
+        setCallNote(`Телефон: ${result.data.phone}`)
+      } else {
+        setCallNote("Контактов в предложении нет — номер нужно найти в ATI вручную")
+      }
+    } catch {
+      setCallNote("Контактов в предложении нет — номер нужно найти в ATI вручную")
+    } finally {
+      setCallBusy(false)
+      setCallOpen(true)
+    }
+  }
+
+  async function saveCall(outcome: CallOutcome) {
+    const needsAmount = outcome === "confirmed" || outcome === "proposed_other"
+    const amount = Number(callAmount.replace(/\s/g, "").replace(",", "."))
+    if (needsAmount && (!Number.isFinite(amount) || amount <= 0)) {
+      setRequiresAmount(true)
+      return
+    }
+    setRequiresAmount(false)
+    setCallBusy(true)
+    try {
+      const result = await apiSend<{
+        hasContact: boolean
+        note: string | null
+        confirmedOrder: boolean
+      }>("/api/ati/loads/call", "POST", {
+        cacheId: load.id,
+        outcome,
+        amountRub: needsAmount ? amount : null,
+        note: callNote,
+        markOrder: true,
+      })
+      if (result.ok) {
+        setCallOutcome(outcome)
+        setCallNote(
+          result.data?.confirmedOrder
+            ? "Стоимость записана как согласованная цена заказа"
+            : (result.data?.note ?? "Результат звонка записан"),
+        )
+        toast.success("Результат звонка записан")
+        onPriced?.()
+      } else {
+        toast.error(result.error ?? "Не удалось записать звонок")
+      }
+    } catch {
+      toast.error("Не удалось записать звонок")
+    } finally {
+      setCallBusy(false)
+    }
+  }
 
   async function askContacts() {
     setContactBusy(true)
@@ -507,14 +722,58 @@ function LoadCard({
     }
   }
 
+  // Цена показывается ТОЛЬКО как деньги, если она подтверждена. Иначе —
+  // расчёт Loginex с диапазоном и оговорками, либо честное «недостаточно
+  // данных». Раньше здесь печаталось «0 ₽», то есть программа утверждала,
+  // что перевозка бесплатная.
+  // Сервер уже посчитал ориентир (один проход по базе на весь список) и
+  // прислал готовый текст. Если его нет — показываем статус без выдуманной
+  // суммы: экран не должен считать деньги по-своему.
+  const priceInfo: PriceDisplay =
+    load.priceDisplay ??
+    describePrice({
+      status:
+        load.priceStatus ??
+        (typeof load.price === "number" && load.price > 0 ? "CONFIRMED" : "NEGOTIATION_REQUIRED"),
+      amountRub: typeof load.price === "number" ? load.price : null,
+    })
+
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm p-4">
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 text-[15px] font-semibold text-foreground">
           {shortCity(load.routeFrom)} → {shortCity(load.routeTo)}
         </p>
-        <p className="shrink-0 text-[15px] font-semibold text-success">{formatMoney(load.price)}</p>
+        <p
+          className={`shrink-0 text-right text-[15px] font-semibold ${
+            priceInfo.confirmed ? "text-success" : "text-foreground"
+          }`}
+        >
+          {priceInfo.headline}
+          {!priceInfo.confirmed && priceInfo.hasAmount ? (
+            <span className="block text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+              оценка
+            </span>
+          ) : null}
+        </p>
       </div>
+
+      <p
+        className={`mt-1 text-[11.5px] ${
+          priceInfo.confirmed ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400"
+        }`}
+      >
+        {priceInfo.statusLabel}
+      </p>
+      {priceInfo.details.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          {priceInfo.details.map((line) => (
+            <li key={line} className="text-[11.5px] text-muted-foreground">
+              {line}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <p className="mt-1.5 text-[12.5px] text-muted-foreground">
         {[
@@ -547,6 +806,54 @@ function LoadCard({
             {load.routeFrom} → {load.routeTo}
           </span>
         </p>
+      ) : null}
+
+      {!priceInfo.confirmed ? (
+        <div className="mt-2 rounded-xl border border-dashed border-border p-2.5">
+          <button
+            type="button"
+            onClick={() => void startCall()}
+            disabled={callBusy}
+            className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg border border-border bg-card text-[13px] font-medium text-foreground active:opacity-70 disabled:opacity-50"
+          >
+            {callBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneCall className="h-4 w-4" />}
+            {callOutcome ? "Звонок записан — изменить" : "Уточнить стоимость по телефону"}
+          </button>
+
+          {callNote ? <p className="mt-1.5 text-[11.5px] text-muted-foreground">{callNote}</p> : null}
+
+          {callOpen ? (
+            <div className="mt-2 space-y-1.5">
+              {CALL_OUTCOMES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => void saveCall(item.value)}
+                  disabled={callBusy}
+                  className={`w-full rounded-lg border px-2.5 py-2 text-left text-[12.5px] ${
+                    callOutcome === item.value
+                      ? "border-primary/50 bg-primary/10 text-foreground"
+                      : "border-border bg-card text-muted-foreground"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <input
+                type="number"
+                inputMode="numeric"
+                value={callAmount}
+                onChange={(event) => setCallAmount(event.target.value)}
+                placeholder="Сумма, ₽"
+                className="w-full rounded-lg border border-border bg-card px-2.5 py-2 text-[12.5px]"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Сумма нужна для «подтверждена» и «предложена другая». Она заменит расчёт в экономике,
+                а расчёт останется в истории.
+              </p>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="mt-3 flex gap-2">

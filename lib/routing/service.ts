@@ -18,23 +18,25 @@ import { geocodeAddresses } from "@/lib/geo/geocode"
 
 import {
   baseFromSettings,
-  cityKey,
   orderFromAtiRow,
   orderFromOrderRow,
-  placeFromCity,
   readiness,
   regionsFromRows,
   settingsFromOrg,
   vehicleFromRow,
   type AtiLoadRow,
-  type CityRow,
   type FleetSettingsRow,
   type OrderRow,
   type Readiness,
   type VehicleRow,
 } from "./adapter"
 import { planFleet, type FleetPlan, type PlanInput } from "./index"
+import { loadPlaces as loadPlacesGeo, regionOfCity as regionOfCityFromSource, type GeoSource } from "./geo/places"
+import type { DistanceCacheStore } from "./distance"
+import { cityLookupKey, parseAddress } from "./geo/address"
 import type { LoadOrder, Place, Vehicle } from "./types"
+import { rateStatus } from "@/lib/pricing/status"
+import { quoteMany } from "@/lib/pricing/service"
 
 export interface OptimizerInput {
   organisationId: string
@@ -78,6 +80,12 @@ export interface OptimizerOutput {
     /** Сколько грузов логист снял с рассмотрения в этом расчёте */
     ordersExcluded: number
     skipped: Array<{ id: string; problems: string[] }>
+    /**
+     * Грузы, по которым нет ни цены, ни оценки: они не пошли в расчёт.
+     * Отдельным списком — чтобы логист видел, что делать (звонить), а не
+     * только «грузов нет».
+     */
+    unpriced: Array<{ id: string; status: string; reason: string }>
     /** Города, координаты которых пришлось получить в этом расчёте */
     geocoded: string[]
     vehicles: number
@@ -88,95 +96,105 @@ export interface OptimizerOutput {
 }
 
 /**
- * Координаты и регионы городов.
+ * Координаты и регионы мест пула.
  *
- * Источник — справочник городов ATI (AtiCity: имя, регион, координаты) и кэш
- * геокодера (GeoCache). Сеть здесь не вызывается: планировщик не должен ждать
- * геокодер. Чего нет в справочнике — то честно отсутствует и попадает в
- * причины отказа, а недостающие города можно дозаполнить геокодером отдельным
- * запросом (это делает существующий /api/ati/cities/points).
+ * Порядок источников зафиксирован в `geo/places.ts`:
+ *   1. справочник ATI (AtiCity) — 128 079 пунктов с регионом;
+ *   2. GeoCache — только записи со статусом `verified`;
+ *   3. геокодер — только по явному разрешению вызывающего.
+ *
+ * Что изменилось: раньше город искался ТОЧНЫМ совпадением всей строки
+ * («Ярославль, Ярославская область» против «Ярославль» в справочнике), поэтому
+ * справочник не находился почти никогда и всё зависело от геокодера. Замер: из
+ * 671 уникального места пула без сети не разрешалось 518.
+ *
+ * Сеть в этом расчёте по умолчанию НЕ вызывается: планировщик не должен ни
+ * ждать геокодер, ни писать в общий кэш во время чтения (прежняя версия делала
+ * и то, и другое: до 12 запросов с паузой в секунду и upsert в GeoCache).
  */
 const MAX_GEOCODE_CITIES = 12
 
-async function loadPlaces(
-  cities: string[],
-  geocodeMissing: boolean,
-): Promise<{ places: Map<string, Place>; geocoded: string[]; stillMissing: string[] }> {
-  const out = new Map<string, Place>()
-  const geocoded: string[] = []
-  if (cities.length === 0) return { places: out, geocoded, stillMissing: [] }
-
-  const unique = [...new Set(cities.map((city) => city.trim()).filter(Boolean))]
-  const byKey = new Map<string, string>()
-  for (const city of unique) byKey.set(cityKey(city), city)
-
-  // Справочник ATI: города с координатами.
-  try {
-    const rows = await prisma.atiCity.findMany({
-      where: { name: { in: unique } },
+/**
+ * Источник данных для geo/places.ts — обёртка над Prisma.
+ *
+ * Поиск идёт по `AtiCity.nameKey` — ключу названия без типа, района, регистра и
+ * ё. Искать по `name` целиком нельзя: в справочнике лежит «Энгельс,
+ * Саратовская область», а в грузе — «Энгельс», и точное совпадение не
+ * срабатывало никогда. Ключ считается той же функцией, что и в расчёте, поэтому
+ * база и память дают одинаковое разбиение.
+ */
+const geoSource: GeoSource = {
+  cities: async (names) => {
+    const keys = [...new Set(names.map((name) => cityLookupKey(name)).filter(Boolean))]
+    if (keys.length === 0) return []
+    return prisma.atiCity.findMany({
+      where: { nameKey: { in: keys } },
       select: { name: true, region: true, lat: true, lon: true },
     })
-    for (const row of rows) {
-      const place = placeFromCity({
-        city: row.name,
-        region: row.region,
-        lat: row.lat,
-        lng: row.lon,
-      })
-      if (place) out.set(cityKey(row.name), place)
+  },
+  cache: async (addresses) => {
+    const unique = [
+      ...new Set(addresses.map((address) => address.trim().toLowerCase()).filter(Boolean)),
+    ]
+    if (unique.length === 0) return []
+    return prisma.geoCache.findMany({
+      where: { address: { in: unique } },
+      select: { address: true, lat: true, lng: true, region: true, status: true },
+    })
+  },
+}
+
+/**
+ * Геокодер как последний источник. Включается флагом, а не по умолчанию.
+ *
+ * Ответ сохраняется со статусом `unverified`: он ещё не проверен по региону, а
+ * значит для маршрута не годится (именно так в кэш когда-то попало Шарапово из
+ * Тверской области). Проверенные точки ставит человек или сверка со
+ * справочником (`scripts/verify-geocache.mjs`).
+ */
+async function geocodeMissingPlaces(
+  cities: string[],
+): Promise<Map<string, { lat: number; lng: number }>> {
+  const result = new Map<string, { lat: number; lng: number }>()
+  try {
+    const found = await geocodeAddresses(cities)
+    for (const [city, point] of found) {
+      if (!point) continue
+      result.set(city, point)
+      try {
+        await prisma.geoCache.upsert({
+          where: { address: city.trim().toLowerCase() },
+          create: {
+            address: city.trim().toLowerCase(),
+            lat: point.lat,
+            lng: point.lng,
+            source: "geocoder",
+            status: "unverified",
+            checkedAt: new Date(),
+          },
+          update: { lat: point.lat, lng: point.lng, checkedAt: new Date() },
+        })
+      } catch {
+        // кэш не критичен: координаты уже получены
+      }
     }
   } catch {
-    // Справочник может быть не наполнен — работаем с тем, что есть.
+    // геокодер недоступен — места останутся без координат, и это будет сказано
   }
+  return result
+}
 
-  // Геокэш: адрес → координаты (общий справочник, не данные организации).
-  const missing = unique.filter((city) => !out.has(cityKey(city)))
-  if (missing.length > 0) {
-    try {
-      const geo = await prisma.geoCache.findMany({
-        where: { address: { in: missing.map((city) => city.toLowerCase()) } },
-        select: { address: true, lat: true, lng: true },
-      })
-      for (const row of geo) {
-        const key = cityKey(row.address)
-        if (out.has(key)) continue
-        // Регион у геокэша не хранится: он неизвестен, и это честно.
-        out.set(
-          key,
-          placeFromCity({ city: byKey.get(key) ?? row.address, region: null, lat: row.lat, lng: row.lng })!,
-        )
-      }
-    } catch {
-      // Нет кэша — не беда: города просто останутся без координат.
-    }
-  }
-
-  // Дозаполнение геокодером: города, которых нет ни в справочнике, ни в кэше.
-  // Ответ кладётся в общий GeoCache силами самого геокодера — повторный расчёт
-  // сети уже не требует.
-  const stillMissing = unique.filter((city) => !out.has(cityKey(city)))
-  if (geocodeMissing && stillMissing.length > 0) {
-    const batch = stillMissing.slice(0, MAX_GEOCODE_CITIES)
-    try {
-      const coords = await geocodeAddresses(batch)
-      for (const city of batch) {
-        const point = coords.get(city)
-        if (!point) continue
-        const place = placeFromCity({ city, region: null, lat: point.lat, lng: point.lng })
-        if (!place) continue
-        out.set(cityKey(city), place)
-        geocoded.push(city)
-      }
-    } catch {
-      // Геокодер недоступен — города останутся без координат, и это будет
-      // сказано в причинах, а не спрятано.
-    }
-  }
-
-  return {
-    places: out,
-    geocoded,
-    stillMissing: unique.filter((city) => !out.has(cityKey(city))),
+/**
+ * Регион населённого пункта по справочнику — для базы организации.
+ *
+ * Само правило живёт в geo/places.ts (regionOfCity), здесь только источник
+ * данных: одна и та же логика должна работать и в расчёте, и в проверках.
+ */
+async function regionOfCity(city: string | null): Promise<string | null> {
+  try {
+    return await regionOfCityFromSource(geoSource, city)
+  } catch {
+    return null
   }
 }
 
@@ -234,6 +252,18 @@ interface LoadedPool {
   geocoded: string[]
   /** Для каких городов координат так и нет — из-за них грузы отброшены */
   missingCoordinates: string[]
+  /** По каждой неразрешённой строке — статус и причина словами */
+  unresolved: Array<{ raw: string; status: string; note: string | null }>
+  /** Откуда взялись точки: справочник / кэш / геокодер / нет */
+  geoStats: {
+    total: number
+    fromReference: number
+    fromCache: number
+    fromGeocoder: number
+    ambiguous: number
+    noCoordinates: number
+    missing: number
+  }
 }
 
 /**
@@ -246,6 +276,7 @@ async function loadPool(
   horizonHours: number,
   now: Date,
   geocodeMissing: boolean,
+  preferredRegion: string | null,
 ): Promise<LoadedPool> {
   const orders: LoadOrder[] = []
   const skipped: Array<{ id: string; problems: string[] }> = []
@@ -334,8 +365,13 @@ async function loadPool(
     for (const row of orderRows) cities.push(row.routeFrom, row.routeTo)
   }
 
-  const located = await loadPlaces(cities, geocodeMissing)
+  const located = await loadPlacesGeo(cities, geoSource, {
+    geocode: geocodeMissing ? (batch) => geocodeMissingPlaces(batch) : undefined,
+    geocodeLimit: MAX_GEOCODE_CITIES,
+    preferredRegion,
+  })
   const places = located.places
+  const unresolved = located.unresolved
 
   const problemsOf: Array<{ id: string; problems: string[] }> = []
   for (const row of atiRows) {
@@ -362,8 +398,100 @@ async function loadPool(
     skipped: problemsOf,
     cities,
     geocoded: located.geocoded,
-    missingCoordinates: located.stillMissing,
+    missingCoordinates: unresolved.map((item) => item.raw),
+    unresolved,
+    geoStats: located.stats,
   }
+}
+
+/**
+ * Точки входа маршрутизатора, которые подключаются БЕЗ настройки.
+ *
+ * Решение: если своего OSRM не задано, километры берутся у публичного демо-
+ * сервера OSM. Почему не «оставить оценку»: замер на 10 парах
+ * (`scripts/router-compare.mjs`) показал, что «прямая × 1,2» ошибается от −30 %
+ * (Краснодар → Сочи, горный серпантин) до +13 % (Ярославль → Москва), а
+ * экономика рейса считается именно по километрам.
+ *
+ * Платные сервисы сюда не подставляются НИКОГДА: их включает владелец явно
+ * (`OSRM_FALLBACK_URLS`), потому что это его деньги.
+ *
+ * Отключить публичный источник можно одной переменной: `OSRM_PUBLIC=off`.
+ */
+function routerFallbacks(): Array<{ name: string; url: string }> {
+  const endpoints: Array<{ name: string; url: string }> = []
+  const configured = (process.env.OSRM_FALLBACK_URLS ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+  for (const [index, url] of configured.entries()) {
+    endpoints.push({ name: `osrm-fallback-${index + 1}`, url })
+  }
+  const allowPublic = (process.env.OSRM_PUBLIC ?? "on").toLowerCase() !== "off"
+  if (allowPublic && !process.env.OSRM_URL) {
+    endpoints.push({ name: "osrm-public", url: "https://router.project-osrm.org" })
+  }
+  return endpoints
+}
+
+/**
+ * Постоянный кэш расстояний в базе.
+ *
+ * Источник и дата измерения хранятся вместе с километрами: без них нельзя
+ * отличить измерение от догадки, а ТЗ требует именно этого.
+ */
+const distanceStore: DistanceCacheStore = {
+  load: async (keys) => {
+    if (keys.length === 0) return []
+    const rows = await prisma.routeDistance.findMany({
+      where: {
+        OR: keys.map((key) => ({ fromId: key.from, toId: key.to, mode: key.mode })),
+      },
+      select: { fromId: true, toId: true, mode: true, km: true, source: true, provider: true, measuredAt: true },
+    })
+    return rows.map((row) => ({
+      from: row.fromId,
+      to: row.toId,
+      mode: row.mode,
+      km: row.km,
+      source: row.source,
+      provider: row.provider,
+      measuredAt: row.measuredAt,
+    }))
+  },
+  save: async (rows) => {
+    if (rows.length === 0) return
+    // Пакетная запись «вставить или обновить»: один запрос на пачку вместо
+    // upsert на каждую пару (их бывают сотни).
+    const values = rows.map((row) => [
+      row.from,
+      row.to,
+      row.mode,
+      row.km,
+      row.source,
+      row.provider,
+      row.measuredAt.toISOString(),
+    ])
+    try {
+      await prisma.$executeRaw`
+        INSERT INTO "RouteDistance" ("id", "fromId", "toId", "mode", "km", "source", "provider", "measuredAt")
+        SELECT gen_random_uuid()::text, v."fromId", v."toId", v."mode", v.km, v.source, v.provider, v."measuredAt"::timestamptz
+        FROM unnest(
+          ${values.map((row) => row[0])}::text[],
+          ${values.map((row) => row[1])}::text[],
+          ${values.map((row) => row[2])}::text[],
+          ${values.map((row) => row[3])}::float8[],
+          ${values.map((row) => row[4])}::text[],
+          ${values.map((row) => row[5])}::text[],
+          ${values.map((row) => row[6])}::text[]
+        ) AS v("fromId", "toId", "mode", km, source, provider, "measuredAt")
+        ON CONFLICT ("fromId", "toId", "mode") DO UPDATE
+          SET km = EXCLUDED.km, provider = EXCLUDED.provider, "measuredAt" = EXCLUDED."measuredAt"
+      `
+    } catch {
+      // Кэш не критичен: расстояния этого расчёта уже в памяти.
+    }
+  },
 }
 
 /**
@@ -381,15 +509,22 @@ export async function planForOrganisation(input: OptimizerInput): Promise<Optimi
   const settingsRowRaw = await prisma.fleetSettings.findFirst({
     where: scopedWhere(input.organisationId),
   })
-  const base = baseFromSettings(settingsRowRaw as FleetSettingsRow | null)
   const settingsRow = settingsRowRaw as FleetSettingsRow | null
+  // Регион базы: карточка организации → справочник ATI по городу из адреса.
+  // Без региона не определяется часовой пояс базы, а вместе с ним все окна.
+  let baseRegionHint: string | null = null
+  if (settingsRow && !settingsRow.baseRegion) {
+    baseRegionHint = await regionOfCity(parseAddress(settingsRow.baseAddress).city)
+  }
+  const base = baseFromSettings(settingsRow, { region: baseRegionHint })
 
   const pool = await loadPool(
     input.organisationId,
     source,
     horizonHours,
     now,
-    input.geocodeMissing ?? true,
+    input.geocodeMissing ?? false,
+    baseRegionHint,
   )
   let vehicles = base ? await loadVehicles(input.organisationId, base, settingsRow) : []
   if (input.vehicleId) {
@@ -402,6 +537,49 @@ export async function planForOrganisation(input: OptimizerInput): Promise<Optimi
   const keepIds = new Set((input.keepIds ?? []).filter((id) => typeof id === "string"))
   const usableOrders = excludeIds.size > 0 ? pool.orders.filter((order) => !excludeIds.has(order.id)) : pool.orders
 
+  // Цена: где её нет в источнике — считаем ориентир по аналогам и кладём в
+  // заказ со статусом ESTIMATED. Дальше сборщик работает с этой суммой как с
+  // ожиданием: доход рейса делится на подтверждённый и расчётный, и рейс с
+  // расчётной ценой прибыльным не объявляется.
+  //
+  // Оценка НЕ подменяет исходное значение: rate.raw остаётся тем, что пришло
+  // из ATI, а rate.estimate — расчёт с диапазоном и уверенностью.
+  const quoteTargets = usableOrders.filter((order) => rateStatus(order.rate) !== "CONFIRMED")
+  let ordersWithPrices = usableOrders
+  if (quoteTargets.length > 0) {
+    const quotes = await quoteMany(
+      input.organisationId,
+      quoteTargets.map((order) => ({
+        refKind: "ati" as const,
+        refId: order.id,
+        fromCity: order.pickup.city,
+        toCity: order.delivery.city,
+        km: order.exchangeKm ?? null,
+        weightKg: order.weightKg,
+        volumeM3: order.volumeM3,
+        bodyType: order.bodyRequired?.[0] ?? null,
+        temperature: null,
+        date: new Date(order.window.pickup.from ?? now),
+      })),
+      { persist: false },
+    )
+    ordersWithPrices = usableOrders.map((order) => {
+      const quote = quotes.get(order.id)
+      if (quote && quote.ok) {
+        return {
+          ...order,
+          rate: {
+            ...order.rate,
+            amount: quote.estimate.amountRub,
+            status: "ESTIMATED" as const,
+            estimate: quote.estimate,
+          },
+        }
+      }
+      return order
+    })
+  }
+
   const orderProblems = pool.skipped.flatMap((item) => item.problems)
   if (pool.missingCoordinates.length > 0) {
     orderProblems.push(
@@ -412,7 +590,7 @@ export async function planForOrganisation(input: OptimizerInput): Promise<Optimi
   const check = readiness({
     base,
     vehicles,
-    orders: usableOrders,
+    orders: ordersWithPrices,
     orderProblems,
   })
 
@@ -421,11 +599,19 @@ export async function planForOrganisation(input: OptimizerInput): Promise<Optimi
     ordersUsable: usableOrders.length,
     ordersExcluded: pool.orders.length - usableOrders.length,
     skipped: pool.skipped.filter((item) => item.problems.length > 0),
+    unpriced: [] as Array<{ id: string; status: string; reason: string }>,
     geocoded: pool.geocoded,
+    geoStats: pool.geoStats,
     vehicles: vehicles.length,
     horizonHours,
     now: now.toISOString(),
     elapsedMs: 0,
+    /** Куда ходили за километрами и сколько участков осталось оценкой */
+    router: null as null | {
+      providers: Array<{ name: string; requests: number; failures: number }>
+      measuredSegments: number
+      estimatedSegments: number
+    },
   }
 
   if (!check.ok || !base) {
@@ -439,12 +625,15 @@ export async function planForOrganisation(input: OptimizerInput): Promise<Optimi
   ])
 
   const planInput: PlanInput = {
-    orders: usableOrders.slice(0, input.poolLimit ?? 120),
+    orders: ordersWithPrices.slice(0, input.poolLimit ?? 120),
     vehicles,
     settings,
     regions,
     now,
     osrmUrl: process.env.OSRM_URL ?? null,
+    fallbackEndpoints: routerFallbacks(),
+    store: distanceStore,
+    requestBudget: Number(process.env.OSRM_REQUEST_BUDGET ?? 200) || 200,
   }
 
   const plan = await planFleet(planInput)
@@ -467,6 +656,47 @@ export async function planForOrganisation(input: OptimizerInput): Promise<Optimi
       }
     }
   }
+
+  // Куда ходили за километрами — в сводку, а не только в логи: экран обязан
+  // сказать, измерены плечи или оценены.
+  const perVehicle = plan.perVehicle.map((item) => item.recommended).filter(Boolean)
+  if (perVehicle.length > 0) {
+    const merged = new Map<string, { name: string; requests: number; failures: number }>()
+    let measured = 0
+    let estimated = 0
+    for (const vehiclePlan of plan.perVehicle) {
+      const router = vehiclePlan.stats?.router
+      if (!router) continue
+      measured += router.measuredSegments
+      estimated += router.estimatedSegments
+      for (const provider of router.providers) {
+        const existing = merged.get(provider.name)
+        if (existing) {
+          existing.requests += provider.requests
+          existing.failures += provider.failures
+        } else {
+          merged.set(provider.name, { ...provider })
+        }
+      }
+    }
+    summary.router = {
+      providers: [...merged.values()],
+      measuredSegments: measured,
+      estimatedSegments: estimated,
+    }
+  }
+
+  // Грузы без цены: собрать их по машинам в один список — одно и то же
+  // сообщение на каждую машину логисту не нужно.
+  const unpricedById = new Map<string, { id: string; status: string; reason: string }>()
+  for (const vehiclePlan of plan.perVehicle) {
+    for (const item of vehiclePlan.unpriced ?? []) {
+      if (!unpricedById.has(item.orderId)) {
+        unpricedById.set(item.orderId, { id: item.orderId, status: item.status, reason: item.reason })
+      }
+    }
+  }
+  summary.unpriced = [...unpricedById.values()]
 
   summary.elapsedMs = Date.now() - startedAt
   return { readiness: check, plan, summary }

@@ -204,6 +204,21 @@ export default function MobileSettingsPage() {
       if ((form.operatingCostPerKm ?? "") !== "") {
         payload.operatingCostPerKm = Number(form.operatingCostPerKm)
       }
+      // Оплата водителя: своё правило у каждой организации (решение 94).
+      // Вид правила отправляем всегда; пустая строка = правило не задано,
+      // и тогда водитель считается внутри ставки ₽/км.
+      payload.driverPayKind = (form.driverPayKind ?? "").trim() || null
+      for (const field of [
+        "driverPayPerShift",
+        "driverPayPerKm",
+        "driverPayPerHour",
+        "driverPayPerTrip",
+        "driverPayBasePerShift",
+      ] as const) {
+        const raw = (form[field] ?? "").trim()
+        payload[field] = raw === "" ? null : Number(raw)
+      }
+      payload.operatingCostIncludesDriver = (form.operatingCostIncludesDriver ?? "true") === "true"
       // Дежурный: включает/выключает постоянное наблюдение за биржей.
       // Приходит строкой из формы («true»/«false»), в API — boolean.
       payload.dutyEnabled = (form.dutyEnabled ?? "true") === "true"
@@ -344,6 +359,112 @@ export default function MobileSettingsPage() {
                     inputMode="decimal"
                     hint="Ориентир для 20-тонника — 25–30 ₽/км, для пятитонки — 15–18 ₽/км. Отдельной машине можно поставить свою ставку в её карточке. 0 — не вычитать."
                   />
+
+                  {/* Оплата водителя: у каждой организации своё правило.
+                      Пока правило не выбрано, водитель считается внутри ставки
+                      ₽/км — так же, как считалось до появления этих полей. */}
+                  <div className="space-y-2 rounded-xl border border-border/70 p-3">
+                    <p className="text-[13.5px] font-medium text-foreground">Оплата водителя</p>
+                    <p className="text-[12px] text-muted-foreground">
+                      Как вы платите водителю за рейс. От этого зависит, попадёт ли его оплата
+                      в остаток отдельной строкой.
+                    </p>
+                    <select
+                      value={form.driverPayKind ?? "includedInPerKm"}
+                      onChange={(event) => set("driverPayKind", event.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="includedInPerKm">Уже внутри ставки ₽/км</option>
+                      <option value="perShift">За смену</option>
+                      <option value="perKm">За километр</option>
+                      <option value="perHour">За час работы</option>
+                      <option value="perTrip">За рейс</option>
+                      <option value="mixed">Оклад за смену + за километр</option>
+                    </select>
+
+                    {(form.driverPayKind ?? "includedInPerKm") === "perShift" ? (
+                      <Field
+                        label="Смена, ₽"
+                        value={form.driverPayPerShift ?? ""}
+                        onChange={(value) => set("driverPayPerShift", value)}
+                        placeholder="Например, 6000"
+                        inputMode="decimal"
+                      />
+                    ) : null}
+                    {(form.driverPayKind ?? "") === "perKm" ||
+                    (form.driverPayKind ?? "") === "mixed" ? (
+                      <Field
+                        label="Километр, ₽"
+                        value={form.driverPayPerKm ?? ""}
+                        onChange={(value) => set("driverPayPerKm", value)}
+                        placeholder="Например, 3,5"
+                        inputMode="decimal"
+                      />
+                    ) : null}
+                    {(form.driverPayKind ?? "") === "perHour" ? (
+                      <Field
+                        label="Час работы, ₽"
+                        value={form.driverPayPerHour ?? ""}
+                        onChange={(value) => set("driverPayPerHour", value)}
+                        placeholder="Например, 700"
+                        inputMode="decimal"
+                        hint="Часом считается и движение, и погрузка, и ожидание окна: простой под дату загрузки тоже стоит денег."
+                      />
+                    ) : null}
+                    {(form.driverPayKind ?? "") === "perTrip" ? (
+                      <Field
+                        label="Рейс, ₽"
+                        value={form.driverPayPerTrip ?? ""}
+                        onChange={(value) => set("driverPayPerTrip", value)}
+                        placeholder="Например, 12000"
+                        inputMode="decimal"
+                      />
+                    ) : null}
+                    {(form.driverPayKind ?? "") === "mixed" ? (
+                      <Field
+                        label="Оклад за смену, ₽"
+                        value={form.driverPayBasePerShift ?? ""}
+                        onChange={(value) => set("driverPayBasePerShift", value)}
+                        placeholder="Например, 3000"
+                        inputMode="decimal"
+                      />
+                    ) : null}
+
+                    {(form.driverPayKind ?? "includedInPerKm") !== "includedInPerKm" ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          set(
+                            "operatingCostIncludesDriver",
+                            (form.operatingCostIncludesDriver ?? "true") === "true" ? "false" : "true",
+                          )
+                        }
+                        className="flex min-h-[48px] w-full items-center justify-between rounded-xl border border-border bg-card px-3.5"
+                      >
+                        <span className="text-left text-[13.5px] text-foreground">
+                          Ставка ₽/км включает водителя
+                          <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                            Если водителя платите отдельно — выключите, иначе он посчитается дважды
+                          </span>
+                        </span>
+                        <span
+                          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                            (form.operatingCostIncludesDriver ?? "true") === "true"
+                              ? "bg-primary"
+                              : "bg-muted"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                              (form.operatingCostIncludesDriver ?? "true") === "true"
+                                ? "translate-x-[22px]"
+                                : "translate-x-0.5"
+                            }`}
+                          />
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
             </Card>

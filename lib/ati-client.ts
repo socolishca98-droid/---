@@ -1,6 +1,7 @@
 // lib/ati-client.ts
 // ATI.su интеграция — без лишних логов и без создания Order
 
+import { parseAtiRate } from "./pricing/status"
 import { prisma } from "@/lib/prisma"
 import { atiFetch, atiHeaders, atiHttpError, ATI_API_BASE } from "./ati/http"
 import { resolveAtiCities } from "./ati/ati-city-resolver"
@@ -101,11 +102,13 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
   const distance = item.route?.distance || 0
   const weight = item.load?.weight ? Math.round(item.load.weight * 1000) : 0
 
-  let price = 0
-  if (item.rate) {
-    price = item.rate.priceNds || item.rate.priceNoNds || item.rate.price || 0
-  }
-  const isNegotiable = price === 0
+  // Цена разбирается тем же правилом, что и везде: ноль/пусто/«договорная» —
+  // это «не указана», а не «бесплатно». Раньше `priceNds || priceNoNds || 0`
+  // давал 0, и фильтры по цене молча пропускали такую заявку — как будто она
+  // удовлетворяет любому диапазону.
+  const parsed = parseAtiRate(item.rate)
+  const price = parsed.amountRub
+  const priceKnown = parsed.status === "CONFIRMED"
   const pricePerKm = distance > 0 && price > 0 ? Math.round(price / distance) : 0
 
   if (filters.minDistance && distance < filters.minDistance) return false
@@ -113,7 +116,12 @@ function filterLoad(item: any, filters: ScanFilters): boolean {
   if (filters.minWeight && weight < filters.minWeight) return false
   if (filters.maxWeight && weight > filters.maxWeight) return false
 
-  if (!isNegotiable) {
+  // Задан фильтр по цене — заявка без цены ему не соответствует: доказать
+  // «не дороже 60 000» про заявку без ставки нельзя. Но и не выбрасываем её
+  // молча из ПОКАЗА: фильтр по цене явно сужает выдачу, и это ожидаемо.
+  const priceFilterSet = Boolean(filters.minPrice || filters.maxPrice || filters.minPricePerKm)
+  if (priceFilterSet && !priceKnown) return false
+  if (priceKnown) {
     if (filters.minPrice && price < filters.minPrice) return false
     if (filters.maxPrice && price > filters.maxPrice) return false
     if (filters.minPricePerKm && pricePerKm < filters.minPricePerKm) return false
@@ -652,20 +660,19 @@ async function saveToCache(
     const fromKey = makeCityKey(routeFrom)
     const toKey = makeCityKey(routeTo)
 
-    let price = 0
-    let priceType: "with_nds" | "without_nds" | "unknown" | null = null
-    if (item.rate) {
-      if (item.rate.priceNds) {
-        price = item.rate.priceNds
-        priceType = "with_nds"
-      } else if (item.rate.priceNoNds) {
-        price = item.rate.priceNoNds
-        priceType = "without_nds"
-      } else if (item.rate.price) {
-        price = item.rate.price
-        priceType = "unknown"
-      }
-    }
+    // Цена и её статус — из общего разбора (lib/pricing/status.ts).
+    // В базу пишется и сумма (0 при «не указана»), и статус, и СЫРОЕ значение:
+    // без последнего «договорная» и битый формат терялись безвозвратно, и
+    // потом нельзя было ни перепроверить, ни показать источник.
+    const parsedRate = parseAtiRate(item.rate)
+    const price = parsedRate.amountRub
+    const priceType: "with_nds" | "without_nds" | "unknown" | null = item.rate?.priceNds
+      ? "with_nds"
+      : item.rate?.priceNoNds
+        ? "without_nds"
+        : item.rate?.price
+          ? "unknown"
+          : null
 
     let loadingDate = new Date()
     if (item.loading?.firstDate) {
@@ -694,6 +701,13 @@ async function saveToCache(
       loadingType: item.truck?.loadingTypes?.join(", ") || null,
       price: Math.round(price),
       priceType: priceType || undefined,
+      priceStatus: parsedRate.status,
+      priceRaw:
+        parsedRate.raw === null || parsedRate.raw === undefined
+          ? null
+          : typeof parsedRate.raw === "string"
+            ? parsedRate.raw
+            : String(parsedRate.raw),
       firmId: item.firm?.id ? String(item.firm.id) : null,
       firmName: item.firm?.name || "Частник",
       loadingDate,

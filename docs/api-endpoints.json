@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T23:17:11.085Z",
+  "generatedAt": "2026-11-03T20:49:24.383Z",
   "endpoints": [
     {
       "method": "GET",
@@ -109,6 +109,16 @@
     {
       "method": "POST",
       "route": "/api/ati/loads",
+      "group": "ati"
+    },
+    {
+      "method": "GET",
+      "route": "/api/ati/loads/call",
+      "group": "ati"
+    },
+    {
+      "method": "POST",
+      "route": "/api/ati/loads/call",
       "group": "ati"
     },
     {
@@ -730,6 +740,11 @@
       "method": "POST",
       "route": "/api/photos/upload",
       "group": "photos"
+    },
+    {
+      "method": "POST",
+      "route": "/api/pricing/quote",
+      "group": "pricing"
     },
     {
       "method": "GET",

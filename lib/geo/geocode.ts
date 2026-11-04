@@ -478,10 +478,26 @@ export async function geocodeAddressesWithSource(
     try {
       // org-audit: manual — GeoCache общий справочник адресов (города), данные
       // организации к нему не применяются: запись одинакова для всех
+      // Статус и источник пишутся всегда: без них запись кэша нельзя ни
+      // проверить, ни отличить проверенную точку от догадки геокодера.
+      // В расчёте участвуют только `verified` (см. lib/routing/geo/places.ts).
       await prisma.geoCache.upsert({
         where: { address: normalizeKey(address) },
-        create: { address: normalizeKey(address), lat: coords.lat, lng: coords.lng },
-        update: { lat: coords.lat, lng: coords.lng },
+        create: {
+          address: normalizeKey(address),
+          lat: coords.lat,
+          lng: coords.lng,
+          source: String(source ?? "geocoder"),
+          status: "unverified",
+          checkedAt: new Date(),
+        },
+        update: {
+          lat: coords.lat,
+          lng: coords.lng,
+          source: String(source ?? "geocoder"),
+          status: "unverified",
+          checkedAt: new Date(),
+        },
       })
     } catch (error) {
       // кэш не критичен: координаты уже получены

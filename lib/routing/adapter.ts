@@ -15,6 +15,7 @@
 import { bodyClass } from "./compatibility"
 import { fuelPriceForRegion } from "../fleet/fuel-price"
 import type {
+  CostGap,
   CostProfile,
   LoadOrder,
   PayRule,
@@ -24,6 +25,8 @@ import type {
   Vehicle,
 } from "./types"
 import { CITY_TIMEZONES, timeZoneForRegion } from "./timezones"
+import { cityKey, cityLookupKey, parseAddress } from "./geo/address"
+import { parseAtiRate, rateStatus } from "../pricing/status"
 
 // ---------------------------------------------------------------------------
 // Формы входа: ровно те поля, которые нужны, без зависимости от Prisma
@@ -49,6 +52,16 @@ export interface FleetSettingsRow {
   restMinBreakMin?: number | null
   /** Регион базы, если он сохранён в настройках */
   baseRegion?: string | null
+  // ── Правило оплаты водителя организации (решение 94: у каждой своё).
+  //    Не задано — историческая ставка ₽/км, в которой водитель уже внутри.
+  driverPayKind?: string | null
+  driverPayPerShift?: number | null
+  driverPayPerKm?: number | null
+  driverPayPerHour?: number | null
+  driverPayPerTrip?: number | null
+  driverPayBasePerShift?: number | null
+  /** true — ставка ₽/км считается вместе с водителем (историческая конвенция) */
+  operatingCostIncludesDriver?: boolean | null
 }
 
 export interface VehicleRow {
@@ -76,6 +89,10 @@ export interface AtiLoadRow {
   truckType?: string | null
   price?: number | null
   priceType?: string | null
+  /** Статус цены, если посчитан при разборе выгрузки */
+  priceStatus?: string | null
+  /** Исходное значение цены, как пришло из ATI: число, строка, null */
+  priceRaw?: unknown
   loadingDate?: Date | string | null
   unloadingDate?: Date | string | null
 }
@@ -90,6 +107,7 @@ export interface OrderRow {
   volume?: number | null
   price?: number | null
   agreedPrice?: number | null
+  priceStatus?: string | null
   loadingType?: string | null
   deadline?: Date | string | null
 }
@@ -98,15 +116,13 @@ export interface OrderRow {
 // Локации
 // ---------------------------------------------------------------------------
 
-/** Ключ города: так сравниваются «Домодедово, Московская область» и «Домодедово». */
-export function cityKey(city: string): string {
-  return String(city ?? "")
-    .toLowerCase()
-    .replace(/ё/g, "е")
-    .replace(/\s+(г\.|город|п\.|пос\.|с\.|д\.|пгт)$/i, "")
-    .replace(/\s+/g, " ")
-    .trim()
-}
+/**
+ * Ключ города: так сравниваются «Домодедово, Московская область» и «Домодедово».
+ *
+ * Сама функция переехала в `geo/address.ts` (там же разбор адреса); здесь —
+ * реэкспорт, чтобы существующие вызовы и сохранённые ключи не менялись.
+ */
+export { cityKey }
 
 /**
  * Точка маршрута из строки справочника.
@@ -132,32 +148,45 @@ export function placeFromCity(row: CityRow): Place | null {
  * региона не определить часовой пояс и цену топлива.
  */
 export function regionFromAddress(address: string | null | undefined): string | null {
-  const parts = String(address ?? "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-  for (const part of parts) {
-    if (/(область|край|республика|автономный округ|ао)$/i.test(part)) return part
-  }
-  return null
+  return parseAddress(address).region
 }
 
-/** База организации: адрес, координаты и регион из настроек автопарка. */
-export function baseFromSettings(row: FleetSettingsRow | null): Place | null {
+/**
+ * База организации: адрес, координаты и регион из настроек автопарка.
+ *
+ * Город берётся из разбора адреса, а не из «второй части после запятой»:
+ * адрес «Ярославль. Ул. Докучалова 12» давал город «Ярославль. Ул. Докучалова
+ * 12», «Ярославль, ул. Докучалова 12» — город «ул. Докучалова 12». Регион и
+ * часовой пояс при этом терялись, и все ожидания окон считались без сдвига.
+ *
+ * `hints` — то, что знает сервер: регион из карточки организации или из
+ * справочника ATI по названию города. Адаптер остаётся синхронным: в базу он не
+ * ходит, недостающее принимает готовым.
+ */
+export function baseFromSettings(
+  row: FleetSettingsRow | null,
+  hints?: { region?: string | null; timeZone?: string | null },
+): Place | null {
   if (!row) return null
   if (typeof row.baseLat !== "number" || typeof row.baseLng !== "number") return null
-  const region = row.baseRegion?.trim()
-    ? row.baseRegion.trim()
-    : regionFromAddress(row.baseAddress)
-  const city = (row.baseAddress ?? "").split(",").map((part) => part.trim()).filter(Boolean)
-  // «Московская область, Домодедово, улица Логистическая, 12» → город «Домодедово»
-  const cityName = city.length >= 2 ? city[1] : (city[0] ?? "База")
+  const parsed = parseAddress(row.baseAddress)
+  const region =
+    (row.baseRegion?.trim() ? row.baseRegion.trim() : null) ??
+    hints?.region?.trim() ??
+    parsed.region ??
+    null
+  const cityName = parsed.city ?? (row.baseAddress?.trim() ? row.baseAddress.trim() : "База")
   return {
-    id: `base:${cityName.toLowerCase()}`,
+    id: `base:${cityLookupKey(cityName)}`,
     city: cityName,
     region,
     point: { lat: row.baseLat, lng: row.baseLng },
-    timeZone: timeZoneForRegion(region) ?? CITY_TIMEZONES[cityKey(cityName)] ?? null,
+    timeZone:
+      hints?.timeZone ??
+      timeZoneForRegion(region) ??
+      CITY_TIMEZONES[cityLookupKey(cityName)] ??
+      CITY_TIMEZONES[cityKey(cityName)] ??
+      null,
   }
 }
 
@@ -183,18 +212,80 @@ export function costFromSettings(
   baseRegion: string | null,
 ): { cost: CostProfile; notes: string[] } {
   const notes: string[] = []
+  const gaps: CostGap[] = []
   const perKm = vehicle?.operatingCostPerKm ?? settings?.operatingCostPerKm ?? null
   const fuelPricePerL = fuelPriceForRegion(baseRegion)
 
   if (perKm === null || perKm === undefined) {
+    // Не «ноль рублей», а «неизвестно»: эта статья обязана доехать до экрана
+    // как пробел расчёта, иначе остаток выдаётся за прибыль.
     notes.push("ставка ₽/км не задана — километровые расходы считаются нулевыми, остаток завышен")
+    gaps.push({
+      article: "ставка ₽/км",
+      reason: "ставка работы машины не задана — износ, шины и платные в остатке отсутствуют",
+      estimateRub: null,
+      inNet: false,
+    })
   }
-  notes.push(
-    "ставка ₽/км задана одной цифрой (водитель, износ, шины, платные вместе) — " +
-      "раздельных статей в настройках нет",
-  )
 
-  const payRule: PayRule = { kind: "includedInPerKm" }
+  /**
+   * Правило оплаты водителя.
+   *
+   * Историческая конвенция FleetSettings: в одной ставке ₽/км лежат «водитель,
+   * износ, ТО, шины, платные». Пока организация не задала своё правило, водитель
+   * считается включённым в ставку — так же, как считалось до появления этих
+   * полей. Как только правило задано, водитель становится отдельной статьёй.
+   *
+   * Двойной учёт проверяется явно: если правило задано, а флаг
+   * `operatingCostIncludesDriver` не снят, одна и та же оплата попала бы и в
+   * ₽/км, и в статью «водитель». Молча считать дважды нельзя — это пробел.
+   */
+  const kind = settings?.driverPayKind ?? null
+  const includesDriver = settings?.operatingCostIncludesDriver ?? true
+  const positive = (value: number | null | undefined): number | null =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null
+
+  let payRule: PayRule = { kind: "includedInPerKm" }
+  if (kind && kind !== "includedInPerKm") {
+    const perShift = positive(settings?.driverPayPerShift)
+    const ratePerKm = positive(settings?.driverPayPerKm)
+    const perHour = positive(settings?.driverPayPerHour)
+    const perTrip = positive(settings?.driverPayPerTrip)
+    const basePerShift = positive(settings?.driverPayBasePerShift)
+    const built = payRuleFromKind(kind, { perShift, ratePerKm, perHour, perTrip, basePerShift })
+    if (!built) {
+      notes.push(`правило оплаты водителя «${kind}» задано не полностью — водитель не начислен`)
+      gaps.push({
+        article: "водитель",
+        reason: `правило оплаты «${kind}» задано не полностью — водитель в остатке отсутствует`,
+        estimateRub: null,
+        inNet: false,
+      })
+      payRule = { kind: "unknown" }
+    } else {
+      payRule = built
+      notes.push(`оплата водителя: своё правило организации «${kind}»`)
+      if (includesDriver && perKm !== null && perKm !== undefined) {
+        notes.push(
+          "ставка ₽/км помечена как «включает водителя», а оплата задана отдельным правилом — " +
+            "возможен двойной учёт, снимите флаг «ставка включает водителя»",
+        )
+        gaps.push({
+          article: "водитель",
+          reason:
+            "оплата задана отдельным правилом, но ставка ₽/км тоже включает водителя — " +
+            "возможен двойной учёт",
+          estimateRub: null,
+          inNet: false,
+        })
+      }
+    }
+  } else if (kind === "includedInPerKm" || kind === null) {
+    notes.push(
+      "ставка ₽/км задана одной цифрой (водитель, износ, шины, платные вместе) — " +
+        "раздельных статей в настройках нет",
+    )
+  }
 
   return {
     cost: {
@@ -208,8 +299,46 @@ export function costFromSettings(
       otherPerKm: 0,
       // Постоянные расходы организации в базе не ведутся: не выдумываем.
       fixedPerDay: 0,
+      gaps,
     },
     notes,
+  }
+}
+
+/**
+ * Правило оплаты из полей настроек.
+ *
+ * Возвращает null, если для выбранного вида не задана хотя бы одна нужная
+ * ставка: «оплата по км» без ставки ₽/км — это не ноль рублей, а незаполненное
+ * правило, и оно обязано стать пробелом, а не тишиной.
+ */
+export function payRuleFromKind(
+  kind: string,
+  values: {
+    perShift: number | null
+    ratePerKm: number | null
+    perHour: number | null
+    perTrip: number | null
+    basePerShift: number | null
+  },
+): PayRule | null {
+  switch (kind) {
+    case "perShift":
+      return values.perShift === null ? null : { kind: "perShift", perShift: values.perShift }
+    case "perKm":
+      return values.ratePerKm === null ? null : { kind: "perKm", perKm: values.ratePerKm }
+    case "perHour":
+      return values.perHour === null ? null : { kind: "perHour", perHour: values.perHour }
+    case "perTrip":
+      return values.perTrip === null ? null : { kind: "perTrip", perTrip: values.perTrip }
+    case "mixed":
+      return values.basePerShift === null || values.ratePerKm === null
+        ? null
+        : { kind: "mixed", basePerShift: values.basePerShift, perKm: values.ratePerKm }
+    case "includedInPerKm":
+      return { kind: "includedInPerKm" }
+    default:
+      return null
   }
 }
 
@@ -374,10 +503,24 @@ export function orderFromAtiRow(
   const delivery = places.get(cityKey(row.routeTo))
   if (!pickup) problems.push(`нет координат точки погрузки «${row.routeFrom}»`)
   if (!delivery) problems.push(`нет координат точки выгрузки «${row.routeTo}»`)
-  if (row.price === null || row.price === undefined) problems.push("ставка не указана")
-  if (!pickup || !delivery || row.price === null || row.price === undefined) {
-    return { order: null, problems }
-  }
+  // Координаты — единственное, без чего заказ построить нельзя: без них нет
+  // ни расстояния, ни экономики. Цена же может отсутствовать: это повод для
+  // оценки и звонка, а не причина выбросить заявку. Раньше такая заявка
+  // отбрасывалась целиком с причиной «ставка не указана», и логист её вообще
+  // не видел — при том, что именно по ней и надо было звонить.
+  if (!pickup || !delivery) return { order: null, problems }
+
+  // Цена: три поля ATI в правильном порядке (с НДС → без НДС → общее) и
+  // исходное значение в rate.raw. Ноль и пустое — «не указана».
+  // Исходное значение сохраняется ДОСЛОВНО, включая ноль и пустую строку:
+  // иначе «0» в выгрузке превращается в null и пропадает след того, что ATI
+  // прислала именно ноль, а не отсутствие поля.
+  const rawPrice = row.priceRaw !== undefined && row.priceRaw !== null ? row.priceRaw : row.price
+  const parsed = parseAtiRate({ price: rawPrice })
+  const status = row.priceStatus
+    ? rateStatus({ amount: parsed.amountRub, status: row.priceStatus as never })
+    : parsed.status
+  if (status !== "CONFIRMED") problems.push(parsed.note)
 
   const perKm = row.priceType === "perKm"
   return {
@@ -393,7 +536,14 @@ export function orderFromAtiRow(
         pickup: windowFrom(row.loadingDate),
         delivery: windowFrom(row.unloadingDate),
       },
-      rate: { amount: row.price, basis: perKm ? "perKm" : "perTrip" },
+      rate: {
+        // Сумма остаётся честной: при неизвестной цене это 0, а не «бесплатно»,
+        // и статус говорит, что деньги неизвестны.
+        amount: parsed.amountRub,
+        basis: perKm ? "perKm" : "perTrip",
+        status,
+        raw: parsed.raw,
+      },
       exchangeKm: row.distance && row.distance > 0 ? row.distance : null,
     },
     problems,
@@ -411,9 +561,14 @@ export function orderFromOrderRow(
   const delivery = places.get(cityKey(row.routeTo))
   if (!pickup) problems.push(`нет координат точки погрузки «${row.routeFrom}»`)
   if (!delivery) problems.push(`нет координат точки выгрузки «${row.routeTo}»`)
-  const amount = row.agreedPrice ?? row.price ?? null
-  if (amount === null) problems.push("ставка не согласована")
-  if (!pickup || !delivery || amount === null) return { order: null, problems }
+  // Согласованная цена главнее: это деньги, о которых договорились.
+  const agreed = row.agreedPrice !== null && row.agreedPrice !== undefined && row.agreedPrice > 0
+  const amount = agreed ? row.agreedPrice! : row.price ?? null
+  if (!pickup || !delivery) return { order: null, problems }
+  const status = agreed
+    ? "CONFIRMED"
+    : rateStatus({ amount: amount ?? null, status: (row.priceStatus as never) ?? null })
+  if (!agreed && status !== "CONFIRMED") problems.push("ставка не согласована — нужна оценка или звонок")
 
   return {
     order: {
@@ -425,7 +580,7 @@ export function orderFromOrderRow(
       volumeM3: row.volume ?? null,
       bodyRequired: row.loadingType ? [bodyClass(row.loadingType)] : null,
       window: { pickup: {}, delivery: windowFrom(row.deadline) },
-      rate: { amount, basis: "perTrip" },
+      rate: { amount: agreed ? amount! : amount ?? 0, basis: "perTrip", status, raw: row.price ?? null },
       exchangeKm: row.distance && row.distance > 0 ? row.distance : null,
     },
     problems,
@@ -484,11 +639,33 @@ export function readiness(input: {
       )
     }
   }
+  // Грузы без подтверждённой цены. Их не «нет» — они есть, просто денег по
+  // ним пока не знает никто. Раньше такие заявки отбрасывались на входе с
+  // причиной «ставка не указана», и логист видел пустой экран вместо списка
+  // грузов, по которым надо звонить.
+  const unpriced = input.orders.filter((order) => rateStatus(order.rate) !== "CONFIRMED")
+  const estimated = unpriced.filter((order) => rateStatus(order.rate) === "ESTIMATED")
+  if (estimated.length > 0) {
+    warnings.push(
+      `${estimated.length} гр. с расчётной стоимостью — доход по ним не подтверждён, ` +
+        `рейс с такой ценой не считается прибыльным до звонка перевозчику`,
+    )
+  }
+  const unknown = unpriced.length - estimated.length
+  if (unknown > 0) {
+    warnings.push(
+      `${unknown} гр. без стоимости и без расчёта — по ним нужен звонок перевозчику, ` +
+        `в экономику они не подставлены (0 ₽ — не бесплатная перевозка)`,
+    )
+  }
+
   if (input.orders.length === 0) {
     blockers.push(
       input.orderProblems.length > 0
         ? `ни одного груза с координатами и ставкой: ${input.orderProblems.slice(0, 3).join("; ")}`
-        : "в пуле нет подходящих грузов",
+        : "в пуле нет подходящих грузов — на этом направлении предложений нет. " +
+          "Стоимость можно оценить по аналогам: расчёт покажет диапазон и уверенность, " +
+          "а если аналогов нет — честно скажет, что данных недостаточно",
     )
   }
   if (input.orderProblems.length > 0 && input.orders.length > 0) {
