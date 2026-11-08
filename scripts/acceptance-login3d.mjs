@@ -91,7 +91,7 @@ try {
     world.panelW <= 400 && world.panelH <= Math.round(world.vh * 0.72),
     `${world.panelW}×${world.panelH} px на экране ${world.vw}×${world.vh}`,
   )
-  check("форма — прозрачный экран", parseFloat(world.glassAlpha) <= 0.75 && world.glassBlur.includes("blur"), `фон ${world.glassAlpha}, blur: ${world.glassBlur.slice(0, 20)}`)
+  check("форма — прозрачный экран", parseFloat(world.glassAlpha) <= 0.55 && world.glassBlur.includes("blur"), `фон ${world.glassAlpha}, blur: ${world.glassBlur.slice(0, 20)}`)
 
   // камера едет сквозь пространство
   const d1 = await page.evaluate(() => window.__loginWorld.dolly)
@@ -252,6 +252,9 @@ try {
     docFit ? `документ ${docFit.w}×${docFit.h} из ${docFit.vh}px (${Math.round((docFit.h / docFit.vh) * 100)}%)` : "нет",
   )
 
+  // подсказка про датчики не мешает, когда гироскоп жив
+  const hintShown = await mpage.evaluate(() => document.querySelector("[data-gyro-hint]") != null)
+  check("телефон: подсказка про датчики не мешает", hintShown === false, hintShown ? "показана (ошибка)" : "нет")
   await shot(mpage, "/home/user/work/visual-login-3d-mobile.png")
   check("телефон: скриншот сохранён", true, "work/visual-login-3d-mobile.png")
   const mErr = mErrors.filter((t) => !isNoise(t))

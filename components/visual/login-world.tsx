@@ -28,7 +28,7 @@
 // [data-container] ×14, [data-route-dot] ×3, [data-login-panel],
 // [data-login-doc].
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 const PERSPECTIVE = 900
 
@@ -130,6 +130,10 @@ export function LoginWorld({
   const routePathRef = useRef<SVGPathElement | null>(null)
   const routeDotRefs = useRef<Array<SVGCircleElement | null>>([])
 
+  /** Подсказка, если датчики заблокированы (встроенное окно = iframe). */
+  const [gyroHint, setGyroHint] = useState<"none" | "blocked">("none")
+  const [frameHref, setFrameHref] = useState("/")
+
   const stars = useMemo(() => starTile(), [])
   /** Тёплая или холодная сигнатура акцентов — вход логиста/водителя. */
   const accent = variant === "driver" ? "#f59e0b" : "#22d3ee"
@@ -213,10 +217,15 @@ export function LoginWorld({
       if (!gyroActive) {
         gyroActive = true
         debug.gyro = true
+        if (hintTimer) window.clearTimeout(hintTimer)
+        setGyroHint("none")
       }
     }
     const attachGyro = () => {
       window.addEventListener("deviceorientation", onOrientation)
+      armHint()
+      if (gyroRequested) return
+      gyroRequested = true
       const D = (
         window as unknown as {
           DeviceOrientationEvent?: { requestPermission?: () => Promise<string> }
@@ -230,9 +239,20 @@ export function LoginWorld({
         }
       }
     }
+    // Safari капризен к «жесту»: вешаем запрос на три события сразу
+    // (pointerdown + touchend + click) — какое-нибудь точно зачтётся.
+    let gyroRequested = false
+    let hintTimer = 0
+    // Встроенное окно предпросмотра (iframe) блокирует датчики движения
+    // у любых сайтов — если события не пришли, честно подскажем выход
+    const armHint = () => {
+      if (hintTimer) return
+      hintTimer = window.setTimeout(() => {
+        if (!gyroActive) setGyroHint("blocked")
+      }, 2600)
+    }
     const onFirstTouch = () => {
       attachGyro()
-      window.removeEventListener("pointerdown", onFirstTouch, true)
     }
     w.__loginWorldGyro = async () => {
       attachGyro()
@@ -245,16 +265,25 @@ export function LoginWorld({
         DeviceOrientationEvent?: { requestPermission?: () => Promise<string> }
       }
     ).DeviceOrientationEvent
+    const gestures: ReadonlyArray<"pointerdown" | "touchend" | "click"> = [
+      "pointerdown",
+      "touchend",
+      "click",
+    ]
+    let frameInfoSet = false
     if (touchCapable && D) {
+      setFrameHref(window.location.href)
+      frameInfoSet = true
       if (typeof D.requestPermission !== "function") {
         attachGyro() // Android и прочие без промпта — сразу и молча
+        armHint()
       } else {
-        window.addEventListener("pointerdown", onFirstTouch, {
-          capture: true,
-          passive: true,
-        })
+        for (const g of gestures) {
+          window.addEventListener(g, onFirstTouch, { capture: true, passive: true })
+        }
       }
     }
+    void frameInfoSet
 
     // ── ввод ──
     // Клик по миру НИЧЕГО не дёргает (просьба владельца: без мигания
@@ -417,7 +446,10 @@ export function LoginWorld({
       document.removeEventListener("focusout", onFocusOut)
       document.removeEventListener("visibilitychange", onVisibility)
       window.removeEventListener("deviceorientation", onOrientation)
-      window.removeEventListener("pointerdown", onFirstTouch, true)
+      if (hintTimer) window.clearTimeout(hintTimer)
+      for (const g of gestures) {
+        window.removeEventListener(g, onFirstTouch, true)
+      }
     }
   }, [variant])
 
@@ -640,7 +672,7 @@ export function LoginWorld({
               ) : (
                 <div
                   data-login-doc
-                  className="relative rounded-2xl border border-white/15 bg-[#0c1526]/72 px-5 pb-4 pt-3.5 shadow-[0_40px_90px_-25px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+                  className="relative rounded-2xl border border-white/10 bg-[#0b1322]/40 px-5 pb-4 pt-3.5 shadow-[0_30px_70px_-25px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
                 >
                   <div
                     aria-hidden="true"
@@ -648,24 +680,24 @@ export function LoginWorld({
                     style={{ background: `linear-gradient(90deg, transparent, ${accent}b3, transparent)` }}
                   />
                   {/* шапка пропуска */}
-                  <div className="flex items-center justify-between border-b border-dashed border-white/15 pb-2">
+                  <div className="flex items-center justify-between border-b border-dashed border-white/10 pb-2">
                     <p
-                      className="text-[10px] font-bold tracking-[0.28em]"
+                      className="text-[10px] font-bold tracking-[0.28em] opacity-80"
                       style={{ color: variant === "driver" ? "#fbbf24" : "#67e8f9" }}
                     >
                       {variant === "driver" ? "ПРОПУСК · ВОДИТЕЛЬ" : "ПРОПУСК · ДОСТУП"}
                     </p>
-                    <p className="font-mono text-[10px] text-slate-500">№ 042-ЯР</p>
+                    <p className="font-mono text-[10px] text-slate-500/90">№ 042-ЯР</p>
                   </div>
                   {children}
                   {/* низ пропуска: штрихкод */}
-                  <div className="mt-3 flex items-end justify-between border-t border-dashed border-white/15 pt-2.5">
+                  <div className="mt-3 flex items-end justify-between border-t border-dashed border-white/10 pt-2.5">
                     <div className="flex h-6 items-end gap-[2px]" aria-hidden="true">
                       {BARCODE.map((wd, i) => (
-                        <span key={i} className="bg-white/25" style={{ width: wd, height: i % 3 === 0 ? 24 : 17 }} />
+                        <span key={i} className="bg-white/20" style={{ width: wd, height: i % 3 === 0 ? 24 : 17 }} />
                       ))}
                     </div>
-                    <p className="font-mono text-[9px] tracking-wider text-slate-500">ЯРОСЛАВЛЬ · 24/7</p>
+                    <p className="font-mono text-[9px] tracking-wider text-slate-500/90">ЯРОСЛАВЛЬ · 24/7</p>
                   </div>
                 </div>
               )}
@@ -673,6 +705,22 @@ export function LoginWorld({
           </div>
         </div>
       </div>
+
+      {/* датчики заблокированы встроенным окном — честная подсказка */}
+      {gyroHint === "blocked" && (
+        <div
+          data-gyro-hint
+          className="absolute bottom-4 left-1/2 z-20 w-[min(92vw,430px)] -translate-x-1/2 rounded-2xl border border-white/10 bg-[#0b1120]/85 px-4 py-3 text-center backdrop-blur-xl"
+        >
+          <p className="text-[12px] leading-snug text-slate-300">
+            Датчики наклона недоступны во встроенном окне.{" "}
+            <a href={frameHref} target="_blank" rel="noreferrer" className="text-cyan-300 underline underline-offset-2">
+              Откройте страницу в отдельной вкладке
+            </a>{" "}
+            — гироскоп заработает.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

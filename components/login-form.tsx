@@ -149,7 +149,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
               autoComplete="new-password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
-              className="h-10 sm:h-11"
+              className="h-10 rounded-xl border-white/10 bg-white/[0.05] text-white placeholder:text-slate-500 focus-visible:border-cyan-300/50 focus-visible:ring-cyan-300/15 sm:h-11"
               required
               minLength={8}
             />
@@ -166,7 +166,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
               autoComplete="new-password"
               value={repeatPassword}
               onChange={(event) => setRepeatPassword(event.target.value)}
-              className="h-10 sm:h-11"
+              className="h-10 rounded-xl border-white/10 bg-white/[0.05] text-white placeholder:text-slate-500 focus-visible:border-cyan-300/50 focus-visible:ring-cyan-300/15 sm:h-11"
               required
               minLength={8}
             />
@@ -210,7 +210,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"
             required
-            className="h-10 sm:h-11"
+            className="h-10 rounded-xl border-white/10 bg-white/[0.05] text-white placeholder:text-slate-500 focus-visible:border-cyan-300/50 focus-visible:ring-cyan-300/15 sm:h-11"
           />
         </div>
 
@@ -224,7 +224,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             required
-            className="h-10 sm:h-11"
+            className="h-10 rounded-xl border-white/10 bg-white/[0.05] text-white placeholder:text-slate-500 focus-visible:border-cyan-300/50 focus-visible:ring-cyan-300/15 sm:h-11"
           />
         </div>
 

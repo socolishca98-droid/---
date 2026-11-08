@@ -157,7 +157,7 @@ function RegisterForm() {
         bare
       >
         <div className="w-full max-w-md">
-          <Card className="card-materialize max-h-[68dvh] overflow-y-auto border-border/60 bg-card/75 shadow-2xl shadow-black/40 backdrop-blur-xl">
+          <Card className="card-materialize max-h-[68dvh] overflow-y-auto border-border/60 bg-card/55 shadow-2xl shadow-black/40 backdrop-blur-2xl">
           <CardHeader className="space-y-3 pb-4">
             <CardTitle className="text-xl">Регистрация</CardTitle>
             <CardDescription>
