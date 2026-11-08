@@ -40,7 +40,7 @@ import {
   Truck,
 } from "lucide-react"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
-import { LoginScene } from "@/components/visual/login-scene"
+import { LoginWorld } from "@/components/visual/login-world"
 
 type Mode = "create" | "join"
 
@@ -131,22 +131,33 @@ function RegisterForm() {
   }
 
   return (
-    // Та же «ночная дорога», что и на входе: регистрация — часть того же
-    // мира (сцена v3), сверху — бренд, в центре — стеклянная карточка.
-    // На телефоне карточка прокручивается при необходимости, сцена остаётся.
-    <div className="relative min-h-dvh bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
-      <LoginScene />
-      <div className="relative z-10 flex min-h-dvh items-center justify-center p-4 py-10">
-        <div className="scene-rise w-full max-w-md space-y-6">
-          <div className="text-center space-y-2">
-            <div className="login-mark mb-4 inline-flex h-16 w-16 items-center justify-center">
-              <Truck className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight">{PRODUCT_NAME}</h1>
-            <p className="text-muted-foreground">доступ к системе для вашей компании</p>
+    // Регистрация — в том же 3D-мире «Ночной рейс»: камера едет сквозь
+    // ночь, ворота-модули пролетают мимо, карточка регистрации — объект
+    // мира (панель без плиты: своя карточка). На телефоне карточка
+    // прокручивается при необходимости, мир остаётся на месте.
+    <div className="relative min-h-dvh">
+      <LoginWorld
+        headline={
+          <div>
+            <p className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.32em] text-white/45 lg:justify-start">
+              <Truck className="h-4 w-4 text-orange-400" />
+              {PRODUCT_NAME}
+            </p>
+            <h2 className="mt-3 text-[30px] font-extrabold leading-[1.06] tracking-tight text-white sm:text-[40px]">
+              Перевозки —
+              <br />
+              в одной системе
+            </h2>
+            <p className="mt-3 text-[13px] leading-relaxed text-slate-400 sm:text-sm">
+              Создайте организацию своей компании или присоединитесь по коду
+              приглашения.
+            </p>
           </div>
-
-          <Card className="card-materialize border-border/60 bg-card/90 shadow-2xl shadow-black/40 sm:bg-card/85 sm:backdrop-blur-xl">
+        }
+        bare
+      >
+        <div className="w-full max-w-md">
+          <Card className="card-materialize max-h-[68dvh] overflow-y-auto border-border/60 bg-card/95 shadow-2xl shadow-black/40">
           <CardHeader className="space-y-3 pb-4">
             <CardTitle className="text-xl">Регистрация</CardTitle>
             <CardDescription>
@@ -360,14 +371,14 @@ function RegisterForm() {
           </CardContent>
         </Card>
 
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-sm text-muted-foreground">
             Уже есть доступ?{" "}
             <Link href="/login" className="text-primary hover:underline">
               Войти
             </Link>
           </p>
         </div>
-      </div>
+      </LoginWorld>
     </div>
   )
 }

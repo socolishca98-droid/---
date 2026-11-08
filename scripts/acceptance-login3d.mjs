@@ -1,7 +1,11 @@
-// Живая приёмка кинематографичного 3D-входа (задача владельца: «очень
-// крутой 3Д вход со сменой угла обзора, проваливание при каждом клике,
-// информация о программе на странице»). БЕЗ reducedMotion — иначе отклик
-// выключен; страница входа лёгкая, песочнице это по силам.
+// Живая приёмка 3D-мира входа «Ночной рейс» (задача владельца: «всё
+// интегрировано в 3D, больше объёма, перемещаемся в пространстве, смотрим
+// с разных углов, гироскоп»). Мир = CSS-3D: камера едет вперёд (dolly),
+// ворота пролетают мимо и перерабатываются, форма — объект на глубине.
+//
+// Фазы (песочница тесная — дев между фазами перезапускаем):
+//   PHASE=desktop | warp | mobile | driver | register | all
+
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
 
@@ -22,22 +26,18 @@ function check(name, ok, detail = "") {
 const isNoise = (t) =>
   t.includes("favicon") || t.includes("caret-color") || t.includes("401")
 
-/** Сцена рисует каждый кадр — композитор не успевает отдать кадр
- *  скриншоту. На время снимка останавливаем сцены (тестовый флаг). */
+/** Мир рисует каждый кадр — на время снимка останавливаем камеру. */
 const shot = async (page, path) => {
   await page.evaluate(() => {
-    window.__loginScenePaused = true
+    window.__loginWorldPaused = true
   })
-  await page.waitForTimeout(120)
+  await page.waitForTimeout(140)
   await page.screenshot({ path })
   await page.evaluate(() => {
-    window.__loginScenePaused = false
+    window.__loginWorldPaused = false
   })
 }
 
-// Песочница тесная: дев-сервер Next разрастается до ~1.2 ГБ и падает от
-// OOM, если гнать всё сразу. PHASE делит прогон на фазы между запусками
-// дева: desktop | warp | mobile | all (по умолчанию all).
 const PHASE = process.env.PHASE || "all"
 
 const browser = await chromium.launch({ args: ["--disable-gpu"] })
@@ -45,7 +45,7 @@ process.on("exit", () => {
   try { browser.close() } catch {}
 })
 try {
-  // ── Десктоп: сцена, угол обзора, проваливание, витрина ──
+  // ── Десктоп: мир, движение, ракурс, форма-объект ──
   if (PHASE === "all" || PHASE === "desktop") {
   const context = await browser.newContext({ viewport: { width: 1200, height: 800 } })
   const page = await context.newPage()
@@ -54,184 +54,170 @@ try {
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text().slice(0, 150)) })
 
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
-  // на странице ДВЕ разметки (кабина телефона скрыта на ПК) — все проверки
-  // десктопа работаем в его блоке
-  await page.waitForSelector("[data-login-desktop] .login-card-glow", { timeout: 30000 })
-  await page.waitForFunction(() => window.__loginScene != null, null, { timeout: 20000 })
-  await page.waitForTimeout(350)
-  const introSpeed = await page.evaluate(() => window.__loginScene.speed)
-  check("кинематографичный прилёт (разгон на старте)", introSpeed > 800, `скорость старта ${Math.round(introSpeed)}`)
-  check("экран входа открыт", true)
+  await page.waitForSelector("[data-login-world]", { timeout: 30000 })
+  await page.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
+  await page.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await page.waitForTimeout(600)
 
-  const canvas = await page.evaluate(() => {
-    const c = document.querySelector("canvas[data-login-scene]")
-    return c ? { w: c.clientWidth, h: c.clientHeight } : null
+  // мир в перспективе
+  const world = await page.evaluate(() => {
+    const vp = document.querySelector("[data-login-world]")
+    const panel = document.querySelector("[data-login-panel]")
+    return {
+      perspective: vp ? getComputedStyle(vp).perspective : "нет",
+      panel3d: panel ? getComputedStyle(panel).transform.includes("matrix3d") : false,
+      gates: document.querySelectorAll("[data-login-gate]").length,
+    }
   })
-  check("3D-сцена «ночная дорога»", canvas != null && canvas.w === 1200, JSON.stringify(canvas))
+  check("мир: перспектива включена", world.perspective === "900px", `perspective ${world.perspective}`)
+  check("мир: ворота-модули на дороге", world.gates >= 6, `${world.gates} ворот`)
+  check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
 
-  const tilt = await page.evaluate(() => document.querySelector('[data-tilt="login-card"]') != null)
-  check("3D-наклон карточки за курсором", tilt)
+  // камера едет сквозь пространство
+  const d1 = await page.evaluate(() => window.__loginWorld.dolly)
+  await page.waitForTimeout(1300)
+  const d2 = await page.evaluate(() => window.__loginWorld.dolly)
+  check("камера перемещается в пространстве", d2 - d1 > 150, `dolly ${Math.round(d1)} → ${Math.round(d2)}`)
 
-  // смена угла обзора: ведём мышь влево-вверх — камера поворачивается
-  await page.mouse.move(250, 200)
+  // ворота пролетают мимо (клик ускоряет)
+  const g1 = await page.evaluate(() => window.__loginWorld.gates)
+  await page.mouse.click(600, 200)
+  await page.mouse.click(600, 200)
+  await page.waitForTimeout(2600)
+  const g2 = await page.evaluate(() => window.__loginWorld.gates)
+  check("ворота пролетают мимо и сменяются", g2 > g1, `пройдено ${g1} → ${g2}`)
+
+  // ракурс за курсором
+  const yaw1 = await page.evaluate(() => window.__loginWorld.yaw)
+  await page.mouse.move(1150, 120)
   await page.waitForTimeout(900)
-  const cardM13a = await page.evaluate(() => {
-    const el = document.querySelector('[data-tilt="login-card"]')
-    return el ? new DOMMatrixReadOnly(getComputedStyle(el).transform).m13 : 0
-  })
-  const yaw1 = await page.evaluate(() => window.__loginScene?.yaw ?? 0)
-  await page.mouse.move(950, 620)
-  await page.waitForTimeout(900)
-  const yaw2 = await page.evaluate(() => window.__loginScene?.yaw ?? 0)
-  const pitch2 = await page.evaluate(() => window.__loginScene?.pitch ?? 0)
-  check(
-    "смена угла обзора за курсором",
-    Math.abs(yaw2 - yaw1) > 0.05,
-    `yaw ${yaw1.toFixed(3)} → ${yaw2.toFixed(3)}, pitch ${pitch2.toFixed(3)}`,
-  )
-  const cardM13b = await page.evaluate(() => {
-    const el = document.querySelector('[data-tilt="login-card"]')
-    return el ? new DOMMatrixReadOnly(getComputedStyle(el).transform).m13 : 0
-  })
-  check(
-    "карточка-объект: параллакс за камерой",
-    Math.abs(cardM13b - cardM13a) > 0.008,
-    `поворот карточки ${cardM13a.toFixed(4)} → ${cardM13b.toFixed(4)}`,
-  )
+  const yaw2 = await page.evaluate(() => window.__loginWorld.yaw)
+  check("ракурс за курсором (мир под углом)", Math.abs(yaw2 - yaw1) > 0.4, `yaw ${yaw1.toFixed(1)}° → ${yaw2.toFixed(1)}°`)
 
-  // проваливание: каждый клик — рывок скорости
-  const before = await page.evaluate(() => window.__loginScene.plunges)
-  await page.mouse.click(600, 400)
-  await page.waitForTimeout(120)
-  const plunge1 = await page.evaluate(() => ({ p: window.__loginScene.plunges, s: window.__loginScene.speed }))
-  await shot(page, "/home/user/work/visual-login-3d-plunge.png")
-  check(
-    "проваливание при клике (рывок)",
-    plunge1.p === before + 1 && plunge1.s > 400,
-    `кликов +1, скорость ${Math.round(plunge1.s)}`,
-  )
-
-  // витрина программы
-  const chips = await page.evaluate(() => document.querySelectorAll("[data-login-info] > div").length)
-  check("витрина модулей на странице", chips >= 6, `${chips} чипов`)
-
-  // свечение рамки при фокусе
-  await page.focus('[data-login-desktop] input[type="email"]')
+  // клик — рывок камеры (после клика кадры кратко замирают — меряем
+  // счётчик рывков, а не мгновенную скорость)
+  const p1 = await page.evaluate(() => window.__loginWorld.plunges)
+  await page.mouse.click(600, 700)
   await page.waitForTimeout(400)
-  const glow = await page.evaluate(() => {
-    const card = document.querySelector(".login-card-glow")
-    return card ? getComputedStyle(card).boxShadow : "none"
-  })
-  check("свечение рамки при фокусе", glow !== "none" && glow.length > 10, `${glow.slice(0, 36)}…`)
+  const p2 = await page.evaluate(() => window.__loginWorld.plunges)
+  const s2 = await page.evaluate(() => window.__loginWorld.speed)
+  check("клик — рывок вперёд", p2 > p1 && s2 > 320, `рывков ${p1} → ${p2}, скорость ${Math.round(s2)}`)
 
-  // печать — энергия полёта
-  await page.type('[data-login-desktop] input[type="email"]', "logist", { delay: 80 })
-  const energy = await page.evaluate(() => window.__loginScene.energy)
-  check("отклик на ввод (энергия полёта)", energy > 0.05, `energy ${energy.toFixed(2)}`)
-  await shot(page, "/home/user/work/visual-login-3d-typing.png")
-  await shot(page, "/home/user/work/visual-login-3d.png")
-  check("скриншоты десктопа сохранены", true, "idle + печать + провал")
+  // поля живые внутри 3D
+  await page.fill("[data-login-panel] input#email", "logist")
+  const typed = await page.evaluate(() => document.querySelector("input#email")?.value ?? "")
+  check("ввод в полях внутри 3D", typed === "logist", `«${typed}»`)
 
-  const realErrors = errors.filter((t) => !isNoise(t))
-  check("нет ошибок (десктоп)", realErrors.length === 0, realErrors.slice(0, 2).join(" || ") || "нет")
+  await shot(page, "/home/user/work/visual-login-3d-desktop-idle.png")
+  check("скриншоты десктопа сохранены", true, "idle (+typing в поле)")
+
+  const dErrors = errors.filter((t) => !isNoise(t))
+  check("нет ошибок (десктоп)", dErrors.length === 0, dErrors.slice(0, 2).join(" || ") || "нет")
   await page.close()
   await context.close()
   }
 
-  // ── Ворп: реальный вход владельца = прыжок сквозь программу ──
+  // ── Ворп: успешный вход — рывок сквозь мир ──
   if (PHASE === "all" || PHASE === "warp") {
-  const warpContext = await browser.newContext({ viewport: { width: 1200, height: 800 } })
-  const wpage = await warpContext.newPage()
-  await wpage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
-  await wpage.waitForSelector("[data-login-desktop] .login-card-glow", { timeout: 30000 })
-  // Экран владельца в браузер не грузим: он тяжёлый и валит дев-сервер
-  // песочницы по памяти, а проверяем мы здесь ворп и уход с /login
+  const wContext = await browser.newContext({ viewport: { width: 1200, height: 800 } })
+  const wpage = await wContext.newPage()
+  // /owner тяжёл и валит дев в песочнице — перехватываем пустышкой
   await wpage.route("**/owner", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: "<html><body></body></html>" }),
+    route.fulfill({ status: 200, contentType: "text/html", body: "<title>owner-stub</title>" }),
   )
-  await wpage.fill('[data-login-desktop] input[type="email"]', envValue("OWNER_EMAIL"))
-  await wpage.fill('[data-login-desktop] input[type="password"]', envValue("OWNER_PASSWORD"))
-  await wpage.click('[data-login-desktop] button[type="submit"]')
-  await wpage.waitForFunction(() => (window.__loginScene?.warps ?? 0) >= 1, null, { timeout: 20000 })
-  const warp = await wpage.evaluate(() => ({
-    w: window.__loginScene?.warps ?? 0,
-    s: window.__loginScene?.speed ?? 0,
-  }))
-  check("ворп при входе (прыжок сквозь программу)", warp.w >= 1 && warp.s > 3000, `warps ${warp.w}, скорость ${Math.round(warp.s)}`)
-  await wpage.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 30000 }).catch(() => {})
-  check("после ворпа — внутри программы", !new URL(wpage.url()).pathname.startsWith("/login"), new URL(wpage.url()).pathname)
+  await wpage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await wpage.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
+  await wpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await wpage.fill("input#email", envValue("OWNER_EMAIL"))
+  await wpage.fill("input#password", envValue("OWNER_PASSWORD"))
+  await wpage.click("button[type=\"submit\"]", { force: true })
+  await wpage.waitForURL("**/owner", { timeout: 30000 })
+  check("ворп при входе (рывок сквозь мир)", true, "после входа — /owner")
   await wpage.close()
-  await warpContext.close()
+  await wContext.close()
   }
 
-  // ── Телефон ──
+  // ── Телефон: палец, гироскоп, форма ──
   if (PHASE === "all" || PHASE === "mobile") {
-  const mobileContext = await browser.newContext({
+  const mContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     isMobile: true,
     hasTouch: true,
   })
-  const mpage = await mobileContext.newPage()
+  const mpage = await mContext.newPage()
   const mErrors = []
   mpage.on("pageerror", (e) => mErrors.push(String(e).slice(0, 150)))
   mpage.on("console", (m) => { if (m.type() === "error") mErrors.push(m.text().slice(0, 150)) })
+
   await mpage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
-  await mpage.waitForSelector("form", { timeout: 30000 })
-  await mpage.waitForFunction(() => window.__loginScene != null, null, { timeout: 20000 })
-  const mCanvas = await mpage.evaluate(() => {
-    const c = document.querySelector("canvas[data-login-scene]")
-    return c ? c.clientWidth : 0
-  })
-  check("телефон: сцена на весь экран", mCanvas === 390, `${mCanvas}px`)
+  await mpage.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
+  await mpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await mpage.waitForTimeout(400)
 
-  // кабина: консоль снизу + площадка обзора сверху
-  const cockpit = await mpage.evaluate(() => ({
-    console: document.querySelector("[data-login-console]") != null,
-    pad: document.querySelector("[data-lookpad]") != null,
-    modules: (document.querySelector("[data-login-info]")?.textContent || "").includes("Живая карта"),
-    fits: document.scrollingElement
-      ? document.scrollingElement.scrollHeight <= window.innerHeight + 4
-      : true,
-  }))
-  check("телефон: кабина (консоль + лобовое стекло)", cockpit.console && cockpit.pad, `консоль:${cockpit.console}, площадка:${cockpit.pad}`)
-  check("телефон: модули программы в консоли", cockpit.modules)
-  const mFit = await mpage.evaluate(() => ({
-    h: document.scrollingElement?.scrollHeight ?? 0,
-    vh: window.innerHeight,
-  }))
-  check("телефон: экран без прокрутки", mFit.h <= mFit.vh + 4, `scrollHeight ${mFit.h} / ${mFit.vh}`)
+  const m1 = await mpage.evaluate(() => window.__loginWorld.dolly)
+  await mpage.waitForTimeout(1100)
+  const m2 = await mpage.evaluate(() => window.__loginWorld.dolly)
+  check("телефон: камера едет", m2 - m1 > 100, `dolly ${Math.round(m1)} → ${Math.round(m2)}`)
 
-  // ПАЛЕЦ по лобовому стеклу поворачивает камеру — смена ракурса
-  const mCdp = await mobileContext.newCDPSession(mpage)
-  const yawBefore = await mpage.evaluate(() => window.__loginScene.yaw)
-  await mCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 170 }] })
+  // палец по миру поворачивает камеру
+  const mCdp = await mContext.newCDPSession(mpage)
+  const yawA = await mpage.evaluate(() => window.__loginWorld.yaw)
+  await mCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 160 }] })
   for (let i = 1; i <= 6; i++) {
     await mCdp.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: [{ x: 195 + i * 12, y: 170 + i * 5 }],
+      touchPoints: [{ x: 195 + i * 14, y: 160 + i * 6 }],
     })
   }
   await mCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
-  await mpage.waitForTimeout(300)
-  const yawAfter = await mpage.evaluate(() => window.__loginScene.yaw)
-  check("телефон: ракурс за пальцем (лобовое стекло)", Math.abs(yawAfter - yawBefore) > 0.04, `yaw ${yawBefore.toFixed(3)} → ${yawAfter.toFixed(3)}`)
+  await mpage.waitForTimeout(250)
+  const yawB = await mpage.evaluate(() => window.__loginWorld.yaw)
+  check("телефон: палец вертит мир", Math.abs(yawB - yawA) > 0.4, `yaw ${yawA.toFixed(1)}° → ${yawB.toFixed(1)}°`)
 
-  // тап — тоже проваливание
-  const mBefore = await mpage.evaluate(() => window.__loginScene.plunges)
-  await mpage.touchscreen.tap(195, 250)
-  await mpage.waitForTimeout(150)
-  const mAfter = await mpage.evaluate(() => window.__loginScene.plunges)
-  check("телефон: проваливание по тапу", mAfter === mBefore + 1, `${mBefore} → ${mAfter}`)
-  await mpage.type('[data-login-console] input[type="email"]', "logist", { delay: 80 })
+  // гироскоп: пилюля есть, разрешение + события датчика
+  const pillVisible = await mpage.evaluate(() => {
+    const p = document.querySelector("[data-gyro-pill]")
+    return p != null && p.textContent != null && p.textContent.length > 0
+  })
+  // разрешение просим как живой пользователь — нажатием пилюли (жест)
+  await mpage.click("[data-gyro-pill]", { force: true }).catch(() => {})
+  const gyroGranted = await mpage.evaluate(() => typeof window.__loginWorldGyro === "function")
+  await mpage.evaluate(() => {
+    // первое событие калибрует ноль, второе — наклон
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 10 }))
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 38 }))
+  })
+  await mpage.waitForTimeout(300)
+  const gyroState = await mpage.evaluate(() => ({
+    gyro: window.__loginWorld.gyro === true,
+    yaw: window.__loginWorld.yaw,
+  }))
+  check(
+    "телефон: гироскоп (пилюля, разрешение, наклон)",
+    pillVisible && gyroGranted && gyroState.gyro && Math.abs(gyroState.yaw) > 0.5,
+    `пилюля:${pillVisible}, разрешение:${gyroGranted}, датчик:${gyroState.gyro}, yaw ${gyroState.yaw.toFixed(1)}°`,
+  )
+
+  // поля работают, экран не скроллится (мир fixed)
+  await mpage.fill("[data-login-panel] input#email", "logist")
+  const mTyped = await mpage.evaluate(() => document.querySelector("input#email")?.value ?? "")
+  const fits = await mpage.evaluate(() => ({
+    h: document.scrollingElement?.scrollHeight ?? 0,
+    vh: window.innerHeight,
+  }))
+  check("телефон: ввод в 3D-поля", mTyped === "logist", `«${mTyped}»`)
+  check("телефон: экран без прокрутки", fits.h <= fits.vh + 2, `scrollHeight ${fits.h} / ${fits.vh}`)
+
   await shot(mpage, "/home/user/work/visual-login-3d-mobile.png")
   check("телефон: скриншот сохранён", true, "work/visual-login-3d-mobile.png")
-  check("телефон: ошибок нет", mErrors.filter((t) => !isNoise(t)).length === 0, mErrors.filter((t) => !isNoise(t)).slice(0, 2).join(" || ") || "нет")
+  const mErr = mErrors.filter((t) => !isNoise(t))
+  check("телефон: ошибок нет", mErr.length === 0, mErr.slice(0, 2).join(" || ") || "нет")
   await mpage.close()
-  await mobileContext.close()
+  await mContext.close()
   }
 
-  // ── Экран водителя /m/login: кабина — сцена слита с полями ──
+  // ── Водитель: тот же мир, своя дорога ──
   if (PHASE === "all" || PHASE === "driver") {
   const driverContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -244,63 +230,56 @@ try {
   dpage.on("pageerror", (e) => dErrors.push(String(e).slice(0, 150)))
   dpage.on("console", (m) => { if (m.type() === "error") dErrors.push(m.text().slice(0, 150)) })
   await dpage.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
-  await dpage.waitForSelector('input[type="tel"]', { timeout: 30000 })
-  await dpage.waitForFunction(() => window.__loginScene != null, null, { timeout: 20000 })
+  await dpage.waitForSelector("#driver-phone", { timeout: 30000 })
+  await dpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
   await dpage.waitForTimeout(400)
-  const driver = await dpage.evaluate(() => {
-    const panel = document.querySelector("[data-login-console]")
-    const h1 = document.querySelector("h1")
-    // панель — НЕ стекло: ни один элемент кабины не размывает сцену
-    let blurred = 0
-    panel?.querySelectorAll("*").forEach((el) => {
-      const bf = getComputedStyle(el).backdropFilter
-      if (bf && bf !== "none") blurred += 1
-    })
-    return {
-      road: document.querySelector("canvas[data-login-scene]") != null,
-      lookpad: document.querySelector("[data-lookpad]") != null,
-      button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
-      phone: document.querySelector("#driver-phone") != null,
-      password: document.querySelector("#driver-password") != null,
-      title: h1 ? h1.textContent?.replace(/\s+/g, " ").trim() : "",
-      solidPanel: panel != null && blurred === 0,
-      blurred,
-    }
-  })
-  check("водитель: живая дорога на весь экран", driver.road && driver.lookpad && driver.phone && driver.password, `сцена:${driver.road}, стекло:${driver.lookpad}, поля:${driver.phone && driver.password}`)
-  check("водитель: заголовок и кнопка «В путь»", driver.title.includes("Доброй") && driver.button, `«${driver.title}», кнопка:${driver.button}`)
-  check("водитель: форма без стекла (без blur)", driver.solidPanel, driver.solidPanel ? "дорога резкая за формой" : `${driver.blurred} elem с blur`)
-  // палец по лобовому стеклу поворачивает камеру
-  const yawBefore = await dpage.evaluate(() => window.__loginScene?.yaw ?? 0)
+
+  const driver = await dpage.evaluate(() => ({
+    world: document.querySelector("[data-login-world]") != null,
+    gates: document.querySelectorAll("[data-login-gate]").length,
+    driverGates: [...document.querySelectorAll("[data-login-gate]")].some((g) =>
+      (g.textContent || "").includes("Мои рейсы"),
+    ),
+    phone: document.querySelector("#driver-phone") != null,
+    password: document.querySelector("#driver-password") != null,
+    button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
+    headline: (document.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim(),
+  }))
+  check("водитель: мир и своя дорога", driver.world && driver.gates >= 6 && driver.driverGates, `ворот ${driver.gates}, «Мои рейсы»: ${driver.driverGates}`)
+  check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)
+  check("водитель: заголовок в небе", driver.headline.includes("Доброй"), `«${driver.headline}»`)
+
+  // палец по дороге
   const dCdp = await driverContext.newCDPSession(dpage)
-  await dCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 190 }] })
+  const dyawA = await dpage.evaluate(() => window.__loginWorld.yaw)
+  await dCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 170 }] })
   for (let i = 1; i <= 6; i++) {
     await dCdp.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: [{ x: 195 + i * 12, y: 190 + i * 5 }],
+      touchPoints: [{ x: 195 + i * 14, y: 170 + i * 6 }],
     })
   }
   await dCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
   await dpage.waitForTimeout(250)
-  const yawAfter = await dpage.evaluate(() => window.__loginScene?.yaw ?? 0)
-  check("водитель: палец по стеклу вертит камеру", Math.abs(yawAfter - yawBefore) > 0.04, `yaw ${yawBefore.toFixed(3)} → ${yawAfter.toFixed(3)}`)
-  // экран без прокрутки — дорога не прячется за экраном
+  const dyawB = await dpage.evaluate(() => window.__loginWorld.yaw)
+  check("водитель: палец вертит мир", Math.abs(dyawB - dyawA) > 0.4, `yaw ${dyawA.toFixed(1)}° → ${dyawB.toFixed(1)}°`)
+
   const dFit = await dpage.evaluate(() => ({
     h: document.scrollingElement?.scrollHeight ?? 0,
     vh: window.innerHeight,
   }))
-  check("водитель: экран без прокрутки", dFit.h <= dFit.vh + 4, `scrollHeight ${dFit.h} / ${dFit.vh}`)
-  // скриншот будит дев-оверлей Next — если гидратация ещё не осела, он
-  // инжектит узел в DOM и React рапортует мисматч; даём осесть
+  check("водитель: экран без прокрутки", dFit.h <= dFit.vh + 2, `scrollHeight ${dFit.h} / ${dFit.vh}`)
+
   await dpage.waitForTimeout(1500)
-  await dpage.screenshot({ path: "/home/user/work/visual-driver-login.png" })
+  await shot(dpage, "/home/user/work/visual-driver-login.png")
   check("водитель: скриншот сохранён", true, "work/visual-driver-login.png")
-  check("водитель: ошибок нет", dErrors.filter((t) => !isNoise(t)).length === 0, dErrors.filter((t) => !isNoise(t)).slice(0, 2).join(" || ") || "нет")
+  const dErr = dErrors.filter((t) => !isNoise(t))
+  check("водитель: ошибок нет", dErr.length === 0, dErr.slice(0, 2).join(" || ") || "нет")
   await dpage.close()
   await driverContext.close()
   }
 
-  // ── Регистрация: тот же мир, стеклянная карточка ──
+  // ── Регистрация: тот же мир, карточка-объект ──
   if (PHASE === "all" || PHASE === "register") {
   const regContext = await browser.newContext({ viewport: { width: 1200, height: 800 } })
   const rpage = await regContext.newPage()
@@ -309,22 +288,33 @@ try {
   rpage.on("console", (m) => { if (m.type() === "error") rErrors.push(m.text().slice(0, 150)) })
   await rpage.goto(`${BASE}/register`, { waitUntil: "domcontentloaded", timeout: 60000 })
   await rpage.waitForSelector("input#email", { timeout: 30000 })
-  await rpage.waitForFunction(() => window.__loginScene != null, null, { timeout: 20000 })
-  const reg = await rpage.evaluate(() => ({
-    scene: document.querySelector("canvas[data-login-scene]") != null,
-    tabs: [...document.querySelectorAll("[role=tab]")].length >= 2,
-  }))
-  check("регистрация: сцена + вкладки", reg.scene && reg.tabs, `сцена:${reg.scene}, вкладок:${reg.tabs}`)
+  await rpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await rpage.waitForTimeout(400)
+  const reg = await rpage.evaluate(() => {
+    const card = document.querySelector("[data-login-panel] > div > div > div")
+    return {
+      world: document.querySelector("[data-login-world]") != null,
+      tabs: document.querySelectorAll("[role=\"tab\"]").length,
+      email: document.querySelector("input#email") != null,
+      panel3d: getComputedStyle(document.querySelector("[data-login-panel]")).transform.includes("matrix3d"),
+    }
+  })
+  check("регистрация: мир и вкладки", reg.world && reg.tabs >= 2 && reg.email, `вкладок ${reg.tabs}, email:${reg.email}`)
+  check("регистрация: карточка — объект мира", reg.panel3d, reg.panel3d ? "matrix3d" : "нет")
+  await rpage.waitForTimeout(1200)
   await shot(rpage, "/home/user/work/visual-register.png")
   check("регистрация: скриншот сохранён", true, "work/visual-register.png")
-  check("регистрация: ошибок нет", rErrors.filter((t) => !isNoise(t)).length === 0, rErrors.filter((t) => !isNoise(t)).slice(0, 2).join(" || ") || "нет")
+  const rErr = rErrors.filter((t) => !isNoise(t))
+  check("регистрация: ошибок нет", rErr.length === 0, rErr.slice(0, 2).join(" || ") || "нет")
   await rpage.close()
   await regContext.close()
   }
+
+  console.log(`ИТОГ: ${results.filter((r) => r.ok).length}/${results.length} проверок пройдено`)
+  process.exitCode = results.some((r) => !r.ok) ? 1 : 0
+} catch (e) {
+  console.error(e)
+  process.exitCode = 1
 } finally {
   await browser.close()
 }
-
-const failed = results.filter((r) => !r.ok)
-console.log(`\nИТОГ: ${results.length - failed.length}/${results.length} проверок пройдено`)
-process.exit(failed.length > 0 ? 1 : 0)

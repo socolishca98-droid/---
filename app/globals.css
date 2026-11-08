@@ -1306,3 +1306,57 @@ body {
     animation: none;
   }
 }
+
+/* ============================================================
+   3D-мир входа «Ночной рейс»: панель-плита и ворота
+   ============================================================ */
+@keyframes world-bob {
+  from {
+    transform: translateY(-5px);
+  }
+  to {
+    transform: translateY(5px);
+  }
+}
+
+.world-bob {
+  animation: world-bob 5.5s ease-in-out infinite alternate;
+}
+
+@keyframes world-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.world-panel-in {
+  animation: world-panel-in 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.38s backwards;
+}
+
+@keyframes gate-bob {
+  from {
+    transform: translateY(-6px);
+  }
+  to {
+    transform: translateY(6px);
+  }
+}
+
+.gate-bob {
+  animation: gate-bob 4.2s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-bob,
+  .world-panel-in,
+  .gate-bob,
+  .console-rise,
+  .driver-head {
+    animation: none;
+  }
+}
