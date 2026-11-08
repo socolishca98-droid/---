@@ -63,15 +63,22 @@ try {
   const world = await page.evaluate(() => {
     const vp = document.querySelector("[data-login-world]")
     const panel = document.querySelector("[data-login-panel]")
+    const glass = panel ? panel.querySelector("div.rounded-3xl") : null
+    const gs = glass ? getComputedStyle(glass) : null
     return {
       perspective: vp ? getComputedStyle(vp).perspective : "нет",
       panel3d: panel ? getComputedStyle(panel).transform.includes("matrix3d") : false,
       gates: document.querySelectorAll("[data-login-gate]").length,
+      motes: document.querySelectorAll("[data-login-mote]").length,
+      glassAlpha: gs ? (gs.backgroundColor.match(/([\d.]+)\)$/) || [])[1] ?? "1" : "нет",
+      glassBlur: gs ? gs.backdropFilter : "нет",
     }
   })
   check("мир: перспектива включена", world.perspective === "900px", `perspective ${world.perspective}`)
-  check("мир: ворота-модули на дороге", world.gates >= 6, `${world.gates} ворот`)
+  check("мир: голографмы-модули в полёте", world.gates >= 6, `${world.gates} панелей`)
+  check("мир: светлячки летят мимо камеры", world.motes >= 16, `${world.motes} частиц`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
+  check("форма — прозрачный экран", parseFloat(world.glassAlpha) <= 0.75 && world.glassBlur.includes("blur"), `фон ${world.glassAlpha}, blur: ${world.glassBlur.slice(0, 20)}`)
 
   // камера едет сквозь пространство
   const d1 = await page.evaluate(() => window.__loginWorld.dolly)
@@ -184,19 +191,30 @@ try {
   await mpage.click("[data-gyro-pill]", { force: true }).catch(() => {})
   const gyroGranted = await mpage.evaluate(() => typeof window.__loginWorldGyro === "function")
   await mpage.evaluate(() => {
-    // первое событие калибрует ноль, второе — наклон
+    // первое событие калибрует ноль, второе — наклон, третье — РЕЗКИЙ
+    // рывок: гироскоп должен остаться спокойным (ограничен и сглажен)
     window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 10 }))
-    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 38 }))
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 34 }))
   })
-  await mpage.waitForTimeout(300)
+  await mpage.waitForTimeout(500)
   const gyroState = await mpage.evaluate(() => ({
     gyro: window.__loginWorld.gyro === true,
     yaw: window.__loginWorld.yaw,
   }))
+  await mpage.evaluate(() => {
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 89 }))
+  })
+  await mpage.waitForTimeout(500)
+  const gyroCalm = await mpage.evaluate(() => window.__loginWorld.yaw)
   check(
-    "телефон: гироскоп (пилюля, разрешение, наклон)",
-    pillVisible && gyroGranted && gyroState.gyro && Math.abs(gyroState.yaw) > 0.5,
-    `пилюля:${pillVisible}, разрешение:${gyroGranted}, датчик:${gyroState.gyro}, yaw ${gyroState.yaw.toFixed(1)}°`,
+    "телефон: гироскоп жив, но спокоен",
+    pillVisible &&
+      gyroGranted &&
+      gyroState.gyro &&
+      Math.abs(gyroState.yaw) > 0.3 &&
+      Math.abs(gyroCalm - gyroState.yaw) <= 13 &&
+      Math.abs(gyroCalm) <= 22,
+    `наклон ${gyroState.yaw.toFixed(1)}°, рывок +55° → ${gyroCalm.toFixed(1)}° (отклик ${Math.abs(gyroCalm - gyroState.yaw).toFixed(1)}°)`,
   )
 
   // поля работают, экран не скроллится (мир fixed)
@@ -240,12 +258,13 @@ try {
     driverGates: [...document.querySelectorAll("[data-login-gate]")].some((g) =>
       (g.textContent || "").includes("Мои рейсы"),
     ),
+    motes: document.querySelectorAll("[data-login-mote]").length,
     phone: document.querySelector("#driver-phone") != null,
     password: document.querySelector("#driver-password") != null,
     button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
     headline: (document.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim(),
   }))
-  check("водитель: мир и своя дорога", driver.world && driver.gates >= 6 && driver.driverGates, `ворот ${driver.gates}, «Мои рейсы»: ${driver.driverGates}`)
+  check("водитель: мир и свои модули", driver.world && driver.gates >= 6 && driver.driverGates && driver.motes >= 16, `панелей ${driver.gates}, «Мои рейсы»: ${driver.driverGates}, частиц ${driver.motes}`)
   check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)
   check("водитель: заголовок в небе", driver.headline.includes("Доброй"), `«${driver.headline}»`)
 

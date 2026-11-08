@@ -1,54 +1,44 @@
 "use client"
 
-// components/visual/login-world.tsx — 3D-мир входа «Ночной рейс»
+// components/visual/login-world.tsx — 3D-мир входа «Звёздный рейс»
 //
-// Полная смена подхода (просьба владельца): «хочу, чтобы всё было
-// интегрировано в 3D… больше объёма, как будто мы перемещаемся в
-// пространстве и смотрим с разных углов; может, подключить гироскоп».
+// Смена сцены по просьбе владельца: «дорогу смени, проваливаемся под
+// землю, гироскоп очень чувствительный, экран с таблицей бесит — давай
+// ему прозрачность». Мир теперь — ПОЛЁТ СКВОЗЬ ПРОСТРАНСТВО:
 //
-// Это НЕ канвас и НЕ слои поверх страницы — это настоящий CSS-3D мир:
+//   • дорога и земля УБРАНЫ — провалиться некуда: звёзды во все стороны;
+//   • модули программы — ГОЛОГРАММЫ, разбросанные в объёме: летят мимо
+//     под разными углами, каждая парит и покачивается;
+//   • светлячки-частицы проносятся у самой камеры — ощущение скорости;
+//   • форма — ПРОЗРАЧНЫЙ голографический экран (матовое стекло) — тот же
+//     язык, что у модулей: она «внедрена» в систему мира, а не лежит
+//     поверх; сквозь неё видно звёзды;
+//   • гироскоп успокоен: коэффициенты снижены, показания сглаживаются
+//     (без дрожи), наклон ограничен.
 //
-//   • камера (perspective 900) непрерывно едет ВПЕРЁД сквозь пространство:
-//     ворота-модули пролетают мимо и сменяются, разметка дороги бежит
-//     под колёсами, пилоны проносятся по обочинам;
-//   • ракурс: на ПК — за курсором; на телефоне — ПАЛЬЦЕМ или ГИРОСКОПОМ
-//     (кнопка-пилюля запрашивает разрешение на iOS); мир реально видно
-//     С РАЗНЫХ УГЛОВ — у каждого слоя своя глубина;
-//   • форма — НЕ панель поверх сцены, а ОБЪЕКТ МИРА: стеклянная плита
-//     с толщиной, парит на фиксированной глубине между камерой и
-//     воротами; дорога течёт позади неё, ворота пролетают мимо;
-//   • клик — рывок вперёд; ввод текста — ускорение; успешный вход —
-//     ворп (рывок сквозь мир) и редирект.
-//
-// Техника: три «рига» с transform-style: preserve-3d —
-//   rigSky  (только вращение): звёзды и зарево — бесконечное небо;
-//   rigMove (вращение + dolly): дорога, ворота, пилоны — с «переработкой»
-//     координат, поэтому мир бесконечен и не переполняется;
-//   rigNear (только вращение): заголовок и панель формы.
+// Техника прежняя: CSS-3D, три рига (небо / объём / ближний план),
+// камера едет вперёд (dolly) с «переработкой» координат — мир бесконечен.
 // Приёмка: window.__loginWorld {dolly, speed, yaw, pitch, gyro, gates,
-// warp} + __loginWorldLook(dx,dy) + __loginWorldPaused +
-// __loginWorldGyro() (разрешение гироскопа). DOM: [data-login-world],
-// [data-login-gate], [data-login-panel], [data-gyro-pill].
+// warp, plunges} + __loginWorldLook + __loginWorldPaused +
+// __loginWorldGyro. DOM: [data-login-world], [data-login-gate],
+// [data-login-mote], [data-login-panel], [data-gyro-pill].
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Compass } from "lucide-react"
 
 const PERSPECTIVE = 900
-const ROAD_W = 1240
-const ROAD_LEN = 7000
-const DASH_PERIOD = 300 // период разметки — дорога «бесконечна» сдвигом на период
-const GATE_COUNT = 6
-const GATE_STEP = 900
-const GATE_TOTAL = GATE_COUNT * GATE_STEP
-const PYLON_COUNT = 9
-const PYLON_STEP = 640
-const PYLON_TOTAL = PYLON_COUNT * PYLON_STEP
-const GATE_FIRST = 760
 
-const SPEED_BASE = 300
+const PANEL_COUNT = 6
+const PANEL_FIRST = 500
+const PANEL_STEP = 800
+const PANEL_TOTAL = PANEL_COUNT * PANEL_STEP
+
+const MOTE_STEP = 170
+
+const SPEED_BASE = 320
 const SPEED_WARP = 5400
 
-/** Ворота-модули на дороге (вход логиста). */
+/** Модули программы (вход логиста) — голографические экраны в полёте. */
 const LOGIST_SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
   { title: "Живая карта", sub: "машины и ETA в реальном времени" },
   { title: "Маршруты OSRM", sub: "плечи и оптимизация" },
@@ -58,7 +48,7 @@ const LOGIST_SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
   { title: "Роли и доступы", sub: "у каждой стороны — своё окно" },
 ]
 
-/** Ворота на дороге водителя — его собственные разделы. */
+/** Экраны на дороге водителя — его собственные разделы. */
 const DRIVER_SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
   { title: "Мои рейсы", sub: "заявки и статусы дня" },
   { title: "Маршрут рейса", sub: "точки, погрузка, выгрузка" },
@@ -66,6 +56,16 @@ const DRIVER_SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
   { title: "Чат с логистом", sub: "вопрос — за минуту" },
   { title: "Техобслуживание", sub: "заявки на ремонт" },
   { title: "Машина", sub: "пробег и состояние" },
+]
+
+/** Где голографмы висят в объёме (смещения от оси камеры, px мира). */
+const PANEL_SPOTS: ReadonlyArray<{ x: number; y: number; ry: number }> = [
+  { x: -280, y: -430, ry: 9 },
+  { x: 300, y: -380, ry: -11 },
+  { x: -660, y: -150, ry: 15 },
+  { x: 680, y: -190, ry: -16 },
+  { x: -430, y: 140, ry: 12 },
+  { x: 450, y: 100, ry: -12 },
 ]
 
 type WorldDebug = {
@@ -77,29 +77,39 @@ type WorldDebug = {
   gates: number
   warp: number
   plunges: number
+  frames: number
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
-/** Слой звёзд: радиальные градиенты, сгенерированные один раз. */
-function useStarLayer(count: number, seed: number) {
-  return useMemo(() => {
-    let s = seed
-    const rnd = () => {
-      s = (s * 16807) % 2147483647
-      return s / 2147483647
-    }
-    const parts: string[] = []
-    for (let i = 0; i < count; i++) {
-      const x = (rnd() * 100).toFixed(2)
-      const y = (rnd() * 100).toFixed(2)
-      const r = (0.6 + rnd() * 1.1).toFixed(2)
-      const a = (0.25 + rnd() * 0.55).toFixed(2)
-      parts.push(`radial-gradient(${r}px ${r}px at ${x}% ${y}%, rgba(226,232,240,${a}) 40%, transparent 100%)`)
-    }
-    return parts.join(", ")
-  }, [count, seed])
+/** Детерминированный ГПСЧ — одни и те же звёзды на сервере и клиенте. */
+function mulberry(seed: number) {
+  let s = seed >>> 0
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0
+    let t = Math.imul(s ^ (s >>> 15), 1 | s)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
 }
+
+/** Слой звёзд: радиальные градиенты, сгенерированные один раз. */
+function starField(count: number, seed: number, rMin: number, rMax: number) {
+  const rnd = mulberry(seed)
+  const parts: string[] = []
+  for (let i = 0; i < count; i++) {
+    const x = (rnd() * 100).toFixed(2)
+    const y = (rnd() * 100).toFixed(2)
+    const r = (rMin + rnd() * (rMax - rMin)).toFixed(2)
+    const a = (0.25 + rnd() * 0.55).toFixed(2)
+    parts.push(
+      `radial-gradient(${r}px ${r}px at ${x}% ${y}%, rgba(226,232,240,${a}) 40%, transparent 100%)`,
+    )
+  }
+  return parts.join(", ")
+}
+
+type Mote = { x: number; y: number; z: number; s: number; color: string; glow: string }
 
 export function LoginWorld({
   variant = "logist",
@@ -108,9 +118,9 @@ export function LoginWorld({
   bare = false,
 }: {
   variant?: "logist" | "driver"
-  /** Крупный заголовок, парящий в небе над горизонтом */
+  /** Крупный заголовок, парящий в пространстве */
   headline?: React.ReactNode
-  /** Содержимое панели-плиты (форма) — объект мира */
+  /** Содержимое голографического экрана (форма) — объект мира */
   children: React.ReactNode
   /** Панель без плиты — страница приносит свою карточку */
   bare?: boolean
@@ -119,12 +129,35 @@ export function LoginWorld({
   const skyRef = useRef<HTMLDivElement | null>(null)
   const moveRef = useRef<HTMLDivElement | null>(null)
   const nearRef = useRef<HTMLDivElement | null>(null)
-  const roadRef = useRef<HTMLDivElement | null>(null)
-  const gateRefs = useRef<Array<HTMLDivElement | null>>([])
-  const pylonRefs = useRef<Array<HTMLDivElement | null>>([])
+  const panelRefs = useRef<Array<HTMLDivElement | null>>([])
+  const moteRefs = useRef<Array<HTMLDivElement | null>>([])
 
-  const starsFar = useStarLayer(46, 1234567)
-  const starsNear = useStarLayer(26, 7654321)
+  /** Плитка звёзд: повторяется → компактный слой покрывает весь экран. */
+  const starsFar = useMemo(() => starField(9, 20261012, 0.6, 1.3), [])
+  const starsNear = useMemo(() => starField(6, 777001, 1.0, 2.1), [])
+
+  /** Светлячки: начальные позиции детерминированы (гидратация). */
+  const motes = useMemo<Mote[]>(() => {
+    const rnd = mulberry(424242)
+    const colors = [
+      "rgba(125,211,252,0.95)",
+      "rgba(251,146,60,0.85)",
+      "rgba(226,232,240,0.9)",
+      "rgba(165,180,252,0.85)",
+    ]
+    return Array.from({ length: 26 }, (_, i) => {
+      const color = colors[Math.floor(rnd() * colors.length)]
+      const s = 3 + rnd() * 5
+      return {
+        x: Math.round(-950 + rnd() * 1900),
+        y: Math.round(-560 + rnd() * 1120),
+        z: 240 + i * MOTE_STEP,
+        s: Math.round(s),
+        color,
+        glow: color.replace(/,([\d.]+)\)$/, (_, a) => `,${(Number(a) * 0.5).toFixed(2)})`),
+      }
+    })
+  }, [])
 
   const [pill, setPill] = useState<"hidden" | "offer" | "on" | "off">("hidden")
   const gyroRequestRef = useRef<(() => Promise<boolean>) | null>(null)
@@ -136,13 +169,13 @@ export function LoginWorld({
     const sky = skyRef.current
     const move = moveRef.current
     const near = nearRef.current
-    const road = roadRef.current
-    if (!viewport || !sky || !move || !near || !road) return
+    if (!viewport || !sky || !move || !near) return
 
-    const gates = gateRefs.current.filter((el): el is HTMLDivElement => el != null)
-    const pylons = pylonRefs.current.filter((el): el is HTMLDivElement => el != null)
-    const gateZ = gates.map((_, i) => GATE_FIRST + i * GATE_STEP)
-    const pylonZ = pylons.map((_, i) => 300 + i * PYLON_STEP)
+    const panels = panelRefs.current.filter((el): el is HTMLDivElement => el != null)
+    const motesEls = moteRefs.current.filter((el): el is HTMLDivElement => el != null)
+    const panelZ = panels.map((_, i) => PANEL_FIRST + i * PANEL_STEP)
+    const moteState = motesEls.map((_, i) => ({ ...motes[i] }))
+    const moteTotal = motesEls.length * MOTE_STEP
 
     const reduced =
       typeof window.matchMedia === "function" &&
@@ -167,12 +200,14 @@ export function LoginWorld({
     let pitchDrag = 0
     let yawGyro = 0
     let pitchGyro = 0
+    // гироскоп: цель (сырые показания) и сглаженное значение — без дрожи
+    let yawGyroT = 0
+    let pitchGyroT = 0
     let gyroCalib: { b: number; g: number } | null = null
     let gyroActive = false
     let pointer: { x: number; y: number } | null = null
     let focused = false
     let aim = 0
-    const basePitch = narrow ? 1.1 : 0.6 // чуть смотрим сверху на дорогу
 
     const debug: WorldDebug = {
       dolly: 0,
@@ -183,6 +218,7 @@ export function LoginWorld({
       gates: 0,
       warp: 0,
       plunges: 0,
+      frames: 0,
     }
     const w = window as Window & {
       __loginWorld?: WorldDebug
@@ -192,16 +228,16 @@ export function LoginWorld({
     }
     w.__loginWorld = debug
     w.__loginWorldLook = (dx: number, dy: number) => {
-      yawDrag = clamp(yawDrag + dx * 0.055, -26, 26)
-      pitchDrag = clamp(pitchDrag + dy * 0.04, -13, 13)
+      yawDrag = clamp(yawDrag + dx * 0.045, -22, 22)
+      pitchDrag = clamp(pitchDrag + dy * 0.03, -9, 9)
     }
 
-    // ── гироскоп ──
+    // ── гироскоп (спокойный: коэффициенты малые + сглаживание) ──
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.beta == null || event.gamma == null) return
       if (!gyroCalib) gyroCalib = { b: event.beta, g: event.gamma }
-      yawGyro = clamp((event.gamma - gyroCalib.g) * 0.6, -26, 26)
-      pitchGyro = clamp((event.beta - gyroCalib.b) * 0.5, -13, 13)
+      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.22, -12, 12)
+      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.16, -8, 8)
       if (!gyroActive) {
         gyroActive = true
         debug.gyro = true
@@ -217,9 +253,8 @@ export function LoginWorld({
         window.setTimeout(() => setPill("hidden"), 2200)
         return false
       }
-      // Слушателя ставим СРАЗУ (события придут, когда платформа их
-      // отдаст); iOS дополнительно просит разрешение по жесту —
-      // пилюля и есть этот жест, её ответ не блокирует слушателя
+      // Слушателя ставим СРАЗУ; iOS дополнительно просит разрешение по
+      // жесту — пилюля и есть этот жест
       window.addEventListener("deviceorientation", onOrientation)
       try {
         if (typeof D.requestPermission === "function") void D.requestPermission().catch(() => {})
@@ -303,20 +338,22 @@ export function LoginWorld({
       if (reduced) speed = 0
       dolly += speed * dt
 
-      // ── ракурс: курсор + палец + гироскоп; в фокусе поля — камера
-      // мягко центруется на форме
-      const yawT = pointer ? -(pointer.x / window.innerWidth - 0.5) * 17 : 0
-      const pitchT = pointer ? -(pointer.y / window.innerHeight - 0.5) * 8 : 0
+      // ── ракурс: курсор + палец + гироскоп (сглаженный); в фокусе
+      // поля камера мягко центруется на форме ──
+      const yawT = pointer ? -(pointer.x / window.innerWidth - 0.5) * 14 : 0
+      const pitchT = pointer ? -(pointer.y / window.innerHeight - 0.5) * 7 : 0
       yawMouse += (yawT - yawMouse) * Math.min(1, dt * 3)
       pitchMouse += (pitchT - pitchMouse) * Math.min(1, dt * 3)
       yawDrag *= Math.exp(-dt * 0.1)
       pitchDrag *= Math.exp(-dt * 0.1)
+      yawGyro += (yawGyroT - yawGyro) * Math.min(1, dt * 5)
+      pitchGyro += (pitchGyroT - pitchGyro) * Math.min(1, dt * 5)
       aim += ((focused ? 1 : 0) - aim) * Math.min(1, dt * 3)
-      const swayY = Math.sin(t * 0.14) * 0.35
-      const swayP = Math.sin(t * 0.17 + 1.2) * 0.2
+      const swayY = Math.sin(t * 0.14) * 0.3
+      const swayP = Math.sin(t * 0.17 + 1.2) * 0.18
       const blend = 1 - aim * 0.06
       yaw = (yawMouse + yawDrag + yawGyro) * blend + swayY
-      pitch = (pitchMouse + pitchDrag + pitchGyro) * blend + swayP + basePitch
+      pitch = (pitchMouse + pitchDrag + pitchGyro) * blend + swayP
 
       // ── риги ──
       const rot = `rotateX(${(-pitch).toFixed(2)}deg) rotateY(${yaw.toFixed(2)}deg)`
@@ -325,36 +362,36 @@ export function LoginWorld({
       move.style.transform = `translateZ(${dolly.toFixed(1)}px) ${rot}`
       viewport.style.perspective = `${(PERSPECTIVE - warpT * 170 - fovKick * 80).toFixed(0)}px`
 
-      // ── дорога: сдвиг на целое число периодов разметки — бесконечный
-      // асфальт без ухода за камеру
-      const k = Math.floor(dolly / DASH_PERIOD) * DASH_PERIOD
-      road.style.transform = `translateX(-50%) translateZ(${-k}px) rotateX(-90deg)`
-
-      // ── ворота и пилоны: переработка (пролетели — уезжают вперёд)
-      for (let i = 0; i < gates.length; i++) {
-        const el = gates[i]
-        let z = gateZ[i]
-        if (dolly - z > -340) {
-          z += GATE_TOTAL
-          gateZ[i] = z
+      // ── голографмы-модули: пролетели — улетают вперёд, в новый угол ──
+      for (let i = 0; i < panels.length; i++) {
+        const el = panels[i]
+        let z = panelZ[i]
+        if (dolly - z > -280) {
+          z += PANEL_TOTAL
+          panelZ[i] = z
           debug.gates += 1
-          el.style.transform = `translate(-50%, -100%) translateZ(${-z}px)`
+          const spot = PANEL_SPOTS[(i + debug.gates) % PANEL_SPOTS.length]
+          el.style.transform = `translate3d(${spot.x}px, ${spot.y}px, ${-z}px) rotateY(${spot.ry}deg)`
         }
         const depth = z - dolly
-        el.style.opacity = clamp(depth / 340, 0, 1).toFixed(3)
-      }
-      for (let i = 0; i < pylons.length; i++) {
-        const el = pylons[i]
-        let z = pylonZ[i]
-        if (dolly - z > -60) {
-          z += PYLON_TOTAL
-          pylonZ[i] = z
-          el.style.transform = `translate(-50%, -100%) translateZ(${-z}px)`
-        }
-        const depth = z - dolly
-        el.style.opacity = clamp(depth / 60, 0, 1).toFixed(3)
+        el.style.opacity = clamp(depth / 280, 0, 1).toFixed(3)
       }
 
+      // ── светлячки: проносятся мимо камеры и рождаются впереди ──
+      for (let i = 0; i < motesEls.length; i++) {
+        const el = motesEls[i]
+        const m = moteState[i]
+        if (dolly - m.z > -60) {
+          m.z += moteTotal
+          m.x = Math.round(-950 + Math.random() * 1900)
+          m.y = Math.round(-560 + Math.random() * 1120)
+          el.style.transform = `translate3d(${m.x}px, ${m.y}px, ${-m.z}px)`
+        }
+        const depth = m.z - dolly
+        el.style.opacity = clamp(depth / 120, 0, 1).toFixed(3)
+      }
+
+      debug.frames += 1
       debug.dolly = dolly
       debug.speed = speed
       debug.yaw = yaw
@@ -362,7 +399,7 @@ export function LoginWorld({
       debug.warp = warpT
     }
 
-    // Пилюля гироскопа — только на сенсорных экранах, где датчик есть
+    // Пилюля гироскопа — только на сенсорных экранах
     const touchCapable =
       "ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0
     const pillTimer = touchCapable
@@ -383,7 +420,7 @@ export function LoginWorld({
 
     if (reduced) {
       // статичный кадр: мир есть, но не движется
-      const rot = `rotateX(${-basePitch}deg) rotateY(0deg)`
+      const rot = "rotateX(0deg) rotateY(0deg)"
       sky.style.transform = rot
       near.style.transform = rot
       move.style.transform = rot
@@ -408,159 +445,131 @@ export function LoginWorld({
       document.removeEventListener("visibilitychange", onVisibility)
       window.removeEventListener("deviceorientation", onOrientation)
     }
-  }, [variant])
+  }, [variant, motes])
 
   return (
     <div
       ref={viewportRef}
       data-login-world
-      className="fixed inset-0 touch-none overflow-hidden bg-[linear-gradient(180deg,#04060d_0%,#0a1122_38%,#0c1322_41%,#05070d_100%)]"
-      style={{ perspective: "900px", perspectiveOrigin: "50% 40%" }}
+      className="fixed inset-0 touch-none overflow-hidden bg-[radial-gradient(46%_36%_at_36%_24%,rgba(99,102,241,0.16),transparent_70%),radial-gradient(42%_32%_at_70%_76%,rgba(251,146,60,0.12),transparent_70%),radial-gradient(130%_100%_at_50%_0%,#0d1226_0%,#070912_48%,#04050b_100%)]"
+      style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}
     >
-      {/* ── НЕБО: бесконечный фон, вращается с камерой ── */}
+      {/* ── НЕБО: звёзды во все стороны + туманности (вращается с камерой) ── */}
       <div ref={skyRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+        {/* звёзды плиткой: компактные слои (гигантские слои душили
+            композитор — кадры замирали) */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-[40%]"
-          style={{ backgroundImage: starsFar, transform: "translateZ(-8200px) scale(2)" }}
-        />
-        <div
-          aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-[40%]"
-          style={{ backgroundImage: starsNear, transform: "translateZ(-6400px) scale(2)", opacity: 0.85 }}
-        />
-        {/* зарево города на горизонте */}
-        <div
-          aria-hidden="true"
-          className="absolute left-1/2 top-[40%] h-[70vh] w-[260vw] -translate-x-1/2 -translate-y-1/2"
+          className="absolute left-1/2 top-1/2 h-[150vh] w-[150vw]"
           style={{
-            transform: "translate(-50%,-50%) translateZ(-6000px)",
-            background:
-              "radial-gradient(52% 60% at 50% 55%, rgba(251,146,60,0.16), transparent 70%), radial-gradient(70% 80% at 50% 60%, rgba(56,130,246,0.11), transparent 75%)",
+            backgroundImage: starsFar,
+            backgroundSize: "340px 340px",
+            transform: "translate(-50%,-50%) translateZ(-320px)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 h-[125vh] w-[125vw]"
+          style={{
+            backgroundImage: starsNear,
+            backgroundSize: "480px 480px",
+            transform: "translate(-50%,-50%) translateZ(-90px)",
+            opacity: 0.95,
           }}
         />
       </div>
 
-      {/* ── МИР: дорога, ворота, пилоны — камера едет сквозь него ── */}
+      {/* ── ОБЪЁМ: голографмы-модули и светлячки — камера летит сквозь ── */}
       <div ref={moveRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
-        {/* асфальт: плоскость, повернутая в перспективу */}
-        <div
-          ref={roadRef}
-          aria-hidden="true"
-          className="absolute left-1/2 top-full"
-          style={{
-            width: ROAD_W,
-            height: ROAD_LEN,
-            transformOrigin: "50% 0",
-            transform: "translateX(-50%) rotateX(-90deg)",
-            backgroundColor: "#0b1322",
-            backgroundImage: [
-              // кромки дороги
-              "linear-gradient(to right, rgba(148,163,184,0.45) 0 5px, transparent 5px calc(100% - 5px), rgba(148,163,184,0.45) calc(100% - 5px))",
-              // осевые пунктиры — две полосы движения
-              "repeating-linear-gradient(to bottom, rgba(191,219,254,0.75) 0 80px, transparent 80px 300px)",
-              "repeating-linear-gradient(to bottom, rgba(191,219,254,0.75) 0 80px, transparent 80px 300px)",
-              // асфальт с лёгким блеском по центру
-              "linear-gradient(to right, #080d18 0%, #0e1729 50%, #080d18 100%)",
-            ].join(", "),
-            backgroundSize: "100% 100%, 16px 100%, 16px 100%, 100% 100%",
-            backgroundPosition: "0 0, calc(50% - 200px) 0, calc(50% + 192px) 0, 0 0",
-            backgroundRepeat: "no-repeat",
-          }}
-        />
-
-        {/* ворота-модули: пролетают мимо и сменяются */}
-        {signs.map((sign, i) => (
-          <div
-            key={sign.title}
-            ref={(el) => {
-              gateRefs.current[i] = el
-            }}
-            data-login-gate
-            aria-hidden="true"
-            className="absolute left-1/2 top-full w-[560px]"
-            style={{ transform: `translate(-50%, -100%) translateZ(-${GATE_FIRST + i * GATE_STEP}px)` }}
-          >
-            <div
-              className="gate-bob rounded-[30px] border-2 border-sky-300/25 bg-[#0a1428]/45 px-9 py-6 text-center shadow-[0_0_70px_-14px_rgba(56,189,248,0.4)]"
-              style={{ animationDelay: `${i * 0.65}s` }}
-            >
-              <p className="text-[26px] font-bold leading-tight tracking-tight text-sky-50/95">
-                {sign.title}
-              </p>
-              <p className="mt-1 text-[15px] text-sky-200/55">{sign.sub}</p>
-              <div className="mx-auto mt-4 h-[3px] w-16 rounded-full bg-sky-300/50" />
-            </div>
-          </div>
-        ))}
-
-        {/* пилоны по обочинам */}
-        {Array.from({ length: PYLON_COUNT * 2 }, (_, i) => {
-          const side = i % 2 === 0 ? -1 : 1
-          const idx = Math.floor(i / 2)
+        {signs.map((sign, i) => {
+          const spot = PANEL_SPOTS[i % PANEL_SPOTS.length]
           return (
             <div
-              key={i}
+              key={sign.title}
               ref={(el) => {
-                pylonRefs.current[i] = el
+                panelRefs.current[i] = el
               }}
+              data-login-gate
               aria-hidden="true"
-              className="absolute top-full h-[86px] w-[7px] rounded-full bg-gradient-to-t from-transparent via-sky-300/45 to-sky-200/90"
+              className="absolute left-1/2 top-1/2 w-[520px]"
               style={{
-                left: `calc(50% + ${side * 668}px)`,
-                transform: `translate(-50%, -100%) translateZ(-${300 + idx * PYLON_STEP}px)`,
+                transform: `translate3d(${spot.x}px, ${spot.y}px, ${-(PANEL_FIRST + i * PANEL_STEP)}px) rotateY(${spot.ry}deg)`,
               }}
-            />
+            >
+              <div
+                className="gate-bob rounded-3xl border border-sky-300/25 bg-[#0a1428]/60 px-8 py-6 text-center shadow-[0_0_70px_-16px_rgba(56,189,248,0.45)]"
+                style={{ animationDelay: `${i * 0.65}s` }}
+              >
+                <p className="text-[26px] font-bold leading-tight tracking-tight text-sky-50/95">
+                  {sign.title}
+                </p>
+                <p className="mt-1 text-[15px] text-sky-200/55">{sign.sub}</p>
+                <div className="mx-auto mt-4 h-[3px] w-14 rounded-full bg-sky-300/50" />
+              </div>
+            </div>
           )
         })}
+
+        {motes.map((m, i) => (
+          <div
+            key={i}
+            ref={(el) => {
+              moteRefs.current[i] = el
+            }}
+            data-login-mote
+            aria-hidden="true"
+            className="absolute left-1/2 top-1/2 rounded-full"
+            style={{
+              width: m.s,
+              height: m.s,
+              background: m.color,
+              boxShadow: `0 0 ${m.s * 3}px ${m.glow}`,
+              transform: `translate3d(${m.x}px, ${m.y}px, ${-m.z}px)`,
+            }}
+          />
+        ))}
       </div>
 
-      {/* ── БЛИЖНИЙ ПЛАН: заголовок в небе и панель-форма — объекты мира ── */}
+      {/* ── БЛИЖНИЙ ПЛАН: заголовок и ПРОЗРАЧНЫЙ экран формы ── */}
       <div ref={nearRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         {headline && (
           <div
             className="absolute left-1/2 top-[18%] w-[min(92vw,560px)] text-center lg:left-[26%] lg:top-[44%] lg:w-[560px] lg:text-left"
-            style={{ transform: "translate(-50%,-50%) translateZ(-700px)" }}
+            style={{ transform: "translate(-50%,-50%) translateZ(-160px)" }}
           >
             {headline}
           </div>
         )}
 
-        {/* тёплый свет за панелью — глубина и читаемость */}
+        {/* тёплое свечение за экраном формы — глубина и читаемость */}
         {!bare && (
           <div
             aria-hidden="true"
-            className="absolute left-1/2 top-[54%] h-[560px] w-[560px]"
+            className="absolute left-1/2 top-[56%] h-[620px] w-[620px] lg:left-[71%] lg:top-[50%]"
             style={{
-              transform: "translate(-50%,-50%) translateZ(-520px)",
+              transform: "translate(-50%,-50%) translateZ(-260px)",
               background:
-                "radial-gradient(50% 50% at 50% 50%, rgba(251,146,60,0.13), transparent 70%)",
+                "radial-gradient(50% 50% at 50% 50%, rgba(251,146,60,0.12), transparent 70%)",
             }}
           />
         )}
 
-        {/* панель-плита: форма живёт В мире, между камерой и воротами */}
+        {/* форма: голографический экран — матовое стекло, сквозь него
+            видно звёзды; тот же язык, что у модулей */}
         <div
           data-login-panel
           className="pointer-events-auto absolute left-1/2 top-[56%] w-[min(92vw,440px)] touch-auto lg:left-[71%] lg:top-[50%]"
-          style={{ transform: "translate(-50%,-50%) translateZ(-300px)" }}
+          style={{ transform: "translate(-50%,-50%) translateZ(-120px)" }}
         >
           <div className="world-bob">
-            <div className="world-panel-in" style={{ transformStyle: "preserve-3d" }}>
-              {!bare && (
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 rounded-3xl bg-[#04070f]"
-                  style={{ transform: "translateZ(-12px)" }}
-                />
-              )}
+            <div className="world-panel-in">
               {bare ? (
                 children
               ) : (
-                <div className="relative rounded-3xl border border-white/15 bg-[#0b1120]/92 px-5 pb-5 pt-4 shadow-[0_60px_120px_-30px_rgba(0,0,0,0.95)]">
+                <div className="relative rounded-3xl border border-white/15 bg-[#0b1120]/55 px-5 pb-5 pt-4 shadow-[0_50px_110px_-30px_rgba(0,0,0,0.85)] backdrop-blur-xl">
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-6 top-0 h-px bg-white/25"
+                    className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-sky-200/60 to-transparent"
                   />
                   {children}
                 </div>
