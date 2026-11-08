@@ -249,6 +249,7 @@ try {
   await dpage.waitForTimeout(400)
   const driver = await dpage.evaluate(() => {
     const panel = document.querySelector("[data-login-console]")
+    const h1 = document.querySelector("h1")
     // панель — НЕ стекло: ни один элемент кабины не размывает сцену
     let blurred = 0
     panel?.querySelectorAll("*").forEach((el) => {
@@ -261,13 +262,14 @@ try {
       button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
       phone: document.querySelector("#driver-phone") != null,
       password: document.querySelector("#driver-password") != null,
+      title: h1 ? h1.textContent?.replace(/\s+/g, " ").trim() : "",
       solidPanel: panel != null && blurred === 0,
       blurred,
     }
   })
-  check("водитель: живая дорога и кабина", driver.road && driver.lookpad && driver.phone && driver.password, `сцена:${driver.road}, стекло:${driver.lookpad}, поля:${driver.phone && driver.password}`)
-  check("водитель: кнопка запуска «В путь»", driver.button, driver.button ? "есть" : "нет")
-  check("водитель: панель — не стекло (без blur)", driver.solidPanel, driver.solidPanel ? "глухой материал" : `${driver.blurred} elem с blur`)
+  check("водитель: живая дорога на весь экран", driver.road && driver.lookpad && driver.phone && driver.password, `сцена:${driver.road}, стекло:${driver.lookpad}, поля:${driver.phone && driver.password}`)
+  check("водитель: заголовок и кнопка «В путь»", driver.title.includes("Доброй") && driver.button, `«${driver.title}», кнопка:${driver.button}`)
+  check("водитель: форма без стекла (без blur)", driver.solidPanel, driver.solidPanel ? "дорога резкая за формой" : `${driver.blurred} elem с blur`)
   // палец по лобовому стеклу поворачивает камеру
   const yawBefore = await dpage.evaluate(() => window.__loginScene?.yaw ?? 0)
   const dCdp = await driverContext.newCDPSession(dpage)

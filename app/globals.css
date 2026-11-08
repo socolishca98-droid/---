@@ -1281,31 +1281,28 @@ body {
   animation: console-rise 0.65s cubic-bezier(0.22, 0.61, 0.36, 1) 0.25s backwards;
 }
 
-/* Кнопка «В путь» — запуск двигателя: готовая к старту мягко пульсирует
-   подсветкой (только когда доступна) */
-@keyframes driver-ignite {
-  0%,
-  100% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.28),
-      0 10px 30px -6px rgba(251, 146, 60, 0.45);
+/* Шапка экрана водителя: заголовок «прилетает» сверху навстречу
+   поднимающейся снизу форме */
+@keyframes driver-head {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
   }
-  50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.28),
-      0 12px 42px -4px rgba(251, 146, 60, 0.8);
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
-.driver-ignite:not(:disabled) {
-  animation: driver-ignite 2.2s ease-in-out infinite;
+.driver-head {
+  animation: driver-head 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) 0.12s backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .console-rise {
     animation: none;
   }
-  .driver-ignite:not(:disabled) {
+  .driver-head {
     animation: none;
   }
 }
