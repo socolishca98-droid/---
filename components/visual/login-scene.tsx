@@ -100,6 +100,8 @@ type SceneDebug = {
   speed: number
   energy: number
   warp: number
+  /** Сколько раз сцена пересобиралась (должно быть 1 после загрузки) */
+  resets: number
 }
 
 function prefersReducedMotion(): boolean {
@@ -154,12 +156,14 @@ export function LoginScene(): React.ReactElement {
       speed: SPEED_BASE,
       energy: 0,
       warp: 0,
+      resets: 0,
     }
     ;(window as Window & { __loginScene?: SceneDebug }).__loginScene = debug
 
     const randSide = () => (Math.random() < 0.5 ? -1 : 1)
 
     const seed = () => {
+      debug.resets += 1
       narrow = width < 640
       frameMs = narrow ? FRAME_MS_NARROW : FRAME_MS_WIDE
 
@@ -216,13 +220,20 @@ export function LoginScene(): React.ReactElement {
       }))
     }
 
+    let seeded = false
     const resize = () => {
       width = canvas.clientWidth
       height = canvas.clientHeight
       canvas.width = Math.max(1, Math.round(width * dpr))
       canvas.height = Math.max(1, Math.round(height * dpr))
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      seed()
+      // Сцену собираем один раз при старте. На телефоне адресная строка и
+      // клавиатура постоянно меняют высоту viewport: пересборка на каждый
+      // resize — это скачки и мерцание, которые выглядят как поломка
+      if (!seeded) {
+        seed()
+        seeded = true
+      }
     }
 
     /** Проекция точки мира на экран с учётом поворота камеры. */
@@ -252,9 +263,15 @@ export function LoginScene(): React.ReactElement {
       fovKick *= Math.exp(-dt * 3.0)
       rollKick *= Math.exp(-dt * 2.6)
 
-      // угол обзора: за указателем + лёгкое дыхание в покое
-      const yawT = pointer ? -(pointer.x / width - 0.5) * 0.46 : 0
-      const pitchT = pointer ? -(pointer.y / height - 0.5) * 0.3 : 0
+      // Угол обзора: на ПК — за курсором; на телефоне палец занят
+      // прокруткой, поэтому камеру там ведёт сама прокрутка — сцена
+      // «едет» вместе с содержимым, без дёрганья от свайпов
+      const scrollNorm = Math.max(
+        0,
+        Math.min(1, window.scrollY / Math.max(1, window.innerHeight * 0.8)),
+      )
+      const yawT = pointer ? -(pointer.x / width - 0.5) * 0.46 : scrollNorm * 0.16
+      const pitchT = pointer ? -(pointer.y / height - 0.5) * 0.3 : scrollNorm * 0.3
       cam.yaw += (yawT - cam.yaw) * Math.min(1, dt * 2.2)
       cam.pitch += (pitchT - cam.pitch) * Math.min(1, dt * 2.2)
 
@@ -569,15 +586,17 @@ export function LoginScene(): React.ReactElement {
       if (rings.length < 8) rings.push({ x, y, t0: nowMs, big: false })
     }
 
-    const onPointerDown = (event: PointerEvent) => {
+    /** Каждый клик/тап — «проваливание». Слушаем именно click: его дают
+     *  клик мышью и тап пальцем, но НЕ даёт прокрутка — раньше на
+     *  pointerdown ловился рывок от каждого свайпа (на телефоне выглядело
+     *  как подлагивание). */
+    const onClick = (event: MouseEvent) => {
       plunge(event.clientX, event.clientY, performance.now())
     }
+    /** Угол обзора — за мышью и пером; тач-указатель игнорируем. */
     const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return
       pointer = { x: event.clientX, y: event.clientY }
-    }
-    const onTouchMove = (event: TouchEvent) => {
-      const touch = event.touches[0]
-      if (touch) pointer = { x: touch.clientX, y: touch.clientY }
     }
     /** Печать в полях входа — энергия полёта (значения не читаем). */
     const onInput = (event: Event) => {
@@ -610,9 +629,8 @@ export function LoginScene(): React.ReactElement {
       draw(0, 0.033, performance.now())
     } else {
       raf = requestAnimationFrame(loop)
-      window.addEventListener("pointerdown", onPointerDown, { passive: true })
+      window.addEventListener("click", onClick, { passive: true })
       window.addEventListener("pointermove", onPointerMove, { passive: true })
-      window.addEventListener("touchmove", onTouchMove, { passive: true })
       document.addEventListener("input", onInput, { passive: true })
       window.addEventListener("login:warp", onWarp)
     }
@@ -623,9 +641,8 @@ export function LoginScene(): React.ReactElement {
       cancelAnimationFrame(raf)
       window.removeEventListener("resize", onResize)
       document.removeEventListener("visibilitychange", onVisibility)
-      window.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("click", onClick)
       window.removeEventListener("pointermove", onPointerMove)
-      window.removeEventListener("touchmove", onTouchMove)
       document.removeEventListener("input", onInput)
       window.removeEventListener("login:warp", onWarp)
     }

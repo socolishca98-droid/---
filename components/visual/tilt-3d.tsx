@@ -46,10 +46,11 @@ export function Tilt3D({
       target.ry = nx * maxDeg
       target.rx = -ny * maxDeg
     }
-    const onMouse = (event: MouseEvent) => onPointer(event.clientX, event.clientY)
-    const onTouch = (event: TouchEvent) => {
-      const touch = event.touches[0]
-      if (touch) onPointer(touch.clientX, touch.clientY)
+    // Наклон — за мышью и пером. На телефоне палец листает страницу:
+    // карточка, завязанная на touchmove, дёргалась бы при каждой прокрутке
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return
+      onPointer(event.clientX, event.clientY)
     }
     // «Нажатие» карточки на удар клавиши: слушаем input (не keydown),
     // чтобы работало и мобильной клавиатурой с автокоррекцией
@@ -70,13 +71,11 @@ export function Tilt3D({
     }
 
     raf = requestAnimationFrame(loop)
-    window.addEventListener("mousemove", onMouse, { passive: true })
-    window.addEventListener("touchmove", onTouch, { passive: true })
+    window.addEventListener("pointermove", onPointerMove, { passive: true })
     document.addEventListener("input", onInput, { passive: true })
     return () => {
       cancelAnimationFrame(raf)
-      window.removeEventListener("mousemove", onMouse)
-      window.removeEventListener("touchmove", onTouch)
+      window.removeEventListener("pointermove", onPointerMove)
       document.removeEventListener("input", onInput)
     }
   }, [maxDeg])

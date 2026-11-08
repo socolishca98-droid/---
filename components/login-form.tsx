@@ -343,7 +343,7 @@ function Shell({
     // сквозь коридор программы (LoginScene), каждый клик «проваливает»
     // глубже, успешный вход — ворп. Слева — витрина: что внутри системы,
     // чтобы серьёзность считывалась с первого взгляда.
-    <div className="relative flex min-h-screen items-center justify-center overflow-x-hidden px-4 py-10 bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-x-hidden px-4 py-6 sm:py-10 bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
       <LoginScene />
       <div className="relative z-10 grid w-full max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-12">
         {/* Витрина программы — только на широких экранах */}
@@ -449,7 +449,7 @@ function Shell({
 
           <div className="card-enter">
             <Tilt3D>
-              <Card className="login-card-glow border-border/60 bg-card/85 shadow-2xl shadow-black/40 backdrop-blur-xl">
+              <Card className="login-card-glow border-border/60 bg-card/90 shadow-2xl shadow-black/40 sm:bg-card/85 sm:backdrop-blur-xl">
                 <CardHeader className="space-y-1.5 pb-4">
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
@@ -478,7 +478,7 @@ function Shell({
             {MODULES.map((m) => (
               <div
                 key={m.label}
-                className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/55 px-3 py-2 backdrop-blur-sm"
+                className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/60 px-2.5 py-1.5"
               >
                 <m.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
                 <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
