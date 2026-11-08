@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import type { BaseData, DashboardStats } from "../types"
 import { formatDistance } from "../constants"
+import { AnimatedNumber } from "@/components/visual/animated-number"
 import type { MapTheme } from "../hooks/useMapInstance"
 import type { TrafficLevelInfo } from "../layers/TrafficLayer"
 
@@ -154,7 +155,7 @@ export function StatsOverlay({
           ВЕРХНИЙ ХАБ УПРАВЛЕНИЯ (COMMAND BAR HUD)
          ══════════════════════════════════════════════════════════════════ */}
       <header
-        className={`absolute top-4 left-4 z-[1000] flex items-center justify-between gap-3 pointer-events-none transition-[right] duration-300 ease-out ${
+        className={`panel-rise absolute top-4 left-4 z-[1000] flex items-center justify-between gap-3 pointer-events-none transition-[right] duration-300 ease-out ${
           // Раскрытая панель водителей (w-84 у правого края) иначе ложится
           // поверх кнопок: стиль карты, список водителей, центрирование,
           // обновление телеметрии — всё это остаётся доступным.
@@ -210,7 +211,7 @@ export function StatsOverlay({
             </div>
             <div>
               <div className="text-xs font-bold text-white tracking-tight">
-                {stats.orders.active}
+                <AnimatedNumber value={stats.orders.active} />
               </div>
               <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
                 В работе
@@ -227,7 +228,7 @@ export function StatsOverlay({
             </div>
             <div>
               <div className="text-xs font-bold text-white tracking-tight">
-                {routesCount}
+                <AnimatedNumber value={routesCount} />
               </div>
               <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
                 Рейсов
@@ -244,7 +245,8 @@ export function StatsOverlay({
             </div>
             <div>
               <div className="text-xs font-bold text-white tracking-tight">
-                {formatDistance(totalActiveKm)} <span className="text-[10px] font-normal text-gray-400">км</span>
+                <AnimatedNumber value={totalActiveKm} format={formatDistance} />{" "}
+                <span className="text-[10px] font-normal text-gray-400">км</span>
               </div>
               <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">
                 Дистанция
@@ -261,7 +263,7 @@ export function StatsOverlay({
             </div>
             <div>
               <div className="text-xs font-bold text-white tracking-tight flex items-center gap-1.5">
-                <span>{stats.online}</span>
+                <span><AnimatedNumber value={stats.online} /></span>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               </div>
               <div className="text-[9px] font-medium uppercase tracking-wider text-gray-400">

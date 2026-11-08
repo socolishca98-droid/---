@@ -10,6 +10,8 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 import { ChevronRight } from "lucide-react"
 
+import { AnimatedNumber } from "@/components/visual/animated-number"
+
 export function Card({
   children,
   className = "",
@@ -50,12 +52,19 @@ export function KpiCard({
   const valueText = String(value)
   const valueSize = valueText.length > 9 ? "text-[20px]" : "text-2xl"
 
+  // Числа «докручиваются» от нуля при открытии экрана — лёгкий штрих
+  // в духе десктопной витрины, без непрерывных анимаций (батарея).
+  // Строки вида «3 из 8» остаются статичными.
+  const numeric = typeof value === "number" && Number.isFinite(value)
+
   const content = (
-    <div className="rounded-xl border border-border bg-card shadow-sm p-3.5 active:opacity-70">
+    <div className="panel-rise rounded-xl border border-border bg-card shadow-sm p-3.5 active:opacity-70">
       {loading ? (
         <div className="h-6 w-12 animate-pulse rounded-md bg-secondary" />
       ) : (
-        <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>{value}</div>
+        <div className={`${valueSize} font-semibold leading-none ${tones[tone]}`}>
+          {numeric ? <AnimatedNumber value={value} /> : value}
+        </div>
       )}
       <div className="mt-1.5 text-[13px] leading-snug text-muted-foreground">{label}</div>
       {hint ? <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div> : null}

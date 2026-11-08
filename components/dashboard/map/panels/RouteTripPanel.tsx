@@ -182,7 +182,7 @@ export function RouteTripPanel({
   if (!route) return null
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 left-4 z-[1000] w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-background/95 p-3 shadow-lg backdrop-blur">
+    <div className="panel-rise panel-rise-delay-1 pointer-events-auto absolute bottom-4 left-4 z-[1000] w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-background/95 p-3 shadow-lg backdrop-blur">
       {/* ── Заголовок ── */}
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">

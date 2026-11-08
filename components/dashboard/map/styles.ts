@@ -13,6 +13,62 @@ export const mapStyles = `
     outline: none;
   }
 
+  /* === АТМОСФЕРА НАД КАРТОЙ (pane z205, очень тихая) === */
+  .ambient-glow {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .ambient-blob {
+    position: absolute;
+    width: 46vmax;
+    height: 46vmax;
+    border-radius: 9999px;
+    filter: blur(55px);
+    will-change: transform;
+  }
+
+  .ambient-blob--cyan {
+    background: radial-gradient(circle, #22d3ee 0%, transparent 70%);
+    top: -14%;
+    left: -10%;
+    opacity: 0.1;
+    animation: ambient-drift-a 64s ease-in-out infinite alternate;
+  }
+
+  .ambient-blob--amber {
+    background: radial-gradient(circle, #f59e0b 0%, transparent 70%);
+    bottom: -18%;
+    right: -12%;
+    opacity: 0.07;
+    animation: ambient-drift-b 78s ease-in-out infinite alternate;
+  }
+
+  .ambient-blob--indigo {
+    background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+    top: 28%;
+    left: 52%;
+    opacity: 0.08;
+    animation: ambient-drift-c 88s ease-in-out infinite alternate;
+  }
+
+  @keyframes ambient-drift-a {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(7vw, 5vh, 0) scale(1.18); }
+  }
+
+  @keyframes ambient-drift-b {
+    from { transform: translate3d(0, 0, 0) scale(1.12); }
+    to { transform: translate3d(-6vw, -4vh, 0) scale(0.94); }
+  }
+
+  @keyframes ambient-drift-c {
+    from { transform: translate3d(0, 0, 0) scale(0.9); }
+    to { transform: translate3d(-7vw, 6vh, 0) scale(1.12); }
+  }
+
   /* === ТОЧКИ ЗАГРУЗКИ / ВЫГРУЗКИ (Минималистичные неоновые жетоны) === */
   .wp-container {
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
@@ -358,7 +414,8 @@ export const mapStyles = `
   @media (prefers-reduced-motion: reduce) {
     .driver-ring,
     .driver-pulse,
-    .wp-pulse {
+    .wp-pulse,
+    .ambient-blob {
       animation: none !important;
     }
   }

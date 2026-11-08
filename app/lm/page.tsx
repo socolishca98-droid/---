@@ -304,7 +304,7 @@ export default function LogistHomePage() {
         </div>
 
         {/* Главное действие и два быстрых перехода */}
-        <div className="mt-4 grid grid-cols-3 gap-2.5">
+        <div className="panel-rise panel-rise-delay-1 mt-4 grid grid-cols-3 gap-2.5">
           <Link
             href="/lm/routes/assistant"
             className="flex min-h-[76px] flex-col items-start justify-between rounded-xl bg-primary p-3.5 text-primary-foreground active:opacity-70"
@@ -334,6 +334,7 @@ export default function LogistHomePage() {
           </div>
         ) : null}
 
+        <div className="panel-rise panel-rise-delay-2">
         <SectionTitle
           title="Требуют внимания"
           action={{ label: "Все заказы", href: "/lm/orders" }}
@@ -404,6 +405,8 @@ export default function LogistHomePage() {
           </>
         ) : null}
 
+        </div>
+        <div className="panel-rise panel-rise-delay-3">
         <SectionTitle title="Активные рейсы" action={{ label: "Все рейсы", href: "/lm/routes" }} />
         {routesLoading ? (
           <ListSkeleton rows={2} />
@@ -450,6 +453,7 @@ export default function LogistHomePage() {
             })}
           </div>
         )}
+        </div>
       </PullToRefresh>
     </>
   )

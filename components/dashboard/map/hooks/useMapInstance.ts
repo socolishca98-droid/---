@@ -215,6 +215,22 @@ export function useMapInstance({
     applyTheme(instance, savedTheme)
     L.control.zoom({ position: "bottomright" }).addTo(instance)
 
+    // Атмосфера над картой: очень тихие цветовые пятна в собственном pane
+    // (z-index 205 — выше тайлов 200, ниже пробок 420 и нитей рейсов 450).
+    // Карта «дышит», но дороги, маркеры и попапы читаются как раньше.
+    // Движение — чистый CSS (globals стилей карты), reduced-motion гасит его.
+    const glowPane = instance.getPane("ambientGlowPane") ?? instance.createPane("ambientGlowPane")
+    glowPane.style.zIndex = "205"
+    glowPane.style.pointerEvents = "none"
+    if (!glowPane.querySelector(".ambient-glow")) {
+      const glow = L.DomUtil.create("div", "ambient-glow", glowPane)
+      glow.setAttribute("aria-hidden", "true")
+      glow.innerHTML =
+        '<div class="ambient-blob ambient-blob--cyan"></div>' +
+        '<div class="ambient-blob ambient-blob--amber"></div>' +
+        '<div class="ambient-blob ambient-blob--indigo"></div>'
+    }
+
     // Размер контейнера меняется при сворачивании меню и открытии панелей
     const observer = new ResizeObserver(() => {
       instance.invalidateSize({ animate: false })

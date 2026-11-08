@@ -1069,3 +1069,152 @@ body {
     animation: none;
   }
 }
+
+/* ============================================================
+   Появление панелей дашборда (задача «сдержанно-премиально»)
+   Лёгкий подъём вместо мгновенного «прыжка». fill-mode: backwards —
+   до старта анимации элемент в состоянии «из», а после её конца
+   возвращается к собственным стилям: ничего не блокируется
+   (transition-transform у панелей работает как раньше).
+   ============================================================ */
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.panel-rise {
+  animation: panel-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.panel-rise-delay-1 {
+  animation-delay: 0.08s;
+}
+
+.panel-rise-delay-2 {
+  animation-delay: 0.16s;
+}
+
+.panel-rise-delay-3 {
+  animation-delay: 0.24s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-rise {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Карточка входа: «дыхание» рамки, пока поля в фокусе
+   (задача «3D-вкус и отклик на ввод»). Мягкий свет рамки
+   медленно пульсирует, пока человек печатает.
+   ============================================================ */
+.login-card-glow {
+  transition: border-color 0.35s ease;
+}
+
+.login-card-glow:focus-within {
+  border-color: color-mix(in oklab, var(--primary) 42%, transparent);
+  animation: login-card-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes login-card-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 22%, transparent),
+      0 0 44px -12px color-mix(in oklab, var(--primary) 24%, transparent),
+      0 24px 70px -24px rgba(0, 0, 0, 0.65);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 34%, transparent),
+      0 0 64px -8px color-mix(in oklab, var(--primary) 38%, transparent),
+      0 24px 70px -24px rgba(0, 0, 0, 0.65);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card-glow:focus-within {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   Кинематографичный вход (login-scene): появление витрины,
+   влёт карточки с 3D-глубины, «вздрог» при ошибке входа
+   ============================================================ */
+@keyframes scene-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.scene-rise {
+  opacity: 0;
+  animation: scene-rise 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s forwards;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: perspective(1200px) translateY(26px) rotateX(10deg) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(1200px) translateY(0) rotateX(0deg) scale(1);
+  }
+}
+
+.card-enter {
+  opacity: 0;
+  animation: card-enter 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s forwards;
+}
+
+@keyframes login-shake {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+  30%,
+  70% {
+    transform: translateX(-5px);
+  }
+  40%,
+  60% {
+    transform: translateX(5px);
+  }
+  50% {
+    transform: translateX(-4px);
+  }
+}
+
+.login-shake {
+  animation: login-shake 0.5s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-rise,
+  .card-enter {
+    animation: none;
+    opacity: 1;
+  }
+  .login-shake {
+    animation: none;
+  }
+}

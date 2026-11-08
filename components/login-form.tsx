@@ -31,16 +31,23 @@ import {
 } from "@/components/ui/card"
 import {
   AlertCircle,
+  BarChart3,
   Boxes,
+  FileText,
   KeyRound,
   Loader2,
   Lock,
+  Map,
   MapPinned,
+  Route,
   ShieldCheck,
   Truck,
+  Users,
 } from "lucide-react"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
+import { LoginScene } from "@/components/visual/login-scene"
+import { Tilt3D } from "@/components/visual/tilt-3d"
 
 interface LoginFormProps {
   /** Куда отправить после успешного входа */
@@ -51,7 +58,18 @@ interface LoginFormProps {
 const HIGHLIGHTS: Array<{ icon: typeof Boxes; text: string }> = [
   { icon: Boxes, text: "Заказы, рейсы и водители в одном окне" },
   { icon: MapPinned, text: "Живая карта: пробки, ETA и статусы машин" },
+  { icon: Route, text: "Маршруты по настоящим дорогам: OSRM и плечи" },
   { icon: ShieldCheck, text: "Документы, оплаты и отчёты без Excel" },
+]
+
+/** Модули программы — «витрина наполненности» с первого взгляда. */
+const MODULES: Array<{ icon: typeof Boxes; label: string }> = [
+  { icon: Map, label: "Живая карта" },
+  { icon: Route, label: "Маршруты OSRM" },
+  { icon: Boxes, label: "Биржа грузов" },
+  { icon: FileText, label: "Документы" },
+  { icon: BarChart3, label: "Аналитика KPI" },
+  { icon: Users, label: "Роли и доступы" },
 ]
 
 export function LoginForm({ nextPath }: LoginFormProps) {
@@ -100,6 +118,14 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       setCurrentPassword(password)
       return
     }
+
+    // Кинематографичный «провал» в программу: сцена входа на миг
+    // превращается в прыжок сквозь коридор — и только потом редирект
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+    window.dispatchEvent(new CustomEvent("login:warp"))
+    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 720))
 
     // Владелец платформы — на свой стартовый экран; остальные — по роли
     router.replace(explicitTarget ?? (result.isOwner ? "/owner" : homeFor(result.role)))
@@ -289,7 +315,7 @@ function ErrorBlock({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/25 p-3 rounded-xl"
+      className="login-shake flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/25 p-3 rounded-xl"
     >
       <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
       <span>{message}</span>
@@ -313,12 +339,15 @@ function Shell({
   children: React.ReactNode
 }) {
   return (
-    // Фон не перекрываем наглухо: за экраном входа работает общий слой
-    // LiveBackground, здесь лишь мягкие световые пятна для контраста.
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
-      <div className="grid w-full max-w-5xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center">
-        {/* Брендовая панель — только на широких экранах */}
-        <div className="stagger-in hidden lg:flex flex-col gap-8">
+    // Кинематографичный вход (просьба владельца): за экраном — 3D-полёт
+    // сквозь коридор программы (LoginScene), каждый клик «проваливает»
+    // глубже, успешный вход — ворп. Слева — витрина: что внутри системы,
+    // чтобы серьёзность считывалась с первого взгляда.
+    <div className="relative flex min-h-screen items-center justify-center overflow-x-hidden px-4 py-10 bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
+      <LoginScene />
+      <div className="relative z-10 grid w-full max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-12">
+        {/* Витрина программы — только на широких экранах */}
+        <div className="scene-rise hidden lg:flex flex-col gap-7 rounded-3xl border border-border/40 bg-card/45 p-8 backdrop-blur-md">
           <div className="flex items-center gap-4">
             <span className="login-mark h-14 w-14 shrink-0">
               <Truck className="h-7 w-7 text-primary-foreground" />
@@ -333,7 +362,7 @@ function Shell({
 
           {/* Та же геометрия маршрута, что и на фоне: база → рейс → клиент */}
           <svg
-            className="h-24 w-full max-w-md"
+            className="h-20 w-full max-w-md"
             viewBox="0 0 420 100"
             fill="none"
             aria-hidden="true"
@@ -363,6 +392,16 @@ function Shell({
             />
           </svg>
 
+          <div className="space-y-2.5">
+            <h1 className="text-3xl font-bold leading-tight tracking-tight xl:text-4xl">
+              Управление перевозками целиком — от заявки до документов
+            </h1>
+            <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+              Живая карта, маршруты по настоящим дорогам, биржа грузов, оплаты
+              и аналитика — в одной системе, без Excel и звонков «где машина».
+            </p>
+          </div>
+
           <ul className="space-y-3">
             {HIGHLIGHTS.map((item) => (
               <li key={item.text} className="flex items-start gap-3">
@@ -375,12 +414,28 @@ function Shell({
               </li>
             ))}
           </ul>
+
+          {/* Модули: «наполненность» системы с первого взгляда */}
+          <div
+            data-login-info
+            className="grid max-w-md grid-cols-2 gap-2 border-t border-border/40 pt-5"
+          >
+            {MODULES.map((m) => (
+              <div
+                key={m.label}
+                className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/55 px-3 py-2 backdrop-blur-sm"
+              >
+                <m.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Карточка входа */}
-        <div className="rise-in mx-auto w-full max-w-md space-y-5">
-          {/* Компактный логотип там, где брендовой панели нет (узкие экраны) */}
-          <div className="flex items-center gap-3 lg:hidden">
+        <div className="mx-auto w-full max-w-md space-y-5">
+          {/* Компактный логотип там, где витрины нет (узкие экраны) */}
+          <div className="scene-rise flex items-center gap-3 lg:hidden">
             <span className="login-mark h-11 w-11 shrink-0">
               <Truck className="h-6 w-6 text-primary-foreground" />
             </span>
@@ -392,23 +447,44 @@ function Shell({
             </div>
           </div>
 
-          <Card className="border-border/60 bg-card/85 shadow-2xl shadow-black/40 backdrop-blur-xl">
-            <CardHeader className="space-y-1.5 pb-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                  {eyebrow}
-                </p>
-                {dateLabel && (
-                  <p className="hidden text-[11px] text-muted-foreground sm:block">
-                    {dateLabel}
-                  </p>
-                )}
+          <div className="card-enter">
+            <Tilt3D>
+              <Card className="login-card-glow border-border/60 bg-card/85 shadow-2xl shadow-black/40 backdrop-blur-xl">
+                <CardHeader className="space-y-1.5 pb-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                      {eyebrow}
+                    </p>
+                    {dateLabel && (
+                      <p className="hidden text-[11px] text-muted-foreground sm:block">
+                        {dateLabel}
+                      </p>
+                    )}
+                  </div>
+                  <CardTitle className="text-2xl tracking-tight">{title}</CardTitle>
+                  <CardDescription className="leading-relaxed">{description}</CardDescription>
+                </CardHeader>
+                <CardContent>{children}</CardContent>
+              </Card>
+            </Tilt3D>
+          </div>
+
+          {/* Модули программы — компактная витрина на телефоне */}
+          <div
+            data-login-info
+            className="scene-rise grid grid-cols-2 gap-2 lg:hidden"
+            style={{ animationDelay: "0.25s" }}
+          >
+            {MODULES.map((m) => (
+              <div
+                key={m.label}
+                className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/55 px-3 py-2 backdrop-blur-sm"
+              >
+                <m.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
               </div>
-              <CardTitle className="text-2xl tracking-tight">{title}</CardTitle>
-              <CardDescription className="leading-relaxed">{description}</CardDescription>
-            </CardHeader>
-            <CardContent>{children}</CardContent>
-          </Card>
+            ))}
+          </div>
         </div>
       </div>
     </div>
