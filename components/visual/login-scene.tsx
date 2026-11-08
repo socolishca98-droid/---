@@ -41,18 +41,29 @@ const GANTRY_STEP = 1700
 const GANTRY_COUNT = 6
 const GANTRY_DEPTH = GANTRY_STEP * GANTRY_COUNT
 
-const SPEED_BASE = 135
+const SPEED_BASE_LOGIST = 135
+const SPEED_BASE_DRIVER = 112 // грузовик не гоняет — но прёт уверенно
 const SPEED_PLUNGE = 2500
 const SPEED_WARP = 4800
 
-/** Порталы-указатели над дорогой — модули программы. */
-const SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
+/** Порталы-указатели над дорогой — модули программы (вход логиста). */
+const LOGIST_SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
   { title: "Живая карта", sub: "машины и ETA в реальном времени" },
   { title: "Маршруты OSRM", sub: "плечи и оптимизация" },
   { title: "Биржа грузов", sub: "ATI.SU · Cargomart" },
   { title: "Документы", sub: "статусы рейсов без Excel" },
   { title: "Аналитика", sub: "KPI парка в один экран" },
   { title: "Доступы и роли", sub: "у каждой стороны — своё окно" },
+]
+
+/** Указатели на «дороге водителя» — его собственные разделы. */
+const DRIVER_SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
+  { title: "Мои рейсы", sub: "заявки и статусы дня" },
+  { title: "Маршрут рейса", sub: "точки, погрузка, выгрузка" },
+  { title: "Документы и фото", sub: "сканы прямо в рейсе" },
+  { title: "Чат с логистом", sub: "вопрос — за минуту" },
+  { title: "Техобслуживание", sub: "заявки на ремонт" },
+  { title: "Машина", sub: "пробег и состояние" },
 ]
 
 type Gantry = { z: number; sign: number; passed: boolean }
@@ -80,11 +91,18 @@ function prefersReducedMotion(): boolean {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
-export function LoginScene(): React.ReactElement {
+export function LoginScene({
+  variant = "logist",
+}: {
+  variant?: "logist" | "driver"
+}): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const padRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    const driver = variant === "driver"
+    const signs = driver ? DRIVER_SIGNS : LOGIST_SIGNS
+    const speedBase = driver ? SPEED_BASE_DRIVER : SPEED_BASE_LOGIST
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
@@ -104,7 +122,7 @@ export function LoginScene(): React.ReactElement {
 
     // Камера
     const cam = { z: 0 }
-    let speed = SPEED_BASE
+    let speed = speedBase
     let energy = 0
     let fovKick = 0
     let warpT = 0
@@ -126,7 +144,7 @@ export function LoginScene(): React.ReactElement {
       warps: 0,
       yaw: 0,
       pitch: 0,
-      speed: SPEED_BASE,
+      speed: speedBase,
       energy: 0,
       warp: 0,
       resets: 0,
@@ -145,12 +163,13 @@ export function LoginScene(): React.ReactElement {
 
       gantries = Array.from({ length: GANTRY_COUNT }, (_, i) => ({
         z: 700 + i * GANTRY_STEP,
-        sign: i % SIGNS.length,
+        sign: i % signs.length,
         passed: false,
       }))
 
       lights = Array.from({ length: narrow ? 18 : 30 }, () => {
-        const warm = Math.random() < 0.45
+        // у водителя город «теплее» — натриевые фонари трассы
+        const warm = Math.random() < (driver ? 0.72 : 0.45)
         return {
           x: (Math.random() < 0.5 ? -1 : 1) * (520 + Math.random() * 2100),
           z: 3200 + Math.random() * 1900,
@@ -207,7 +226,7 @@ export function LoginScene(): React.ReactElement {
       if (warpT > 0.05) {
         speed = Math.max(speed, SPEED_WARP)
       } else {
-        const target = SPEED_BASE * (1 + Math.min(1.2, energy) * 1.5)
+        const target = speedBase * (1 + Math.min(1.2, energy) * 1.5)
         speed += (target - speed) * Math.min(1, dt * 2.4)
       }
       cam.z += speed * dt
@@ -381,7 +400,7 @@ export function LoginScene(): React.ReactElement {
         const s = fov / (fov + rel * cosP)
         if (s < 0.16) continue
 
-        const sign = SIGNS[g.sign]
+        const sign = signs[g.sign]
         // опоры и перекладина
         const legL = P(-(ROAD_HALF + 110), GROUND_Y, g.z)
         const legLT = P(-(ROAD_HALF + 110), -230, g.z)

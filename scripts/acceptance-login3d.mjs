@@ -231,7 +231,7 @@ try {
   await mobileContext.close()
   }
 
-  // ── Экран водителя /m/login: новый постер «ночная дорога» ──
+  // ── Экран водителя /m/login: кабина — сцена слита с полями ──
   if (PHASE === "all" || PHASE === "driver") {
   const driverContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -245,18 +245,51 @@ try {
   dpage.on("console", (m) => { if (m.type() === "error") dErrors.push(m.text().slice(0, 150)) })
   await dpage.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
   await dpage.waitForSelector('input[type="tel"]', { timeout: 30000 })
-  const driver = await dpage.evaluate(() => ({
-    road: document.querySelector(".driver-roadline") != null,
-    button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
-  }))
-  check("водитель: дорога и форма на месте", driver.road && driver.button, `дорога:${driver.road}, кнопка:${driver.button}`)
-  await dpage.evaluate(() => {
-    const els = document.querySelectorAll("canvas, .driver-roadline")
-    els.forEach(() => {})
+  await dpage.waitForFunction(() => window.__loginScene != null, null, { timeout: 20000 })
+  await dpage.waitForTimeout(400)
+  const driver = await dpage.evaluate(() => {
+    const panel = document.querySelector("[data-login-console]")
+    // панель — НЕ стекло: ни один элемент кабины не размывает сцену
+    let blurred = 0
+    panel?.querySelectorAll("*").forEach((el) => {
+      const bf = getComputedStyle(el).backdropFilter
+      if (bf && bf !== "none") blurred += 1
+    })
+    return {
+      road: document.querySelector("canvas[data-login-scene]") != null,
+      lookpad: document.querySelector("[data-lookpad]") != null,
+      button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
+      phone: document.querySelector("#driver-phone") != null,
+      password: document.querySelector("#driver-password") != null,
+      solidPanel: panel != null && blurred === 0,
+      blurred,
+    }
   })
-  // скриншот по CDP будит дев-оверлей Next — если гидратация ещё не
-  // осела, он инжектит узел в DOM и React честно рапортует мисматч;
-  // даём странице догидратироваться до снимка
+  check("водитель: живая дорога и кабина", driver.road && driver.lookpad && driver.phone && driver.password, `сцена:${driver.road}, стекло:${driver.lookpad}, поля:${driver.phone && driver.password}`)
+  check("водитель: кнопка запуска «В путь»", driver.button, driver.button ? "есть" : "нет")
+  check("водитель: панель — не стекло (без blur)", driver.solidPanel, driver.solidPanel ? "глухой материал" : `${driver.blurred} elem с blur`)
+  // палец по лобовому стеклу поворачивает камеру
+  const yawBefore = await dpage.evaluate(() => window.__loginScene?.yaw ?? 0)
+  const dCdp = await driverContext.newCDPSession(dpage)
+  await dCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 190 }] })
+  for (let i = 1; i <= 6; i++) {
+    await dCdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: 195 + i * 12, y: 190 + i * 5 }],
+    })
+  }
+  await dCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await dpage.waitForTimeout(250)
+  const yawAfter = await dpage.evaluate(() => window.__loginScene?.yaw ?? 0)
+  check("водитель: палец по стеклу вертит камеру", Math.abs(yawAfter - yawBefore) > 0.04, `yaw ${yawBefore.toFixed(3)} → ${yawAfter.toFixed(3)}`)
+  // экран без прокрутки — дорога не прячется за экраном
+  const dFit = await dpage.evaluate(() => ({
+    h: document.scrollingElement?.scrollHeight ?? 0,
+    vh: window.innerHeight,
+  }))
+  check("водитель: экран без прокрутки", dFit.h <= dFit.vh + 4, `scrollHeight ${dFit.h} / ${dFit.vh}`)
+  // скриншот будит дев-оверлей Next — если гидратация ещё не осела, он
+  // инжектит узел в DOM и React рапортует мисматч; даём осесть
   await dpage.waitForTimeout(1500)
   await dpage.screenshot({ path: "/home/user/work/visual-driver-login.png" })
   check("водитель: скриншот сохранён", true, "work/visual-driver-login.png")
