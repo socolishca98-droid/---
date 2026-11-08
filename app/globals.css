@@ -1260,3 +1260,43 @@ body {
     animation: none;
   }
 }
+
+/* ============================================================
+   Новый вход «с нуля»: кабина на телефоне (консоль снизу)
+   и дорожная сцена. Экран водителя — статичный постер.
+   ============================================================ */
+@keyframes console-rise {
+  from {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.console-rise {
+  animation: console-rise 0.65s cubic-bezier(0.22, 0.61, 0.36, 1) 0.25s backwards;
+}
+
+/* Разметка «бежит под колёсами» на постере водителя —
+   единственная анимация экрана, дёшево для батареи */
+@keyframes driver-road {
+  to {
+    stroke-dashoffset: -42;
+  }
+}
+
+.driver-roadline {
+  animation: driver-road 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-rise {
+    animation: none;
+  }
+  .driver-roadline {
+    animation: none;
+  }
+}

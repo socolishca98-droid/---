@@ -284,22 +284,22 @@ export function LoginForm({ nextPath }: LoginFormProps) {
         </Button>
       </form>
 
-      <div className="mt-6 pt-4 border-t border-border/50 space-y-2.5">
+      <div className="mt-4 space-y-1.5 border-t border-border/50 pt-3">
         {/* Забытый пароль раньше означал «зовите администратора» — теперь
             человек восстанавливает доступ сам, ссылкой на почту */}
-        <p className="text-sm text-muted-foreground text-center">
+        <p className="text-[13px] text-muted-foreground text-center">
           Забыли пароль?{" "}
           <Link href="/forgot-password" className="text-primary hover:underline font-medium">
             Восстановить доступ
           </Link>
         </p>
-        <p className="text-sm text-muted-foreground text-center">
+        <p className="text-[13px] text-muted-foreground text-center">
           Нет учётной записи?{" "}
           <Link href="/register" className="text-primary hover:underline font-medium">
             Оставить заявку на доступ
           </Link>
         </p>
-        <p className="text-sm text-muted-foreground text-center">
+        <p className="text-[13px] text-muted-foreground text-center">
           Вы водитель?{" "}
           <Link href="/m/login" className="text-primary hover:underline font-medium">
             Вход в приложение водителя
@@ -339,152 +339,159 @@ function Shell({
   children: React.ReactNode
 }) {
   return (
-    // Кинематографичный вход (просьба владельца): за экраном — 3D-полёт
-    // сквозь коридор программы (LoginScene), каждый клик «проваливает»
-    // глубже, успешный вход — ворп. Слева — витрина: что внутри системы,
-    // чтобы серьёзность считывалась с первого взгляда.
-    <div className="relative flex min-h-dvh items-center justify-center overflow-x-hidden px-4 py-6 sm:py-10 bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
+    // Новый вход, с нуля (просьба владельца): сцена «Ночная дорога»
+    // занимает весь экран. На телефоне — «кабина»: дорога в лобовом
+    // стекле (палец поворачивает ракурс), консоль с формой — снизу.
+    // На ПК — витрина программы слева, парящая карточка справа.
+    <div className="relative min-h-dvh bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
       <LoginScene />
-      <div className="relative z-10 grid w-full max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-12">
-        {/* Витрина программы — только на широких экранах */}
-        <div className="scene-rise hidden lg:flex flex-col gap-7 rounded-3xl border border-border/40 bg-card/45 p-8 backdrop-blur-md">
-          <div className="flex items-center gap-4">
-            <span className="login-mark h-14 w-14 shrink-0">
-              <Truck className="h-7 w-7 text-primary-foreground" />
+
+      {/* ── Телефон: кабина — лобовое стекло + консоль ── */}
+      <div className="pointer-events-none relative z-10 flex min-h-dvh flex-col justify-end lg:hidden">
+        <div
+          data-login-console
+          className="console-rise pointer-events-auto rounded-t-[1.75rem] border-x border-t border-border/60 bg-card/80 px-5 pb-3.5 pt-3 backdrop-blur-lg"
+        >
+          <div className="mb-3 flex items-center gap-3">
+            <span className="login-mark h-10 w-10 shrink-0">
+              <Truck className="h-5 w-5 text-primary-foreground" />
             </span>
-            <div>
-              <p className="text-2xl font-bold tracking-tight">{PRODUCT_NAME}</p>
-              <p className="text-sm text-muted-foreground">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-bold leading-tight tracking-tight">{PRODUCT_NAME}</p>
+              <p className="truncate text-[11px] text-muted-foreground">
                 система управления грузоперевозками
               </p>
             </div>
           </div>
 
-          {/* Та же геометрия маршрута, что и на фоне: база → рейс → клиент */}
-          <svg
-            className="h-20 w-full max-w-md"
-            viewBox="0 0 420 100"
-            fill="none"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path
-              className="login-brand__track"
-              d="M18 74 C 90 74, 110 30, 176 34 S 268 78, 336 52 S 386 30, 402 26"
-            />
-            <circle cx="18" cy="74" r="5" stroke="var(--primary)" strokeWidth="1.8" />
-            <circle cx="18" cy="74" r="1.8" fill="var(--primary)" />
-            <circle
-              cx="176"
-              cy="34"
-              r="3"
-              fill="color-mix(in oklab, var(--foreground) 45%, transparent)"
-            />
-            <rect
-              x="396"
-              y="20"
-              width="12"
-              height="12"
-              rx="3"
-              transform="rotate(45 402 26)"
-              stroke="color-mix(in oklab, var(--foreground) 55%, transparent)"
-              strokeWidth="1.6"
-            />
-          </svg>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+            {eyebrow}
+          </p>
+          <h1 className="mb-1 text-xl font-bold tracking-tight">{title}</h1>
+          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{description}</p>
 
-          <div className="space-y-2.5">
-            <h1 className="text-3xl font-bold leading-tight tracking-tight xl:text-4xl">
-              Управление перевозками целиком — от заявки до документов
-            </h1>
-            <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-              Живая карта, маршруты по настоящим дорогам, биржа грузов, оплаты
-              и аналитика — в одной системе, без Excel и звонков «где машина».
-            </p>
-          </div>
+          {children}
 
-          <ul className="space-y-3">
-            {HIGHLIGHTS.map((item) => (
-              <li key={item.text} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card/60">
-                  <item.icon className="h-4 w-4 text-primary" />
-                </span>
-                <span className="text-sm leading-relaxed text-muted-foreground">
-                  {item.text}
-                </span>
-              </li>
-            ))}
-          </ul>
-
-          {/* Модули: «наполненность» системы с первого взгляда */}
-          <div
+          <p
             data-login-info
-            className="grid max-w-md grid-cols-2 gap-2 border-t border-border/40 pt-5"
+            className="mt-3 border-t border-border/40 pt-2.5 text-center text-[10.5px] leading-relaxed text-muted-foreground"
           >
-            {MODULES.map((m) => (
-              <div
-                key={m.label}
-                className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/55 px-3 py-2 backdrop-blur-sm"
-              >
-                <m.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
-              </div>
-            ))}
-          </div>
+            Живая карта · Маршруты OSRM · Биржа грузов · Документы · Аналитика · Роли
+          </p>
         </div>
+      </div>
 
-        {/* Карточка входа */}
-        <div className="mx-auto w-full max-w-md space-y-5">
-          {/* Компактный логотип там, где витрины нет (узкие экраны) */}
-          <div className="scene-rise flex items-center gap-3 lg:hidden">
-            <span className="login-mark h-11 w-11 shrink-0">
-              <Truck className="h-6 w-6 text-primary-foreground" />
-            </span>
-            <div>
-              <p className="text-xl font-bold leading-tight tracking-tight">{PRODUCT_NAME}</p>
-              <p className="text-xs text-muted-foreground">
-                система управления грузоперевозками
+      {/* ── ПК: витрина программы + парящая карточка ── */}
+      <div data-login-desktop className="relative z-10 hidden lg:flex lg:min-h-dvh lg:items-center lg:justify-center">
+        <div className="grid w-full max-w-6xl grid-cols-[minmax(0,1fr)_minmax(0,26rem)] items-center gap-12 px-6 py-10">
+          {/* Витрина */}
+          <div className="scene-rise flex flex-col gap-7 rounded-3xl border border-border/40 bg-card/45 p-8 backdrop-blur-md">
+            <div className="flex items-center gap-4">
+              <span className="login-mark h-14 w-14 shrink-0">
+                <Truck className="h-7 w-7 text-primary-foreground" />
+              </span>
+              <div>
+                <p className="text-2xl font-bold tracking-tight">{PRODUCT_NAME}</p>
+                <p className="text-sm text-muted-foreground">
+                  система управления грузоперевозками
+                </p>
+              </div>
+            </div>
+
+            <svg
+              className="h-20 w-full max-w-md"
+              viewBox="0 0 420 100"
+              fill="none"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                className="login-brand__track"
+                d="M18 74 C 90 74, 110 30, 176 34 S 268 78, 336 52 S 386 30, 402 26"
+              />
+              <circle cx="18" cy="74" r="5" stroke="var(--primary)" strokeWidth="1.8" />
+              <circle cx="18" cy="74" r="1.8" fill="var(--primary)" />
+              <circle
+                cx="176"
+                cy="34"
+                r="3"
+                fill="color-mix(in oklab, var(--foreground) 45%, transparent)"
+              />
+              <rect
+                x="396"
+                y="20"
+                width="12"
+                height="12"
+                rx="3"
+                transform="rotate(45 402 26)"
+                stroke="color-mix(in oklab, var(--foreground) 55%, transparent)"
+                strokeWidth="1.6"
+              />
+            </svg>
+
+            <div className="space-y-2.5">
+              <h2 className="text-3xl font-bold leading-tight tracking-tight xl:text-4xl">
+                Управление перевозками целиком — от заявки до документов
+              </h2>
+              <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+                Живая карта, маршруты по настоящим дорогам, биржа грузов, оплаты
+                и аналитика — в одной системе, без Excel и звонков «где машина».
               </p>
+            </div>
+
+            <ul className="space-y-3">
+              {HIGHLIGHTS.map((item) => (
+                <li key={item.text} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card/60">
+                    <item.icon className="h-4 w-4 text-primary" />
+                  </span>
+                  <span className="text-sm leading-relaxed text-muted-foreground">
+                    {item.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div
+              data-login-info
+              className="grid max-w-md grid-cols-2 gap-2 border-t border-border/40 pt-5"
+            >
+              {MODULES.map((m) => (
+                <div
+                  key={m.label}
+                  className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/55 px-3 py-2"
+                >
+                  <m.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="card-materialize" data-card-anchor>
-            <Tilt3D>
-              <div className="login-float-shadow" aria-hidden="true" />
-              <Card className="login-card-glow border-border/60 bg-card/90 shadow-2xl shadow-black/40 sm:bg-card/85 sm:backdrop-blur-xl">
-                <CardHeader className="space-y-1.5 pb-4">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                      {eyebrow}
-                    </p>
-                    {dateLabel && (
-                      <p className="hidden text-[11px] text-muted-foreground sm:block">
-                        {dateLabel}
+          {/* Карточка входа */}
+          <div className="mx-auto w-full max-w-md space-y-5">
+            <div className="card-materialize">
+              <Tilt3D>
+                <div className="login-float-shadow" aria-hidden="true" />
+                <Card className="login-card-glow border-border/60 bg-card/90 shadow-2xl shadow-black/40 sm:bg-card/85 sm:backdrop-blur-xl">
+                  <CardHeader className="space-y-1.5 pb-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                        {eyebrow}
                       </p>
-                    )}
-                  </div>
-                  <CardTitle className="text-2xl tracking-tight">{title}</CardTitle>
-                  <CardDescription className="leading-relaxed">{description}</CardDescription>
-                </CardHeader>
-                <CardContent>{children}</CardContent>
-              </Card>
-            </Tilt3D>
-          </div>
-
-          {/* Модули программы — компактная витрина на телефоне */}
-          <div
-            data-login-info
-            className="scene-rise grid grid-cols-2 gap-2 lg:hidden"
-            style={{ animationDelay: "0.25s" }}
-          >
-            {MODULES.map((m) => (
-              <div
-                key={m.label}
-                className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/60 px-2.5 py-1.5"
-              >
-                <m.icon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
-              </div>
-            ))}
+                      {dateLabel && (
+                        <p className="hidden text-[11px] text-muted-foreground sm:block">
+                          {dateLabel}
+                        </p>
+                      )}
+                    </div>
+                    <CardTitle className="text-2xl tracking-tight">{title}</CardTitle>
+                    <CardDescription className="leading-relaxed">{description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>{children}</CardContent>
+                </Card>
+              </Tilt3D>
+            </div>
           </div>
         </div>
       </div>

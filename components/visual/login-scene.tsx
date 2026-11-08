@@ -1,94 +1,64 @@
 "use client"
 
-// components/visual/login-scene.tsx
+// components/visual/login-scene.tsx — v3 «Ночная дорога»
 //
-// Кинематографичный 3D-вход (просьба владельца: «прямо очень крутой 3Д
-// вход, со сменой угла обзора, чтобы при каждом клике мы как будто
-// проваливались в программу»).
+// Полная смена сцены (просьба владельца: «прямо смена сцены и ракурса,
+// и 3Д; всё, что видно глазу — с нуля»). Вместо абстрактного коридора —
+// ночной рейс по настоящей дороге:
 //
-// Вместо «обычной анимации на фоне» — ПОЛЁТ КАМЕРЫ СКВОЗЬ ПРОГРАММУ:
-//  • Коридор из «ворот» — рамок-модулей, уходящих в глубину; камера
-//    непрерывно летит вперёд, ворота проходят мимо и рождаются вновь.
-//  • Смена угла обзора — курсор мыши или палец поворачивают камеру
-//    (yaw/pitch с мягким lerp), плюс лёгкое дыхание камеры в покое.
-//  • «Проваливание» — КАЖДЫЙ клик/тап даёт рывок скорости (кик FOV +
-//    крен камеры + кольцо-удар из точки клика). Ввод текста подпитывает
-//    полёт энергией: быстрее, ярче, живее.
-//  • Ворп — событие "login:warp" (успешный вход) на ~1.2 с превращает
-//    полёт в прыжок сквозь программу: максимальная скорость, широкое
-//    поле зрения, частые кольца — и человек «внутри».
-//  • Витрина программы — в глубине коридора проплывают таблички-модули
-//    («Живая карта», «Маршруты», «Биржа грузов»…) — объём и ощущение
-//    наполненности; точный список продублирован HTML-чипами на странице.
+//   • небо с звёздами и тёплым заревом города на горизонте;
+//   • дорога в перспективе: разметка и придорожные столбики МЧАТСЯ
+//     к камере — скорость читается мгновенно, на любом экране;
+//   • над дорогой проплывают порталы-указатели — как дорожные знаки
+//     над трассой, с модулями программы («Живая карта», «Маршруты»…);
+//   • огни города по сторонам горизонта.
 //
-// Техника: canvas 2D + собственная перспективная проекция (yaw → pitch →
-// persp = fov/(fov+z2)), без библиотек и новых зависимостей. Крен камеры —
-// поворотом контекста вокруг центра экрана.
+// СМЕНА РАКУРСА: на ПК — за курсором; на телефоне — ПАЛЬЦЕМ по сцене
+// (верхняя половина экрана — «лобовое стекло», компонент рисует поверх
+// него невидимую площадку обзора с touch-none). Дорога уходит к линии
+// горизонта в верхней части экрана — движение видно сразу, а не «улетает
+// по краям».
 //
-// Экономия: DPR ≤ 2, на узких экранах меньше узлов и 30 кадров/с (на ПК —
-// 60), скрытая вкладка — пауза, prefers-reduced-motion — один статичный
-// кадр без слушателей. Для приёмочных тестов публикуем
-// window.__loginScene (счётчики кликов/ворпа, угол камеры, скорость).
+// Движение: «прилёт» на разгоне при открытии → спокойный полёт;
+// каждый клик/тап — рывок; печать — энергия; успешный вход — ворп.
+// Техника прежняя: canvas 2D + своя перспектива, без зависимостей.
+// Приёмка: window.__loginScene (+ __loginScenePaused для скриншотов,
+// __loginSceneLook для площадки обзора).
 
 import { useEffect, useRef } from "react"
 
 const MAX_DPR = 2
-const FRAME_MS_WIDE = 0 // без ограничения: ~60 кадров/с
+const FRAME_MS_WIDE = 0 // ~60 кадров/с на ПК
 const FRAME_MS_NARROW = 1000 / 30
 
-// Геометрия мира
-const FOV = 640
-const GATE_STEP = 780
-const GATE_COUNT = 10
-const DEPTH = GATE_STEP * GATE_COUNT
-const GATE_W = 1080
-const GATE_H = 660
+const FOV = 620
+const GROUND_Y = 200 // дорога «ниже» камеры на 200 условных единиц
+const ROAD_HALF = 300
+const DRAW_DIST = 5200
+const DASH_STEP = 90
+const POST_STEP = 150
+const GANTRY_STEP = 1700
+const GANTRY_COUNT = 6
+const GANTRY_DEPTH = GANTRY_STEP * GANTRY_COUNT
 
-// Движение
 const SPEED_BASE = 135
 const SPEED_PLUNGE = 2500
 const SPEED_WARP = 4800
 
-const NODES_WIDE = 64
-const NODES_NARROW = 38
-const DUST_WIDE = 30
-const DUST_NARROW = 16
-const LINK_3D = 430
-
-const COLORS = ["148, 163, 184", "56, 189, 248", "99, 102, 241", "251, 191, 36"]
-
-type Gate = { z: number; passed: boolean; double: boolean }
-type NetNode = { x: number; y: number; z: number; size: number; rgb: string; phase: number }
-type Link = { a: number; b: number }
-type Billboard = {
-  z: number
-  side: 1 | -1
-  y: number
-  w: number
-  h: number
-  title: string
-  sub: string
-  phase: number
-}
-type Dust = { x: number; y: number; z: number; rgb: string; fresh: boolean; px: number; py: number }
-type Ring = { x: number; y: number; t0: number; big: boolean }
-
-/** Что проплывает мимо в глубине коридора — витрина программы. */
-const BOARDS: ReadonlyArray<{ title: string; sub: string }> = [
-  { title: "Живая карта", sub: "машины, ETA и статусы в реальном времени" },
-  { title: "Маршруты по дорогам", sub: "OSRM: плечи, оптимизация, прогноз" },
-  { title: "Биржа грузов", sub: "ATI.SU и Cargomart в одном окне" },
-  { title: "Документы и оплаты", sub: "статусы рейсов без Excel" },
-  { title: "Аналитика парка", sub: "KPI, выручка и простои в один экран" },
+/** Порталы-указатели над дорогой — модули программы. */
+const SIGNS: ReadonlyArray<{ title: string; sub: string }> = [
+  { title: "Живая карта", sub: "машины и ETA в реальном времени" },
+  { title: "Маршруты OSRM", sub: "плечи и оптимизация" },
+  { title: "Биржа грузов", sub: "ATI.SU · Cargomart" },
+  { title: "Документы", sub: "статусы рейсов без Excel" },
+  { title: "Аналитика", sub: "KPI парка в один экран" },
   { title: "Доступы и роли", sub: "у каждой стороны — своё окно" },
 ]
 
-/** Мягкие пятна сияния — дальний свет «города» за коридором. */
-const BLOBS = [
-  { rgb: [56, 130, 246] as const, cx: 0.16, cy: 0.14, r: 0.9, speed: 0.03, phase: 0, alpha: 0.1 },
-  { rgb: [245, 158, 11] as const, cx: 0.88, cy: 0.9, r: 0.7, speed: 0.021, phase: 2.1, alpha: 0.06 },
-  { rgb: [99, 102, 241] as const, cx: 0.78, cy: 0.1, r: 0.85, speed: 0.016, phase: 4.2, alpha: 0.07 },
-]
+type Gantry = { z: number; sign: number; passed: boolean }
+type CityLight = { x: number; z: number; rgb: string; size: number; phase: number }
+type Star = { x: number; y: number; z: number; size: number; phase: number }
+type Ring = { x: number; y: number; t0: number; big: boolean }
 
 type SceneDebug = {
   plunges: number
@@ -98,7 +68,6 @@ type SceneDebug = {
   speed: number
   energy: number
   warp: number
-  /** Сколько раз сцена пересобиралась (должно быть 1 после загрузки) */
   resets: number
 }
 
@@ -109,8 +78,11 @@ function prefersReducedMotion(): boolean {
   )
 }
 
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+
 export function LoginScene(): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const padRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -124,38 +96,28 @@ export function LoginScene(): React.ReactElement {
     let width = 0
     let height = 0
     let narrow = false
-    // Геометрия коридора подбирается под экран: на телефоне ворота меньше
-    // и чаще — рамки видны ЦЕЛИКОМ и обрамляют форму входа, а не режутся
-    // краями экрана (именно это давало «фон непонятно движется»)
-    let gateHalfW = GATE_W / 2
-    let gateHalfH = GATE_H / 2
-    let gateStep = GATE_STEP
-    let depth = DEPTH
-    // Куда смотрит камера: ось коридора идёт через ФОРМУ входа —
-    // точка схода и ворота привязаны к карточке, форма «висит» внутри
-    // сцены, а не приклеена к экрану
-    let originX = 0
-    let originY = 0
     let frameMs = FRAME_MS_WIDE
     let raf = 0
     let last = 0
-    let lastPlungeMs = 0
     let frameNo = 0
+    let lastPlungeMs = 0
 
     // Камера
-    const cam = { yaw: 0, pitch: 0, roll: 0, z: 0 }
+    const cam = { z: 0 }
     let speed = SPEED_BASE
     let energy = 0
     let fovKick = 0
-    let rollKick = 0
     let warpT = 0
+    // ракурс: мышь (ПК) + палец (телефон, площадка обзора) + базовый наклон
+    let yawMouse = 0
+    let pitchMouse = 0
+    let yawDrag = 0
+    let pitchDrag = 0
     let pointer: { x: number; y: number } | null = null
 
-    let gates: Gate[] = []
-    let nodes: NetNode[] = []
-    let links: Link[] = []
-    let boards: Billboard[] = []
-    let dust: Dust[] = []
+    let gantries: Gantry[] = []
+    let lights: CityLight[] = []
+    let stars: Star[] = []
     let rings: Ring[] = []
     let lastWarpRing = 0
 
@@ -169,92 +131,42 @@ export function LoginScene(): React.ReactElement {
       warp: 0,
       resets: 0,
     }
-    ;(window as Window & { __loginScene?: SceneDebug }).__loginScene = debug
-
-    const randSide = () => (Math.random() < 0.5 ? -1 : 1)
+    const w = window as Window & {
+      __loginScene?: SceneDebug
+      __loginSceneLook?: (dx: number, dy: number) => void
+      __loginScenePaused?: boolean
+    }
+    w.__loginScene = debug
 
     const seed = () => {
       debug.resets += 1
       narrow = width < 640
       frameMs = narrow ? FRAME_MS_NARROW : FRAME_MS_WIDE
-      gateHalfW = narrow ? 330 : GATE_W / 2
-      gateHalfH = narrow ? 235 : GATE_H / 2
-      gateStep = narrow ? 620 : GATE_STEP
-      depth = gateStep * GATE_COUNT
 
-      gates = Array.from({ length: GATE_COUNT }, (_, i) => ({
-        z: 120 + i * gateStep,
+      gantries = Array.from({ length: GANTRY_COUNT }, (_, i) => ({
+        z: 700 + i * GANTRY_STEP,
+        sign: i % SIGNS.length,
         passed: false,
-        double: i % 2 === 0,
       }))
 
-      const nodeCount = narrow ? NODES_NARROW : NODES_WIDE
-      nodes = Array.from({ length: nodeCount }, () => ({
-        x: randSide() * (gateHalfW + 70 + Math.random() * 420),
-        y: (Math.random() * 2 - 1) * (gateHalfH + 60 + Math.random() * 330),
-        z: Math.random() * depth,
-        size: 0.7 + Math.random() * 1.4,
-        rgb: COLORS[Math.floor(Math.random() * COLORS.length)],
-        phase: Math.random() * Math.PI * 2,
-      }))
-      // связи считаем один раз по стартовым позициям; при перерождении
-      // узла связь просто натягивается — рядом с камерой всё равно невидимо
-      links = []
-      for (let i = 0; i < nodes.length; i += 1) {
-        for (let j = i + 1; j < nodes.length; j += 1) {
-          const a = nodes[i]
-          const b = nodes[j]
-          const dx = a.x - b.x
-          const dy = a.y - b.y
-          const dz = a.z - b.z
-          if (dx * dx + dy * dy + dz * dz < LINK_3D * LINK_3D) links.push({ a: i, b: j })
-          if (links.length > 150) break
+      lights = Array.from({ length: narrow ? 18 : 30 }, () => {
+        const warm = Math.random() < 0.45
+        return {
+          x: (Math.random() < 0.5 ? -1 : 1) * (520 + Math.random() * 2100),
+          z: 3200 + Math.random() * 1900,
+          rgb: warm ? "251, 191, 36" : "125, 211, 252",
+          size: 1 + Math.random() * 1.4,
+          phase: Math.random() * Math.PI * 2,
         }
-      }
+      })
 
-      boards = BOARDS.map((b, i) => ({
-        z: 900 + (i * depth) / BOARDS.length,
-        side: i % 2 === 0 ? 1 : -1,
-        y: (i % 4 < 2 ? -1 : 1) * (narrow ? 170 : 120),
-        w: narrow ? 370 : 470,
-        h: narrow ? 132 : 152,
-        title: b.title,
-        sub: b.sub,
+      stars = Array.from({ length: narrow ? 26 : 42 }, () => ({
+        x: (Math.random() * 2 - 1) * 2500,
+        y: -(350 + Math.random() * 1500),
+        z: 2800 + Math.random() * 2400,
+        size: 0.6 + Math.random() * 1.1,
         phase: Math.random() * Math.PI * 2,
       }))
-
-      const dustCount = narrow ? DUST_NARROW : DUST_WIDE
-      dust = Array.from({ length: dustCount }, () => ({
-        x: (Math.random() * 2 - 1) * (narrow ? 780 : 1150),
-        y: (Math.random() * 2 - 1) * (narrow ? 520 : 750),
-        z: Math.random() * depth,
-        rgb: COLORS[Math.floor(Math.random() * COLORS.length)],
-        fresh: true,
-        px: 0,
-        py: 0,
-      }))
-    }
-
-    let seeded = false
-    let anchorDirty = true
-
-    /** Центр формы входа — ось коридора. Меряем внешний контейнер
-     *  карточки (без 3D-трансформаций), чтобы не было обратной связи.
-     *  Читаем раскладку только по грязному флагу (прокрутка/ресайз):
-     *  ежекадровые замеры душат страницу постоянным reflow. */
-    const measureAnchor = () => {
-      const el =
-        document.querySelector("[data-card-anchor]") ??
-        document.querySelector(".login-card-glow") ??
-        document.querySelector("form")
-      if (!el || width === 0) {
-        originX = width / 2
-        originY = height / 2
-        return
-      }
-      const rect = el.getBoundingClientRect()
-      originX = rect.left + rect.width / 2
-      originY = rect.top + rect.height / 2
     }
 
     const resize = () => {
@@ -263,37 +175,33 @@ export function LoginScene(): React.ReactElement {
       canvas.width = Math.max(1, Math.round(width * dpr))
       canvas.height = Math.max(1, Math.round(height * dpr))
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      // Сцену собираем один раз при старте. На телефоне адресная строка и
-      // клавиатура постоянно меняют высоту viewport: пересборка на каждый
-      // resize — это скачки и мерцание, которые выглядят как поломка
-      if (!seeded) {
-        seed()
-        seeded = true
-      }
-      measureAnchor()
+      seed()
     }
 
-    /** Проекция точки мира на экран с учётом поворота камеры. */
-    const project = (x: number, y: number, z: number, sinYaw: number, cosYaw: number, sinP: number, cosP: number, fov: number) => {
+    /** Проекция точки мира (x — вправо, y — ВНИЗ, z — вперёд). */
+    const project = (
+      x: number,
+      y: number,
+      z: number,
+      sinYaw: number,
+      cosYaw: number,
+      sinP: number,
+      cosP: number,
+      fov: number,
+    ) => {
       const dz = z - cam.z
       const x1 = x * cosYaw - dz * sinYaw
       const z1 = x * sinYaw + dz * cosYaw
       const y1 = y * cosP - z1 * sinP
       const z2 = y * sinP + z1 * cosP
       const persp = fov / (fov + z2)
-      return { sx: originX + x1 * persp, sy: originY + y1 * persp, persp, z2 }
+      return { sx: width / 2 + x1 * persp, sy: height / 2 + y1 * persp, persp, z2 }
     }
 
     const draw = (t: number, dt: number, nowMs: number) => {
       ctx.clearRect(0, 0, width, height)
-      // форма может двигаться по экрану (прокрутка на телефоне) —
-      // держим ось коридора на ней
-      if (anchorDirty || frameNo % 60 === 0) {
-        anchorDirty = false
-        measureAnchor()
-      }
 
-      // ── движение камеры ──
+      // ── движение ──
       energy *= Math.exp(-dt * 2.0)
       warpT *= Math.exp(-dt * 2.1)
       if (warpT > 0.05) {
@@ -304,274 +212,232 @@ export function LoginScene(): React.ReactElement {
       }
       cam.z += speed * dt
       fovKick *= Math.exp(-dt * 3.0)
-      rollKick *= Math.exp(-dt * 2.6)
 
-      // Угол обзора: на ПК — за курсором; на телефоне палец занят
-      // прокруткой, поэтому камеру там ведёт сама прокрутка — сцена
-      // «едет» вместе с содержимым, без дёрганья от свайпов
-      const scrollNorm = Math.max(
-        0,
-        Math.min(1, window.scrollY / Math.max(1, window.innerHeight * 0.8)),
-      )
-      const yawT = pointer ? -(pointer.x / width - 0.5) * 0.46 : scrollNorm * 0.16
-      const pitchT = pointer ? -(pointer.y / height - 0.5) * 0.3 : scrollNorm * 0.3
-      cam.yaw += (yawT - cam.yaw) * Math.min(1, dt * 2.2)
-      cam.pitch += (pitchT - cam.pitch) * Math.min(1, dt * 2.2)
+      // ── ракурс ──
+      // ПК: камера смотрит за курсором; телефон: за пальцем (площадка
+      // обзора) + горизонт поднят в «лобовое стекло»
+      const yawT = pointer ? -(pointer.x / width - 0.5) * 0.4 : 0
+      const pitchT = pointer ? -(pointer.y / height - 0.5) * 0.22 : 0
+      yawMouse += (yawT - yawMouse) * Math.min(1, dt * 2.2)
+      pitchMouse += (pitchT - pitchMouse) * Math.min(1, dt * 2.2)
+      // палец отпустили — ракурс медленно возвращается к дороге
+      yawDrag *= Math.exp(-dt * 0.12)
+      pitchDrag *= Math.exp(-dt * 0.12)
 
-      const swayY = Math.sin(t * 0.13) * 0.055
-      const swayP = Math.sin(t * 0.16 + 1.3) * 0.035
-      const yaw = cam.yaw + swayY
-      const pitch = cam.pitch + swayP
+      const basePitch = narrow ? 0.16 : 0.09
+      const swayY = Math.sin(t * 0.13) * 0.02
+      const swayP = Math.sin(t * 0.16 + 1.3) * 0.012
+      const yaw = yawMouse + yawDrag + swayY
+      const pitch = basePitch + pitchMouse + pitchDrag + swayP
       const sinYaw = Math.sin(yaw)
       const cosYaw = Math.cos(yaw)
       const sinP = Math.sin(pitch)
       const cosP = Math.cos(pitch)
       const fov = FOV + fovKick
-      const roll = cam.roll + rollKick
 
-      // точка схода — куда летим: у самой ФОРМЫ; свет «города»
-      // смещается вместе с обзором
-      const vpx = originX - fov * Math.tan(yaw)
-      const vpy = originY - fov * Math.tan(pitch)
+      // точка схода дороги
+      const vpx = width / 2 - fov * Math.tan(yaw)
+      const vpy = height / 2 - fov * Math.tan(pitch)
 
-      const bright = 0.8 + Math.min(1.2, energy) * 0.5 + warpT * 1.1
+      const bright = 0.85 + Math.min(1.2, energy) * 0.5 + warpT * 1.1
+      const P = (x: number, y: number, z: number) => project(x, y, z, sinYaw, cosYaw, sinP, cosP, fov)
 
-      ctx.save()
-      // крен камеры — весь мир чуть наклоняется при рывке
-      if (Math.abs(roll) > 0.0005) {
-        // крен вращает мир вокруг формы — карточка стоит на месте
-        ctx.translate(originX, originY)
-        ctx.rotate(roll)
-        ctx.translate(-originX, -originY)
-      }
+      // ── 1. небо ──
+      const sky = ctx.createLinearGradient(0, 0, 0, height)
+      sky.addColorStop(0, "#05070e")
+      sky.addColorStop(0.62, "#0a1122")
+      sky.addColorStop(1, "#141d36")
+      ctx.fillStyle = sky
+      ctx.fillRect(0, 0, width, height)
 
-      // ── 1. дальнее сияние ──
-      ctx.globalCompositeOperation = "lighter"
-      const min = Math.min(width, height) || 1
-      for (const b of BLOBS) {
-        const x = (b.cx + Math.sin(t * b.speed + b.phase) * 0.07) * width
-        const y = (b.cy + Math.cos(t * b.speed * 0.8 + b.phase) * 0.06) * height
-        const r = b.r * min
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, r)
-        gradient.addColorStop(0, `rgba(${b.rgb[0]}, ${b.rgb[1]}, ${b.rgb[2]}, ${b.alpha})`)
-        gradient.addColorStop(1, "rgba(0, 0, 0, 0)")
-        ctx.fillStyle = gradient
+      // звёзды
+      for (const s of stars) {
+        const q = P(s.x, s.y, s.z)
+        if (q.z2 < 0) continue
+        const tw = 0.35 + 0.3 * Math.sin(t * 0.9 + s.phase)
+        ctx.fillStyle = `rgba(226, 232, 240, ${tw * q.persp})`
         ctx.beginPath()
-        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.arc(q.sx, q.sy, s.size, 0, Math.PI * 2)
         ctx.fill()
       }
-      // свет в точке схода — «вход в программу»
-      const vpR = 240 + fovKick * 1.6 + warpT * 420
-      const vpGrad = ctx.createRadialGradient(vpx, vpy, 0, vpx, vpy, vpR)
-      vpGrad.addColorStop(0, `rgba(56, 189, 248, ${0.12 * bright})`)
-      vpGrad.addColorStop(1, "rgba(0, 0, 0, 0)")
-      ctx.fillStyle = vpGrad
+
+      // зарево города на горизонте: тёплое + холодное
+      ctx.globalCompositeOperation = "lighter"
+      const glowR = (narrow ? 300 : 380) + warpT * 300
+      const warm = ctx.createRadialGradient(vpx, vpy, 0, vpx, vpy, glowR)
+      warm.addColorStop(0, `rgba(251, 146, 60, ${0.13 * bright})`)
+      warm.addColorStop(1, "rgba(0, 0, 0, 0)")
+      ctx.fillStyle = warm
       ctx.beginPath()
-      ctx.arc(vpx, vpy, vpR, 0, Math.PI * 2)
+      ctx.arc(vpx, vpy, glowR, 0, Math.PI * 2)
+      ctx.fill()
+      const cool = ctx.createRadialGradient(vpx, vpy, 0, vpx, vpy, glowR * 1.6)
+      cool.addColorStop(0, `rgba(56, 130, 246, ${0.1 * bright})`)
+      cool.addColorStop(1, "rgba(0, 0, 0, 0)")
+      ctx.fillStyle = cool
+      ctx.beginPath()
+      ctx.arc(vpx, vpy, glowR * 1.6, 0, Math.PI * 2)
       ctx.fill()
       ctx.globalCompositeOperation = "source-over"
 
-      // ── 2. ворота коридора ──
-      const corners = [-gateHalfW, gateHalfW]
-      const ys = [-gateHalfH, gateHalfH]
-      const gatePts = gates.map((g) => {
-        const pts = [
-          project(corners[0], ys[0], g.z, sinYaw, cosYaw, sinP, cosP, fov),
-          project(corners[1], ys[0], g.z, sinYaw, cosYaw, sinP, cosP, fov),
-          project(corners[1], ys[1], g.z, sinYaw, cosYaw, sinP, cosP, fov),
-          project(corners[0], ys[1], g.z, sinYaw, cosYaw, sinP, cosP, fov),
-        ]
-        return { g, pts, avg: (pts[0].persp + pts[2].persp) / 2 }
-      })
-      gatePts.sort((a, b) => b.g.z - a.g.z)
+      // ── 2. земля и дорога ──
+      const far = cam.z + DRAW_DIST
+      const near = cam.z + 30
+      const gFL = P(-3200, GROUND_Y, far)
+      const gFR = P(3200, GROUND_Y, far)
+      const gNR = P(3200, GROUND_Y, near)
+      const gNL = P(-3200, GROUND_Y, near)
+      ctx.fillStyle = "#04060c"
+      ctx.beginPath()
+      ctx.moveTo(gFL.sx, gFL.sy)
+      ctx.lineTo(gFR.sx, gFR.sy)
+      ctx.lineTo(gNR.sx, gNR.sy)
+      ctx.lineTo(gNL.sx, gNL.sy)
+      ctx.closePath()
+      ctx.fill()
 
-      // рельсы: угол ворот → угол следующих ворот
-      for (let i = 0; i < gatePts.length - 1; i += 1) {
-        const a = gatePts[i]
-        const b = gatePts[i + 1]
-        const alpha = 0.08 * Math.min(a.avg, b.avg) * bright
-        if (alpha < 0.008) continue
-        ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`
-        ctx.lineWidth = 0.7
-        ctx.beginPath()
-        for (let k = 0; k < 4; k += 1) {
-          ctx.moveTo(a.pts[k].sx, a.pts[k].sy)
-          ctx.lineTo(b.pts[k].sx, b.pts[k].sy)
-        }
-        ctx.stroke()
-      }
+      const rFL = P(-ROAD_HALF, GROUND_Y, far)
+      const rFR = P(ROAD_HALF, GROUND_Y, far)
+      const rNR = P(ROAD_HALF, GROUND_Y, near)
+      const rNL = P(-ROAD_HALF, GROUND_Y, near)
+      ctx.fillStyle = "#0c1424"
+      ctx.beginPath()
+      ctx.moveTo(rFL.sx, rFL.sy)
+      ctx.lineTo(rFR.sx, rFR.sy)
+      ctx.lineTo(rNR.sx, rNR.sy)
+      ctx.lineTo(rNL.sx, rNL.sy)
+      ctx.closePath()
+      ctx.fill()
 
-      for (const { g, pts, avg } of gatePts) {
-        // ворота прошли камеру → кольцо-удар из точки схода
-        if (!g.passed && g.z - cam.z < 30) {
-          g.passed = true
-          if (rings.length < 8) rings.push({ x: vpx, y: vpy, t0: nowMs, big: false })
-        }
-        if (g.z - cam.z < -240) {
-          g.z += depth
-          g.passed = false
-          continue
-        }
-        let alpha = Math.max(0, Math.min(0.5, (avg - 0.1) * 1.4)) * bright
-        alpha *= Math.max(0, Math.min(1, (1.04 - avg) * 6)) // не вспыхиваем у лица
-        if (alpha < 0.006) continue
-        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.8})`
-        ctx.lineWidth = 1.1
-        ctx.beginPath()
-        ctx.moveTo(pts[0].sx, pts[0].sy)
-        for (let k = 1; k < 4; k += 1) ctx.lineTo(pts[k].sx, pts[k].sy)
-        ctx.closePath()
-        ctx.stroke()
-        // засечки по углам — «технический» вид рамки
-        ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`
-        ctx.lineWidth = 1.4
-        for (let k = 0; k < 4; k += 1) {
-          const p = pts[k]
-          const nx = (pts[(k + 1) % 4].sx - p.sx) * 0.12
-          const ny = (pts[(k + 1) % 4].sy - p.sy) * 0.12
-          ctx.beginPath()
-          ctx.moveTo(p.sx, p.sy)
-          ctx.lineTo(p.sx + nx, p.sy + ny)
-          ctx.stroke()
-        }
-        // каждая вторая рамка — двойная (внутренний контур)
-        if (g.double && avg > 0.16) {
-          ctx.strokeStyle = `rgba(148, 163, 184, ${alpha * 0.45})`
-          ctx.lineWidth = 0.7
-          ctx.beginPath()
-          for (let k = 0; k < 4; k += 1) {
-            const cx = (pts[k].sx + pts[(k + 1) % 4].sx) / 2
-            const cy = (pts[k].sy + pts[(k + 1) % 4].sy) / 2
-            const mx = (cx + originX) / 2
-            const my = (cy + originY) / 2
-            if (k === 0) ctx.moveTo(mx, my)
-            else ctx.lineTo(mx, my)
-          }
-          ctx.closePath()
-          ctx.stroke()
-        }
-      }
-
-      // ── 3. боковая сеть (узлы + связи) ──
-      const proj = nodes.map((n) => {
-        const bob = Math.sin(t * 0.7 + n.phase) * 26
-        return {
-          ...project(n.x, n.y + bob, n.z, sinYaw, cosYaw, sinP, cosP, fov),
-          size: n.size,
-          rgb: n.rgb,
-        }
-      })
-      for (const n of nodes) {
-        if (n.z - cam.z < -200) {
-          n.z += depth
-        }
-      }
-      for (const l of links) {
-        const a = proj[l.a]
-        const b = proj[l.b]
-        if (a.z2 < -80 || b.z2 < -80) continue
-        const depth = Math.min(a.persp, b.persp)
-        const alpha = 0.12 * depth * bright
-        if (alpha < 0.006) continue
-        ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`
-        ctx.lineWidth = 0.6
+      // кромки дороги
+      ctx.strokeStyle = `rgba(148, 163, 184, ${0.4 * bright})`
+      ctx.lineWidth = 1.6
+      for (const edgeX of [-ROAD_HALF, ROAD_HALF]) {
+        const a = P(edgeX, GROUND_Y, far)
+        const b = P(edgeX, GROUND_Y, near)
         ctx.beginPath()
         ctx.moveTo(a.sx, a.sy)
         ctx.lineTo(b.sx, b.sy)
         ctx.stroke()
       }
-      proj.sort((a, b) => a.persp - b.persp)
-      for (const q of proj) {
-        if (q.z2 < -80) continue
-        const alpha = Math.min(0.9, (0.14 + (q.persp - 0.6) * 0.85) * bright)
-        if (alpha < 0.01) continue
-        const r = q.size * (0.5 + q.persp * 0.85) * (1 + Math.min(1, energy) * 0.2)
-        ctx.fillStyle = `rgba(${q.rgb}, ${alpha})`
-        ctx.beginPath()
-        ctx.arc(q.sx, q.sy, r, 0, Math.PI * 2)
-        ctx.fill()
-      }
 
-      // ── 4. витрина: таблички-модули в глубине ──
-      const boardDraws = boards.map((b) => {
-        const bob = Math.sin(t * 0.5 + b.phase) * 16
-        const p = project(b.side * (narrow ? 320 : 540), b.y + bob, b.z, sinYaw, cosYaw, sinP, cosP, fov)
-        return { b, p }
-      })
-      boardDraws.sort((a, b) => a.p.persp - b.p.persp)
-      for (const { b, p } of boardDraws) {
-        if (b.z - cam.z < -140) {
-          b.z += depth
-          continue
-        }
-        if (p.z2 < -60) continue
-        const s = p.persp
-        let a = Math.max(0, Math.min(0.85, (s - 0.17) * 2.4)) * bright
-        a *= Math.max(0, Math.min(1, (0.98 - s) * 6))
-        if (a < 0.01) continue
-        const w = b.w * s
-        const h = b.h * s
-        const x = p.sx - w / 2
-        const y = p.sy - h / 2
-        // стеклянная панель
-        ctx.fillStyle = `rgba(9, 14, 26, ${0.42 * a})`
-        ctx.beginPath()
-        if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10 * s)
-        else ctx.rect(x, y, w, h)
-        ctx.fill()
-        ctx.strokeStyle = `rgba(148, 163, 184, ${0.32 * a})`
-        ctx.lineWidth = 1
-        ctx.stroke()
-        // акцентная полоса
-        ctx.fillStyle = `rgba(56, 189, 248, ${0.75 * a})`
-        ctx.fillRect(x + 8 * s, y + 10 * s, Math.max(1, 3 * s), h - 20 * s)
-        // заголовок и подпись
-        ctx.textBaseline = "alphabetic"
-        ctx.fillStyle = `rgba(226, 232, 240, ${0.95 * a})`
-        ctx.font = `600 ${Math.max(9, 30 * s)}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`
-        ctx.fillText(b.title, x + 22 * s, y + h * 0.42)
-        ctx.fillStyle = `rgba(148, 163, 184, ${0.85 * a})`
-        ctx.font = `400 ${Math.max(8, 19 * s)}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`
-        ctx.fillText(b.sub, x + 22 * s, y + h * 0.68)
-      }
-
-      // ── 5. пыль: при разгоне превращается в штрихи скорости ──
-      for (const d of dust) {
-        if (d.z - cam.z < -160) {
-          d.z += depth
-          d.fresh = true
-        }
-        const p = project(d.x, d.y, d.z, sinYaw, cosYaw, sinP, cosP, fov)
-        if (p.z2 < -60 || p.persp > 1.3) {
-          d.fresh = true
-          continue
-        }
-        const streak = Math.min(90, Math.max(0, (speed - SPEED_BASE) * 0.05))
-        if (!d.fresh && streak > 2) {
-          const dx = p.sx - d.px
-          const dy = p.sy - d.py
-          const len = Math.hypot(dx, dy)
-          if (len > 2 && len < 220) {
-            const k = streak / 24
-            ctx.strokeStyle = `rgba(${d.rgb}, ${0.4 * p.persp})`
-            ctx.lineWidth = Math.max(0.6, 1.1 * p.persp)
-            ctx.beginPath()
-            ctx.moveTo(p.sx, p.sy)
-            ctx.lineTo(p.sx - dx * k, p.sy - dy * k)
-            ctx.stroke()
-          }
-        } else {
-          ctx.fillStyle = `rgba(${d.rgb}, ${0.3 * p.persp})`
+      // ── 3. разметка: мчится к камере — главный сигнал скорости ──
+      const dashStart = cam.z - (cam.z % DASH_STEP) + DASH_STEP
+      for (const laneX of [-100, 100]) {
+        for (let z = dashStart; z < far; z += DASH_STEP) {
+          const p1 = P(laneX - 7, GROUND_Y, z)
+          const p2 = P(laneX + 7, GROUND_Y, z)
+          const p3 = P(laneX + 7, GROUND_Y, z + 36)
+          const p4 = P(laneX - 7, GROUND_Y, z + 36)
+          if (p1.z2 < 0 || p1.persp > 1.25) continue
+          const a = Math.min(0.85, 0.15 + p1.persp * 0.75) * bright
+          ctx.fillStyle = `rgba(191, 219, 254, ${a})`
           ctx.beginPath()
-          ctx.arc(p.sx, p.sy, Math.max(0.5, 0.9 * p.persp), 0, Math.PI * 2)
+          ctx.moveTo(p1.sx, p1.sy)
+          ctx.lineTo(p2.sx, p2.sy)
+          ctx.lineTo(p3.sx, p3.sy)
+          ctx.lineTo(p4.sx, p4.sy)
+          ctx.closePath()
           ctx.fill()
         }
-        d.px = p.sx
-        d.py = p.sy
-        d.fresh = false
       }
 
-      // ── 6. кольца: проход ворот, клики, ворп ──
+      // ── 4. столбики по обочинам ──
+      const postStart = cam.z - (cam.z % POST_STEP) + POST_STEP
+      for (let z = postStart; z < far; z += POST_STEP) {
+        for (const side of [-1, 1]) {
+          const x = side * (ROAD_HALF + 60)
+          const base = P(x, GROUND_Y, z)
+          const top = P(x, GROUND_Y - 64, z)
+          if (base.z2 < 0 || base.persp > 1.2) continue
+          const a = Math.min(0.8, 0.1 + base.persp * 0.8) * bright
+          ctx.strokeStyle = `rgba(56, 189, 248, ${a * 0.55})`
+          ctx.lineWidth = 1.2
+          ctx.beginPath()
+          ctx.moveTo(base.sx, base.sy)
+          ctx.lineTo(top.sx, top.sy)
+          ctx.stroke()
+          ctx.fillStyle = `rgba(125, 211, 252, ${a})`
+          ctx.beginPath()
+          ctx.arc(top.sx, top.sy, Math.max(0.8, 2.2 * top.persp), 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+
+      // ── 5. порталы-указатели с модулями программы ──
+      const gantrySorted = [...gantries].sort((a, b) => b.z - a.z)
+      for (const g of gantrySorted) {
+        if (!g.passed && g.z - cam.z < 40) {
+          g.passed = true
+          if (rings.length < 8) rings.push({ x: vpx, y: vpy, t0: nowMs, big: false })
+        }
+        if (g.z - cam.z < -320) {
+          g.z += GANTRY_DEPTH
+          g.passed = false
+          continue
+        }
+        const rel = g.z - cam.z
+        if (rel < 30) continue
+        const s = fov / (fov + rel * cosP)
+        if (s < 0.16) continue
+
+        const sign = SIGNS[g.sign]
+        // опоры и перекладина
+        const legL = P(-(ROAD_HALF + 110), GROUND_Y, g.z)
+        const legLT = P(-(ROAD_HALF + 110), -230, g.z)
+        const legR = P(ROAD_HALF + 110, GROUND_Y, g.z)
+        const legRT = P(ROAD_HALF + 110, -230, g.z)
+        const alpha = Math.min(0.9, (s - 0.16) * 2.2) * Math.min(1, (1.05 - s) * 5) * bright
+        if (alpha < 0.01) continue
+        ctx.strokeStyle = `rgba(100, 116, 139, ${alpha * 0.7})`
+        ctx.lineWidth = Math.max(1, 5 * s)
+        ctx.beginPath()
+        ctx.moveTo(legL.sx, legL.sy)
+        ctx.lineTo(legLT.sx, legLT.sy)
+        ctx.moveTo(legR.sx, legR.sy)
+        ctx.lineTo(legRT.sx, legRT.sy)
+        ctx.moveTo(legLT.sx, legLT.sy)
+        ctx.lineTo(legRT.sx, legRT.sy)
+        ctx.stroke()
+
+        // щит-указатель над дорогой
+        const center = P(0, -330, g.z)
+        const pw = 470 * s
+        const ph = 150 * s
+        const x = center.sx - pw / 2
+        const y = center.sy - ph / 2
+        ctx.fillStyle = `rgba(13, 20, 38, ${0.74 * alpha})`
+        ctx.beginPath()
+        if (ctx.roundRect) ctx.roundRect(x, y, pw, ph, 12 * s)
+        else ctx.rect(x, y, pw, ph)
+        ctx.fill()
+        ctx.strokeStyle = `rgba(148, 163, 184, ${0.42 * alpha})`
+        ctx.lineWidth = Math.max(0.8, 1.6 * s)
+        ctx.stroke()
+        // «дорожная» кромка щита
+        ctx.fillStyle = `rgba(56, 189, 248, ${0.6 * alpha})`
+        ctx.fillRect(x, y + ph - Math.max(1, 4 * s), pw, Math.max(1, 4 * s))
+        ctx.textBaseline = "alphabetic"
+        ctx.fillStyle = `rgba(226, 232, 240, ${0.95 * alpha})`
+        ctx.font = `600 ${Math.max(9, 40 * s)}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`
+        ctx.fillText(sign.title, x + 20 * s, y + ph * 0.42)
+        ctx.fillStyle = `rgba(148, 163, 184, ${0.85 * alpha})`
+        ctx.font = `400 ${Math.max(8, 21 * s)}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`
+        ctx.fillText(sign.sub, x + 20 * s, y + ph * 0.72)
+      }
+
+      // ── 6. огни города у горизонта ──
+      for (const c of lights) {
+        const q = P(c.x, GROUND_Y - 4, c.z)
+        if (q.z2 < 0) continue
+        const tw = 0.45 + 0.35 * Math.sin(t * 1.3 + c.phase)
+        ctx.fillStyle = `rgba(${c.rgb}, ${tw * 0.75 * bright})`
+        ctx.beginPath()
+        ctx.arc(q.sx, q.sy, c.size, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      // ── 7. кольца: клики, порталы, ворп ──
       if (warpT > 0.12 && nowMs - lastWarpRing > 160 && rings.length < 8) {
         lastWarpRing = nowMs
         rings.push({ x: vpx, y: vpy, t0: nowMs, big: true })
@@ -588,25 +454,22 @@ export function LoginScene(): React.ReactElement {
         ctx.stroke()
       }
 
-      ctx.restore()
-
-      // ── 7. виньетка: фокус к центру, глубина по краям ──
+      // ── 8. виньетка ──
       const vig = ctx.createRadialGradient(
         width / 2,
         height / 2,
-        Math.min(width, height) * 0.42,
+        Math.min(width, height) * 0.44,
         width / 2,
         height / 2,
-        Math.max(width, height) * 0.75,
+        Math.max(width, height) * 0.78,
       )
       vig.addColorStop(0, "rgba(0, 0, 0, 0)")
-      vig.addColorStop(1, "rgba(0, 0, 0, 0.42)")
+      vig.addColorStop(1, "rgba(0, 0, 0, 0.46)")
       ctx.fillStyle = vig
       ctx.fillRect(0, 0, width, height)
 
-      // отладочная поверхность для приёмочных тестов
-      debug.yaw = cam.yaw
-      debug.pitch = cam.pitch
+      debug.yaw = yaw
+      debug.pitch = pitch
       debug.speed = speed
       debug.energy = energy
       debug.warp = warpT
@@ -615,7 +478,7 @@ export function LoginScene(): React.ReactElement {
     const loop = (ts: number) => {
       raf = requestAnimationFrame(loop)
       if (frameMs > 0 && ts - last < frameMs) return
-      if ((window as Window & { __loginScenePaused?: boolean }).__loginScenePaused === true) {
+      if (w.__loginScenePaused === true) {
         last = ts
         return
       }
@@ -625,41 +488,27 @@ export function LoginScene(): React.ReactElement {
       draw(ts / 1000, dt, ts)
     }
 
-    /** Каждый клик/тап — «проваливание» в программу на шаг глубже. */
-    const plunge = (x: number, y: number, nowMs: number) => {
-      if (nowMs - lastPlungeMs < 220) return
-      lastPlungeMs = nowMs
+    /** Каждый клик/тап — рывок вперёд (click не срабатывает от свайпа). */
+    const onClick = (event: MouseEvent) => {
+      if (performance.now() - lastPlungeMs < 220) return
+      lastPlungeMs = performance.now()
       debug.plunges += 1
       speed = Math.min(SPEED_PLUNGE, speed + 1500)
       fovKick = Math.min(240, fovKick + 150)
-      rollKick = (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.05)
-      if (rings.length < 8) rings.push({ x, y, t0: nowMs, big: false })
+      if (rings.length < 8) rings.push({ x: event.clientX, y: event.clientY, t0: performance.now(), big: false })
     }
-
-    /** Каждый клик/тап — «проваливание». Слушаем именно click: его дают
-     *  клик мышью и тап пальцем, но НЕ даёт прокрутка — раньше на
-     *  pointerdown ловился рывок от каждого свайпа (на телефоне выглядело
-     *  как подлагивание). */
-    const onClick = (event: MouseEvent) => {
-      plunge(event.clientX, event.clientY, performance.now())
-    }
-    /** Угол обзора — за мышью и пером; тач-указатель игнорируем. */
+    /** Ракурс за мышью/пером (телефон водит пальцем по площадке обзора). */
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType === "touch") return
       pointer = { x: event.clientX, y: event.clientY }
     }
-    /** Печать в полях входа — энергия полёта (значения не читаем). */
+    /** Печать в полях — энергия полёта (значения не читаем). */
     const onInput = (event: Event) => {
       const target = event.target as HTMLElement | null
       if (!target || (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA")) return
       energy = Math.min(1.3, energy + 0.4)
     }
-    /** Прокрутка двигает форму по экрану — ось коридора нужно обновить */
-    const onScroll = () => {
-      anchorDirty = true
-    }
-
-    /** Успешный вход — ворп: на секунду полёт превращается в прыжок. */
+    /** Успешный вход — ворп. */
     const onWarp = () => {
       debug.warps += 1
       warpT = 1
@@ -679,22 +528,47 @@ export function LoginScene(): React.ReactElement {
       if (reduced) draw(0, 0.033, performance.now())
     }
 
+    // Площадка обзора: палец по «лобовому стеклу» поворачивает камеру.
+    // Слушаем ОКНО (прозрачные слои кабины не должны перехватывать палец),
+    // но игнорируем касания по консоли и элементам формы
+    let padLast: { x: number; y: number } | null = null
+    w.__loginSceneLook = (dx: number, dy: number) => {
+      yawDrag = clamp(yawDrag + dx * 0.0035, -0.55, 0.55)
+      pitchDrag = clamp(pitchDrag + dy * 0.0026, -0.34, 0.34)
+    }
+    const isUi = (target: EventTarget | null) =>
+      target instanceof Element &&
+      target.closest("[data-login-console], form, button, a, input, textarea, label") != null
+    const onPadDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || isUi(event.target)) return
+      padLast = { x: event.clientX, y: event.clientY }
+    }
+    const onPadMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !padLast) return
+      w.__loginSceneLook?.(event.clientX - padLast.x, event.clientY - padLast.y)
+      padLast = { x: event.clientX, y: event.clientY }
+    }
+    const onPadUp = () => {
+      padLast = null
+    }
+
     resize()
     if (reduced) {
       draw(0, 0.033, performance.now())
     } else {
-      // Старт: мы «прилетаем» — ворота проносятся мимо на большой
-      // скорости, свет разгорается и всё оседает в спокойный полёт
+      // Кинематографичный старт: «прилетаем» на разгоне
       speed = 3200
       fovKick = 220
-      rollKick = 0.05
       energy = 0.5
       raf = requestAnimationFrame(loop)
       window.addEventListener("click", onClick, { passive: true })
       window.addEventListener("pointermove", onPointerMove, { passive: true })
       document.addEventListener("input", onInput, { passive: true })
       window.addEventListener("login:warp", onWarp)
-      window.addEventListener("scroll", onScroll, { passive: true })
+      window.addEventListener("pointerdown", onPadDown, { passive: true })
+      window.addEventListener("pointermove", onPadMove, { passive: true })
+      window.addEventListener("pointerup", onPadUp, { passive: true })
+      window.addEventListener("pointercancel", onPadUp, { passive: true })
     }
     window.addEventListener("resize", onResize)
     document.addEventListener("visibilitychange", onVisibility)
@@ -707,16 +581,29 @@ export function LoginScene(): React.ReactElement {
       window.removeEventListener("pointermove", onPointerMove)
       document.removeEventListener("input", onInput)
       window.removeEventListener("login:warp", onWarp)
-      window.removeEventListener("scroll", onScroll)
-    }
+      window.removeEventListener("pointerdown", onPadDown)
+      window.removeEventListener("pointermove", onPadMove)
+      window.removeEventListener("pointerup", onPadUp)
+      window.removeEventListener("pointercancel", onPadUp)
+      }
   }, [])
 
   return (
-    <canvas
-      ref={canvasRef}
-      data-login-scene
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 h-full w-full"
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        data-login-scene
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 z-0 h-full w-full"
+      />
+      {/* «Лобовое стекло»: палец здесь поворачивает камеру (только телефон;
+          на ПК ракурс ведёт курсор). Клик по площадке тоже проваливает. */}
+      <div
+        ref={padRef}
+        data-lookpad
+        aria-hidden="true"
+        className="fixed inset-x-0 top-0 z-[5] h-[52vh] touch-none lg:hidden"
+      />
+    </>
   )
 }

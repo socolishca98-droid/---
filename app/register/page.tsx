@@ -40,6 +40,7 @@ import {
   Truck,
 } from "lucide-react"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { LoginScene } from "@/components/visual/login-scene"
 
 type Mode = "create" | "join"
 
@@ -130,17 +131,22 @@ function RegisterForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background/70 via-background/40 to-primary/10 p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4">
-            <Truck className="h-8 w-8 text-primary-foreground" />
+    // Та же «ночная дорога», что и на входе: регистрация — часть того же
+    // мира (сцена v3), сверху — бренд, в центре — стеклянная карточка.
+    // На телефоне карточка прокручивается при необходимости, сцена остаётся.
+    <div className="relative min-h-dvh bg-[radial-gradient(120%_100%_at_12%_8%,oklch(0.22_0.04_40/0.4),transparent_55%),radial-gradient(90%_80%_at_92%_92%,oklch(0.2_0.04_255/0.4),transparent_60%)]">
+      <LoginScene />
+      <div className="relative z-10 flex min-h-dvh items-center justify-center p-4 py-10">
+        <div className="scene-rise w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="login-mark mb-4 inline-flex h-16 w-16 items-center justify-center">
+              <Truck className="h-8 w-8 text-primary-foreground" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">{PRODUCT_NAME}</h1>
+            <p className="text-muted-foreground">доступ к системе для вашей компании</p>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">{PRODUCT_NAME}</h1>
-          <p className="text-muted-foreground">доступ к системе для вашей компании</p>
-        </div>
 
-        <Card className="border-border/50 shadow-xl">
+          <Card className="card-materialize border-border/60 bg-card/90 shadow-2xl shadow-black/40 sm:bg-card/85 sm:backdrop-blur-xl">
           <CardHeader className="space-y-3 pb-4">
             <CardTitle className="text-xl">Регистрация</CardTitle>
             <CardDescription>
@@ -354,12 +360,13 @@ function RegisterForm() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Уже есть доступ?{" "}
-          <Link href="/login" className="text-primary hover:underline">
-            Войти
-          </Link>
-        </p>
+          <p className="text-center text-sm text-muted-foreground">
+            Уже есть доступ?{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              Войти
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )
