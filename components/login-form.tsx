@@ -90,7 +90,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
     window.dispatchEvent(new CustomEvent("login:warp"))
-    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 720))
+    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 900))
 
     // Владелец платформы — на свой стартовый экран; остальные — по роли
     router.replace(explicitTarget ?? (result.isOwner ? "/owner" : homeFor(result.role)))

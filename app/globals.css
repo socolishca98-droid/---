@@ -1357,6 +1357,23 @@ body {
   opacity: 1;
 }
 
+/* «Проезжаем плиту — и фонари заканчиваются»: в ворпе риги мира
+   мягко гаснут, двор больше не рождается впереди (см. ending в
+   login-world) — дорога приезжает, программа начинается. */
+[data-login-world] .world-rig {
+  transition: opacity 0.6s ease 0.05s;
+}
+
+[data-login-world][data-warp="1"] .world-rig {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-login-world] .world-rig {
+    transition: none;
+  }
+}
+
 /* далёкая плита НЕЛОВИМА: касание проходит сквозь неё в мир.
    Иначе тап попадал в невидимую форму — и клик не рождался. */
 .doc-arrive[data-state="far"],

@@ -63,7 +63,7 @@ export default function DriverLoginPage() {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
     window.dispatchEvent(new CustomEvent("login:warp"))
-    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 720))
+    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 900))
 
     // Пароль выдан логистом и требует замены — сначала профиль
     if (result.mustChangePassword) {
@@ -113,7 +113,7 @@ export default function DriverLoginPage() {
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="+7 (999) 123-45-67"
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] py-4 pl-12 pr-4 text-[16px] text-white placeholder-slate-600 caret-orange-400 transition-colors focus:border-orange-400/70 focus:bg-white/[0.09] focus:outline-none"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] py-3.5 pl-12 pr-4 text-[16px] sm:py-4 text-white placeholder-slate-600 caret-orange-400 transition-colors focus:border-orange-400/70 focus:bg-white/[0.09] focus:outline-none"
               />
             </div>
           </div>
@@ -131,7 +131,7 @@ export default function DriverLoginPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="выдал логист"
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] py-4 pl-12 pr-4 text-[16px] text-white placeholder-slate-600 caret-orange-400 transition-colors focus:border-orange-400/70 focus:bg-white/[0.09] focus:outline-none"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] py-3.5 pl-12 pr-4 text-[16px] sm:py-4 text-white placeholder-slate-600 caret-orange-400 transition-colors focus:border-orange-400/70 focus:bg-white/[0.09] focus:outline-none"
               />
             </div>
           </div>
@@ -149,7 +149,7 @@ export default function DriverLoginPage() {
           <button
             type="submit"
             disabled={isLoading || !canSubmit}
-            className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 py-4 text-[16px] font-bold text-white shadow-[0_12px_40px_-10px_rgba(251,146,60,0.65)] transition active:scale-[0.98] active:brightness-95 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
+            className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 py-3.5 sm:py-4 text-[16px] font-bold text-white shadow-[0_12px_40px_-10px_rgba(251,146,60,0.65)] transition active:scale-[0.98] active:brightness-95 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
           >
             {isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />

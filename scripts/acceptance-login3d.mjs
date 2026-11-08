@@ -179,6 +179,29 @@ try {
   await wpage.fill("input#email", envValue("OWNER_EMAIL"))
   await wpage.fill("input#password", envValue("OWNER_PASSWORD"))
   await wpage.click("button[type=\"submit\"]", { force: true })
+  // ждём начала ворпа и смотрим «фонари заканчиваются»: двор впереди
+  // больше не рождается, мир гаснет — дорога приехала
+  await wpage.waitForFunction(() => (window.__loginWorld?.warp ?? 0) > 0.9, null, { timeout: 15000 })
+  const yardVis = () =>
+    wpage.evaluate(() => {
+      const els = [...document.querySelectorAll("[data-stack],[data-crane],[data-pole],[data-route-dot]")]
+      let vis = 0
+      for (const el of els) if (parseFloat(getComputedStyle(el).opacity) > 0.05) vis++
+      const rig = document.querySelector(".world-rig")
+      return {
+        vis,
+        rig: rig ? parseFloat(getComputedStyle(rig).opacity) : 1,
+        warp: document.querySelector("[data-login-world]")?.getAttribute("data-warp"),
+      }
+    })
+  const e1 = await yardVis()
+  await wpage.waitForTimeout(430)
+  const e2 = await yardVis()
+  check(
+    "ворп: фонари заканчиваются, мир гаснет",
+    e1.warp === "1" && e2.vis < e1.vis && e2.rig < 0.55,
+    `двор виден ${e1.vis} → ${e2.vis}, мир ${e1.rig.toFixed(2)} → ${e2.rig.toFixed(2)}`,
+  )
   await wpage.waitForURL("**/owner", { timeout: 30000 })
   check("ворп при входе (рывок сквозь мир)", true, "после входа — /owner")
   await wpage.close()

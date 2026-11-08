@@ -203,6 +203,7 @@ export function LoginWorld({
    *  красиво прилетает издалека («мы приехали»); past — после верного
    *  ввода проезжаем её и оказываемся в программе. */
   const [phase, setPhase] = useState<"far" | "here" | "past">("far")
+  const [warping, setWarping] = useState(false)
   /** Тёплая или холодная сигнатура акцентов — вход логиста/водителя. */
   const accent = variant === "driver" ? "#f59e0b" : "#22d3ee"
 
@@ -282,6 +283,7 @@ export function LoginWorld({
     let speed = reduced ? 0 : 2600 // кинематографичный прилёт на разгоне
     let energy = 0
     let warpT = 0
+    let ending = false
     let yaw = 0
     let pitch = 0
     let yawMouse = 0
@@ -453,6 +455,8 @@ export function LoginWorld({
       // полёта + плита уходит за камеру — без скачков перспективы
       warpT = 1
       speed = SPEED_WARP
+      ending = true
+      setWarping(true)
       setPhase("past")
     }
     const onFocusIn = (event: FocusEvent) => {
@@ -521,7 +525,9 @@ export function LoginWorld({
       // ── двор: штабеля, краны, фонари, точки и искры пролетают
       // мимо и рождаются впереди — объём и скорость ──
       for (const e of yard) {
-        if (dolly - e.z > -380) {
+        // в ворпе двор НЕ рождается заново: штабеля, краны и фонари
+        // заканчиваются — дорога «приехала», мы в программе
+        if (!ending && dolly - e.z > -380) {
           e.z += e.total
           debug.passed += 1
           e.x = e.baseX + (((debug.passed + e.i) % 3) - 1) * 70
@@ -589,11 +595,12 @@ export function LoginWorld({
     <div
       ref={viewportRef}
       data-login-world
+      data-warp={warping ? "1" : "0"}
       className="fixed inset-0 touch-none overflow-hidden bg-[radial-gradient(48%_38%_at_20%_14%,rgba(21,94,117,0.16),transparent_70%),radial-gradient(44%_34%_at_84%_10%,rgba(99,102,241,0.10),transparent_72%),radial-gradient(52%_40%_at_72%_88%,rgba(245,158,11,0.09),transparent_74%),radial-gradient(125%_95%_at_50%_30%,#0a1322_0%,#060b16_55%,#03060d_100%)]"
       style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}
     >
       {/* ── НЕБО: звёзды плиткой, луна, дальние огни ── */}
-      <div ref={skyRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+      <div ref={skyRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         <div
           aria-hidden="true"
           className="absolute left-1/2 top-1/2 h-[165vh] w-[165vw]"
@@ -642,7 +649,7 @@ export function LoginWorld({
 
       {/* ── ЗЕМЛЯ: плоскость в перспективе, разметка и нитка маршрута
           бегут под камерой (движение вперёд) ── */}
-      <div ref={midRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+      <div ref={midRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         <div
           ref={groundRef}
           data-ground
@@ -685,7 +692,7 @@ export function LoginWorld({
 
       {/* ── ДВОР: камера летит СКВОЗЬ двор — штабеля, краны, фонари,
           точки-заказы и искры пролетают мимо на разных глубинах ── */}
-      <div ref={moveRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+      <div ref={moveRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         {STACK_X.map((x, i) => (
           <div
             key={`s${i}`}
@@ -760,7 +767,7 @@ export function LoginWorld({
       {/* ── БЛИЖНИЙ ПЛАН: заголовок и ПРОПУСК-документ формы ──
           до касания экрана дорога бежит чистой; по касанию весь ближний
           план красиво ПРИЛЕТАЕТ издалека (translateZ-полёт) ── */}
-      <div ref={nearRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+      <div ref={nearRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         <div className="doc-arrive" data-state={phase}>
         {headline && (
           <div
