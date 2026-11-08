@@ -141,7 +141,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
         description="Учётная запись создана администратором или пароль был сброшен. Придумайте свой пароль, чтобы продолжить"
       >
         <form onSubmit={handleChangePassword} className="space-y-4">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="new-password">Новый пароль</Label>
             <Input
               id="new-password"
@@ -149,7 +149,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
               autoComplete="new-password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
-              className="h-11"
+              className="h-10 sm:h-11"
               required
               minLength={8}
             />
@@ -158,7 +158,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="repeat-password">Повторите пароль</Label>
             <Input
               id="repeat-password"
@@ -166,7 +166,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
               autoComplete="new-password"
               value={repeatPassword}
               onChange={(event) => setRepeatPassword(event.target.value)}
-              className="h-11"
+              className="h-10 sm:h-11"
               required
               minLength={8}
             />
@@ -174,7 +174,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
           <ErrorBlock message={error} />
 
-          <Button type="submit" className="w-full h-11" disabled={isChanging || !newPassword}>
+          <Button type="submit" className="h-10 w-full sm:h-11" disabled={isChanging || !newPassword}>
             {isChanging ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -199,8 +199,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       title="Вход в систему"
       description="Доступ выдаёт администратор после одобрения заявки"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
+      <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+        <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
@@ -210,11 +210,11 @@ export function LoginForm({ nextPath }: LoginFormProps) {
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"
             required
-            className="h-11"
+            className="h-10 sm:h-11"
           />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor="password">Пароль</Label>
           <Input
             id="password"
@@ -224,7 +224,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             required
-            className="h-11"
+            className="h-10 sm:h-11"
           />
         </div>
 
@@ -232,7 +232,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
         <Button
           type="submit"
-          className="w-full h-11"
+          className="h-10 w-full sm:h-11"
           disabled={isLoading || !email.trim() || !password}
         >
           {isLoading ? (
@@ -249,22 +249,22 @@ export function LoginForm({ nextPath }: LoginFormProps) {
         </Button>
       </form>
 
-      <div className="mt-4 space-y-1.5 border-t border-border/50 pt-3">
+      <div className="mt-3 space-y-1 border-t border-border/50 pt-2.5 sm:mt-4 sm:space-y-1.5 sm:pt-3">
         {/* Забытый пароль раньше означал «зовите администратора» — теперь
             человек восстанавливает доступ сам, ссылкой на почту */}
-        <p className="text-[13px] text-muted-foreground text-center">
+        <p className="text-[12px] text-muted-foreground text-center sm:text-[13px]">
           Забыли пароль?{" "}
           <Link href="/forgot-password" className="text-primary hover:underline font-medium">
             Восстановить доступ
           </Link>
         </p>
-        <p className="text-[13px] text-muted-foreground text-center">
+        <p className="text-[12px] text-muted-foreground text-center sm:text-[13px]">
           Нет учётной записи?{" "}
           <Link href="/register" className="text-primary hover:underline font-medium">
             Оставить заявку на доступ
           </Link>
         </p>
-        <p className="text-[13px] text-muted-foreground text-center">
+        <p className="text-[12px] text-muted-foreground text-center sm:text-[13px]">
           Вы водитель?{" "}
           <Link href="/m/login" className="text-primary hover:underline font-medium">
             Вход в приложение водителя
@@ -331,8 +331,8 @@ function Shell({
             {eyebrow}
             {dateLabel ? ` · ${dateLabel}` : ""}
           </p>
-          <h1 className="mt-1 text-xl font-bold tracking-tight">{title}</h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+          <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">{title}</h1>
+          <p className="mt-1 hidden text-xs leading-relaxed text-muted-foreground sm:block">{description}</p>
         </div>
         {children}
       </LoginWorld>

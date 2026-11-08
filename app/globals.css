@@ -1338,29 +1338,53 @@ body {
   animation: world-panel-in 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.38s backwards;
 }
 
-/* Города на живой карте: кольца пульсируют (масштаб — от своего центра) */
-@keyframes city-pulse {
-  0% {
-    transform: scale(0.55);
-    opacity: 0.55;
-  }
-  70%,
+/* Терминал: маячок крана мигает, тельфер ездит, грузовик проезжает */
+@keyframes beacon {
+  0%,
   100% {
-    transform: scale(1.8);
-    opacity: 0;
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.12;
   }
 }
 
-.city-pulse {
-  animation: city-pulse 3.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-  transform-box: fill-box;
-  transform-origin: center;
+.beacon {
+  animation: beacon 2.2s ease-in-out infinite;
+}
+
+@keyframes crane-trolley {
+  from {
+    transform: translateX(0px);
+  }
+  to {
+    transform: translateX(224px);
+  }
+}
+
+.crane-trolley {
+  animation: crane-trolley 16s ease-in-out infinite alternate;
+}
+
+@keyframes truck-pass {
+  from {
+    transform: translateX(-80px);
+  }
+  to {
+    transform: translateX(1320px);
+  }
+}
+
+.truck-pass {
+  animation: truck-pass 34s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .world-bob,
   .world-panel-in,
-  .city-pulse,
+  .beacon,
+  .crane-trolley,
+  .truck-pass,
   .console-rise,
   .driver-head {
     animation: none;

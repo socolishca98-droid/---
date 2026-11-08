@@ -1,7 +1,8 @@
-// Живая приёмка мира входа «Живые маршруты» (фидбек владельца и8:
-// «использовать маршруты в анимации, кнопка гироскопа не нужна»). Мир =
-// ночная живая карта: дороги плывут, города пульсируют, маршруты
-// прорисовываются и по ним едут машины, форма — прозрачное стекло.
+// Живая приёмка мира входа «Ночной терминал» (фидбек владельца и9:
+// «сцена — лицо логистической программы; поля — интегрированные и
+// компактные; мигание после нажатия убрать; гироскоп ещё -10%»). Мир =
+// контейнерный терминал ночью: краны, контейнеры, огни, маршрут заказов
+// уходит к горизонту; форма — компактный пропуск-документ.
 //
 // Фазы (песочница тесная — дев между фазами перезапускаем):
 //   PHASE=desktop | warp | mobile | driver | register | all
@@ -63,23 +64,33 @@ try {
   const world = await page.evaluate(() => {
     const vp = document.querySelector("[data-login-world]")
     const panel = document.querySelector("[data-login-panel]")
-    const glass = panel ? panel.querySelector("div.rounded-3xl") : null
+    const glass = panel ? panel.querySelector("[data-login-doc]") : null
     const gs = glass ? getComputedStyle(glass) : null
+    const r = panel ? panel.getBoundingClientRect() : null
     return {
       perspective: vp ? getComputedStyle(vp).perspective : "нет",
       panel3d: panel ? getComputedStyle(panel).transform.includes("matrix3d") : false,
-      routes: document.querySelectorAll("[data-login-route]").length,
-      cities: document.querySelectorAll("[data-login-city]").length,
-      traffic: document.querySelectorAll("[data-login-traffic]").length,
+      cranes: document.querySelectorAll("[data-crane]").length,
+      containers: document.querySelectorAll("[data-container]").length,
+      dots: document.querySelectorAll("[data-route-dot]").length,
+      panelW: r ? Math.round(r.width) : 0,
+      panelH: r ? Math.round(r.height) : 0,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
       glassAlpha: gs ? (gs.backgroundColor.match(/([\d.]+)\)$/) || [])[1] ?? "1" : "нет",
       glassBlur: gs ? gs.backdropFilter : "нет",
     }
   })
   check("мир: перспектива включена", world.perspective === "900px", `perspective ${world.perspective}`)
-  check("мир: живая карта — маршруты", world.routes >= 3, `${world.routes} активных маршрутов`)
-  check("мир: города-узлы на карте", world.cities >= 5, `${world.cities} городов`)
-  check("мир: фоновый трафик течёт", world.traffic >= 4, `${world.traffic} машин`)
+  check("терминал: краны-порталы", world.cranes >= 2, `${world.cranes} крана`)
+  check("терминал: штабеля контейнеров", world.containers >= 10, `${world.containers} контейнеров`)
+  check("маршрут заказов: точки-заказы бегут", world.dots >= 3, `${world.dots} точек`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
+  check(
+    "пропуск — компактный документ",
+    world.panelW <= 400 && world.panelH <= Math.round(world.vh * 0.72),
+    `${world.panelW}×${world.panelH} px на экране ${world.vw}×${world.vh}`,
+  )
   check("форма — прозрачный экран", parseFloat(world.glassAlpha) <= 0.75 && world.glassBlur.includes("blur"), `фон ${world.glassAlpha}, blur: ${world.glassBlur.slice(0, 20)}`)
 
   // камера едет сквозь пространство
@@ -88,17 +99,17 @@ try {
   const d2 = await page.evaluate(() => window.__loginWorld.dolly)
   check("камера перемещается в пространстве", d2 - d1 > 150, `dolly ${Math.round(d1)} → ${Math.round(d2)}`)
 
-  // маршруты прорисовываются и сменяются (клик ускоряет карту)
-  const g1 = await page.evaluate(() => window.__loginWorld.routes)
-  await page.mouse.click(600, 200)
-  await page.mouse.click(600, 200)
-  await page.waitForTimeout(6500)
-  const g2 = await page.evaluate(() => window.__loginWorld.routes)
-  const truck = await page.evaluate(() => {
-    const t = document.querySelector("[data-login-route] g[opacity]") // машина
-    return t ? (t.getAttribute("transform") || "").slice(0, 24) : "нет"
+  // маршрут заказов живёт: точка реально едет по нити
+  const dot1 = await page.evaluate(() => {
+    const d = document.querySelector("[data-route-dot]")
+    return d ? `${d.getAttribute("cx")},${d.getAttribute("cy")}` : "нет"
   })
-  check("маршруты прорисовываются и сменяются", g2 > g1, `завершено ${g1} → ${g2}, машина: ${truck}`)
+  await page.waitForTimeout(1400)
+  const dot2 = await page.evaluate(() => {
+    const d = document.querySelector("[data-route-dot]")
+    return d ? `${d.getAttribute("cx")},${d.getAttribute("cy")}` : "нет"
+  })
+  check("маршрут заказов живёт (точка едет)", dot1 !== dot2, `${dot1} → ${dot2}`)
 
   // ракурс за курсором
   const yaw1 = await page.evaluate(() => window.__loginWorld.yaw)
@@ -107,14 +118,14 @@ try {
   const yaw2 = await page.evaluate(() => window.__loginWorld.yaw)
   check("ракурс за курсором (мир под углом)", Math.abs(yaw2 - yaw1) > 0.4, `yaw ${yaw1.toFixed(1)}° → ${yaw2.toFixed(1)}°`)
 
-  // клик — рывок камеры (после клика кадры кратко замирают — меряем
-  // счётчик рывков, а не мгновенную скорость)
+  // клик — БЕЗ мигания: перспектива постоянна, экран не дёргается
+  const persp1 = await page.evaluate(() => getComputedStyle(document.querySelector("[data-login-world]")).perspective)
   const p1 = await page.evaluate(() => window.__loginWorld.plunges)
   await page.mouse.click(600, 700)
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(500)
+  const persp2 = await page.evaluate(() => getComputedStyle(document.querySelector("[data-login-world]")).perspective)
   const p2 = await page.evaluate(() => window.__loginWorld.plunges)
-  const s2 = await page.evaluate(() => window.__loginWorld.speed)
-  check("клик — рывок вперёд", p2 > p1 && s2 > 320, `рывков ${p1} → ${p2}, скорость ${Math.round(s2)}`)
+  check("клик — без мигания (перспектива постоянна)", persp1 === persp2 && p2 > p1, `${persp1} → ${persp2}, кликов ${p1} → ${p2}`)
 
   // поля живые внутри 3D
   await page.fill("[data-login-panel] input#email", "logist")
@@ -229,8 +240,17 @@ try {
     h: document.scrollingElement?.scrollHeight ?? 0,
     vh: window.innerHeight,
   }))
+  const docFit = await mpage.evaluate(() => {
+    const r = document.querySelector("[data-login-panel]")?.getBoundingClientRect()
+    return r ? { w: Math.round(r.width), h: Math.round(r.height), vh: window.innerHeight } : null
+  })
   check("телефон: ввод в 3D-поля", mTyped === "logist", `«${mTyped}»`)
   check("телефон: экран без прокрутки", fits.h <= fits.vh + 2, `scrollHeight ${fits.h} / ${fits.vh}`)
+  check(
+    "телефон: пропуск не закрывает полстраницы",
+    docFit != null && docFit.h <= docFit.vh * 0.58,
+    docFit ? `документ ${docFit.w}×${docFit.h} из ${docFit.vh}px (${Math.round((docFit.h / docFit.vh) * 100)}%)` : "нет",
+  )
 
   await shot(mpage, "/home/user/work/visual-login-3d-mobile.png")
   check("телефон: скриншот сохранён", true, "work/visual-login-3d-mobile.png")
@@ -259,18 +279,18 @@ try {
 
   const driver = await dpage.evaluate(() => ({
     world: document.querySelector("[data-login-world]") != null,
-    routes: document.querySelectorAll("[data-login-route]").length,
-    cities: document.querySelectorAll("[data-login-city]").length,
-    traffic: document.querySelectorAll("[data-login-traffic]").length,
+    cranes: document.querySelectorAll("[data-crane]").length,
+    containers: document.querySelectorAll("[data-container]").length,
+    dots: document.querySelectorAll("[data-route-dot]").length,
     phone: document.querySelector("#driver-phone") != null,
     password: document.querySelector("#driver-password") != null,
     button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
     headline: (document.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim(),
   }))
   check(
-    "водитель: живая карта с маршрутами",
-    driver.world && driver.routes >= 3 && driver.cities >= 5 && driver.traffic >= 4,
-    `маршрутов ${driver.routes}, городов ${driver.cities}, трафика ${driver.traffic}`,
+    "водитель: терминал с маршрутом заказов",
+    driver.world && driver.cranes >= 2 && driver.containers >= 10 && driver.dots >= 3,
+    `кранов ${driver.cranes}, контейнеров ${driver.containers}, точек ${driver.dots}`,
   )
   check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)
   check("водитель: заголовок в небе", driver.headline.includes("Доброй"), `«${driver.headline}»`)

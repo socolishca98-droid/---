@@ -1,84 +1,69 @@
 "use client"
 
-// components/visual/login-world.tsx — мир входа «Живые маршруты»
+// components/visual/login-world.tsx — мир входа «Ночной терминал»
 //
-// Смена сцены по фидбеку владельца: «звёздный рейс не понравился, цвета
-// не очень, на телефоне некрасиво — может, использовать маршруты в
-// анимации». Мир теперь — ЖИВАЯ КАРТА НОЧЬЮ:
+// Фидбек владельца по и8: «карта хуже всех, надо ровно то, что связано с
+// логистикой, маршрутами, заказами и нашей программой; страница входа —
+// ЛИЦО продукта; поля логина-пароля — интегрировать, чтобы не закрывали
+// полстраницы; после нажатия было мигание — убрать; гироскоп ещё -10%».
 //
-//   • тёмная сеть дорог неспешно плывёт (бесконечная плитка — компактный
-//     слой, композитор не душим, урок и7 усвоен);
-//   • города-узлы светятся янтарём и пульсируют кольцами;
-//   • МАРШРУТЫ прорисовываются один за другим — и по каждому едет машина;
-//   • фоновый трафик течёт по магистралям;
-//   • палитра: глубокий синий + циан / изумруд / янтарь;
-//   • форма — прозрачное матовое стекло поверх карты, мир виден насквозь;
-//   • гироскоп БЕЗ КНОПКИ: на Android включается молча при загрузке,
-//     на iPhone — по первому касанию экрана (Apple требует жест, но
-//     годится любой тап — например, в поле логина).
+// Мир теперь — КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ НОЧЬЮ:
+//
+//   • краны-«порталы» над штабелями контейнеров, тельфер ездит,
+//     проблесковый маячок мигает, фонари льют тёплые конусы света,
+//     грузовик с фарами неспешно проезжает по площадке;
+//   • МАРШРУТ ЗАКАЗОВ — светящаяся пунктирная нить уходит от штабелей
+//     к горизонту, по ней бегут точки-заказы;
+//   • луна, звёзды плиткой, дальние огни, дымка;
+//   • форма — компактный ПРОПУСК-ДОКУМЕНТ (№, штрихкод, поля) —
+//     небольшой объект мира под лёгким углом, а не плита на полэкрана;
+//   • мигание после нажатия УБРАНО: перспектива постоянна, клик ничего
+//     не дёргает; ворп при входе — только мягкое ускорение дрейфа;
+//   • гироскоп: коэффициенты 0.20/0.145 (ещё -10%), без кнопки:
+//     Android — молча, iPhone — по первому касанию (политика Apple).
 //
 // Приёмка: window.__loginWorld {dolly, speed, yaw, pitch, gyro, routes,
-// warp, plunges} + __loginWorldLook + __loginWorldPaused +
-// __loginWorldGyro. DOM: [data-login-world], [data-login-route] ×3,
-// [data-login-city] ×6, [data-login-traffic] ×5, [data-login-panel].
+// warp, plunges, frames} + __loginWorldLook + __loginWorldPaused +
+// __loginWorldGyro. DOM: [data-login-world], [data-crane] ×2,
+// [data-container] ×14, [data-route-dot] ×3, [data-login-panel],
+// [data-login-doc].
 
 import { useEffect, useMemo, useRef } from "react"
 
 const PERSPECTIVE = 900
 
-/** Скорость «полёта над картой» — двигает плитку дорог (dolly). */
+/** Дрейф сцены: время мира. Ворп/печать в поля его ускоряют — мягко. */
 const SPEED_BASE = 260
 const SPEED_WARP = 5200
 
-/** Цикл жизни маршрута: прорисовка → машина едет → угасание. */
-const ROUTE_DRAW = 1.7
-const ROUTE_FADE = 0.9
-const ROUTE_SPEED = 170 // px карты в секунду
-
-const SLOT_COUNT = 3
-
-/** Города-узлы (координаты в системе карты 1200×800). */
-const CITIES: ReadonlyArray<{ name: string; x: number; y: number }> = [
-  { name: "ТВЕРЬ", x: 285, y: 175 },
-  { name: "МОСКВА", x: 430, y: 395 },
-  { name: "ЯРОСЛАВЛЬ", x: 675, y: 215 },
-  { name: "Н. НОВГОРОД", x: 890, y: 340 },
-  { name: "КАЗАНЬ", x: 1010, y: 175 },
-  { name: "ВОРОНЕЖ", x: 655, y: 660 },
+/** Контейнеры: штабеля терминала (координаты карты 1200×800). */
+const CONTAINER_COLORS = ["#24425f", "#5b3423", "#2a4c44", "#3c3a58", "#31517a"]
+const CONTAINERS: ReadonlyArray<{ x: number; y: number; c: number }> = [
+  { x: 60, y: 584, c: 0 },
+  { x: 160, y: 584, c: 1 },
+  { x: 260, y: 584, c: 2 },
+  { x: 360, y: 584, c: 3 },
+  { x: 110, y: 548, c: 2 },
+  { x: 210, y: 548, c: 4 },
+  { x: 310, y: 548, c: 0 },
+  { x: 160, y: 512, c: 1 },
+  { x: 260, y: 512, c: 3 },
+  { x: 470, y: 596, c: 4 },
+  { x: 570, y: 596, c: 1 },
+  { x: 520, y: 560, c: 2 },
+  { x: 745, y: 640, c: 3 },
+  { x: 845, y: 640, c: 0 },
 ]
 
-/** Маршруты: кубические кривые между городами. */
-const ROUTES: ReadonlyArray<string> = [
-  "M430,395 C500,290 580,250 675,215",
-  "M430,395 C620,300 830,260 1010,175",
-  "M675,215 C750,240 820,280 890,340",
-  "M430,395 C480,520 560,600 655,660",
-  "M285,175 C420,120 560,140 675,215",
-  "M890,340 C930,290 970,240 1010,175",
-  "M285,175 C320,260 370,330 430,395",
-  "M655,660 C780,560 900,380 1010,175",
-  "M675,215 C790,90 910,80 1010,175",
-  "M890,340 C850,450 760,560 655,660",
-]
+/** Маршрут заказов: от штабелей — к горизонту. */
+const ROUTE_D =
+  "M300,636 C480,560 640,500 800,452 C900,424 960,380 1028,332"
 
-/** Цвета активных маршрутов: разные рейсы — разные ленты. */
-const LOGIST_COLORS = ["#22d3ee", "#34d399", "#fbbf24"]
-const DRIVER_COLORS = ["#34d399", "#38bdf8", "#fbbf24"]
-
-/** Магистрали фонового трафика (текут всегда, чуть заметны). */
-const TRAFFIC_PATHS: ReadonlyArray<string> = [
-  "M-60,540 C200,470 420,560 640,500 C860,440 1080,520 1260,460",
-  "M-60,240 C180,300 400,180 620,240 C840,300 1060,180 1260,220",
-  "M540,-60 C500,200 580,420 520,660 C500,760 520,840 500,880",
-]
-
-/** Точки трафика: магистраль, темп, сдвиг старта. */
-const TRAFFIC_DOTS: ReadonlyArray<{ p: number; speed: number; off: number }> = [
-  { p: 0, speed: 0.016, off: 0.0 },
-  { p: 0, speed: 0.011, off: 0.55 },
-  { p: 1, speed: 0.013, off: 0.2 },
-  { p: 1, speed: 0.019, off: 0.75 },
-  { p: 2, speed: 0.01, off: 0.4 },
+/** Точки-заказы на маршруте: темп и сдвиг старта. */
+const ROUTE_DOTS: ReadonlyArray<{ speed: number; off: number }> = [
+  { speed: 0.085, off: 0.0 },
+  { speed: 0.062, off: 0.42 },
+  { speed: 0.1, off: 0.78 },
 ]
 
 type WorldDebug = {
@@ -94,42 +79,35 @@ type WorldDebug = {
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
-const easeOut = (p: number) => 1 - Math.pow(1 - p, 3)
-const smooth = (p: number) => p * p * (3 - 2 * p)
 
-/** Плитка дорожной сети: абстрактные дороги + сетка + развязки.
-    Повторяется бесконечно → компактный слой покрывает весь экран. */
-function netTile(): string {
-  const grid = [160, 320, 480]
-    .flatMap((v) => [`M0,${v} H640`, `M${v},0 V640`])
-    .map((d) => `<path d="${d}" stroke="#16233c" stroke-width="1"/>`)
-    .join("")
-  const roads = [
-    "M-20,120 C140,88 260,182 380,150 C470,127 560,182 660,158",
-    "M-20,420 C120,452 300,368 430,420 C520,456 580,420 660,442",
-    "M120,-20 C152,120 88,260 120,380 C148,478 112,560 138,660",
-    "M420,-20 C452,140 388,300 420,440 C446,548 412,590 436,660",
-    "M-20,270 C180,236 340,300 500,262 C580,244 600,270 660,258",
-    "M540,-20 C510,140 570,300 540,460 C520,560 556,600 536,660",
-  ]
-    .map((d) => `<path d="${d}" fill="none" stroke="#2f4a6e" stroke-width="1.6" stroke-opacity="0.6"/>`)
-    .join("")
-  const wide = [
-    "M-20,540 C160,500 320,586 480,540 C560,516 600,540 660,528",
-    "M240,-20 C210,180 290,360 250,540 C230,610 258,630 244,660",
-  ]
-    .map((d) => `<path d="${d}" fill="none" stroke="#3b5f8f" stroke-width="2.6" stroke-opacity="0.34"/>`)
-    .join("")
-  const dots = [
-    [96, 150], [288, 122], [424, 446], [138, 384], [512, 268], [352, 540], [544, 462], [230, 258],
-  ]
-    .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.6" fill="#527ba8" fill-opacity="0.55"/>`)
-    .join("")
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640">` +
-    `${grid}${roads}${wide}${dots}</svg>`
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+/** Плитка звёзд: повторяется → компактный слой покрывает весь экран. */
+function starTile(): string {
+  const rnd = (() => {
+    let s = 20261012 >>> 0
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0
+      let t = Math.imul(s ^ (s >>> 15), 1 | s)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  })()
+  const parts: string[] = []
+  for (let i = 0; i < 9; i++) {
+    const x = (rnd() * 100).toFixed(2)
+    const y = (rnd() * 100).toFixed(2)
+    const r = (0.6 + rnd() * 0.7).toFixed(2)
+    const a = (0.22 + rnd() * 0.5).toFixed(2)
+    parts.push(
+      `radial-gradient(${r}px ${r}px at ${x}% ${y}%, rgba(226,232,240,${a}) 40%, transparent 100%)`,
+    )
+  }
+  return parts.join(", ")
 }
+
+/** Штрихкод пропуска: детерминированные полосы. */
+const BARCODE: ReadonlyArray<number> = [
+  2, 1, 3, 1, 2, 2, 1, 4, 1, 2, 3, 3, 1, 2, 1, 3, 2, 1, 4, 1, 2, 2, 3, 1, 2, 1,
+]
 
 export function LoginWorld({
   variant = "logist",
@@ -138,65 +116,35 @@ export function LoginWorld({
   bare = false,
 }: {
   variant?: "logist" | "driver"
-  /** Крупный заголовок, парящий над картой */
+  /** Крупный заголовок, парящий над терминалом */
   headline?: React.ReactNode
-  /** Содержимое прозрачного экрана (форма) — объект мира */
+  /** Содержимое пропуска-документа (форма) — объект мира */
   children: React.ReactNode
-  /** Панель без плиты — страница приносит свою карточку */
+  /** Без рамки документа — страница приносит свою карточку */
   bare?: boolean
 }): React.ReactElement {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const skyRef = useRef<HTMLDivElement | null>(null)
   const midRef = useRef<HTMLDivElement | null>(null)
   const nearRef = useRef<HTMLDivElement | null>(null)
-  const netRef = useRef<HTMLDivElement | null>(null)
-  const routeRefs = useRef<Array<SVGGElement | null>>([])
-  const pathRefs = useRef<Array<SVGPathElement | null>>([])
-  const glowRefs = useRef<Array<SVGPathElement | null>>([])
-  const truckRefs = useRef<Array<SVGGElement | null>>([])
-  const trafficPathRefs = useRef<Array<SVGPathElement | null>>([])
-  const trafficRefs = useRef<Array<SVGCircleElement | null>>([])
+  const routePathRef = useRef<SVGPathElement | null>(null)
+  const routeDotRefs = useRef<Array<SVGCircleElement | null>>([])
 
-  const tile = useMemo(() => netTile(), [])
-  const colors = variant === "driver" ? DRIVER_COLORS : LOGIST_COLORS
+  const stars = useMemo(() => starTile(), [])
+  /** Тёплая или холодная сигнатура акцентов — вход логиста/водителя. */
+  const accent = variant === "driver" ? "#f59e0b" : "#22d3ee"
 
   useEffect(() => {
     const viewport = viewportRef.current
     const sky = skyRef.current
     const mid = midRef.current
     const near = nearRef.current
-    const net = netRef.current
-    if (!viewport || !sky || !mid || !near || !net) return
+    const routePath = routePathRef.current
+    if (!viewport || !sky || !mid || !near || !routePath) return
 
-    const routeEls = routeRefs.current.filter((el): el is SVGGElement => el != null)
-    const pathEls = pathRefs.current.filter((el): el is SVGPathElement => el != null)
-    const glowEls = glowRefs.current.filter((el): el is SVGPathElement => el != null)
-    const truckEls = truckRefs.current.filter((el): el is SVGGElement => el != null)
-    const trafficPathEls = trafficPathRefs.current.filter((el): el is SVGPathElement => el != null)
-    const trafficEls = trafficRefs.current.filter((el): el is SVGCircleElement => el != null)
-
-    // маршруты: слоты со сдвигом фаз — карта живёт сразу
-    const slots = pathEls.map((path, i) => {
-      path.setAttribute("d", ROUTES[i % ROUTES.length])
-      glowEls[i]?.setAttribute("d", ROUTES[i % ROUTES.length])
-      const len = Math.max(1, path.getTotalLength())
-      path.style.strokeDasharray = `${len}`
-      return {
-        path,
-        glow: glowEls[i] ?? null,
-        truck: truckEls[i] ?? null,
-        group: routeEls[i] ?? null,
-        def: i % ROUTES.length,
-        len,
-        ride: Math.max(1.6, len / ROUTE_SPEED),
-        born: -i * 2.4,
-        ang: 0,
-      }
-    })
-    const trafficPaths = trafficPathEls.map((p) => ({
-      el: p,
-      len: Math.max(1, p.getTotalLength()),
-    }))
+    const dots = routeDotRefs.current.filter((el): el is SVGCircleElement => el != null)
+    const routeLen = Math.max(1, routePath.getTotalLength())
+    const dotState = ROUTE_DOTS.map((d, i) => ({ ...d, prev: (i * 0.31) % 1 }))
 
     const reduced =
       typeof window.matchMedia === "function" &&
@@ -207,12 +155,11 @@ export function LoginWorld({
     let last = 0
     let running = true
 
-    // Камера над картой
+    // Камера над терминалом
     let dolly = 0
-    let speed = reduced ? 0 : 2200 // кинематографичный прилёт: карта поплывёт
+    let speed = reduced ? 0 : 1600 // мягкий старт: дрейф разгоняется
     let energy = 0
     let warpT = 0
-    let fovKick = 0
     let yaw = 0
     let pitch = 0
     let yawMouse = 0
@@ -257,11 +204,12 @@ export function LoginWorld({
     // Слушатель ставим СИНХРОННО до запроса (в headless промис висит —
     // не страшно). Android: requestPermission нет — включаем молча.
     // iPhone: Apple требует жест — просим по первому касанию экрана.
+    // Чувствительность снижена ещё на ~10% (0.20/0.145).
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.beta == null || event.gamma == null) return
       if (!gyroCalib) gyroCalib = { b: event.beta, g: event.gamma }
-      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.22, -12, 12)
-      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.16, -8, 8)
+      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.2, -12, 12)
+      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.145, -8, 8)
       if (!gyroActive) {
         gyroActive = true
         debug.gyro = true
@@ -309,11 +257,10 @@ export function LoginWorld({
     }
 
     // ── ввод ──
+    // Клик по миру НИЧЕГО не дёргает (просьба владельца: без мигания
+    // после нажатия) — перспектива постоянна, рывков нет.
     const onClick = () => {
-      if (reduced) return
       debug.plunges += 1
-      speed = Math.min(2400, speed + 1500)
-      fovKick = Math.min(160, fovKick + 120)
     }
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType === "touch") return
@@ -341,9 +288,10 @@ export function LoginWorld({
       energy = Math.min(1.2, energy + 0.5)
     }
     const onWarp = () => {
+      // ворп при входе: только мягкое ускорение дрейфа — без скачка
+      // перспективы, чтобы экран не мигал
       warpT = 1
       speed = SPEED_WARP
-      fovKick = 160
     }
     const onFocusIn = (event: FocusEvent) => {
       focused = event.target instanceof Element && event.target.closest("[data-login-panel]") != null
@@ -371,17 +319,16 @@ export function LoginWorld({
       last = ts
       const t = ts / 1000
 
-      // ── полёт над картой: дороги плывут, клик/ввод ускоряют ──
+      // ── дрейф камеры над терминалом ──
       energy *= Math.exp(-dt * 2)
       warpT *= Math.exp(-dt * 2)
-      fovKick *= Math.exp(-dt * 3)
-      const targetSpeed = warpT > 0.05 ? SPEED_WARP : SPEED_BASE * (1 + Math.min(1.2, energy) * 1.6)
+      const targetSpeed = warpT > 0.05 ? SPEED_WARP : SPEED_BASE * (1 + Math.min(1.2, energy) * 0.4)
       speed += (targetSpeed - speed) * Math.min(1, dt * (warpT > 0.05 ? 6 : 2.2))
       if (reduced) speed = 0
       dolly += speed * dt
 
       // ── ракурс: курсор + палец + гироскоп (сглаженный); в фокусе
-      // поля камера мягко центруется на форме ──
+      // поля камера мягко центруется на документе ──
       const yawT = pointer ? -(pointer.x / window.innerWidth - 0.5) * 14 : 0
       const pitchT = pointer ? -(pointer.y / window.innerHeight - 0.5) * 7 : 0
       yawMouse += (yawT - yawMouse) * Math.min(1, dt * 3)
@@ -397,71 +344,26 @@ export function LoginWorld({
       yaw = (yawMouse + yawDrag + yawGyro) * blend + swayY
       pitch = (pitchMouse + pitchDrag + pitchGyro) * blend + swayP
 
-      // ── риги: карта, города, ближний план вращаются с камерой ──
+      // ── риги: лёгкий дыхательный дрейф + поворот с камерой ──
       const rot = `rotateX(${(-pitch).toFixed(2)}deg) rotateY(${yaw.toFixed(2)}deg)`
-      sky.style.transform = rot
-      mid.style.transform = rot
+      const phase = dolly * 0.0004
+      const driftSky = (5 * Math.sin(phase)).toFixed(1)
+      const driftMid = (9 * Math.sin(phase + 0.7)).toFixed(1)
+      sky.style.transform = `translateX(${driftSky}px) ${rot}`
+      mid.style.transform = `translateX(${driftMid}px) ${rot}`
       near.style.transform = rot
-      viewport.style.perspective = `${(PERSPECTIVE - warpT * 170 - fovKick * 80).toFixed(0)}px`
+      // перспектива ПОСТОЯННАЯ — никаких скачков и миганий
 
-      // ── дорожная сеть: бесконечная плитка неспешно плывёт ──
-      const px = -((dolly * 0.045) % 640)
-      const py = -((dolly * 0.018) % 640)
-      net.style.backgroundPosition = `${px.toFixed(1)}px ${py.toFixed(1)}px`
-
-      // ── маршруты: прорисовка → машина → угасание → новый маршрут ──
-      for (const r of slots) {
-        const age = t - r.born
-        if (age >= ROUTE_DRAW + r.ride + ROUTE_FADE) {
-          debug.routes += 1
-          r.def = (r.def + SLOT_COUNT) % ROUTES.length
-          const d = ROUTES[r.def]
-          r.path.setAttribute("d", d)
-          r.glow?.setAttribute("d", d)
-          r.len = Math.max(1, r.path.getTotalLength())
-          r.path.style.strokeDasharray = `${r.len}`
-          r.ride = Math.max(1.6, r.len / ROUTE_SPEED)
-          r.born = t
-          continue
-        }
-        let offset = r.len
-        let truckOp = 0
-        let op = 1
-        if (age < ROUTE_DRAW) {
-          offset = r.len * (1 - easeOut(Math.max(0, age) / ROUTE_DRAW))
-          op = clamp(age / 0.35, 0, 1)
-        } else if (age < ROUTE_DRAW + r.ride) {
-          offset = 0
-          truckOp = 1
-          const e = smooth(clamp((age - ROUTE_DRAW) / r.ride, 0, 1))
-          const pt = r.path.getPointAtLength(e * r.len)
-          const pb = r.path.getPointAtLength(Math.max(0, e * r.len - 7))
-          const dx = pt.x - pb.x
-          const dy = pt.y - pb.y
-          if (dx * dx + dy * dy > 0.01) r.ang = (Math.atan2(dy, dx) * 180) / Math.PI
-          r.truck?.setAttribute(
-            "transform",
-            `translate(${pt.x.toFixed(1)},${pt.y.toFixed(1)}) rotate(${r.ang.toFixed(1)})`,
-          )
-        } else {
-          offset = 0
-          truckOp = clamp(1 - (age - ROUTE_DRAW - r.ride) / ROUTE_FADE, 0, 1)
-          op = truckOp
-        }
-        r.path.style.strokeDashoffset = `${offset.toFixed(1)}`
-        if (r.group) r.group.style.opacity = op.toFixed(3)
-        if (r.truck) r.truck.style.opacity = truckOp.toFixed(3)
-      }
-
-      // ── фоновый трафик по магистралям ──
-      for (let i = 0; i < trafficEls.length; i++) {
-        const dot = TRAFFIC_DOTS[i % TRAFFIC_DOTS.length]
-        const lane = trafficPaths[dot.p % trafficPaths.length]
-        if (!lane) continue
-        const p = (t * dot.speed + dot.off) % 1
-        const pt = lane.el.getPointAtLength(p * lane.len)
-        trafficEls[i].setAttribute("cx", pt.x.toFixed(1))
-        trafficEls[i].setAttribute("cy", pt.y.toFixed(1))
+      // ── точки-заказы бегут по маршруту ──
+      for (let i = 0; i < dots.length; i++) {
+        const d = dotState[i % dotState.length]
+        const p = (t * d.speed + d.off) % 1
+        if (p < d.prev) debug.routes += 1
+        d.prev = p
+        const pt = routePath.getPointAtLength(p * routeLen)
+        dots[i].setAttribute("cx", pt.x.toFixed(1))
+        dots[i].setAttribute("cy", pt.y.toFixed(1))
+        dots[i].style.opacity = (0.35 + 0.6 * Math.sin(Math.PI * p)).toFixed(3)
       }
 
       debug.frames += 1
@@ -485,15 +387,16 @@ export function LoginWorld({
     document.addEventListener("visibilitychange", onVisibility)
 
     if (reduced) {
-      // статичный кадр: карта есть, маршруты прорисованы, всё замерло
+      // статичный кадр: терминал есть, всё замерло
       const rot = "rotateX(0deg) rotateY(0deg)"
       sky.style.transform = rot
       mid.style.transform = rot
       near.style.transform = rot
-      for (const r of slots) {
-        r.path.style.strokeDashoffset = "0"
-        if (r.group) r.group.style.opacity = "0.9"
-        if (r.truck) r.truck.style.opacity = "0"
+      for (let i = 0; i < dots.length; i++) {
+        const d = dotState[i % dotState.length]
+        const pt = routePath.getPointAtLength(d.off * routeLen)
+        dots[i].setAttribute("cx", pt.x.toFixed(1))
+        dots[i].setAttribute("cy", pt.y.toFixed(1))
       }
     } else {
       raf = requestAnimationFrame(frame)
@@ -516,181 +419,254 @@ export function LoginWorld({
       window.removeEventListener("deviceorientation", onOrientation)
       window.removeEventListener("pointerdown", onFirstTouch, true)
     }
-  }, [variant, tile])
+  }, [variant])
 
   return (
     <div
       ref={viewportRef}
       data-login-world
-      className="fixed inset-0 touch-none overflow-hidden bg-[radial-gradient(50%_40%_at_18%_16%,rgba(14,116,144,0.20),transparent_70%),radial-gradient(42%_34%_at_82%_12%,rgba(99,102,241,0.14),transparent_70%),radial-gradient(46%_38%_at_78%_84%,rgba(245,158,11,0.10),transparent_72%),radial-gradient(120%_95%_at_50%_30%,#0a1526_0%,#060c18_55%,#04070f_100%)]"
+      className="fixed inset-0 touch-none overflow-hidden bg-[radial-gradient(48%_38%_at_20%_14%,rgba(21,94,117,0.16),transparent_70%),radial-gradient(44%_34%_at_84%_10%,rgba(99,102,241,0.10),transparent_72%),radial-gradient(52%_40%_at_72%_88%,rgba(245,158,11,0.09),transparent_74%),radial-gradient(125%_95%_at_50%_30%,#0a1322_0%,#060b16_55%,#03060d_100%)]"
       style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}
     >
-      {/* ── ДАЛЬНИЙ ПЛАН: дорожная сеть — бесконечная плитка ── */}
+      {/* ── НЕБО: звёзды плиткой + луна + дальние огни ── */}
       <div ref={skyRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         <div
-          ref={netRef}
           aria-hidden="true"
           className="absolute left-1/2 top-1/2 h-[165vh] w-[165vw]"
           style={{
-            backgroundImage: tile,
-            backgroundSize: "640px 640px",
-            transform: "translate(-50%,-50%) translateZ(-340px)",
+            backgroundImage: stars,
+            backgroundSize: "340px 340px",
+            transform: "translate(-50%,-50%) translateZ(-420px)",
           }}
         />
-      </div>
-
-      {/* ── СЕРЕДИНА: города, МАРШРУТЫ и трафик (вращается с камерой) ── */}
-      <div ref={midRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         <svg
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 h-[150vh] w-[150vw]"
+          className="absolute left-1/2 top-1/2 h-[155vh] w-[155vw]"
           viewBox="0 0 1200 800"
           preserveAspectRatio="xMidYMid slice"
-          style={{ transform: "translate(-50%,-50%) translateZ(-200px)" }}
+          style={{ transform: "translate(-50%,-50%) translateZ(-300px)" }}
         >
-          {/* магистрали фонового трафика */}
-          {TRAFFIC_PATHS.map((d, i) => (
-            <path
-              key={i}
-              ref={(el) => {
-                trafficPathRefs.current[i] = el
-              }}
-              d={d}
-              fill="none"
-              stroke="#24466e"
-              strokeWidth="2"
-              strokeOpacity="0.45"
-            />
-          ))}
-
-          {/* активные маршруты: прорисовываются, по ним едут машины */}
-          {colors.map((color, i) => (
-            <g
-              key={i}
-              ref={(el) => {
-                routeRefs.current[i] = el
-              }}
-              data-login-route
-              opacity="0"
-            >
-              <path
-                ref={(el) => {
-                  glowRefs.current[i] = el
-                }}
-                fill="none"
-                stroke={color}
-                strokeWidth="7"
-                strokeOpacity="0.13"
-                strokeLinecap="round"
-              />
-              <path
-                ref={(el) => {
-                  pathRefs.current[i] = el
-                }}
-                fill="none"
-                stroke={color}
-                strokeWidth="2.6"
-                strokeLinecap="round"
-                style={{ filter: `drop-shadow(0 0 5px ${color}aa)` }}
-              />
-              <g
-                ref={(el) => {
-                  truckRefs.current[i] = el
-                }}
-                opacity="0"
-              >
-                <circle r="9" fill={color} opacity="0.16" />
-                <rect x="-6" y="-3.5" width="12" height="7" rx="2" fill={color} stroke="#0b1120" strokeWidth="0.8" />
-              </g>
-            </g>
-          ))}
-
-          {/* города-узлы: янтарные ядра с пульсирующими кольцами */}
-          {CITIES.map((c, i) => (
-            <g key={c.name} data-login-city transform={`translate(${c.x},${c.y})`}>
-              <circle
-                className="city-pulse"
-                r="10"
-                fill="none"
-                stroke="#fbbf24"
-                strokeOpacity="0.5"
-                strokeWidth="1.5"
-                style={{ animationDelay: `${i * 0.53}s` }}
-              />
-              <circle r="14" fill="#fbbf24" opacity="0.07" />
-              <circle r="4.5" fill="#fcd34d" />
-              <circle r="9" fill="none" stroke="#fbbf24" strokeOpacity="0.25" />
-              <text
-                y="-15"
-                textAnchor="middle"
-                fontSize="13.5"
-                letterSpacing="2.5"
-                fill="#a9bdd9"
-                opacity="0.9"
-                style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif", fontWeight: 600 }}
-              >
-                {c.name}
-              </text>
-            </g>
-          ))}
-
-          {/* фоновый трафик */}
-          {TRAFFIC_DOTS.map((_, i) => (
-            <circle
-              key={i}
-              ref={(el) => {
-                trafficRefs.current[i] = el
-              }}
-              data-login-traffic
-              r="2.4"
-              fill="#9bd8f7"
-              opacity="0.85"
-            />
-          ))}
+          <defs>
+            <linearGradient id="haze" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {/* луна с ореолом */}
+          <circle cx="300" cy="132" r="66" fill="rgba(232,237,246,0.06)" />
+          <circle cx="300" cy="132" r="28" fill="#e8edf6" opacity="0.9" />
+          <circle cx="290" cy="124" r="6" fill="#cdd6e4" opacity="0.5" />
+          <circle cx="310" cy="142" r="4" fill="#cdd6e4" opacity="0.4" />
+          {/* дымка над горизонтом */}
+          <rect x="-100" y="470" width="1400" height="130" fill="url(#haze)" />
+          {/* дальний план: silhouettes и огни города */}
+          <g fill="#0e1830">
+            <rect x="-100" y="540" width="1400" height="90" />
+            <rect x="60" y="522" width="46" height="20" />
+            <rect x="150" y="510" width="30" height="32" />
+            <rect x="620" y="516" width="52" height="36" />
+            <rect x="700" y="528" width="26" height="24" />
+            <rect x="1020" y="512" width="40" height="34" />
+          </g>
+          <g fill="#fbbf24">
+            <circle cx="90" cy="548" r="1.8" opacity="0.55" />
+            <circle cx="230" cy="552" r="1.6" opacity="0.45" />
+            <circle cx="420" cy="546" r="1.8" opacity="0.5" />
+            <circle cx="648" cy="550" r="1.6" opacity="0.45" />
+            <circle cx="860" cy="546" r="1.8" opacity="0.5" />
+            <circle cx="1040" cy="552" r="1.6" opacity="0.45" />
+          </g>
         </svg>
       </div>
 
-      {/* ── БЛИЖНИЙ ПЛАН: заголовок и ПРОЗРАЧНЫЙ экран формы ── */}
+      {/* ── ТЕРМИНАЛ: краны, контейнеры, фонари, маршрут заказов ── */}
+      <div ref={midRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+        <svg
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 h-[145vh] w-[145vw]"
+          viewBox="0 0 1200 800"
+          preserveAspectRatio="xMidYMid slice"
+          style={{ transform: "translate(-50%,-50%) translateZ(-180px)" }}
+        >
+          <defs>
+            <linearGradient id="cone" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#f5b942" stopOpacity="0.13" />
+              <stop offset="100%" stopColor="#f5b942" stopOpacity="0" />
+            </linearGradient>
+            <radialGradient id="endglow">
+              <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#67e8f9" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* площадка */}
+          <rect x="-100" y="618" width="1400" height="220" fill="#0a101d" />
+          <rect x="-100" y="618" width="1400" height="1.5" fill="rgba(251,191,36,0.12)" />
+          <g fill="rgba(255,255,255,0.03)">
+            <rect x="40" y="700" width="56" height="1.4" />
+            <rect x="240" y="706" width="56" height="1.4" />
+            <rect x="460" y="700" width="56" height="1.4" />
+            <rect x="700" y="708" width="56" height="1.4" />
+            <rect x="920" y="702" width="56" height="1.4" />
+          </g>
+          {/* лужи-отражения */}
+          <ellipse cx="200" cy="688" rx="70" ry="7" fill="rgba(120,170,220,0.045)" />
+          <ellipse cx="560" cy="716" rx="90" ry="8" fill="rgba(120,170,220,0.04)" />
+
+          {/* штабеля контейнеров */}
+          {CONTAINERS.map((c, i) => (
+            <g key={i} data-container>
+              <rect x={c.x} y={c.y} width="92" height="36" fill={CONTAINER_COLORS[c.c]} />
+              <rect x={c.x} y={c.y} width="92" height="3" fill="rgba(255,255,255,0.06)" />
+              <rect x={c.x} y={c.y + 33} width="92" height="3" fill="rgba(0,0,0,0.3)" />
+              <rect x={c.x + 18} y={c.y + 4} width="2.5" height="28" fill="rgba(0,0,0,0.24)" />
+              <rect x={c.x + 46} y={c.y + 4} width="2.5" height="28" fill="rgba(0,0,0,0.24)" />
+              <rect x={c.x + 74} y={c.y + 4} width="2.5" height="28" fill="rgba(0,0,0,0.24)" />
+            </g>
+          ))}
+
+          {/* кран-портал №1: тельфер ездит, маячок мигает */}
+          <g data-crane>
+            <rect x="128" y="336" width="16" height="304" fill="#131d36" />
+            <rect x="466" y="336" width="16" height="304" fill="#131d36" />
+            <rect x="88" y="322" width="440" height="26" fill="#131d36" />
+            <path
+              d="M96,348 L150,324 M176,348 L230,324 M256,348 L310,324 M336,348 L390,324 M416,348 L470,324"
+              stroke="#131d36"
+              strokeWidth="5"
+            />
+            <rect x="430" y="346" width="26" height="18" fill="#182745" />
+            <rect x="435" y="350" width="13" height="9" fill="#f59e0b" opacity="0.85" />
+          </g>
+          <circle cx="308" cy="316" r="4" fill="#ef4444" className="beacon" />
+          <g className="crane-trolley">
+            <rect x="196" y="348" width="28" height="14" fill="#182745" />
+            <rect x="208" y="362" width="3" height="118" fill="#0e1730" />
+            <rect x="188" y="480" width="54" height="8" fill="#182745" />
+          </g>
+
+          {/* дальний кран №2 */}
+          <g data-crane fill="#0f1830">
+            <rect x="880" y="430" width="10" height="210" />
+            <rect x="1030" y="430" width="10" height="210" />
+            <rect x="856" y="420" width="280" height="18" />
+          </g>
+          <circle cx="1005" cy="414" r="3" fill="#ef4444" className="beacon" style={{ animationDelay: "1.1s" }} />
+
+          {/* фонари с конусами тёплого света */}
+          <g>
+            <rect x="238" y="462" width="6" height="178" fill="#182742" />
+            <rect x="226" y="455" width="30" height="8" fill="#182742" />
+            <circle cx="241" cy="466" r="3" fill="#fbbf24" opacity="0.9" />
+            <polygon points="241,468 148,662 334,662" fill="url(#cone)" />
+          </g>
+          <g>
+            <rect x="612" y="462" width="6" height="178" fill="#182742" />
+            <rect x="600" y="455" width="30" height="8" fill="#182742" />
+            <circle cx="615" cy="466" r="3" fill="#fbbf24" opacity="0.9" />
+            <polygon points="615,468 536,662 694,662" fill="url(#cone)" />
+          </g>
+
+          {/* МАРШРУТ ЗАКАЗОВ: нить к горизонту, точки-заказы бегут */}
+          <path
+            ref={routePathRef}
+            d={ROUTE_D}
+            fill="none"
+            stroke="#22d3ee"
+            strokeWidth="2"
+            strokeOpacity="0.55"
+            strokeDasharray="1 9"
+            strokeLinecap="round"
+          />
+          <circle cx="1028" cy="332" r="12" fill="url(#endglow)" />
+          <circle cx="1028" cy="332" r="3.5" fill="#67e8f9" />
+          {ROUTE_DOTS.map((_, i) => (
+            <circle
+              key={i}
+              ref={(el) => {
+                routeDotRefs.current[i] = el
+              }}
+              data-route-dot
+              r="3.2"
+              fill="#67e8f9"
+              opacity="0.9"
+              style={{ filter: "drop-shadow(0 0 4px #22d3ee)" }}
+            />
+          ))}
+
+          {/* грузовик с фарами неспешно проезжает площадку */}
+          <g className="truck-pass">
+            <polygon points="0,704 96,688 96,724" fill="rgba(253,230,138,0.10)" />
+            <circle cx="0" cy="703" r="2.6" fill="#fde68a" />
+            <circle cx="0" cy="712" r="2.6" fill="#fde68a" />
+          </g>
+        </svg>
+      </div>
+
+      {/* ── БЛИЖНИЙ ПЛАН: заголовок и ПРОПУСК-документ формы ── */}
       <div ref={nearRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         {headline && (
           <div
-            className="absolute left-1/2 top-[18%] w-[min(92vw,560px)] text-center lg:left-[26%] lg:top-[44%] lg:w-[560px] lg:text-left"
-            style={{ transform: "translate(-50%,-50%) translateZ(-160px)" }}
+            className="absolute left-1/2 top-[15%] w-[min(90vw,520px)] text-center lg:left-[24%] lg:top-[42%] lg:w-[520px] lg:text-left"
+            style={{ transform: "translate(-50%,-50%) translateZ(-150px)" }}
           >
             {headline}
           </div>
         )}
 
-        {/* тёплое свечение за экраном формы — глубина и читаемость */}
+        {/* свечение за документом — глубина и читаемость */}
         {!bare && (
           <div
             aria-hidden="true"
-            className="absolute left-1/2 top-[56%] h-[620px] w-[620px] lg:left-[71%] lg:top-[50%]"
+            className="absolute left-1/2 top-[57%] h-[520px] w-[520px] lg:left-[68%] lg:top-[48%]"
             style={{
-              transform: "translate(-50%,-50%) translateZ(-260px)",
-              background:
-                "radial-gradient(50% 50% at 50% 50%, rgba(245,158,11,0.12), transparent 70%)",
+              transform: "translate(-50%,-50%) translateZ(-130px)",
+              background: `radial-gradient(50% 50% at 50% 50%, ${variant === "driver" ? "rgba(245,158,11,0.10)" : "rgba(34,211,238,0.10)"}, transparent 70%)`,
             }}
           />
         )}
 
-        {/* форма: экран-матовое стекло поверх живой карты */}
+        {/* форма: компактный ПРОПУСК — документ мира, не плита на
+            полэкрана. Номер, поля, штрихкод — язык терминала */}
         <div
           data-login-panel
-          className="pointer-events-auto absolute left-1/2 top-[56%] w-[min(92vw,440px)] touch-auto lg:left-[71%] lg:top-[50%]"
-          style={{ transform: "translate(-50%,-50%) translateZ(-120px)" }}
+          className="pointer-events-auto absolute left-1/2 top-[57%] w-[min(86vw,340px)] touch-auto lg:left-[68%] lg:top-[48%]"
+          style={{ transform: "translate(-50%,-50%) translateZ(-110px) rotateY(-4deg)" }}
         >
           <div className="world-bob">
             <div className="world-panel-in">
               {bare ? (
                 children
               ) : (
-                <div className="relative rounded-3xl border border-white/15 bg-[#0a1424]/60 px-5 pb-5 pt-4 shadow-[0_50px_110px_-30px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+                <div
+                  data-login-doc
+                  className="relative rounded-2xl border border-white/15 bg-[#0c1526]/72 px-5 pb-4 pt-3.5 shadow-[0_40px_90px_-25px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+                >
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent"
+                    className="pointer-events-none absolute inset-x-5 top-0 h-px"
+                    style={{ background: `linear-gradient(90deg, transparent, ${accent}b3, transparent)` }}
                   />
+                  {/* шапка пропуска */}
+                  <div className="flex items-center justify-between border-b border-dashed border-white/15 pb-2">
+                    <p
+                      className="text-[10px] font-bold tracking-[0.28em]"
+                      style={{ color: variant === "driver" ? "#fbbf24" : "#67e8f9" }}
+                    >
+                      {variant === "driver" ? "ПРОПУСК · ВОДИТЕЛЬ" : "ПРОПУСК · ДОСТУП"}
+                    </p>
+                    <p className="font-mono text-[10px] text-slate-500">№ 042-ЯР</p>
+                  </div>
                   {children}
+                  {/* низ пропуска: штрихкод */}
+                  <div className="mt-3 flex items-end justify-between border-t border-dashed border-white/15 pt-2.5">
+                    <div className="flex h-6 items-end gap-[2px]" aria-hidden="true">
+                      {BARCODE.map((wd, i) => (
+                        <span key={i} className="bg-white/25" style={{ width: wd, height: i % 3 === 0 ? 24 : 17 }} />
+                      ))}
+                    </div>
+                    <p className="font-mono text-[9px] tracking-wider text-slate-500">ЯРОСЛАВЛЬ · 24/7</p>
+                  </div>
                 </div>
               )}
             </div>
