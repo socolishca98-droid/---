@@ -538,7 +538,13 @@ function tripEtaSignature(
     .map(([key, value]) => `${key}@${value.startAt?.getTime() ?? ""}-${value.endAt?.getTime() ?? ""}`)
     .sort()
     .join(";")
-  const orders = loaded.orders.map((order) => `${order.id}:${order.status}`).sort().join(",")
+  // Порядок точек (routeSequence) влияет на маршрут и пробег — без него в
+  // подписи перестановка заказов внутри рейса до 5 минут отдавала старый
+  // прогноз из tripEtaCache.
+  const orders = loaded.orders
+    .map((order) => `${order.id}:${order.status}:${order.routeSequence ?? ""}`)
+    .sort()
+    .join(",")
   const vehicle = loaded.vehicle ? `${loaded.vehicle.type}:${loaded.vehicle.capacity}` : "-"
   return `${loaded.route.startedAt?.getTime() ?? ""}|${stages}|${marks}|${orders}|${vehicle}`
 }

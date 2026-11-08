@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T20:49:24.383Z",
+  "generatedAt": "2026-11-07T21:53:43.682Z",
   "endpoints": [
     {
       "method": "GET",
@@ -232,6 +232,11 @@
       "group": "auth"
     },
     {
+      "method": "POST",
+      "route": "/api/cargomart/scan",
+      "group": "cargomart"
+    },
+    {
       "method": "GET",
       "route": "/api/chat",
       "group": "chat"
@@ -414,6 +419,11 @@
     {
       "method": "GET",
       "route": "/api/geo/nearby",
+      "group": "geo"
+    },
+    {
+      "method": "POST",
+      "route": "/api/geo/route-shape",
       "group": "geo"
     },
     {

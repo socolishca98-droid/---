@@ -1024,3 +1024,48 @@ body {
 .route-map .leaflet-tile-pane {
   filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.86) saturate(0.7);
 }
+
+/* ---------------------------------------------------------------------------
+   Живая линия маршрута.
+
+   route-ants — «муравьи»: бегущий пунктир поверх сплошной линии дороги.
+   Показывает направление движения без единой стрелки и не мешает читать
+   саму дорогу. Отключается при prefers-reduced-motion — движение не для
+   всех комфортно, карта остаётся статичной и понятной.
+--------------------------------------------------------------------------- */
+@keyframes route-ants-move {
+  to {
+    stroke-dashoffset: -64;
+  }
+}
+
+.route-ants {
+  animation: route-ants-move 2.4s linear infinite;
+}
+
+/* Пульс точки погрузки: рейс на базе, машина грузится — точка «дышит». */
+@keyframes route-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.route-pulse {
+  animation: route-pulse 1.9s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-ants,
+  .route-pulse {
+    animation: none;
+  }
+}

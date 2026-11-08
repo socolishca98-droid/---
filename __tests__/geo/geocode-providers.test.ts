@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { geocodeAddresses } from "@/lib/geo/geocode"
+import { geocodeAddresses, resetGeocodeMemoryForTests } from "@/lib/geo/geocode"
 
 /** Строка GeoCache в объёме, который использует geocode.ts. */
 type GeoCacheRow = { address: string; lat: number; lng: number }
@@ -61,6 +61,11 @@ function stubFetch(handler: (url: string) => unknown) {
 
 beforeEach(() => {
   calls = []
+  // Память процесса геокодера живёт между тестами файла: первый тест кладёт
+  // «Москва» в memoryCache (в том числе как «не найден»), и остальные
+  // получают memory-hit без единого fetch. Сбрасываем, чтобы каждый тест
+  // проверял настоящую работу провайдеров.
+  resetGeocodeMemoryForTests()
   prismaMock.geoCache.findMany.mockClear()
   prismaMock.geoCache.create.mockClear()
   process.env.GEOCODE_PAUSE_MS = "0" // без пауз между запросами

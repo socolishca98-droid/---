@@ -115,6 +115,7 @@ export async function resetPasswordWithToken(params: {
 
   const tokenHash = hashResetToken(token)
 
+  // org-audit: manual — идентификатор строки не userId, а хэш токена из письма (знает только адресат)
   const claimed = await prisma.passwordResetToken.updateMany({
     where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
     data: { usedAt: new Date() },
@@ -141,6 +142,7 @@ export async function resetPasswordWithToken(params: {
     }
   }
 
+  // org-audit: manual — сброс пароля по токену из письма — до входа, организации ещё нет
   const user = await prisma.user.findUnique({
     where: { id: record.userId },
     select: { id: true, email: true, role: true },
@@ -152,6 +154,7 @@ export async function resetPasswordWithToken(params: {
   const { hash, salt } = await hashPassword(params.newPassword)
 
   await prisma.$transaction([
+    // org-audit: manual — смена пароля по токену из письма — до входа
     prisma.user.update({
       where: { id: user.id },
       data: {
@@ -181,6 +184,7 @@ export async function checkPasswordResetToken(token: string): Promise<{
   const value = String(token ?? "").trim()
   if (!value) return { valid: false, error: "Ссылка восстановления неполная" }
 
+  // org-audit: manual — поиск по хэшу токена из ссылки письма, организации до входа нет
   const record = await prisma.passwordResetToken.findUnique({
     where: { tokenHash: hashResetToken(value) },
     select: { usedAt: true, expiresAt: true },
@@ -197,6 +201,7 @@ export async function checkPasswordResetToken(token: string): Promise<{
 
 /** Уборка истёкших токенов — вызывается из cron рядом с очисткой кэша ATI. */
 export async function cleanupPasswordResetTokens(): Promise<{ deleted: number }> {
+  // org-audit: manual — уборка просроченных токенов: они ничьи по смыслу
   const result = await prisma.passwordResetToken.deleteMany({
     where: { expiresAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
   })

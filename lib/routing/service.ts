@@ -372,6 +372,10 @@ async function loadPool(
   })
   const places = located.places
   const unresolved = located.unresolved
+  // Статусы резолва идут дальше в сборку заказов: «город неоднозначен» и
+  // «нет координат» — разные причины пропуска, и логист должен видеть
+  // настоящую, а не универсальное «нет координат точки …».
+  const statuses = located.statuses
 
   const problemsOf: Array<{ id: string; problems: string[] }> = []
   for (const row of atiRows) {
@@ -379,6 +383,7 @@ async function loadPool(
     const built = orderFromAtiRow(
       { ...row, organisationId: row.organizationId } as AtiLoadRow,
       places,
+      statuses,
     )
     if (built.order) orders.push(built.order)
     else problemsOf.push({ id: row.atiLoadId, problems: built.problems })
@@ -388,6 +393,7 @@ async function loadPool(
       { ...row, organisationId: row.organizationId } as OrderRow,
       places,
       organisationId,
+      statuses,
     )
     if (built.order) orders.push(built.order)
     else problemsOf.push({ id: row.id, problems: built.problems })

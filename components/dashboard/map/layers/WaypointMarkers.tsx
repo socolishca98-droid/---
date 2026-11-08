@@ -71,6 +71,11 @@ export function WaypointMarkers({ map, routes, enabled }: WaypointMarkersProps):
     for (const route of list) {
       if (!route || !Array.isArray(route.waypoints)) continue
 
+      // Ближайшая операция рейса: если это погрузка/выгрузка — соответствующая
+      // точка на карте пульсирует. Так видно, где машина стоит прямо сейчас,
+      // не открывая панель прогноза.
+      const nextPoint = route.trip?.nextPoint ?? null
+
       let pointNumber = 1
 
       for (const waypoint of route.waypoints) {
@@ -84,10 +89,19 @@ export function WaypointMarkers({ map, routes, enabled }: WaypointMarkersProps):
         const number = isBase ? null : pointNumber++
         const address = escapeOrDash(waypoint.address, "Адрес не указан")
 
+        // Совпадение с ближайшей точкой — по адресу (адрес в waypoints и в
+        // прогнозе приходит из одного заказа, поэтому равенство устойчиво).
+        const isNextStop =
+          nextPoint != null &&
+          nextPoint.address === waypoint.address &&
+          (nextPoint.operation === "loading" || nextPoint.operation === "unloading") &&
+          nextPoint.operation === waypoint.type
+
         const icon = L.divIcon({
           className: "wp-container",
           html: `
-            <div class="wp" style="--c: ${style.color}; --bg: ${style.bg}">
+            <div class="wp ${isNextStop ? "wp-active-op" : ""}" style="--c: ${style.color}; --bg: ${style.bg}">
+              ${isNextStop ? `<span class="wp-pulse"></span>` : ""}
               <div class="wp-dot">
                 ${number !== null ? `<span class="wp-num">${number}</span>` : "⌂"}
                 ${style.arrow ? `<span class="wp-arrow">${style.arrow}</span>` : ""}
@@ -129,6 +143,10 @@ export function WaypointMarkers({ map, routes, enabled }: WaypointMarkersProps):
           keyboard: false,
           riseOnHover: true,
         })
+          .bindTooltip(
+            `${style.arrow} ${style.label}${number !== null ? ` ${number}` : ""} · ${escapeHtml(address)}`,
+            { direction: "top", offset: [0, -16], className: "wp-hint" },
+          )
           .bindPopup(popup, { className: "wp-popup-wrap", closeButton: false, maxWidth: 260 })
           .addTo(group)
       }

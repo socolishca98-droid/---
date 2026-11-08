@@ -586,19 +586,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const totalWeight =
-      payloads.reduce((sum, o) => sum + (o.weight || 0), 0) +
-      linked.reduce((sum, o) => sum + (o.weight || 0), 0)
-    if (vehicle && vehicle.capacity > 0 && totalWeight > vehicle.capacity) {
+    // Многоплечевой рейс везёт грузы по очереди: сумма весов — не признак
+    // перегруза (18 + 18 т на 20-тоннике — это два плеча, а не одна загрузка).
+    // Перегруз — конкретный заказ тяжелее машины; такой не пропускаем.
+    const routeOrdersAll = [...payloads, ...linked]
+    const overweight =
+      vehicle && vehicle.capacity > 0
+        ? routeOrdersAll.filter((o) => (o.weight || 0) > vehicle.capacity)
+        : []
+    if (vehicle && overweight.length > 0) {
       return NextResponse.json(
         {
           success: false,
           error: "Превышена грузоподъёмность машины",
-          details: { capacity: vehicle.capacity, totalWeight },
+          details: {
+            capacity: vehicle.capacity,
+            orders: overweight.map((o) => ({
+              weight: o.weight || 0,
+              route: `${o.routeFrom} → ${o.routeTo}`,
+            })),
+          },
         },
         { status: 400 },
       )
     }
+    // Совместную загрузку нескольких заказов здесь проверить нельзя: профиль
+    // плеч строит оптимизатор, а создание рейса его не получает. Если грузы
+    // могут ехать только вместе (сумма выше грузоподъёмности), честно
+    // предупреждаем в ответе — молчать о непроверенном нельзя.
+    const jointWeight = routeOrdersAll.reduce((sum, o) => sum + (o.weight || 0), 0)
+    const jointLoadWarning =
+      vehicle && routeOrdersAll.length > 1 && jointWeight > vehicle.capacity
+        ? `Суммарный вес заказов ${jointWeight} кг выше грузоподъёмности ${vehicle.capacity} кг: рейс возможен, только если грузы едут по плечам по очереди — совместную загрузку проверьте сами`
+        : null
 
     const created = await prisma.$transaction(async (tx: any) => {
       const route = await tx.route.create({
@@ -796,6 +816,7 @@ export async function POST(request: NextRequest) {
       ordersCount: created.orders.length,
       route: serializeRoute(created.route),
       stats: summarizeRoute(created.orders),
+      warnings: jointLoadWarning ? [jointLoadWarning] : [],
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Route creation error"

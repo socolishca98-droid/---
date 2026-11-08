@@ -477,6 +477,19 @@ function windowFrom(date: Date | string | null | undefined) {
   return { from: value.toISOString() }
 }
 
+/**
+ * Окно «не позже даты»: дедлайн заказа — крайний срок, а не дата начала.
+ * Раньше дедлайн попадал в windowFrom, расписание честно ждало его
+ * (созданный заказ живёт с дедлайном +7 дней) — и заказ выпадал из
+ * горизонта плана, хотя везти его можно хоть завтра.
+ */
+function windowTo(date: Date | string | null | undefined) {
+  if (!date) return {}
+  const value = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(value.getTime())) return {}
+  return { to: value.toISOString() }
+}
+
 export interface OrderBuildResult {
   order: LoadOrder | null
   /** Что помешало или чего не хватает */
@@ -494,15 +507,36 @@ function organisationOfRow(row: { organisationId?: string | null; organizationId
   return row.organisationId ?? row.organizationId ?? ""
 }
 
+/**
+ * Статусы резолва городов пула (geo/places): по ним формулируется причина
+ * пропуска груза. «Нет координат» и «город неоднозначен» — разные проблемы
+ * с разными решениями: первое лечится геокодером, второе — областью в адресе.
+ */
+export type PlaceStatuses = Map<string, { status: string; note: string | null }>
+
+/** Причина пропуска города: неоднозначность — не «нет координат». */
+function placeProblem(
+  raw: string,
+  statuses?: PlaceStatuses,
+  kind: "погрузки" | "выгрузки" = "погрузки",
+): string {
+  const status = statuses?.get(raw)
+  if (status?.status === "ambiguous") {
+    return `имя города «${raw}» неоднозначно — укажите область`
+  }
+  return `нет координат точки ${kind} «${raw}»`
+}
+
 export function orderFromAtiRow(
   row: AtiLoadRow,
   places: Map<string, Place>,
+  statuses?: PlaceStatuses,
 ): OrderBuildResult {
   const problems: string[] = []
   const pickup = places.get(cityKey(row.routeFrom))
   const delivery = places.get(cityKey(row.routeTo))
-  if (!pickup) problems.push(`нет координат точки погрузки «${row.routeFrom}»`)
-  if (!delivery) problems.push(`нет координат точки выгрузки «${row.routeTo}»`)
+  if (!pickup) problems.push(placeProblem(row.routeFrom, statuses, "погрузки"))
+  if (!delivery) problems.push(placeProblem(row.routeTo, statuses, "выгрузки"))
   // Координаты — единственное, без чего заказ построить нельзя: без них нет
   // ни расстояния, ни экономики. Цена же может отсутствовать: это повод для
   // оценки и звонка, а не причина выбросить заявку. Раньше такая заявка
@@ -555,12 +589,13 @@ export function orderFromOrderRow(
   row: OrderRow,
   places: Map<string, Place>,
   organisationId: string,
+  statuses?: PlaceStatuses,
 ): OrderBuildResult {
   const problems: string[] = []
   const pickup = places.get(cityKey(row.routeFrom))
   const delivery = places.get(cityKey(row.routeTo))
-  if (!pickup) problems.push(`нет координат точки погрузки «${row.routeFrom}»`)
-  if (!delivery) problems.push(`нет координат точки выгрузки «${row.routeTo}»`)
+  if (!pickup) problems.push(placeProblem(row.routeFrom, statuses, "погрузки"))
+  if (!delivery) problems.push(placeProblem(row.routeTo, statuses, "выгрузки"))
   // Согласованная цена главнее: это деньги, о которых договорились.
   const agreed = row.agreedPrice !== null && row.agreedPrice !== undefined && row.agreedPrice > 0
   const amount = agreed ? row.agreedPrice! : row.price ?? null
@@ -579,7 +614,7 @@ export function orderFromOrderRow(
       weightKg: row.weight ?? null,
       volumeM3: row.volume ?? null,
       bodyRequired: row.loadingType ? [bodyClass(row.loadingType)] : null,
-      window: { pickup: {}, delivery: windowFrom(row.deadline) },
+      window: { pickup: {}, delivery: windowTo(row.deadline) },
       rate: { amount: agreed ? amount! : amount ?? 0, basis: "perTrip", status, raw: row.price ?? null },
       exchangeKm: row.distance && row.distance > 0 ? row.distance : null,
     },

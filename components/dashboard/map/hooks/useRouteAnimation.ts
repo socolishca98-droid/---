@@ -161,6 +161,22 @@ export function useRouteAnimation({ map, routes, enabled }: UseRouteAnimationOpt
       const points = projectRoute(route)
       if (points.length < 2) return
 
+      // Геометрия-фолбэк (OSRM был недоступен): прямая между точками.
+      // Рисуем её скромным серым пунктиром без свечения и «кометы» —
+      // чтобы прямую нельзя было принять за дорогу «сквозь дома».
+      // На следующем опросе (кэш геометрии — 10 минут) придёт дорога.
+      if (route.geometrySource === "line") {
+        ctx.lineCap = "round"
+        ctx.lineJoin = "round"
+        ctx.setLineDash([10, 8])
+        tracePath(points)
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.75)"
+        ctx.lineWidth = 2.2
+        ctx.stroke()
+        ctx.setLineDash([])
+        return
+      }
+
       const color = route.color || FALLBACK_COLOR
 
       // 1. Мягкое свечение под нитью — линия читается на любом тайле

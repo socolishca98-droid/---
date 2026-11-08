@@ -26,6 +26,12 @@ export interface RouteData {
   orders: OrderInfo[]
   waypoints: Waypoint[]
   coordinates: [number, number][]
+  /**
+   * Откуда взята геометрия: "osrm" — дорога, "line" — прямая между точками
+   * (OSRM был недоступен). Фронт рисует фолбэк серым пунктиром, чтобы
+   * прямую нельзя было принять за «маршрут сквозь дома».
+   */
+  geometrySource?: "osrm" | "line"
   totalDistance: number
   totalPrice: number
   duration: number

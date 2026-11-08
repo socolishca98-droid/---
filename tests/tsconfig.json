@@ -38,6 +38,8 @@
     "../lib/auth/owner.ts",
     "../lib/routes/model.ts",
     "../lib/orders/stages.ts",
+    "../lib/orders/parse-request-text.ts",
+    "../lib/cargomart/mapping.ts",
     "../lib/orders/route-link.ts",
     "../lib/shift/trip-state.ts",
     "../lib/shift/timeline.ts",

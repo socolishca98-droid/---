@@ -83,6 +83,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         status: true,
         distance: true,
         isAdditionalLoad: true,
+        deadline: true,
       },
     })) as {
       id: string
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       status: string
       distance: number | null
       isAdditionalLoad: boolean
+      deadline: Date | null
     }[]
 
     if (orders.length === 0) {
@@ -179,11 +181,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           ] as [[number, number], [number, number]])
         : null
 
+    // Ближайший дедлайн невыполненных заказов: карта показывает живой таймер
+    // «сколько ещё машине в рейсе» — до выгрузки, которой ещё не было.
+    const OPEN_STATUSES = new Set([
+      "search", "negotiation", "agreed", "in_route", "documents", "assigned", "control",
+    ])
+    const upcoming = orders
+      .filter((order) => order.deadline && OPEN_STATUSES.has(order.status))
+      .map((order) => ({ deadline: order.deadline as Date, city: order.routeTo }))
+      .sort((a, b) => a.deadline.getTime() - b.deadline.getTime())
+    const next = upcoming[0] ?? null
+
     return NextResponse.json({
       success: true,
       route: { id: route.id, name: route.name, status: route.status },
       segments,
       bounds,
+      // Таймеру нужны дедлайн и город — считает их клиент каждую минуту.
+      eta: next ? { deadline: next.deadline.toISOString(), city: next.city } : null,
       problems: Array.from(new Set(problems)),
     })
   } catch (error) {

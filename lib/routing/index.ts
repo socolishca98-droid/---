@@ -367,16 +367,20 @@ export async function planVehicle(input: PlanInput, vehicle: Vehicle): Promise<P
         const order = compatibleOrders.find((item) => item.id === orderId)
         if (!order) return null
         // Радиус относится к НАЧАЛУ маршрута — и в объяснении отказа тоже.
-        // Без этой проверки с далёкой базы (Краснодар, Екатеринбург) отказ
-        // звучал как «не влезает в лимит 72 ч: получилось 149 ч», хотя
-        // настоящая причина другая: погрузка в тысяче километров от базы.
-        // Считаем по прямой: дорога не короче прямой, значит «прямая дальше
-        // радиуса» — достаточное условие, ложных отказов не даёт.
-        const straightFromBase = straightKm(vehicle.homeBase.point, order.pickup.point)
-        if (straightFromBase > input.settings.startRadiusKm + 1) {
+        // Метрика — та же, что у фильтра перебора (builder.takeOrder):
+        // ДОРОЖНОЕ расстояние от базы до погрузки. Раньше здесь была прямая
+        // («дорога не короче прямой»), но у границы радиуса дорога длиннее
+        // прямой на 10–15 %, и заказ, отрезанный фильтром (Ярославль: 312 км
+        // по дороге при радиусе 300), получал бессмысленное «даёт меньше
+        // других цепочек» вместо настоящей причины.
+        const fromBaseKm =
+          vehicle.homeBase.id === order.pickup.id
+            ? 0
+            : context.distance.segment(vehicle.homeBase, order.pickup, "deadhead").km
+        if (fromBaseKm > input.settings.startRadiusKm + 1e-6) {
           return {
             reason:
-              `погрузка в ${Math.round(straightFromBase)} км от базы — дальше радиуса ` +
+              `погрузка в ${Math.round(fromBaseKm)} км от базы — дальше радиуса ` +
               `${Math.round(input.settings.startRadiusKm)} км`,
           }
         }

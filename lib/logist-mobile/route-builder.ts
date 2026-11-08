@@ -1702,6 +1702,8 @@ export interface RouteMapPoint {
   index?: number
   /** Домашняя точка — другим цветом */
   home?: boolean
+  /** Что происходит в точке: погрузка / выгрузка. Карта различает цветом. */
+  kind?: "load" | "unload"
 }
 
 /**
@@ -1820,17 +1822,20 @@ export function routeMapPoints(route: BuiltRoute): RouteMapPoint[] {
     label: string,
     index?: number,
     home?: boolean,
+    kind?: "load" | "unload",
   ) => {
     if (!point) return
     const last = points[points.length - 1]
     if (last && haversineKm(last, point) < 5) return
-    points.push({ lat: point.lat, lng: point.lng, label, index, home })
+    points.push({ lat: point.lat, lng: point.lng, label, index, home, kind })
   }
 
   push(route.startPoint, `База: ${route.path[0]}`, undefined, true)
   route.legs.forEach((leg, index) => {
-    push(leg.load.fromPoint, `${index + 1}. Погрузка: ${shortCity(leg.load.fromCity)}`, index + 1)
-    push(leg.load.toPoint, `${index + 1}. Выгрузка: ${shortCity(leg.load.toCity)}`, index + 1)
+    // kind нужен карте: погрузка и выгрузка различаются цветом кружка —
+    // «откуда забрали» и «куда везём» считываются без чтения подписей.
+    push(leg.load.fromPoint, `${index + 1}. Погрузка: ${shortCity(leg.load.fromCity)}`, index + 1, false, "load")
+    push(leg.load.toPoint, `${index + 1}. Выгрузка: ${shortCity(leg.load.toCity)}`, index + 1, false, "unload")
   })
   return points
 }

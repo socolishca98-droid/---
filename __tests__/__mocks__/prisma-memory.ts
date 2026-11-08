@@ -343,25 +343,83 @@ function equals(left: unknown, right: unknown): boolean {
   return left === right
 }
 
-export function matches(row: Row, where?: Row | null): boolean {
+export function matches(row: Row, where?: Row | null, model?: string): boolean {
   if (!where) return true
   for (const [key, condition] of Object.entries(where)) {
     if (key === "OR") {
       const list = condition as Row[]
-      if (list.length > 0 && !list.some((sub) => matches(row, sub))) return false
+      if (list.length > 0 && !list.some((sub) => matches(row, sub, model))) return false
       continue
     }
     if (key === "AND") {
       const list = Array.isArray(condition) ? (condition as Row[]) : [condition as Row]
-      if (!list.every((sub) => matches(row, sub))) return false
+      if (!list.every((sub) => matches(row, sub, model))) return false
       continue
     }
     if (key === "NOT") {
       const list = Array.isArray(condition) ? (condition as Row[]) : [condition as Row]
-      if (list.some((sub) => matches(row, sub))) return false
+      if (list.some((sub) => matches(row, sub, model))) return false
+      continue
+    }
+    // Фильтр по связи (orders: { some: { … } }): до этой ветки GET /api/routes
+    // с includeComparisons=false сравнивал { some: {} } с несуществующей
+    // колонкой — и честный пустой ответ превращался в «выборки нет вообще».
+    const relation = model ? RELATIONS[model]?.[key] : undefined
+    if (relation) {
+      if (!matchesRelation(row, key, relation, condition)) return false
       continue
     }
     if (!matchesValue(row[key], condition)) return false
+  }
+  return true
+}
+
+/**
+ * Условие на связь: some/none/every для многозначных, is/isNot для
+ * однозначных. Что-то ещё (вложенные фильтры, withCount) — честный throw:
+ * заглушка обязана сказать, чего она не умеет, а не вернуть пустоту.
+ */
+function matchesRelation(
+  row: Row,
+  key: string,
+  relation: Relation,
+  condition: unknown,
+): boolean {
+  const related = table(relation.model).filter((item) =>
+    equals(item[relation.foreign], row[relation.local]),
+  )
+  if (condition && typeof condition === "object" && !Array.isArray(condition)) {
+    const spec = condition as Row
+    for (const [operator, value] of Object.entries(spec)) {
+      if (relation.many) {
+        if (operator === "some") {
+          if (!related.some((item) => matches(item, value as Row, relation.model))) return false
+        } else if (operator === "none") {
+          if (related.some((item) => matches(item, value as Row, relation.model))) return false
+        } else if (operator === "every") {
+          if (!related.every((item) => matches(item, value as Row, relation.model))) return false
+        } else {
+          throw new Error(
+            `Заглушка Prisma: фильтр связи ${operator} не поддержан (${key})`,
+          )
+        }
+      } else {
+        const found = related[0]
+        if (operator === "is") {
+          if (value === null) {
+            if (related.length > 0) return false
+          } else if (!found || !matches(found, value as Row, relation.model)) return false
+        } else if (operator === "isNot") {
+          if (value === null) {
+            if (related.length === 0) return false
+          } else if (found && matches(found, value as Row, relation.model)) return false
+        } else {
+          throw new Error(
+            `Заглушка Prisma: фильтр связи ${operator} не поддержан (${key})`,
+          )
+        }
+      }
+    }
   }
   return true
 }
@@ -396,7 +454,7 @@ function resolveRelation(model: string, row: Row, name: string, spec: any): any 
   if (relation.many) {
     let rows = related.filter((item) => equals(item[relation.foreign], row[relation.local]))
     if (spec && typeof spec === "object") {
-      rows = rows.filter((item) => matches(item, spec.where))
+      rows = rows.filter((item) => matches(item, spec.where, relation.model))
       rows = applyOrderBy(rows, spec.orderBy)
       if (typeof spec.skip === "number") rows = rows.slice(spec.skip)
       if (typeof spec.take === "number") rows = rows.slice(0, spec.take)
@@ -505,7 +563,7 @@ function findUniqueRow(model: string, where: Row): Row | null {
     const compound = where[keys[0]] as Row
     return table(model).find((row) => Object.entries(compound).every(([field, value]) => equals(row[field], value))) || null
   }
-  return table(model).find((row) => matches(row, where)) || null
+  return table(model).find((row) => matches(row, where, model)) || null
 }
 
 // ---------------------------------------------------------------------------
@@ -514,7 +572,7 @@ function findUniqueRow(model: string, where: Row): Row | null {
 function makeDelegate(model: string) {
   return {
     async findMany(args: any = {}) {
-      let rows = table(model).filter((row) => matches(row, args.where))
+      let rows = table(model).filter((row) => matches(row, args.where, model))
       if (Array.isArray(args.distinct) && args.distinct.length > 0) {
         const seen = new Set<string>()
         rows = rows.filter((row) => {
@@ -553,11 +611,11 @@ function makeDelegate(model: string) {
     },
 
     async count(args: any = {}) {
-      return table(model).filter((row) => matches(row, args.where)).length
+      return table(model).filter((row) => matches(row, args.where, model)).length
     },
 
     async aggregate(args: any = {}) {
-      const rows = table(model).filter((row) => matches(row, args.where))
+      const rows = table(model).filter((row) => matches(row, args.where, model))
       const result: Row = {}
       if (args._count) result._count = args._count === true ? rows.length : (() => {
         const counts: Row = {}
@@ -613,7 +671,7 @@ function makeDelegate(model: string) {
     },
 
     async updateMany(args: any = {}) {
-      const rows = table(model).filter((row) => matches(row, args.where))
+      const rows = table(model).filter((row) => matches(row, args.where, model))
       // Настоящая база проверяет уникальность и на updateMany, поэтому сначала
       // готовим и проверяем все строки, и только потом пишем: updateMany атомарен,
       // а частичная запись скрыла бы конфликт, который на проде дал бы P2002.
@@ -636,7 +694,7 @@ function makeDelegate(model: string) {
 
     async delete(args: any = {}) {
       const rows = table(model)
-      const index = rows.findIndex((row) => matches(row, args.where))
+      const index = rows.findIndex((row) => matches(row, args.where, model))
       if (index < 0) throw new MemoryPrismaError("P2025", `${model}: запись для delete не найдена`)
       const [removed] = rows.splice(index, 1)
       return project(model, removed, args)
@@ -646,7 +704,7 @@ function makeDelegate(model: string) {
       const rows = table(model)
       let count = 0
       for (let index = rows.length - 1; index >= 0; index -= 1) {
-        if (matches(rows[index], args.where)) {
+        if (matches(rows[index], args.where, model)) {
           rows.splice(index, 1)
           count += 1
         }

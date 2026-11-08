@@ -116,6 +116,29 @@ export function buildPlaceIndex(rows: ReferenceRow[]): PlaceIndex {
 }
 
 /**
+ * Города федерального значения: их регион в справочнике — сам город
+ * («Москва (регион)» → ключ «москва»), а в адресах и на биржах к ним пишут
+ * область («Москва, Московская область» → ключ «московская»). Без этой
+ * пары город не находился ни в каком написании: у трёх деревень «Москва»
+ * регионы другие, у города — «москва», и фильтр по «московская» был пуст,
+ * хотя адрес явно указывал на город. Прилагательная форма — тот же пункт.
+ */
+const FEDERAL_CITY_REGION_ALIASES: Record<string, readonly string[]> = {
+  // Формы — фактические ключи адреса: «область» в ключе сохраняется
+  // (срез слов в regionLookupKey опирается на \b, который не работает
+  // после кириллицы), поэтому перечислены обе записи — с «область» и без.
+  москва: ["московская", "московская область", "московская обл"],
+  "санкт-петербург": ["ленинградская", "ленинградская область", "ленинградская обл"],
+}
+
+/** Кандидат подходит под регион адреса? Федеральные города — с алиасами. */
+function regionMatches(item: Indexed, regionKey: string): boolean {
+  if (item.keyRegion === regionKey) return true
+  const aliases = FEDERAL_CITY_REGION_ALIASES[item.keyRegion]
+  return aliases !== undefined && aliases.includes(regionKey)
+}
+
+/**
  * Выбор одного варианта из нескольких.
  * Варианты в РАЗНЫХ регионах — неоднозначность, а не находка.
  */
@@ -136,14 +159,14 @@ function pick(
 
   if (parsed.region) {
     const key = regionLookupKey(parsed.region)
-    const byRegion = list.filter((item) => item.keyRegion === key)
+    const byRegion = list.filter((item) => regionMatches(item, key))
     if (byRegion.length === 1) return { item: byRegion[0], note: null, ambiguous: 0 }
     if (byRegion.length > 1) list = byRegion
   }
 
   if (preferredRegion) {
     const key = regionLookupKey(preferredRegion)
-    const byPreferred = list.filter((item) => item.keyRegion === key)
+    const byPreferred = list.filter((item) => regionMatches(item, key))
     if (byPreferred.length === 1) {
       return { item: byPreferred[0], note: REGION_FROM_SETTINGS, ambiguous: 0 }
     }

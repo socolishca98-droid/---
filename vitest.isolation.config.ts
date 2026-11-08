@@ -17,6 +17,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["__tests__/isolation/**/*.{test,spec}.{ts,tsx}"],
+    // Кэш геокодера в памяти процесса живёт между тестами — сбрасываем его
+    // перед каждым (см. __tests__/isolation/setup.ts)
+    setupFiles: ["__tests__/isolation/setup.ts"],
     exclude: ["node_modules", ".next", "dist", ".test-build", "tests"],
     // Тесты делят одну in-memory базу: параллельные воркеры смешали бы данные
     fileParallelism: false,

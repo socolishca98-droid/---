@@ -81,3 +81,6 @@ prisma/backups/
 
 # локальная связка с Vercel
 .vercel/
+
+# OSRM: карты и собранный граф (гигабайты, восстанавливаются скриптом)
+deploy/osrm/data/

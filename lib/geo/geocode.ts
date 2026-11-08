@@ -421,6 +421,18 @@ function memorySet(key: string, coords: Coordinates | null): void {
   memoryCache.set(key, { at: Date.now(), coords })
 }
 
+/**
+ * Сброс памяти процесса геокодера — только для тестов.
+ *
+ * Тесты провайдеров и изоляции делят один процесс: первый тест кладёт адрес
+ * в memoryCache (в том числе как «не найден»), и остальные получают
+ * memory-hit без единого запроса к провайдеру — тест проверял бы кэш,
+ * а не геокодер. Постоянный GeoCache этот сброс НЕ трогает.
+ */
+export function resetGeocodeMemoryForTests(): void {
+  memoryCache.clear()
+}
+
 export async function geocodeAddressesWithSource(
   addresses: readonly string[],
 ): Promise<{

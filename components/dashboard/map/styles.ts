@@ -76,6 +76,52 @@ export const mapStyles = `
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
   }
 
+  /* Идущая прямо сейчас погрузка/выгрузка: точка «дышит» — видно, где
+     машина стоит под операцией, не открывая панель прогноза. */
+  .wp-pulse {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid var(--c);
+    opacity: 0;
+    pointer-events: none;
+    animation: wp-ping 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+
+  .wp-active-op .wp-dot {
+    box-shadow: 0 0 14px var(--c), inset 0 0 6px rgba(0, 0, 0, 0.8);
+  }
+
+  @keyframes wp-ping {
+    0% {
+      transform: scale(0.55);
+      opacity: 0.9;
+    }
+    70% {
+      transform: scale(1.35);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1.35);
+      opacity: 0;
+    }
+  }
+
+  /* Подсказка при наведении на точку: тип + адрес, без клика */
+  .wp-hint {
+    background: rgba(18, 20, 28, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #e6e8ee !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.7) !important;
+    font-size: 11px;
+    padding: 4px 8px !important;
+  }
+
+  .wp-hint::before {
+    display: none !important;
+  }
+
   /* === ПОПАПЫ ТОЧЕК МАРШРУТА (Glass Card) === */
   .wp-popup-wrap .leaflet-popup-content-wrapper {
     background: rgba(18, 20, 28, 0.95) !important;
@@ -311,7 +357,8 @@ export const mapStyles = `
 
   @media (prefers-reduced-motion: reduce) {
     .driver-ring,
-    .driver-pulse {
+    .driver-pulse,
+    .wp-pulse {
       animation: none !important;
     }
   }

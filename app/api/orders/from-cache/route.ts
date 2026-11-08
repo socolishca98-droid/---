@@ -87,6 +87,39 @@ export async function POST(request: NextRequest) {
     // сессии проверяется сразу: чужая строка базы неотличима от несуществующей
     const cache = await prisma.atiCache.findUnique({ where: { id: cacheId } })
     if (!cache || cache.organizationId !== org.organizationId) {
+      // Нога плана — не обязательно груз биржи: план строится и из ручных
+      // заказов организации, и экран отправки для КАЖДОЙ ноги зовёт этот
+      // эндпоинт. Раньше такая нога получала 404, и рейс из плана ручных
+      // заказов нельзя было отправить вообще. Если cacheId — это id уже
+      // существующего заказа нашей организации, берём его: дубликат не нужен.
+      // Чужой заказ, как и чужой груз, неотличим от несуществующего.
+      const ownOrder = await prisma.order.findFirst({
+        where: scopedWhere(org.organizationId, { id: cacheId }),
+        select: {
+          id: true,
+          status: true,
+          atiCacheId: true,
+          routeFrom: true,
+          routeTo: true,
+          distance: true,
+          weight: true,
+          price: true,
+          agreedPrice: true,
+          negotiationStatus: true,
+          cargoType: true,
+          clientName: true,
+          clientContact: true,
+          deadline: true,
+          createdAt: true,
+        },
+      })
+      if (ownOrder) {
+        return NextResponse.json({
+          success: true,
+          order: publicOrder(ownOrder),
+          message: "Это уже заказ вашей организации — рейс собирается из него",
+        })
+      }
       return NextResponse.json(
         { success: false, error: "Груз в накопленной базе не найден" },
         { status: 404 },
@@ -157,17 +190,8 @@ export async function POST(request: NextRequest) {
         cargoType: cache.cargoType || "Груз",
         loadingType: cache.loadingType || "other",
         requirements: cache.note || null,
-        // Цена переносится вместе со статусом. Ноль остаётся нулём, но он
-        // означает «не указана», и в экономике это не доход: заказ помечен
-        // priceNegotiable и priceStatus = NEGOTIATION_REQUIRED.
         price: cache.price ?? 0,
         priceNegotiable: !cache.price,
-        priceStatus:
-          cache.priceStatus && cache.priceStatus !== "CONFIRMED" && cache.price && cache.price > 0
-            ? cache.priceStatus
-            : cache.price && cache.price > 0
-              ? "CONFIRMED"
-              : "NEGOTIATION_REQUIRED",
         paymentType: cache.paymentType || null,
         clientName: cache.firmName || null,
         clientContact: contactPhone || "",

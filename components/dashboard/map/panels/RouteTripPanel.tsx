@@ -20,7 +20,7 @@ import {
   formatAgeSeconds,
   GPS_ONLINE_WINDOW_MS,
 } from "@/lib/fleet/presence"
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { AlertTriangle, Clock, MapPin, Navigation, RotateCcw, Route as RouteIcon } from "lucide-react"
 
@@ -100,6 +100,46 @@ function until(iso: string): string {
   return `через ${humanDuration(diffMs / 1000)}`
 }
 
+/**
+ * Тикающее «сейчас»: панель прогноза пересчитывает остатки и прибытия
+ * сама, не дожидаясь следующего опроса API (тот приходит раз в 15 секунд,
+ * а таймеры имеют смысл только когда они идут).
+ */
+function useNowTick(intervalMs = 30000): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(id)
+  }, [intervalMs])
+  return now
+}
+
+/**
+ * Живое прибытие: «до 14:32 · через 2 ч 5 мин», а если время уже прошло —
+ * «опоздание …» красным. Опоздание видно сразу, а не после перезагрузки.
+ */
+function ArrivalLive({ iso, now }: { iso: string; now: number }) {
+  const target = new Date(iso).getTime()
+  if (Number.isNaN(target)) return <span>{until(iso)}</span>
+  const clock = new Date(target).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+  const diffMs = target - now
+  if (diffMs <= 0) {
+    return (
+      <span className="font-medium tabular-nums text-destructive">
+        {clock} · опоздание {humanDuration(-diffMs / 1000)}
+      </span>
+    )
+  }
+  return (
+    <span className="tabular-nums">
+      {clock} · через {humanDuration(diffMs / 1000)}
+    </span>
+  )
+}
+
 const CONFIDENCE_LABEL: Record<string, string> = {
   high: "высокая",
   medium: "средняя",
@@ -136,6 +176,8 @@ export function RouteTripPanel({
     trip.gpsKnown &&
     trip.gpsAgeSec != null &&
     trip.gpsAgeSec > GPS_ONLINE_WINDOW_MS / 1000
+  // Живые таймеры: пересчёт каждые 30 секунд без нового запроса к API
+  const now = useNowTick(30000)
 
   if (!route) return null
 
@@ -218,7 +260,7 @@ export function RouteTripPanel({
               <p className="truncate text-[12.5px] font-medium">{trip.nextPoint.address}</p>
               <p className="text-[11px] text-muted-foreground">
                 {OPERATION_LABEL[trip.nextPoint.operation] ?? trip.nextPoint.operation} ·{" "}
-                {until(trip.nextPoint.arrivalAt)}
+                <ArrivalLive iso={trip.nextPoint.arrivalAt} now={now} />
                 {trip.nextPoint.distanceM
                   ? ` · ${(trip.nextPoint.distanceM / 1000).toFixed(0)} км`
                   : ""}
@@ -235,9 +277,17 @@ export function RouteTripPanel({
             <div className="rounded-lg border border-border px-2 py-1.5">
               <p className="text-[10px] text-muted-foreground">Осталось по рейсу</p>
               <p className="text-[13px] font-medium tabular-nums">
-                {humanDuration(trip.remaining.totalSec)}
+                {humanDuration(
+                  Math.max(
+                    0,
+                    trip.remaining.totalSec -
+                      Math.max(0, (now - new Date(trip.calculatedAt).getTime()) / 1000),
+                  ),
+                )}
               </p>
-              <p className="text-[10px] text-muted-foreground">до {until(trip.remaining.arrivalAt)}</p>
+              <p className="text-[10px] text-muted-foreground">
+                до <ArrivalLive iso={trip.remaining.arrivalAt} now={now} />
+              </p>
             </div>
             <div className="rounded-lg border border-border px-2 py-1.5">
               <p className="text-[10px] text-muted-foreground">Возврат на базу</p>
@@ -247,7 +297,7 @@ export function RouteTripPanel({
                     {humanDuration(trip.returnToBase.drivingSec)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    {until(trip.returnToBase.arrivalAt)}
+                    <ArrivalLive iso={trip.returnToBase.arrivalAt} now={now} />
                   </p>
                 </>
               ) : (

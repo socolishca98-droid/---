@@ -237,6 +237,7 @@ export async function photoExists(key: string): Promise<boolean> {
   if (!normalized) return false
 
   if (storageKind() === "db") {
+    // org-audit: manual — скоуп задаёт photoRowWhere: организация из ключа, без неё — отказ (fail-closed)
     const row = await prisma.photo.findFirst({
       where: { storageKey: normalized },
       select: { bytes: true },
@@ -265,6 +266,7 @@ export async function removePhoto(key: string): Promise<void> {
   if (storageKind() === "db") {
     // Запись Photo обычно удаляют целиком, и байты уходят вместе с ней.
     // Этот путь — страховка: обнуляем байты у записи с таким ключом.
+    // org-audit: manual — скоуп задаёт photoRowWhere: организация из ключа
     await prisma.photo.updateMany({
       where: { storageKey: normalized },
       data: { bytes: null, mime: null, storageKey: null },
@@ -277,6 +279,7 @@ export async function removePhoto(key: string): Promise<void> {
 
 /** Байты фото из базы: драйвер db. */
 async function readDbPhoto(key: string): Promise<Buffer | null> {
+  // org-audit: manual — скоуп задаёт photoRowWhere: организация из ключа
   const row = await prisma.photo.findFirst({
     where: { storageKey: key },
     select: { bytes: true },

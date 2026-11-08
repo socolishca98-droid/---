@@ -79,7 +79,21 @@ const ORG_MODELS = new Set([
   "fleetSettings",
   "atiScanConfig",
   "auditLog",
+  // Модели, появившиеся позже и раньше попадавшие в «неизвестные, проверить
+  // вручную»: у всех есть organizationId, значит скоуп проверяем автоматически.
+  "client",
+  "routeExpense",
+  "etaForecast",
+  "atiConnection",
 ])
+
+/**
+ * Модели, привязанные к УЧЁТНОЙ записи, а не к организации: подписки на пуши и
+ * токены сброса пароля. Организации у них нет по смыслу (сброс — до входа,
+ * подписка — у устройства конкретного человека), поэтому вместо organizationId
+ * требуется userId из проверенной сессии. Проверяется отдельным правилом.
+ */
+const USER_MODELS = new Set(["pushSubscription", "passwordResetToken"])
 
 /** Общие и служебные таблицы: фильтрация по организации не нужна. */
 const SHARED_MODELS = new Set([
@@ -100,6 +114,11 @@ const GUARDS = [
   "requireAnyAuth(",
   "getStaffSession(",
   "getDriverSession(",
+  // Прямые загрузчики сессии: ими пользуются /api/geo/nearby (водитель или
+  // логист) и /api/admin/return (владелец после «входа как»)
+  "loadStaffSession(",
+  "loadDriverSession(",
+  "loadActingOwner(",
 ]
 
 /** Маршруты, где организация неприменима (вход, выдача токена, здоровье). */
@@ -111,6 +130,8 @@ const EXEMPT_FILES = new Set([
   "app/api/auth/csrf/route.ts",
   "app/api/auth/change-password/route.ts",
   "app/api/m/login/route.ts",
+  "app/api/auth/forgot-password/route.ts", // выдача ссылки — до входа
+  "app/api/auth/reset-password/route.ts", // сброс по ссылке из письма — до входа
   "app/api/health/route.ts",
   "app/api/docs/route.ts",
 ])
@@ -295,11 +316,35 @@ function analyze(file) {
     }
     if (call.model.startsWith("$")) continue
     if (SHARED_MODELS.has(call.model)) continue
+    if (USER_MODELS.has(call.model)) {
+      // Привязка к человеку: userId обязан быть в вызове (для чтения — в where,
+      // для записи — в data). Без него возможна чужая подписка/чужой токен.
+      if (call.argsText.includes("userId")) continue
+      const exemption = exemptionAt(source, call.line, call.index)
+      if (exemption?.kind === "manual") {
+        manuals.push(
+          `строка ${call.line}: prisma.${call.model}.${call.method}(…) — ${exemption.reason}`,
+        )
+        continue
+      }
+      violations.push(
+        `строка ${call.line}: prisma.${call.model}.${call.method}(…) без userId и без пометки`,
+      )
+      continue
+    }
     if (!ORG_MODELS.has(call.model)) {
       raw.push(`строка ${call.line}: неизвестная модель prisma.${call.model} — проверить вручную`)
       continue
     }
-    if (call.argsText.includes("organizationId")) continue
+    // Скоуп может задаваться и общим фильтром: scopedWhere(org, …) подставляет
+    // organizationId внутрь, settingsWhere — заведомо пустой скоуп без него.
+    if (
+      call.argsText.includes("organizationId") ||
+      call.argsText.includes("scopedWhere(") ||
+      call.argsText.includes("settingsWhere(")
+    ) {
+      continue
+    }
     const exemption = exemptionAt(source, call.line, call.index)
     if (exemption?.kind === "ok") continue
     if (exemption?.kind === "manual") {
@@ -381,6 +426,15 @@ function analyze(file) {
     /\borganizationId\b\s*[:=]\s*(body|payload|json|searchParams|params|request|req|headers)\b|\b(body|payload|json|searchParams|params|request|req|headers)\s*(?:\.\s*organizationId|\.get\(\s*["'`]organizationId)/g
   for (const m of source.matchAll(leakRe)) {
     const line = source.slice(0, m.index).split("\n").length
+    // Маркер «org-audit: manual» действует и здесь: есть места, где организация
+    // из запроса — осознанное решение (кабинет разработчика обозревает все
+    // организации по ТЗ §1.1). Пометка не скрывает место: оно попадает в
+    // раздел «проверено вручную» с причиной.
+    const exemption = exemptionAt(source, line, m.index)
+    if (exemption?.kind === "manual") {
+      manuals.push(`строка ${line}: organizationId из запроса — ${exemption.reason}`)
+      continue
+    }
     leaks.push(`строка ${line}: organizationId берётся из запроса (${m[0].trim()})`)
   }
 
@@ -425,6 +479,18 @@ function analyzeLib(file) {
       continue
     }
     if (SHARED_MODELS.has(call.model)) continue
+    if (USER_MODELS.has(call.model)) {
+      // Привязано к учётной записи (токены сброса пароля, подписки на пуши):
+      // организация здесь не применима, но userId в вызове обязателен.
+      if (call.argsText.includes("userId")) continue
+      const exemption = exemptionAt(source, call.line, call.index)
+      if (exemption?.kind === "manual") {
+        manuals.push(`строка ${call.line}: ${call.model}.${call.method}(…) — ${exemption.reason}`)
+        continue
+      }
+      violations.push(`строка ${call.line}: ${call.model}.${call.method}(…) без userId и без пометки`)
+      continue
+    }
     if (!ORG_MODELS.has(call.model)) {
       raw.push(`строка ${call.line}: неизвестная модель ${call.model} — проверить вручную`)
       continue

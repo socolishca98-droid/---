@@ -154,6 +154,24 @@ export function scopedWhere<T extends Record<string, unknown>>(
   return organizationId == null ? base : ({ ...base, organizationId } as T)
 }
 
+/**
+ * Фильтр для НАСТРОЕК организации (FleetSettings).
+ *
+ * Отличие от `scopedWhere`: здесь «организации нет» — не повод снять фильтр.
+ * Настройки содержат адрес базы, реквизиты, телефон и правила отдыха — они
+ * принадлежат ровно одной компании, и запрос без организации не должен
+ * находить НИЧЕГО. С `scopedWhere` такой запрос вернул бы первую строку
+ * таблицы, то есть настройки чужой компании.
+ *
+ * Заведомо несуществующий ключ выбран намеренно: он не бросает исключение
+ * (роут не падает 500), но и не может совпасть ни с одной организацией.
+ */
+export function settingsWhere(organizationId: string | null | undefined): {
+  organizationId: string
+} {
+  return { organizationId: organizationId || "__no_organization__" }
+}
+
 /** Тот же фильтр для строки организации из guard'а. */
 export function scopedWhereFor<T extends Record<string, unknown>>(
   org: OrgContext,

@@ -26,6 +26,35 @@ interface DriverMarkersProps {
   onSelectDriver: (id: string | null) => void
 }
 
+/**
+ * Плавный переезд маркера на новую позицию: данные приходят раз в 15 секунд,
+ * и без анимации машина «телепортируется» между точками — движения не видно.
+ * Анимация короткая (1.8 с, ease-in-out), прыжки дальше 25 км не анимируем —
+ * это не езда, а пересадка/перепривязка машины.
+ */
+const MOVE_ANIM_MS = 1800
+const MOVE_ANIM_MAX_M = 25000
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+}
+
+function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const latRad = (a.lat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(latRad) ** 2 * Math.sin(dLng / 2) ** 2
+  return 6371000 * 2 * Math.asin(Math.sqrt(h))
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+  )
+}
+
 function initials(name: unknown): string {
   const parts = String(name ?? "")
     .trim()
@@ -130,6 +159,7 @@ export function DriverMarkers({
   onSelectDriver,
 }: DriverMarkersProps): null {
   const markersRef = useRef<Map<string, L.Marker>>(new Map())
+  const animRef = useRef<Map<string, number>>(new Map())
   const onSelectRef = useRef(onSelectDriver)
 
   // Свежий колбэк — без перезапуска эффекта рисования
@@ -140,7 +170,10 @@ export function DriverMarkers({
   // Полный сброс при смене карты/размонтировании
   useEffect(() => {
     const markers = markersRef.current
+    const anims = animRef.current
     return () => {
+      anims.forEach((raf) => cancelAnimationFrame(raf))
+      anims.clear()
       markers.forEach((marker) => marker.remove())
       markers.clear()
     }
@@ -150,26 +183,68 @@ export function DriverMarkers({
     if (!map) return
 
     const markers = markersRef.current
+    const anims = animRef.current
     const list = Array.isArray(drivers) ? drivers : []
+
+    const stopAnimation = (id: string) => {
+      const raf = anims.get(id)
+      if (raf != null) {
+        cancelAnimationFrame(raf)
+        anims.delete(id)
+      }
+    }
+
+    const moveTo = (id: string, marker: L.Marker, target: L.LatLngLiteral) => {
+      const from = marker.getLatLng()
+      const distance = metersBetween(from, target)
+      if (
+        distance < 1 ||
+        distance > MOVE_ANIM_MAX_M ||
+        prefersReducedMotion()
+      ) {
+        marker.setLatLng(target)
+        return
+      }
+      stopAnimation(id)
+      const start = performance.now()
+      const step = (ts: number) => {
+        const t = Math.min(1, (ts - start) / MOVE_ANIM_MS)
+        const k = easeInOut(t)
+        marker.setLatLng([
+          from.lat + (target.lat - from.lat) * k,
+          from.lng + (target.lng - from.lng) * k,
+        ])
+        if (t < 1) {
+          anims.set(id, requestAnimationFrame(step))
+        } else {
+          anims.delete(id)
+        }
+      }
+      anims.set(id, requestAnimationFrame(step))
+    }
+
     const seen = new Set<string>()
 
     for (const driver of list) {
       if (!driver?.id || !isValidPosition(driver.latitude, driver.longitude)) continue
       seen.add(driver.id)
 
-      const position: L.LatLngExpression = [driver.latitude as number, driver.longitude as number]
+      const target: L.LatLngLiteral = {
+        lat: driver.latitude as number,
+        lng: driver.longitude as number,
+      }
       const selected = driver.id === selectedDriverId
       const existing = markers.get(driver.id)
 
       if (existing) {
-        existing.setLatLng(position)
+        moveTo(driver.id, existing, target)
         existing.setIcon(buildIcon(driver, selected))
         existing.setPopupContent(buildPopup(driver))
         existing.setZIndexOffset(selected ? 1200 : 0)
         continue
       }
 
-      const marker = L.marker(position, {
+      const marker = L.marker(target, {
         icon: buildIcon(driver, selected),
         zIndexOffset: selected ? 1200 : 0,
         riseOnHover: true,
@@ -185,6 +260,7 @@ export function DriverMarkers({
     // Водителей, которые пропали из ответа (смена/оффлайн), убираем с карты
     markers.forEach((marker, id) => {
       if (!seen.has(id)) {
+        stopAnimation(id)
         marker.remove()
         markers.delete(id)
       }

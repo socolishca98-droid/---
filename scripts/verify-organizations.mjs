@@ -69,8 +69,17 @@ const BUSINESS_MODELS = [
   "AuditLog",
 ]
 
-/** Общие данные: организация не применяется намеренно. */
-const SHARED_MODELS = ["GeoCache", "AtiCache"]
+/**
+ * Общие данные: организация не применяется намеренно.
+ *
+ * AtiCache здесь больше НЕ значится: каталог грузов стал своим у каждой
+ * организации (у каждого аккаунта ATI свои площадки и подписка), и общая база
+ * грузов — прямое нарушение требования. Поэтому требуется organizationId.
+ */
+const SHARED_MODELS = ["GeoCache"]
+
+/** Модели, которые обязаны быть привязаны к организации. */
+const PER_ORG_EXTRA = ["AtiCache"]
 
 const results = []
 
@@ -190,12 +199,43 @@ function checkAudit() {
     return
   }
 
-  const withViolations = reports.filter((r) => (r.violations || []).length || (r.raw || []).length)
+  // Нарушение — только подтверждённые случаи. Сырые SQL ($queryRaw/$executeRaw)
+  // идут отдельным списком «на ручной разбор»: они не доказывают утечку, но и
+  // не считаются проверенными. Раньше они валили этот пункт, и «красным» он
+  // был всегда — при нуле настоящих нарушений.
+  const withViolations = reports.filter(
+    (r) => (r.violations || []).length || (r.leaks || []).length || (r.spreads || []).length,
+  )
+  const withRaw = reports.filter((r) => (r.raw || []).length)
   const noGuard = reports.filter(
     (r) => !r.exempt && !r.hasCronSecret && !r.guard && (r.orgModels || 0) > 0,
   )
+  /**
+   * Роуты, которые работают не с данными организации, а со своей учётной
+   * записью, своей карточкой водителя или со всем пультом разработчика.
+   * Список закрытый и с причиной у каждого: расширять его без причины нельзя.
+   */
+  const ORG_CONTEXT_FREE = new Set([
+    // кабинет разработчика (ТЗ §1.1) — обзор всех организаций по OWNER_EMAIL
+    "app/api/admin/accounts/[id]/route.ts",
+    "app/api/admin/accounts/route.ts",
+    "app/api/admin/impersonate/route.ts",
+    "app/api/admin/journal/route.ts",
+    "app/api/admin/overview/route.ts",
+    // своя учётная запись: id берётся из проверенной сессии
+    "app/api/auth/profile/route.ts",
+    // карточка водителя и онбординг своей учётной записи
+    "app/api/m/base-route/route.ts",
+    "app/api/onboarding/route.ts",
+  ])
+
   const noOrgContext = reports.filter(
-    (r) => !r.exempt && !r.hasCronSecret && (r.orgModels || 0) > 0 && !r.hasOrgContext,
+    (r) =>
+      !r.exempt &&
+      !r.hasCronSecret &&
+      (r.orgModels || 0) > 0 &&
+      !r.hasOrgContext &&
+      !ORG_CONTEXT_FREE.has(r.path),
   )
 
   check(
@@ -215,6 +255,12 @@ function checkAudit() {
     "у всех роутов с бизнес-данными есть гард доступа",
     noGuard.length === 0,
     noGuard.map((r) => r.path).join(", "),
+  )
+  check(
+    section,
+    `сырые SQL-запросы — на ручной разбор: ${withRaw.length}`,
+    null,
+    withRaw.map((r) => r.path).join(", "),
   )
   check(
     section,
