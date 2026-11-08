@@ -1,8 +1,9 @@
-// Живая приёмка мира входа «Ночной терминал» (фидбек владельца и9:
-// «сцена — лицо логистической программы; поля — интегрированные и
-// компактные; мигание после нажатия убрать; гироскоп ещё -10%»). Мир =
-// контейнерный терминал ночью: краны, контейнеры, огни, маршрут заказов
-// уходит к горизонту; форма — компактный пропуск-документ.
+// Живая приёмка мира входа «Терминал в объёме» (фидбек владельца и11:
+// «гироскоп сломали — уведомление убрать, работал хоть и не четко;
+// сцены мало, хочется больше объёма и 3D»). Мир = полёт сквозь
+// контейнерный терминал: штабеля/краны/фонари пролетают мимо на разных
+// глубинах, земля — плоскость в перспективе с бегущей ниткой маршрута,
+// форма — компактный пропуск-документ; гироскоп 0.32 без уведомлений.
 //
 // Фазы (песочница тесная — дев между фазами перезапускаем):
 //   PHASE=desktop | warp | mobile | driver | register | all
@@ -67,12 +68,15 @@ try {
     const glass = panel ? panel.querySelector("[data-login-doc]") : null
     const gs = glass ? getComputedStyle(glass) : null
     const r = panel ? panel.getBoundingClientRect() : null
+    const ground = document.querySelector("[data-ground]")
     return {
       perspective: vp ? getComputedStyle(vp).perspective : "нет",
       panel3d: panel ? getComputedStyle(panel).transform.includes("matrix3d") : false,
       cranes: document.querySelectorAll("[data-crane]").length,
-      containers: document.querySelectorAll("[data-container]").length,
+      stacks: document.querySelectorAll("[data-stack]").length,
+      motes: document.querySelectorAll("[data-login-mote]").length,
       dots: document.querySelectorAll("[data-route-dot]").length,
+      ground3d: ground ? getComputedStyle(ground).transform !== "none" : false,
       panelW: r ? Math.round(r.width) : 0,
       panelH: r ? Math.round(r.height) : 0,
       vw: window.innerWidth,
@@ -82,9 +86,11 @@ try {
     }
   })
   check("мир: перспектива включена", world.perspective === "900px", `perspective ${world.perspective}`)
-  check("терминал: краны-порталы", world.cranes >= 2, `${world.cranes} крана`)
-  check("терминал: штабеля контейнеров", world.containers >= 10, `${world.containers} контейнеров`)
-  check("маршрут заказов: точки-заказы бегут", world.dots >= 3, `${world.dots} точек`)
+  check("терминал: штабеля в объёме", world.stacks >= 8, `${world.stacks} штабелей`)
+  check("терминал: краны-порталы", world.cranes >= 3, `${world.cranes} крана`)
+  check("объём: земля — плоскость в перспективе", world.ground3d, world.ground3d ? "rotateX(90°)" : "нет")
+  check("объём: искры летят мимо камеры", world.motes >= 10, `${world.motes} искр`)
+  check("маршрут заказов: точки бегут по нитке", world.dots >= 4, `${world.dots} точек`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
   check(
     "пропуск — компактный документ",
@@ -99,17 +105,11 @@ try {
   const d2 = await page.evaluate(() => window.__loginWorld.dolly)
   check("камера перемещается в пространстве", d2 - d1 > 150, `dolly ${Math.round(d1)} → ${Math.round(d2)}`)
 
-  // маршрут заказов живёт: точка реально едет по нити
-  const dot1 = await page.evaluate(() => {
-    const d = document.querySelector("[data-route-dot]")
-    return d ? `${d.getAttribute("cx")},${d.getAttribute("cy")}` : "нет"
-  })
-  await page.waitForTimeout(1400)
-  const dot2 = await page.evaluate(() => {
-    const d = document.querySelector("[data-route-dot]")
-    return d ? `${d.getAttribute("cx")},${d.getAttribute("cy")}` : "нет"
-  })
-  check("маршрут заказов живёт (точка едет)", dot1 !== dot2, `${dot1} → ${dot2}`)
+  // объём: элементы двора пролетают мимо камеры и сменяются
+  const pA = await page.evaluate(() => window.__loginWorld.passed)
+  await page.waitForTimeout(5200)
+  const pB = await page.evaluate(() => window.__loginWorld.passed)
+  check("объём: двор пролетает мимо и сменяется", pB > pA, `пролетело ${pA} → ${pB}`)
 
   // ракурс за курсором
   const yaw1 = await page.evaluate(() => window.__loginWorld.yaw)
@@ -228,7 +228,7 @@ try {
       gyroGranted &&
       gyroState.gyro &&
       Math.abs(gyroState.yaw) > 0.3 &&
-      Math.abs(gyroCalm - gyroState.yaw) <= 13 &&
+      Math.abs(gyroCalm - gyroState.yaw) <= 16 &&
       Math.abs(gyroCalm) <= 22,
     `наклон ${gyroState.yaw.toFixed(1)}°, рывок +55° → ${gyroCalm.toFixed(1)}° (отклик ${Math.abs(gyroCalm - gyroState.yaw).toFixed(1)}°)`,
   )
@@ -252,9 +252,11 @@ try {
     docFit ? `документ ${docFit.w}×${docFit.h} из ${docFit.vh}px (${Math.round((docFit.h / docFit.vh) * 100)}%)` : "нет",
   )
 
-  // подсказка про датчики не мешает, когда гироскоп жив
-  const hintShown = await mpage.evaluate(() => document.querySelector("[data-gyro-hint]") != null)
-  check("телефон: подсказка про датчики не мешает", hintShown === false, hintShown ? "показана (ошибка)" : "нет")
+  // никаких уведомлений и кнопок про гироскоп — только живой датчик
+  const noNotices = await mpage.evaluate(
+    () => document.querySelector("[data-gyro-hint]") == null && document.querySelector("[data-gyro-pill]") == null,
+  )
+  check("телефон: уведомлений про гироскоп нет", noNotices, noNotices ? "чисто" : "есть (ошибка)")
   await shot(mpage, "/home/user/work/visual-login-3d-mobile.png")
   check("телефон: скриншот сохранён", true, "work/visual-login-3d-mobile.png")
   const mErr = mErrors.filter((t) => !isNoise(t))
@@ -283,7 +285,8 @@ try {
   const driver = await dpage.evaluate(() => ({
     world: document.querySelector("[data-login-world]") != null,
     cranes: document.querySelectorAll("[data-crane]").length,
-    containers: document.querySelectorAll("[data-container]").length,
+    stacks: document.querySelectorAll("[data-stack]").length,
+    motes: document.querySelectorAll("[data-login-mote]").length,
     dots: document.querySelectorAll("[data-route-dot]").length,
     phone: document.querySelector("#driver-phone") != null,
     password: document.querySelector("#driver-password") != null,
@@ -291,9 +294,9 @@ try {
     headline: (document.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim(),
   }))
   check(
-    "водитель: терминал с маршрутом заказов",
-    driver.world && driver.cranes >= 2 && driver.containers >= 10 && driver.dots >= 3,
-    `кранов ${driver.cranes}, контейнеров ${driver.containers}, точек ${driver.dots}`,
+    "водитель: терминал в объёме",
+    driver.world && driver.cranes >= 3 && driver.stacks >= 8 && driver.motes >= 10 && driver.dots >= 4,
+    `кранов ${driver.cranes}, штабелей ${driver.stacks}, искр ${driver.motes}, точек ${driver.dots}`,
   )
   check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)
   check("водитель: заголовок в небе", driver.headline.includes("Доброй"), `«${driver.headline}»`)

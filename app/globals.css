@@ -1338,7 +1338,7 @@ body {
   animation: world-panel-in 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.38s backwards;
 }
 
-/* Терминал: маячок крана мигает, тельфер ездит, грузовик проезжает */
+/* Терминал: маячок крана мигает, тельфер ездит */
 @keyframes beacon {
   0%,
   100% {
@@ -1366,25 +1366,11 @@ body {
   animation: crane-trolley 16s ease-in-out infinite alternate;
 }
 
-@keyframes truck-pass {
-  from {
-    transform: translateX(-80px);
-  }
-  to {
-    transform: translateX(1320px);
-  }
-}
-
-.truck-pass {
-  animation: truck-pass 34s linear infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .world-bob,
   .world-panel-in,
   .beacon,
   .crane-trolley,
-  .truck-pass,
   .console-rise,
   .driver-head {
     animation: none;
