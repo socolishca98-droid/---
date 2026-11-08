@@ -227,7 +227,7 @@ function RegisterForm() {
                     <Input
                       id="organizationName"
                       type="text"
-                      placeholder="ИП Фролов Иван Александрович"
+                      placeholder="Название организации или ФИО для ИП"
                       value={organizationName}
                       onChange={(event) => setOrganizationName(event.target.value)}
                       autoComplete="organization"
@@ -267,7 +267,7 @@ function RegisterForm() {
                   <Input
                     id="name"
                     type="text"
-                    placeholder="Иван Петров"
+                    placeholder="Имя и фамилия"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     autoComplete="name"
@@ -282,7 +282,7 @@ function RegisterForm() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="ivan@company.ru"
+                    placeholder="email@example.ru"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     autoComplete="email"
