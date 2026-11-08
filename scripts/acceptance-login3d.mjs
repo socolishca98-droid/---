@@ -1,7 +1,7 @@
-// Живая приёмка 3D-мира входа «Ночной рейс» (задача владельца: «всё
-// интегрировано в 3D, больше объёма, перемещаемся в пространстве, смотрим
-// с разных углов, гироскоп»). Мир = CSS-3D: камера едет вперёд (dolly),
-// ворота пролетают мимо и перерабатываются, форма — объект на глубине.
+// Живая приёмка мира входа «Живые маршруты» (фидбек владельца и8:
+// «использовать маршруты в анимации, кнопка гироскопа не нужна»). Мир =
+// ночная живая карта: дороги плывут, города пульсируют, маршруты
+// прорисовываются и по ним едут машины, форма — прозрачное стекло.
 //
 // Фазы (песочница тесная — дев между фазами перезапускаем):
 //   PHASE=desktop | warp | mobile | driver | register | all
@@ -68,15 +68,17 @@ try {
     return {
       perspective: vp ? getComputedStyle(vp).perspective : "нет",
       panel3d: panel ? getComputedStyle(panel).transform.includes("matrix3d") : false,
-      gates: document.querySelectorAll("[data-login-gate]").length,
-      motes: document.querySelectorAll("[data-login-mote]").length,
+      routes: document.querySelectorAll("[data-login-route]").length,
+      cities: document.querySelectorAll("[data-login-city]").length,
+      traffic: document.querySelectorAll("[data-login-traffic]").length,
       glassAlpha: gs ? (gs.backgroundColor.match(/([\d.]+)\)$/) || [])[1] ?? "1" : "нет",
       glassBlur: gs ? gs.backdropFilter : "нет",
     }
   })
   check("мир: перспектива включена", world.perspective === "900px", `perspective ${world.perspective}`)
-  check("мир: голографмы-модули в полёте", world.gates >= 6, `${world.gates} панелей`)
-  check("мир: светлячки летят мимо камеры", world.motes >= 16, `${world.motes} частиц`)
+  check("мир: живая карта — маршруты", world.routes >= 3, `${world.routes} активных маршрутов`)
+  check("мир: города-узлы на карте", world.cities >= 5, `${world.cities} городов`)
+  check("мир: фоновый трафик течёт", world.traffic >= 4, `${world.traffic} машин`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
   check("форма — прозрачный экран", parseFloat(world.glassAlpha) <= 0.75 && world.glassBlur.includes("blur"), `фон ${world.glassAlpha}, blur: ${world.glassBlur.slice(0, 20)}`)
 
@@ -86,13 +88,17 @@ try {
   const d2 = await page.evaluate(() => window.__loginWorld.dolly)
   check("камера перемещается в пространстве", d2 - d1 > 150, `dolly ${Math.round(d1)} → ${Math.round(d2)}`)
 
-  // ворота пролетают мимо (клик ускоряет)
-  const g1 = await page.evaluate(() => window.__loginWorld.gates)
+  // маршруты прорисовываются и сменяются (клик ускоряет карту)
+  const g1 = await page.evaluate(() => window.__loginWorld.routes)
   await page.mouse.click(600, 200)
   await page.mouse.click(600, 200)
-  await page.waitForTimeout(2600)
-  const g2 = await page.evaluate(() => window.__loginWorld.gates)
-  check("ворота пролетают мимо и сменяются", g2 > g1, `пройдено ${g1} → ${g2}`)
+  await page.waitForTimeout(6500)
+  const g2 = await page.evaluate(() => window.__loginWorld.routes)
+  const truck = await page.evaluate(() => {
+    const t = document.querySelector("[data-login-route] g[opacity]") // машина
+    return t ? (t.getAttribute("transform") || "").slice(0, 24) : "нет"
+  })
+  check("маршруты прорисовываются и сменяются", g2 > g1, `завершено ${g1} → ${g2}, машина: ${truck}`)
 
   // ракурс за курсором
   const yaw1 = await page.evaluate(() => window.__loginWorld.yaw)
@@ -182,13 +188,12 @@ try {
   const yawB = await mpage.evaluate(() => window.__loginWorld.yaw)
   check("телефон: палец вертит мир", Math.abs(yawB - yawA) > 0.4, `yaw ${yawA.toFixed(1)}° → ${yawB.toFixed(1)}°`)
 
-  // гироскоп: пилюля есть, разрешение + события датчика
-  const pillVisible = await mpage.evaluate(() => {
-    const p = document.querySelector("[data-gyro-pill]")
-    return p != null && p.textContent != null && p.textContent.length > 0
-  })
-  // разрешение просим как живой пользователь — нажатием пилюли (жест)
-  await mpage.click("[data-gyro-pill]", { force: true }).catch(() => {})
+  // гироскоп БЕЗ КНОПКИ: на Android включается сам, на iPhone — по
+  // первому касанию экрана (жест, которого требует Apple)
+  const noPill = await mpage.evaluate(() => document.querySelector("[data-gyro-pill]") == null)
+  await mCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 110 }] })
+  await mCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await mpage.waitForTimeout(200)
   const gyroGranted = await mpage.evaluate(() => typeof window.__loginWorldGyro === "function")
   await mpage.evaluate(() => {
     // первое событие калибрует ноль, второе — наклон, третье — РЕЗКИЙ
@@ -207,8 +212,8 @@ try {
   await mpage.waitForTimeout(500)
   const gyroCalm = await mpage.evaluate(() => window.__loginWorld.yaw)
   check(
-    "телефон: гироскоп жив, но спокоен",
-    pillVisible &&
+    "телефон: гироскоп жив и спокоен, кнопки нет",
+    noPill &&
       gyroGranted &&
       gyroState.gyro &&
       Math.abs(gyroState.yaw) > 0.3 &&
@@ -254,17 +259,19 @@ try {
 
   const driver = await dpage.evaluate(() => ({
     world: document.querySelector("[data-login-world]") != null,
-    gates: document.querySelectorAll("[data-login-gate]").length,
-    driverGates: [...document.querySelectorAll("[data-login-gate]")].some((g) =>
-      (g.textContent || "").includes("Мои рейсы"),
-    ),
-    motes: document.querySelectorAll("[data-login-mote]").length,
+    routes: document.querySelectorAll("[data-login-route]").length,
+    cities: document.querySelectorAll("[data-login-city]").length,
+    traffic: document.querySelectorAll("[data-login-traffic]").length,
     phone: document.querySelector("#driver-phone") != null,
     password: document.querySelector("#driver-password") != null,
     button: [...document.querySelectorAll("button")].some((b) => b.textContent?.includes("В путь")),
     headline: (document.querySelector("h2")?.textContent || "").replace(/\s+/g, " ").trim(),
   }))
-  check("водитель: мир и свои модули", driver.world && driver.gates >= 6 && driver.driverGates && driver.motes >= 16, `панелей ${driver.gates}, «Мои рейсы»: ${driver.driverGates}, частиц ${driver.motes}`)
+  check(
+    "водитель: живая карта с маршрутами",
+    driver.world && driver.routes >= 3 && driver.cities >= 5 && driver.traffic >= 4,
+    `маршрутов ${driver.routes}, городов ${driver.cities}, трафика ${driver.traffic}`,
+  )
   check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)
   check("водитель: заголовок в небе", driver.headline.includes("Доброй"), `«${driver.headline}»`)
 

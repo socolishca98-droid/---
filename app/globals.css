@@ -1308,7 +1308,7 @@ body {
 }
 
 /* ============================================================
-   3D-мир входа «Ночной рейс»: панель-плита и ворота
+   Мир входа «Живые маршруты»: стекло формы и города на карте
    ============================================================ */
 @keyframes world-bob {
   from {
@@ -1338,23 +1338,29 @@ body {
   animation: world-panel-in 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.38s backwards;
 }
 
-@keyframes gate-bob {
-  from {
-    transform: translateY(-6px);
+/* Города на живой карте: кольца пульсируют (масштаб — от своего центра) */
+@keyframes city-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.55;
   }
-  to {
-    transform: translateY(6px);
+  70%,
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
   }
 }
 
-.gate-bob {
-  animation: gate-bob 4.2s ease-in-out infinite alternate;
+.city-pulse {
+  animation: city-pulse 3.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .world-bob,
   .world-panel-in,
-  .gate-bob,
+  .city-pulse,
   .console-rise,
   .driver-head {
     animation: none;
