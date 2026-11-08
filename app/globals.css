@@ -1166,20 +1166,61 @@ body {
   animation: scene-rise 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s forwards;
 }
 
-@keyframes card-enter {
-  from {
+/* Карточка «прилетает из глубины» сцены: выныривает из точки схода
+   навстречу — в такт стартовому разгону коридора */
+/* Важно: только transform и opacity — анимировать filter: blur()
+   недопустимо: на программном рендере (и на слабых телефонах) это
+   душит страницу (проверено живым прогоном) */
+@keyframes card-materialize {
+  0% {
     opacity: 0;
-    transform: perspective(1200px) translateY(26px) rotateX(10deg) scale(0.94);
+    transform: perspective(1300px) translateZ(240px) rotateX(8deg);
   }
-  to {
+  55% {
     opacity: 1;
-    transform: perspective(1200px) translateY(0) rotateX(0deg) scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1300px) translateZ(0) rotateX(0deg);
   }
 }
 
-.card-enter {
+.card-materialize {
   opacity: 0;
-  animation: card-enter 0.8s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s forwards;
+  animation: card-materialize 1s cubic-bezier(0.22, 0.61, 0.36, 1) 0.3s forwards;
+}
+
+/* Тень парения: карточка висит над «полом» сцены, тень дышит в противофазе */
+.login-float-shadow {
+  pointer-events: none;
+  position: absolute;
+  bottom: -1.9rem;
+  left: 50%;
+  height: 2.6rem;
+  width: 74%;
+  transform: translateX(-50%);
+  /* тень = радиальный градиент, а не filter: blur — карточка
+     трансформируется каждый кадр, и blur пересчитывался бы тоже
+     каждый кадр (дорого на программном рендере и слабых телефонах) */
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.52) 0%,
+    rgba(0, 0, 0, 0.3) 45%,
+    rgba(0, 0, 0, 0) 72%
+  );
+  animation: login-shadow-breathe 3.9s ease-in-out infinite;
+}
+
+@keyframes login-shadow-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(-50%) scaleX(1);
+  }
+  50% {
+    opacity: 0.32;
+    transform: translateX(-50%) scaleX(0.86);
+  }
 }
 
 @keyframes login-shake {
@@ -1210,11 +1251,12 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .scene-rise,
-  .card-enter {
+  .card-materialize {
     animation: none;
     opacity: 1;
   }
-  .login-shake {
+  .login-shake,
+  .login-float-shadow {
     animation: none;
   }
 }

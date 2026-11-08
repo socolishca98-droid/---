@@ -22,12 +22,31 @@ function check(name, ok, detail = "") {
 const isNoise = (t) =>
   t.includes("favicon") || t.includes("caret-color") || t.includes("401")
 
+/** Сцена рисует каждый кадр — композитор не успевает отдать кадр
+ *  скриншоту. На время снимка останавливаем сцены (тестовый флаг). */
+const shot = async (page, path) => {
+  await page.evaluate(() => {
+    window.__loginScenePaused = true
+  })
+  await page.waitForTimeout(120)
+  await page.screenshot({ path })
+  await page.evaluate(() => {
+    window.__loginScenePaused = false
+  })
+}
+
+// Песочница тесная: дев-сервер Next разрастается до ~1.2 ГБ и падает от
+// OOM, если гнать всё сразу. PHASE делит прогон на фазы между запусками
+// дева: desktop | warp | mobile | all (по умолчанию all).
+const PHASE = process.env.PHASE || "all"
+
 const browser = await chromium.launch({ args: ["--disable-gpu"] })
 process.on("exit", () => {
   try { browser.close() } catch {}
 })
 try {
   // ── Десктоп: сцена, угол обзора, проваливание, витрина ──
+  if (PHASE === "all" || PHASE === "desktop") {
   const context = await browser.newContext({ viewport: { width: 1200, height: 800 } })
   const page = await context.newPage()
   const errors = []
@@ -37,6 +56,9 @@ try {
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
   await page.waitForSelector("form", { timeout: 30000 })
   await page.waitForFunction(() => window.__loginScene != null, null, { timeout: 20000 })
+  await page.waitForTimeout(350)
+  const introSpeed = await page.evaluate(() => window.__loginScene.speed)
+  check("кинематографичный прилёт (разгон на старте)", introSpeed > 800, `скорость старта ${Math.round(introSpeed)}`)
   check("экран входа открыт", true)
 
   const canvas = await page.evaluate(() => {
@@ -51,6 +73,10 @@ try {
   // смена угла обзора: ведём мышь влево-вверх — камера поворачивается
   await page.mouse.move(250, 200)
   await page.waitForTimeout(900)
+  const cardM13a = await page.evaluate(() => {
+    const el = document.querySelector('[data-tilt="login-card"]')
+    return el ? new DOMMatrixReadOnly(getComputedStyle(el).transform).m13 : 0
+  })
   const yaw1 = await page.evaluate(() => window.__loginScene?.yaw ?? 0)
   await page.mouse.move(950, 620)
   await page.waitForTimeout(900)
@@ -61,13 +87,24 @@ try {
     Math.abs(yaw2 - yaw1) > 0.05,
     `yaw ${yaw1.toFixed(3)} → ${yaw2.toFixed(3)}, pitch ${pitch2.toFixed(3)}`,
   )
+  const cardM13b = await page.evaluate(() => {
+    const el = document.querySelector('[data-tilt="login-card"]')
+    return el ? new DOMMatrixReadOnly(getComputedStyle(el).transform).m13 : 0
+  })
+  check(
+    "карточка-объект: параллакс за камерой",
+    Math.abs(cardM13b - cardM13a) > 0.008,
+    `поворот карточки ${cardM13a.toFixed(4)} → ${cardM13b.toFixed(4)}`,
+  )
+  const anchor = await page.evaluate(() => document.querySelector("[data-card-anchor]") != null)
+  check("якорь сцены на форме (ось коридора)", anchor)
 
   // проваливание: каждый клик — рывок скорости
   const before = await page.evaluate(() => window.__loginScene.plunges)
   await page.mouse.click(600, 400)
   await page.waitForTimeout(120)
   const plunge1 = await page.evaluate(() => ({ p: window.__loginScene.plunges, s: window.__loginScene.speed }))
-  await page.screenshot({ path: "/home/user/work/visual-login-3d-plunge.png" })
+  await shot(page, "/home/user/work/visual-login-3d-plunge.png")
   check(
     "проваливание при клике (рывок)",
     plunge1.p === before + 1 && plunge1.s > 400,
@@ -91,20 +128,27 @@ try {
   await page.type('input[type="email"], input[name="email"]', "logist", { delay: 80 })
   const energy = await page.evaluate(() => window.__loginScene.energy)
   check("отклик на ввод (энергия полёта)", energy > 0.05, `energy ${energy.toFixed(2)}`)
-  await page.screenshot({ path: "/home/user/work/visual-login-3d-typing.png" })
-  await page.screenshot({ path: "/home/user/work/visual-login-3d.png" })
+  await shot(page, "/home/user/work/visual-login-3d-typing.png")
+  await shot(page, "/home/user/work/visual-login-3d.png")
   check("скриншоты десктопа сохранены", true, "idle + печать + провал")
 
   const realErrors = errors.filter((t) => !isNoise(t))
   check("нет ошибок (десктоп)", realErrors.length === 0, realErrors.slice(0, 2).join(" || ") || "нет")
   await page.close()
   await context.close()
+  }
 
   // ── Ворп: реальный вход владельца = прыжок сквозь программу ──
+  if (PHASE === "all" || PHASE === "warp") {
   const warpContext = await browser.newContext({ viewport: { width: 1200, height: 800 } })
   const wpage = await warpContext.newPage()
   await wpage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
   await wpage.waitForSelector("form", { timeout: 30000 })
+  // Экран владельца в браузер не грузим: он тяжёлый и валит дев-сервер
+  // песочницы по памяти, а проверяем мы здесь ворп и уход с /login
+  await wpage.route("**/owner", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<html><body></body></html>" }),
+  )
   await wpage.fill('input[type="email"], input[name="email"]', envValue("OWNER_EMAIL"))
   await wpage.fill('input[type="password"]', envValue("OWNER_PASSWORD"))
   await wpage.click('button[type="submit"]')
@@ -118,8 +162,10 @@ try {
   check("после ворпа — внутри программы", !new URL(wpage.url()).pathname.startsWith("/login"), new URL(wpage.url()).pathname)
   await wpage.close()
   await warpContext.close()
+  }
 
   // ── Телефон ──
+  if (PHASE === "all" || PHASE === "mobile") {
   const mobileContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
@@ -147,11 +193,12 @@ try {
   const mAfter = await mpage.evaluate(() => window.__loginScene.plunges)
   check("телефон: проваливание по тапу", mAfter === mBefore + 1, `${mBefore} → ${mAfter}`)
   await mpage.type('input[type="email"], input[name="email"]', "logist", { delay: 80 })
-  await mpage.screenshot({ path: "/home/user/work/visual-login-3d-mobile.png" })
+  await shot(mpage, "/home/user/work/visual-login-3d-mobile.png")
   check("телефон: скриншот сохранён", true, "work/visual-login-3d-mobile.png")
   check("телефон: ошибок нет", mErrors.filter((t) => !isNoise(t)).length === 0, mErrors.filter((t) => !isNoise(t)).slice(0, 2).join(" || ") || "нет")
   await mpage.close()
   await mobileContext.close()
+  }
 } finally {
   await browser.close()
 }

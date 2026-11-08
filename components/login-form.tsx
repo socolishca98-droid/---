@@ -447,8 +447,9 @@ function Shell({
             </div>
           </div>
 
-          <div className="card-enter">
+          <div className="card-materialize" data-card-anchor>
             <Tilt3D>
+              <div className="login-float-shadow" aria-hidden="true" />
               <Card className="login-card-glow border-border/60 bg-card/90 shadow-2xl shadow-black/40 sm:bg-card/85 sm:backdrop-blur-xl">
                 <CardHeader className="space-y-1.5 pb-4">
                   <div className="flex items-baseline justify-between gap-3">
