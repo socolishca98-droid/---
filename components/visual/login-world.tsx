@@ -26,13 +26,13 @@
 // [data-route-dot] ×5, [data-ground], [data-login-panel],
 // [data-login-doc].
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 const PERSPECTIVE = 900
 
 /** Полёт сквозь терминал. Ворп при входе — мягкое ускорение, БЕЗ
     скачков перспективы (мигание после нажатия исключено). */
-const SPEED_BASE = 520
+const SPEED_BASE = 450
 const SPEED_WARP = 5400
 
 /** Двор: суммарная «длина» цикла переработки элементов (px мира). */
@@ -43,7 +43,7 @@ const CONTAINER_COLORS = ["#24425f", "#5b3423", "#2a4c44", "#3c3a58", "#31517a"]
 
 /** Штабеля контейнеров: x у оси полёта (y подбирается по высоте). */
 const STACK_X: ReadonlyArray<number> = [
-  -780, -560, -330, -120, 90, 300, 520, 700, -450, 420,
+  -780, -560, -330, -120, 90, 300, 520, 700, -450, 420, -90, 180, -240,
 ]
 /** Краны-порталы: выше и реже. */
 const CRANE_X: ReadonlyArray<number> = [-520, 560, -260]
@@ -62,6 +62,7 @@ type WorldDebug = {
   warp: number
   plunges: number
   frames: number
+  arrived: boolean
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
@@ -197,6 +198,11 @@ export function LoginWorld({
   const yardRefs = useRef<Array<HTMLDivElement | null>>([])
 
   const stars = useMemo(() => starTile(), [])
+
+  /** Прилёт плиты: far — дорога бежит чистой; here — по касанию плита
+   *  красиво прилетает издалека («мы приехали»); past — после верного
+   *  ввода проезжаем её и оказываемся в программе. */
+  const [phase, setPhase] = useState<"far" | "here" | "past">("far")
   /** Тёплая или холодная сигнатура акцентов — вход логиста/водителя. */
   const accent = variant === "driver" ? "#f59e0b" : "#22d3ee"
 
@@ -224,19 +230,23 @@ export function LoginWorld({
     }> = []
     let k = 0
     STACK_X.forEach((x, i) => {
-      yard.push({ el: els[k], baseX: x, x, y: 16, z: 500 + i * 750, total: YARD_TOTAL, i: k })
+      // низ штабеля (высота 160) стоит НА земле (плоскость y=56)
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 80, z: 260 + i * 580, total: YARD_TOTAL, i: k })
       k += 1
     })
     CRANE_X.forEach((x, i) => {
-      yard.push({ el: els[k], baseX: x, x, y: -69, z: 1200 + i * 2500, total: YARD_TOTAL, i: k })
+      // кран высотой 330: ноги на земле
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 165, z: 1100 + i * 2500, total: YARD_TOTAL, i: k })
       k += 1
     })
     POLE_X.forEach((x, i) => {
-      yard.push({ el: els[k], baseX: x, x, y: -44, z: 400 + i * 1250, total: YARD_TOTAL, i: k })
+      // фонарь высотой 280: столб на земле
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 140, z: 350 + i * 1250, total: YARD_TOTAL, i: k })
       k += 1
     })
     DOT_X.forEach((x, i) => {
-      yard.push({ el: els[k], baseX: x, x, y: 90, z: 300 + i * 1500, total: YARD_TOTAL, i: k })
+      // точки-заказы катятся по самой земле
+      yard.push({ el: els[k], baseX: x, x, y: 51, z: 280 + i * 1500, total: YARD_TOTAL, i: k })
       k += 1
     })
     // искры-частицы у самой камеры (скорость полёта читается сразу)
@@ -299,6 +309,7 @@ export function LoginWorld({
       warp: 0,
       plunges: 0,
       frames: 0,
+      arrived: false,
     }
     const w = window as Window & {
       __loginWorld?: WorldDebug
@@ -326,11 +337,13 @@ export function LoginWorld({
         debug.gyro = true
       }
     }
-    let gyroRequested = false
+    let gyroGranted = false
     const attachGyro = () => {
       window.addEventListener("deviceorientation", onOrientation)
-      if (gyroRequested) return
-      gyroRequested = true
+      if (gyroGranted || gyroActive) return
+      // пробуем на КАЖДОМ жесте, пока не разрешат: Safari может не
+      // зачесть первый pointerdown — раньше из-за одноразовой попытки
+      // гироскоп умирал навсегда
       const D = (
         window as unknown as {
           DeviceOrientationEvent?: { requestPermission?: () => Promise<string> }
@@ -338,7 +351,11 @@ export function LoginWorld({
       ).DeviceOrientationEvent
       if (D && typeof D.requestPermission === "function") {
         try {
-          void D.requestPermission().catch(() => {})
+          void D.requestPermission()
+            .then((answer) => {
+              if (answer === "granted") gyroGranted = true
+            })
+            .catch(() => {})
         } catch {
           /* без UI промпт виснет — слушатель уже стоит */
         }
@@ -374,10 +391,19 @@ export function LoginWorld({
     }
 
     // ── ввод ──
-    // Клик по миру НИЧЕГО не дёргает (просьба владельца: без мигания
-    // после нажатия) — перспектива постоянна, рывков нет.
+    // Касание экрана — ПРИЛЁТ плиты издалека (видение владельца:
+    // «бежит дорога, нажимаешь — появляется плита, мы приехали»).
+    // Никаких скачков перспективы — только честный transform-полёт.
     const onClick = () => {
       debug.plunges += 1
+      if (debug.arrived) return
+      debug.arrived = true
+      setPhase("here")
+    }
+    const onKey = () => {
+      if (debug.arrived) return
+      debug.arrived = true
+      setPhase("here")
     }
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType === "touch") return
@@ -387,17 +413,35 @@ export function LoginWorld({
       target instanceof Element &&
       target.closest("[data-login-panel], form, button, a, input, textarea, label") != null
     let padLast: { x: number; y: number } | null = null
+    let padStart: { x: number; y: number; t: number } | null = null
     const onPadDown = (event: PointerEvent) => {
       if (event.pointerType !== "touch" || isUi(event.target)) return
       padLast = { x: event.clientX, y: event.clientY }
+      padStart = { x: event.clientX, y: event.clientY, t: event.timeStamp }
     }
     const onPadMove = (event: PointerEvent) => {
       if (event.pointerType !== "touch" || !padLast) return
       w.__loginWorldLook?.(event.clientX - padLast.x, event.clientY - padLast.y)
       padLast = { x: event.clientX, y: event.clientY }
     }
-    const onPadUp = () => {
+    const onPadUp = (event: PointerEvent) => {
+      // Тап по миру = палец встал и поднялся почти без движения.
+      // Прилёт вешаем и на pointerup: click вскоре после драга
+      // глотается double-tap-детектором мобильного Chromium,
+      // а pointerup приходит всегда и вовремя.
+      if (padStart && event.pointerType === "touch") {
+        const dx = event.clientX - padStart.x
+        const dy = event.clientY - padStart.y
+        if (Math.hypot(dx, dy) < 12 && event.timeStamp - padStart.t < 600) {
+          debug.plunges += 1
+          if (!debug.arrived) {
+            debug.arrived = true
+            setPhase("here")
+          }
+        }
+      }
       padLast = null
+      padStart = null
     }
     const onInput = (event: Event) => {
       const target = event.target as HTMLElement | null
@@ -405,10 +449,11 @@ export function LoginWorld({
       energy = Math.min(1.2, energy + 0.5)
     }
     const onWarp = () => {
-      // ворп при входе: только мягкое ускорение полёта — без скачка
-      // перспективы, чтобы экран не мигал
+      // проезжаем плиту и оказываемся в программе: мягкое ускорение
+      // полёта + плита уходит за камеру — без скачков перспективы
       warpT = 1
       speed = SPEED_WARP
+      setPhase("past")
     }
     const onFocusIn = (event: FocusEvent) => {
       focused = event.target instanceof Element && event.target.closest("[data-login-panel]") != null
@@ -470,7 +515,8 @@ export function LoginWorld({
       // перспектива ПОСТОЯННАЯ — никаких скачков и миганий
 
       // ── земля: разметка полосы-«взлётки» бежит под камерой ──
-      line.style.backgroundPositionY = `${-((dolly * 0.9) % 72).toFixed(1)}px`
+      // знак +: особенности бегут К камере (полёт вперёд)
+      line.style.backgroundPositionY = `${((dolly * 0.9) % 72).toFixed(1)}px`
 
       // ── двор: штабеля, краны, фонари, точки и искры пролетают
       // мимо и рождаются впереди — объём и скорость ──
@@ -494,6 +540,7 @@ export function LoginWorld({
     }
 
     window.addEventListener("click", onClick, { passive: true })
+    window.addEventListener("keydown", onKey)
     window.addEventListener("pointermove", onPointerMove, { passive: true })
     window.addEventListener("pointerdown", onPadDown, { passive: true })
     window.addEventListener("pointermove", onPadMove, { passive: true })
@@ -520,6 +567,7 @@ export function LoginWorld({
       running = false
       cancelAnimationFrame(raf)
       window.removeEventListener("click", onClick)
+      window.removeEventListener("keydown", onKey)
       window.removeEventListener("pointermove", onPointerMove)
       window.removeEventListener("pointerdown", onPadDown)
       window.removeEventListener("pointermove", onPadMove)
@@ -647,7 +695,7 @@ export function LoginWorld({
             data-stack
             aria-hidden="true"
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate3d(${x}px, 16px, ${-(500 + i * 750)}px)` }}
+            style={{ transform: `translate3d(${x}px, ${56 - 80}px, ${-(260 + i * 580)}px)` }}
           >
             <StackArt variant={i} />
           </div>
@@ -661,7 +709,7 @@ export function LoginWorld({
             data-crane
             aria-hidden="true"
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate3d(${x}px, -69px, ${-(1200 + i * 2500)}px)` }}
+            style={{ transform: `translate3d(${x}px, ${56 - 165}px, ${-(1100 + i * 2500)}px)` }}
           >
             <CraneArt />
           </div>
@@ -675,7 +723,7 @@ export function LoginWorld({
             data-pole
             aria-hidden="true"
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate3d(${x}px, -44px, ${-(400 + i * 1250)}px)` }}
+            style={{ transform: `translate3d(${x}px, ${56 - 140}px, ${-(350 + i * 1250)}px)` }}
           >
             <PoleArt />
           </div>
@@ -690,7 +738,7 @@ export function LoginWorld({
             aria-hidden="true"
             className="absolute left-1/2 top-1/2 h-[10px] w-[10px] rounded-full bg-cyan-300"
             style={{
-              transform: `translate3d(${x}px, 90px, ${-(300 + i * 1500)}px)`,
+              transform: `translate3d(${x}px, 51px, ${-(280 + i * 1500)}px)`,
               boxShadow: "0 0 12px rgba(103,232,249,0.9)",
             }}
           />
@@ -709,8 +757,11 @@ export function LoginWorld({
         ))}
       </div>
 
-      {/* ── БЛИЖНИЙ ПЛАН: заголовок и ПРОПУСК-документ формы ── */}
+      {/* ── БЛИЖНИЙ ПЛАН: заголовок и ПРОПУСК-документ формы ──
+          до касания экрана дорога бежит чистой; по касанию весь ближний
+          план красиво ПРИЛЕТАЕТ издалека (translateZ-полёт) ── */}
       <div ref={nearRef} className="pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+        <div className="doc-arrive" data-state={phase}>
         {headline && (
           <div
             className="absolute left-1/2 top-[15%] w-[min(90vw,520px)] text-center lg:left-[24%] lg:top-[42%] lg:w-[520px] lg:text-left"
@@ -740,13 +791,12 @@ export function LoginWorld({
           style={{ transform: "translate(-50%,-50%) translateZ(-110px) rotateY(-4deg)" }}
         >
           <div className="world-bob">
-            <div className="world-panel-in">
               {bare ? (
                 children
               ) : (
                 <div
                   data-login-doc
-                  className="relative rounded-2xl border border-white/10 bg-[#0b1322]/40 px-5 pb-4 pt-3.5 shadow-[0_30px_70px_-25px_rgba(0,0,0,0.8)] backdrop-blur-xl"
+                  className="relative rounded-2xl border border-white/10 bg-[#0b1322]/40 px-5 pb-3.5 pt-3 shadow-[0_30px_70px_-25px_rgba(0,0,0,0.8)] backdrop-blur-xl"
                 >
                   <div
                     aria-hidden="true"
@@ -765,7 +815,7 @@ export function LoginWorld({
                   </div>
                   {children}
                   {/* низ пропуска: штрихкод */}
-                  <div className="mt-3 flex items-end justify-between border-t border-dashed border-white/10 pt-2.5">
+                  <div className="mt-2.5 flex items-end justify-between border-t border-dashed border-white/10 pt-2">
                     <div className="flex h-6 items-end gap-[2px]" aria-hidden="true">
                       {BARCODE.map((wd, i) => (
                         <span key={i} className="bg-white/20" style={{ width: wd, height: i % 3 === 0 ? 24 : 17 }} />
@@ -779,6 +829,18 @@ export function LoginWorld({
           </div>
         </div>
       </div>
+
+      {/* подсказка прилёта: крошечная, исчезает после первого касания */}
+      {phase === "far" && (
+        <div
+          data-login-hint
+          className="absolute bottom-7 left-1/2 z-20 -translate-x-1/2 text-center"
+        >
+          <p className="animate-pulse text-[11px] font-medium uppercase tracking-[0.3em] text-slate-300/70">
+            Коснитесь экрана — войти
+          </p>
+        </div>
+      )}
     </div>
   )
 }

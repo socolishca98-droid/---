@@ -1338,6 +1338,40 @@ body {
   animation: world-panel-in 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.38s backwards;
 }
 
+/* Прилёт плиты входа (видение владельца): дорога бежит чистой, по
+   касанию ближний план прилетает ИЗДАЛЕКА («мы сюда приехали»), после
+   верного ввода — уходит за камеру («проезжаем её и в программе») */
+.doc-arrive {
+  position: absolute;
+  inset: 0;
+  transform: translateZ(-2400px);
+  opacity: 0;
+  transition:
+    transform 1.15s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.9s ease;
+  will-change: transform;
+}
+
+.doc-arrive[data-state="here"] {
+  transform: translateZ(0px);
+  opacity: 1;
+}
+
+/* далёкая плита НЕЛОВИМА: касание проходит сквозь неё в мир.
+   Иначе тап попадал в невидимую форму — и клик не рождался. */
+.doc-arrive[data-state="far"],
+.doc-arrive[data-state="far"] * {
+  pointer-events: none !important;
+}
+
+.doc-arrive[data-state="past"] {
+  transform: translateZ(900px);
+  opacity: 0;
+  transition:
+    transform 0.75s cubic-bezier(0.5, 0, 0.9, 0.4),
+    opacity 0.7s ease;
+}
+
 /* Терминал: маячок крана мигает, тельфер ездит */
 @keyframes beacon {
   0%,
@@ -1369,6 +1403,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .world-bob,
   .world-panel-in,
+  .doc-arrive,
   .beacon,
   .crane-trolley,
   .console-rise,

@@ -92,10 +92,32 @@ try {
   check("объём: искры летят мимо камеры", world.motes >= 10, `${world.motes} искр`)
   check("маршрут заказов: точки бегут по нитке", world.dots >= 4, `${world.dots} точек`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
+
+  // до касания: дорога бежит ЧИСТОЙ — плиты нет, только подсказка
+  const before = await page.evaluate(() => ({
+    state: document.querySelector(".doc-arrive")?.getAttribute("data-state"),
+    opacity: document.querySelector(".doc-arrive") ? getComputedStyle(document.querySelector(".doc-arrive")).opacity : "?",
+    hint: document.querySelector("[data-login-hint]") != null,
+  }))
+  check("до касания — чистая дорога, плита далеко", before.state === "far" && before.opacity === "0" && before.hint, `state ${before.state}, opacity ${before.opacity}, подсказка:${before.hint}`)
+
+  // касание экрана → плита красиво ПРИЛЕТАЕТ издалека («мы приехали»)
+  await page.mouse.click(600, 400)
+  await page.waitForTimeout(2600)
+  const after = await page.evaluate(() => ({
+    state: document.querySelector(".doc-arrive")?.getAttribute("data-state"),
+    opacity: document.querySelector(".doc-arrive") ? getComputedStyle(document.querySelector(".doc-arrive")).opacity : "?",
+    hint: document.querySelector("[data-login-hint]") != null,
+  }))
+  check("касание — плита прилетает издалека", after.state === "here" && parseFloat(after.opacity) >= 0.9 && !after.hint, `state ${after.state}, opacity ${after.opacity}`)
+  const docSize = await page.evaluate(() => {
+    const r = document.querySelector("[data-login-panel]")?.getBoundingClientRect()
+    return r ? { w: Math.round(r.width), h: Math.round(r.height), vw: window.innerWidth, vh: window.innerHeight } : null
+  })
   check(
     "пропуск — компактный документ",
-    world.panelW <= 400 && world.panelH <= Math.round(world.vh * 0.72),
-    `${world.panelW}×${world.panelH} px на экране ${world.vw}×${world.vh}`,
+    docSize != null && docSize.w <= 400 && docSize.h <= Math.round(docSize.vh * 0.72),
+    docSize ? `${docSize.w}×${docSize.h} px на экране ${docSize.vw}×${docSize.vh}` : "нет",
   )
   check("форма — прозрачный экран", parseFloat(world.glassAlpha) <= 0.55 && world.glassBlur.includes("blur"), `фон ${world.glassAlpha}, blur: ${world.glassBlur.slice(0, 20)}`)
 
@@ -152,6 +174,8 @@ try {
   await wpage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
   await wpage.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
   await wpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await wpage.mouse.click(600, 400) // плита прилетает — как живой пользователь
+  await wpage.waitForTimeout(1400)
   await wpage.fill("input#email", envValue("OWNER_EMAIL"))
   await wpage.fill("input#password", envValue("OWNER_PASSWORD"))
   await wpage.click("button[type=\"submit\"]", { force: true })
@@ -199,11 +223,25 @@ try {
   const yawB = await mpage.evaluate(() => window.__loginWorld.yaw)
   check("телефон: палец вертит мир", Math.abs(yawB - yawA) > 0.4, `yaw ${yawA.toFixed(1)}° → ${yawB.toFixed(1)}°`)
 
-  // гироскоп БЕЗ КНОПКИ: на Android включается сам, на iPhone — по
-  // первому касанию экрана (жест, которого требует Apple)
-  const noPill = await mpage.evaluate(() => document.querySelector("[data-gyro-pill]") == null)
+  // касание экрана: плита ПРИЛЕТАЕТ (и это же — жест для гироскопа)
+  const mBefore = await mpage.evaluate(() => ({
+    state: document.querySelector(".doc-arrive")?.getAttribute("data-state"),
+    hint: document.querySelector("[data-login-hint]") != null,
+  }))
   await mCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 110 }] })
   await mCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await mpage.waitForTimeout(1600)
+  const mAfter = await mpage.evaluate(() => ({
+    state: document.querySelector(".doc-arrive")?.getAttribute("data-state"),
+    opacity: document.querySelector(".doc-arrive") ? getComputedStyle(document.querySelector(".doc-arrive")).opacity : "?",
+    hint: document.querySelector("[data-login-hint]") != null,
+  }))
+  check(
+    "телефон: касание — плита прилетает",
+    mBefore.state === "far" && mAfter.state === "here" && parseFloat(mAfter.opacity) >= 0.9 && !mAfter.hint,
+    `${mBefore.state} → ${mAfter.state}, opacity ${mAfter.opacity}`,
+  )
+  const noPill = await mpage.evaluate(() => document.querySelector("[data-gyro-pill]") == null)
   await mpage.waitForTimeout(200)
   const gyroGranted = await mpage.evaluate(() => typeof window.__loginWorldGyro === "function")
   await mpage.evaluate(() => {
@@ -322,7 +360,16 @@ try {
   }))
   check("водитель: экран без прокрутки", dFit.h <= dFit.vh + 2, `scrollHeight ${dFit.h} / ${dFit.vh}`)
 
-  await dpage.waitForTimeout(1500)
+  // касание — плита водителя прилетает
+  await dCdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 420 }] })
+  await dCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+  await dpage.waitForTimeout(1600)
+  const dArrive = await dpage.evaluate(() => ({
+    state: document.querySelector(".doc-arrive")?.getAttribute("data-state"),
+    opacity: document.querySelector(".doc-arrive") ? getComputedStyle(document.querySelector(".doc-arrive")).opacity : "?",
+  }))
+  check("водитель: касание — плита прилетает", dArrive.state === "here" && parseFloat(dArrive.opacity) >= 0.9, `state ${dArrive.state}, opacity ${dArrive.opacity}`)
+  await dpage.waitForTimeout(400)
   await shot(dpage, "/home/user/work/visual-driver-login.png")
   check("водитель: скриншот сохранён", true, "work/visual-driver-login.png")
   const dErr = dErrors.filter((t) => !isNoise(t))
@@ -353,7 +400,14 @@ try {
   })
   check("регистрация: мир и вкладки", reg.world && reg.tabs >= 2 && reg.email, `вкладок ${reg.tabs}, email:${reg.email}`)
   check("регистрация: карточка — объект мира", reg.panel3d, reg.panel3d ? "matrix3d" : "нет")
-  await rpage.waitForTimeout(1200)
+  await rpage.mouse.click(600, 400)
+  await rpage.waitForTimeout(1600)
+  const rArrive = await rpage.evaluate(() => ({
+    state: document.querySelector(".doc-arrive")?.getAttribute("data-state"),
+    opacity: document.querySelector(".doc-arrive") ? getComputedStyle(document.querySelector(".doc-arrive")).opacity : "?",
+  }))
+  check("регистрация: касание — карточка прилетает", rArrive.state === "here" && parseFloat(rArrive.opacity) >= 0.9, `state ${rArrive.state}, opacity ${rArrive.opacity}`)
+  await rpage.waitForTimeout(600)
   await shot(rpage, "/home/user/work/visual-register.png")
   check("регистрация: скриншот сохранён", true, "work/visual-register.png")
   const rErr = rErrors.filter((t) => !isNoise(t))
