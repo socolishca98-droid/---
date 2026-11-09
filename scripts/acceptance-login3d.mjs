@@ -16,8 +16,9 @@
 // попарно, краны ×2, гироскоп 0.06, refs ели/искры разведены;
 // и18б: камера выше плоскости (GROUND_Y=160, origin 58%),
 // hit-тест «внизу земля, вверху небо».
-// и19: гироскоп 0.03 + зажим рамки, здания ×4, ворп «в свет» +
-// эстафета зарева в приветствие. 59 чеков.
+// и19: здания ×4, зажим рамки. и20: гироскоп ВЫКЛЮЧЕН (наклон —
+// только палец/курсор), вход — «ночной тоннель» вместо зарева.
+// 59 чеков.
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -524,8 +525,8 @@ try {
   await wpage.waitForTimeout(560)
   const e2 = await yardVis()
   await wpage.waitForTimeout(120)
-  const bloomProbe = await wpage.evaluate(() => ({
-    op: getComputedStyle(document.querySelector(".warp-bloom")).opacity,
+  const duskProbe = await wpage.evaluate(() => ({
+    op: getComputedStyle(document.querySelector(".warp-dusk")).opacity,
     arriving: (() => {
       try {
         return window.sessionStorage.getItem("loginex:arriving")
@@ -535,9 +536,9 @@ try {
     })(),
   }))
   check(
-    "ворп: уезжаем в свет — эстафета приветствия",
-    parseFloat(bloomProbe.op) >= 0.5 && bloomProbe.arriving === "1",
-    `зарево ${bloomProbe.op}, флаг прилёта: ${bloomProbe.arriving}`,
+    "ворп: ночной тоннель — эстафета приветствия",
+    parseFloat(duskProbe.op) >= 0.5 && duskProbe.arriving === "1",
+    `тоннель ${duskProbe.op}, флаг прилёта: ${duskProbe.arriving}`,
   )
   check(
     "ворп: фонари заканчиваются, мир гаснет",
@@ -608,32 +609,27 @@ try {
   )
   const noPill = await mpage.evaluate(() => document.querySelector("[data-gyro-pill]") == null)
   await mpage.waitForTimeout(200)
-  const gyroGranted = await mpage.evaluate(() => typeof window.__loginWorldGyro === "function")
+  const gyroHookGone = await mpage.evaluate(
+    () => typeof window.__loginWorldGyro === "undefined" && window.__loginWorld.gyro === undefined,
+  )
+  // даём недавнему повороту пальца затухнуть, чтобы мерить только реакцию
+  // на события гироскопа, а не естественный дрейф мира
+  await mpage.waitForTimeout(600)
+  const yawBefore = await mpage.evaluate(() => window.__loginWorld.yaw)
   await mpage.evaluate(() => {
-    // первое событие калибрует ноль, второе — наклон, третье — РЕЗКИЙ
-    // рывок: гироскоп должен остаться спокойным (ограничен и сглажен)
+    // трясём телефон как угодно: мира это больше не касается —
+    // гироскоп выключен (и20), наклон только от пальца и курсора.
+    // Скачок gamma 10→89 при живом гироскопе дал бы ~1.6° за 250мс
     window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 10 }))
-    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 34 }))
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 74, gamma: 89 }))
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: -20, gamma: -60 }))
   })
-  await mpage.waitForTimeout(500)
-  const gyroState = await mpage.evaluate(() => ({
-    gyro: window.__loginWorld.gyro === true,
-    yaw: window.__loginWorld.yaw,
-  }))
-  await mpage.evaluate(() => {
-    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 30, gamma: 89 }))
-  })
-  await mpage.waitForTimeout(500)
-  const gyroCalm = await mpage.evaluate(() => window.__loginWorld.yaw)
+  await mpage.waitForTimeout(250)
+  const yawAfter = await mpage.evaluate(() => window.__loginWorld.yaw)
   check(
-    "телефон: гироскоп жив и спокоен, кнопки нет",
-    noPill &&
-      gyroGranted &&
-      gyroState.gyro &&
-      Math.abs(gyroState.yaw) > 0.3 &&
-      Math.abs(gyroCalm - gyroState.yaw) <= 16 &&
-      Math.abs(gyroCalm) <= 22,
-    `наклон ${gyroState.yaw.toFixed(1)}°, рывок +55° → ${gyroCalm.toFixed(1)}° (отклик ${Math.abs(gyroCalm - gyroState.yaw).toFixed(1)}°)`,
+    "телефон: гироскоп выключен — тряска не двигает мир, кнопки нет",
+    noPill && gyroHookGone && Math.abs(yawAfter - yawBefore) < 0.5,
+    `до ${yawBefore.toFixed(2)}°, после тряски ${yawAfter.toFixed(2)}° (отклик ${Math.abs(yawAfter - yawBefore).toFixed(2)}°, дрейф мира в норме)`,
   )
 
   // поля работают, экран не скроллится (мир fixed)

@@ -1614,49 +1614,52 @@ body {
   fill: #22314d;
 }
 
-/* ворп (и19): уезжаем В СВЕТ — тёплое зарево вместо чёрного
-   экрана; на следующей странице его принимает .welcome-arrival */
-.warp-bloom {
+/* ворп (и20): «ночной тоннель» — сцену растворяет глубокий индиго
+   в цвет фона приложения (theme-canvas). Никаких вспышек: просто
+   мягкое погружение, которое на следующей странице принимает
+   .welcome-arrival и так же мягко уходит */
+.warp-dusk {
   position: absolute;
   inset: 0;
   pointer-events: none;
   opacity: 0;
   background:
-    radial-gradient(60% 46% at 50% 58%, rgba(255, 243, 214, 0.98), rgba(255, 222, 168, 0.76) 34%, rgba(255, 205, 148, 0.3) 58%, rgba(255, 205, 148, 0) 78%),
-    linear-gradient(rgba(255, 236, 200, 0.2), rgba(255, 220, 175, 0.42));
-  transition: opacity 0.75s cubic-bezier(0.32, 0, 0.24, 1) 0.1s;
+    radial-gradient(56% 40% at 50% 60%, rgba(96, 120, 205, 0.14), transparent 72%),
+    linear-gradient(180deg, #0c1020, #0a0d1a 58%, #080a14);
+  transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1) 0.12s;
 }
 
-[data-login-world][data-warp="1"] .warp-bloom {
+[data-login-world][data-warp="1"] .warp-dusk {
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .warp-bloom {
+  .warp-dusk {
     transition: none;
   }
 }
 
-/* прилёт (и19): зарево принимает эстафету на следующей странице,
-   перекрывает момент её загрузки и растворяется в приветствие */
+/* прилёт (и20): тоннель принимает эстафету на следующей странице —
+   тот же индиго, что растворил сцену входа; стоит неподвижно,
+   перекрывая подмену страниц, и мягко уходит, открывая карточку */
 .welcome-arrival {
   position: fixed;
   inset: 0;
   z-index: 1999;
   pointer-events: none;
   background:
-    radial-gradient(60% 46% at 50% 58%, rgba(255, 243, 214, 0.98), rgba(255, 222, 168, 0.8) 34%, rgba(255, 205, 148, 0.32) 58%, rgba(255, 205, 148, 0) 78%),
-    linear-gradient(rgba(255, 236, 200, 0.24), rgba(255, 220, 175, 0.48));
-  animation: arrival-in 260ms cubic-bezier(0.32, 0, 0.24, 1) both;
+    radial-gradient(56% 40% at 50% 60%, rgba(96, 120, 205, 0.12), transparent 72%),
+    linear-gradient(180deg, #0c1020, #0a0d1a 58%, #080a14);
+  animation: arrival-in 200ms ease both;
 }
 
 .welcome-arrival--leaving {
-  animation: arrival-out 400ms ease both;
+  animation: arrival-out 550ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes arrival-in {
   from {
-    opacity: 0.55;
+    opacity: 0.92;
   }
   to {
     opacity: 1;

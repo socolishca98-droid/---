@@ -19,12 +19,12 @@
 //     центральной ниткой маршрута; искры-частицы у самой камеры;
 //     точки-заказы бегут по нитке навстречу.
 //
-// Приёмка: window.__loginWorld {dolly, speed, yaw, pitch, gyro, passed,
-// warp, plunges, frames} + __loginWorldLook + __loginWorldPaused +
-// __loginWorldGyro. DOM: [data-login-world], [data-stack] ×10,
+// Приёмка: window.__loginWorld {dolly, speed, yaw, pitch, passed,
+// warp, plunges, frames} + __loginWorldLook + __loginWorldPaused.
+// DOM: [data-login-world], [data-stack] ×10,
 // [data-crane] ×2, [data-pole] ×12, [data-tree] ×18,
 // [data-building] ×4, [data-login-mote] ×14, [data-route-dot] ×5,
-// [data-ground], [data-ground-backdrop], [data-warp-bloom],
+// [data-ground], [data-ground-backdrop], [data-warp-dusk],
 // [data-login-panel], [data-login-doc].
 //
 // Фидбек и16: «арки меньше — пол страницы в виде горизонта; гироскоп
@@ -67,18 +67,16 @@
 //      (и17: 57% = 56). Теперь origin 58% при GROUND_Y=160: зазор
 //      96px как в и15, земля — нижние 42% кадра, горизонт виден.
 //
-// Фидбек и19: «уменьшай ещё гироскоп; потрясёшь телефоном — опять
-// всё летает в небе; добавить парковки отдыха, закусочные и прочие
-// здания; красиво сделать анимацию входа (после авторизации —
-// чёрный экран, потом экран приветствия)». Сделано: гироскоп
-// 0.03/0.018 (зажим ±2°/±0.8°) + медленный возврат нуля калибровки
-// + ЖЁСТКИЙ зажим итогового наклона рамки (yaw ±5°, pitch ±2.5°) —
-// тряска физически не может унести мир в небо; придорожные здания
-// ×4 (парковка отдыха с «P» и грузовиком, закусочная с вывеской,
-// мотель с горящими окнами, ангар) — красятся палитрой суток; ворп
-// теперь уезжает В СВЕТ (тёплое зарево .warp-bloom + флаг прилёта
-// в sessionStorage), на следующей странице зарево принимает
-// эстафету (.welcome-arrival) и растворяется в приветствие.
+// Фидбек и19: здания у дороги (сделано, ×4), зажим наклона рамки
+// yaw ±5°/pitch ±2.5° (сделано), гироскоп тише (сделано) — но и20:
+// «предлагаю гироскоп выключить» → гироскоп УДАЛЁН целиком: ни
+// слушателя deviceorientation, ни запроса разрешения, ни калибровки.
+// Наклон рамки теперь только от осознанных действий: курсор и палец
+// (drag), и по-прежнему жёстко зажат — мир не может уйти в небо.
+// Фидбек и20 про вход «это просто ужас» → оранжевое зарево убрано:
+// ворп растворяет сцену в глубокий индиго (.warp-dusk, цвет фона
+// приложения), на следующей странице тот же индиго принимает
+// эстафету и растворяется, карточка-приветствие появляется сразу.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -190,7 +188,6 @@ type WorldDebug = {
   speed: number
   yaw: number
   pitch: number
-  gyro: boolean
   passed: number
   warp: number
   plunges: number
@@ -556,13 +553,6 @@ export function LoginWorld({
     let pitchMouse = 0
     let yawDrag = 0
     let pitchDrag = 0
-    let yawGyro = 0
-    let pitchGyro = 0
-    // гироскоп: цель (сырые показания) и сглаженное значение — без дрожи
-    let yawGyroT = 0
-    let pitchGyroT = 0
-    let gyroCalib: { b: number; g: number } | null = null
-    let gyroActive = false
     let pointer: { x: number; y: number } | null = null
     let focused = false
     let aim = 0
@@ -572,7 +562,6 @@ export function LoginWorld({
       speed,
       yaw: 0,
       pitch: 0,
-      gyro: false,
       passed: 0,
       warp: 0,
       plunges: 0,
@@ -583,86 +572,11 @@ export function LoginWorld({
       __loginWorld?: WorldDebug
       __loginWorldLook?: (dx: number, dy: number) => void
       __loginWorldPaused?: boolean
-      __loginWorldGyro?: () => Promise<boolean>
     }
     w.__loginWorld = debug
     w.__loginWorldLook = (dx: number, dy: number) => {
       yawDrag = clamp(yawDrag + dx * 0.045, -22, 22)
       pitchDrag = clamp(pitchDrag + dy * 0.03, -3, 3)
-    }
-
-    // ── гироскоп: БЕЗ КНОПКИ и БЕЗ УВЕДОМЛЕНИЙ ──
-    // Чувствительность: 0.03/0.018 при зажиме ±2°/±0.8° — и19
-    // «уменьшай ещё» (и18: 0.06/0.04; когда-то 0.6). Плюс СТАБИЛИ-
-    // ЗАЦИЯ ТРЯСКИ: калибровка медленно ползёт к текущему положению
-    // телефона (вид сам выравнивается), а итоговый наклон рамки
-    // жёстко зажат — при любой тряске мир не может «улететь в небо».
-    // Запрос разрешения — на трёх жестах сразу (Safari капризен).
-    const onOrientation = (event: DeviceOrientationEvent) => {
-      if (event.beta == null || event.gamma == null) return
-      if (!gyroCalib) gyroCalib = { b: event.beta, g: event.gamma }
-      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.03, -2, 2)
-      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.018, -0.8, 0.8)
-      // медленный возврат нуля: держим телефон ровно — картинка
-      // сама выравнивается, тряска не оставляет «заваленного» вида
-      gyroCalib.g += (event.gamma - gyroCalib.g) * 0.004
-      gyroCalib.b += (event.beta - gyroCalib.b) * 0.004
-      if (!gyroActive) {
-        gyroActive = true
-        debug.gyro = true
-      }
-    }
-    let gyroGranted = false
-    const attachGyro = () => {
-      window.addEventListener("deviceorientation", onOrientation)
-      if (gyroGranted || gyroActive) return
-      // пробуем на КАЖДОМ жесте, пока не разрешат: Safari может не
-      // зачесть первый pointerdown — раньше из-за одноразовой попытки
-      // гироскоп умирал навсегда
-      const D = (
-        window as unknown as {
-          DeviceOrientationEvent?: { requestPermission?: () => Promise<string> }
-        }
-      ).DeviceOrientationEvent
-      if (D && typeof D.requestPermission === "function") {
-        try {
-          void D.requestPermission()
-            .then((answer) => {
-              if (answer === "granted") gyroGranted = true
-            })
-            .catch(() => {})
-        } catch {
-          /* без UI промпт виснет — слушатель уже стоит */
-        }
-      }
-    }
-    const onFirstTouch = () => {
-      attachGyro()
-    }
-    w.__loginWorldGyro = async () => {
-      attachGyro()
-      return true
-    }
-    const touchCapable =
-      "ontouchstart" in window || (navigator.maxTouchPoints ?? 0) > 0
-    const D = (
-      window as unknown as {
-        DeviceOrientationEvent?: { requestPermission?: () => Promise<string> }
-      }
-    ).DeviceOrientationEvent
-    const gestures: ReadonlyArray<"pointerdown" | "touchend" | "click"> = [
-      "pointerdown",
-      "touchend",
-      "click",
-    ]
-    if (touchCapable && D) {
-      if (typeof D.requestPermission !== "function") {
-        attachGyro() // Android и прочие без промпта — сразу и молча
-      } else {
-        for (const g of gestures) {
-          window.addEventListener(g, onFirstTouch, { capture: true, passive: true })
-        }
-      }
     }
 
     // ── ввод ──
@@ -781,16 +695,14 @@ export function LoginWorld({
       pitchMouse += (pitchT - pitchMouse) * Math.min(1, dt * 3)
       yawDrag *= Math.exp(-dt * 0.3)
       pitchDrag *= Math.exp(-dt * 0.3)
-      yawGyro += (yawGyroT - yawGyro) * Math.min(1, dt * 4.5)
-      pitchGyro += (pitchGyroT - pitchGyro) * Math.min(1, dt * 4.5)
       aim += ((focused ? 1 : 0) - aim) * Math.min(1, dt * 3)
       const swayY = Math.sin(t * 0.14) * 0.3
       const swayP = Math.sin(t * 0.17 + 1.2) * 0.18
       const blend = 1 - aim * 0.06
-      // итоговый наклон жёстко зажат: тряска/жесты/гироскоп вместе
-      // не могут повернуть мир так, чтобы дорога ушла в небо (и19)
-      yaw = clamp((yawMouse + yawDrag + yawGyro) * blend + swayY, -5, 5)
-      pitch = clamp((pitchMouse + pitchDrag + pitchGyro) * blend + swayP, -2.5, 2.5)
+      // итоговый наклон жёстко зажат (и19): курсор и палец вместе
+      // не могут повернуть мир так, чтобы дорога ушла в небо
+      yaw = clamp((yawMouse + yawDrag) * blend + swayY, -5, 5)
+      pitch = clamp((pitchMouse + pitchDrag) * blend + swayP, -2.5, 2.5)
 
       // ── риги: камера летит (move), остальные вращаются с ней ──
       const rot = `rotateX(${(-pitch).toFixed(2)}deg) rotateY(${yaw.toFixed(2)}deg)`
@@ -868,10 +780,6 @@ export function LoginWorld({
       document.removeEventListener("focusin", onFocusIn)
       document.removeEventListener("focusout", onFocusOut)
       document.removeEventListener("visibilitychange", onVisibility)
-      window.removeEventListener("deviceorientation", onOrientation)
-      for (const g of gestures) {
-        window.removeEventListener(g, onFirstTouch, true)
-      }
     }
   }, [variant])
 
@@ -1207,10 +1115,11 @@ export function LoginWorld({
         </div>
       )}
 
-      {/* ворп (и19): уезжаем В СВЕТ — тёплое зарево на прощание,
-          дальше эстафету принимает welcome-arrival следующей
-          страницы: никакого чёрного экрана между миром и программой */}
-      <div className="warp-bloom" data-warp-bloom aria-hidden="true" />
+      {/* ворп (и20): сцену растворяет «ночной тоннель» — глубокий
+          индиго в цвет фона приложения; на следующей странице тот же
+          тон принимает эстафету и мягко уходит, карточка появляется
+          сразу: ни оранжевой вспышки, ни чёрного провала */}
+      <div className="warp-dusk" data-warp-dusk aria-hidden="true" />
     </div>
   )
 }

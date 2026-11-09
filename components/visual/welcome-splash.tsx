@@ -21,10 +21,11 @@ import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
 const STORAGE_KEY = "loginex:welcome-shown"
-/** Флаг прилёта: мир входа «уехал в свет» — встречаем заревом (и19) */
+/** Флаг прилёта: мир входа растворился в «ночной тоннель» —
+ *  встречаем тем же тоном и мягко открываем страницу (и19→и20) */
 const ARRIVE_KEY = "loginex:arriving"
-/** Сколько зарево прикрывает загрузку страницы, мс */
-const ARRIVAL_VEIL_MS = 550
+/** Сколько тон-подложка прикрывает подмену страниц, мс */
+const ARRIVAL_VEIL_MS = 420
 /** Сколько заставка живёт на экране, мс */
 const SPLASH_MS = 1600
 /** Где приветствие не нужно: контур водителя, печать и экраны входа. */
@@ -94,9 +95,10 @@ export function WelcomeSplash() {
     // и страница назначения не увидит зарева (и19).
     if (isWarpSource) return
 
-    // Эстафета от входа (и19): мир «уехал в свет» — встречаем тёплым
-    // заревом, которое перекрывает загрузку страницы, и снова
-    // здороваемся (повторный вход в той же сессии — снова приветствие)
+    // Эстафета от входа (и19→и20): мир растворился в «ночной
+    // тоннель» — встречаем тем же тоном, он перекрывает подмену
+    // страниц и мягко уходит; снова здороваемся (повторный вход
+    // в той же сессии — снова приветствие)
     let arriving = false
     try {
       arriving = window.sessionStorage.getItem(ARRIVE_KEY) === "1"
@@ -114,12 +116,12 @@ export function WelcomeSplash() {
     }
 
     if (isExcludedPath) {
-      // Контур водителя и печати: без карточки, но зарево прилёта
-      // всё равно сглаживает появление страницы
+      // Контур водителя и печати: без карточки, но тон-подложка
+      // прилёта всё равно сглаживает появление страницы
       if (arriving) {
         setVeil(true)
-        timers.current.push(window.setTimeout(() => setVeilLeaving(true), 900))
-        timers.current.push(window.setTimeout(() => setVeil(false), 1350))
+        timers.current.push(window.setTimeout(() => setVeilLeaving(true), ARRIVAL_VEIL_MS))
+        timers.current.push(window.setTimeout(() => setVeil(false), ARRIVAL_VEIL_MS + 550))
       }
       return
     }
@@ -130,15 +132,17 @@ export function WelcomeSplash() {
     }
 
     if (arriving) {
+      // карточка — сразу (она проявляется из-под тон-подложки,
+      // как снимок в проявителе), подложка уходит через полсекунды
       setVeil(true)
-      timers.current.push(window.setTimeout(() => setVisible(true), ARRIVAL_VEIL_MS))
-      timers.current.push(window.setTimeout(() => setVeilLeaving(true), 900))
-      timers.current.push(window.setTimeout(() => setVeil(false), 1350))
+      setVisible(true)
+      timers.current.push(window.setTimeout(() => setVeilLeaving(true), ARRIVAL_VEIL_MS))
+      timers.current.push(window.setTimeout(() => setVeil(false), ARRIVAL_VEIL_MS + 550))
     } else {
       setVisible(true)
     }
 
-    const auto = window.setTimeout(dismiss, (arriving ? ARRIVAL_VEIL_MS : 0) + SPLASH_MS)
+    const auto = window.setTimeout(dismiss, SPLASH_MS)
     timers.current.push(auto)
 
     const onKey = (event: KeyboardEvent) => {
