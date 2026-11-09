@@ -89,6 +89,67 @@ try {
   check("терминал: штабеля в объёме", world.stacks >= 8, `${world.stacks} штабелей`)
   check("терминал: краны-порталы", world.cranes >= 3, `${world.cranes} крана`)
   check("объём: земля — плоскость в перспективе", world.ground3d, world.ground3d ? "rotateX(90°)" : "нет")
+
+  // дорога/земля/небо и13: дорога видна, двор на земле, не «космос»
+  const roadWorld = await page.evaluate(() => {
+    const road = document.querySelector("[data-road]")
+    const rs = road ? getComputedStyle(road) : null
+    const ground = document.querySelector("[data-ground]")
+    const fade = document.querySelector("[data-sky-fade]")
+    const poles = [...document.querySelectorAll("[data-pole]")].map((el) => {
+      const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+      if (!m) return null
+      const v = m[1].split(",").map(Number)
+      return v[12] // tx
+    })
+    return {
+      roadW: road ? Math.round(parseFloat(getComputedStyle(road).width)) : 0,
+      asphalt: rs ? rs.backgroundColor : "нет",
+      groundW: ground ? Math.round(parseFloat(getComputedStyle(ground).width)) : 0,
+      fadeH: fade ? Math.round(fade.getBoundingClientRect().height) : 0,
+      vh: window.innerHeight,
+      poleTx: poles,
+      shadows: document.querySelectorAll(".yard-shadow").length,
+      pools: document.querySelectorAll(".yard-pool").length,
+    }
+  })
+  check(
+    "дорога видна: асфальт с краями",
+    roadWorld.roadW >= 420 && roadWorld.asphalt !== "rgba(0, 0, 0, 0)" && roadWorld.asphalt !== "transparent",
+    `${roadWorld.roadW}px, ${roadWorld.asphalt}`,
+  )
+  check(
+    "земля накрывает весь двор (не космос)",
+    roadWorld.groundW >= 1900 && roadWorld.fadeH >= roadWorld.vh * 0.3,
+    `земля ${roadWorld.groundW}px, гашение звёзд ${Math.round((roadWorld.fadeH / roadWorld.vh) * 100)}% высоты`,
+  )
+  const alongRoad =
+    roadWorld.poleTx.length >= 6 &&
+    roadWorld.poleTx.every((tx) => tx != null && Math.abs(tx) >= 240 && Math.abs(tx) <= 420) &&
+    roadWorld.poleTx.some((tx) => tx < 0) &&
+    roadWorld.poleTx.some((tx) => tx > 0)
+  check(
+    "фонари стоят вдоль дороги (обочины)",
+    alongRoad,
+    roadWorld.poleTx.map((tx) => Math.round(tx)).join(", "),
+  )
+  check(
+    "предметы на земле: тени и пятна света",
+    roadWorld.shadows >= 16 && roadWorld.pools >= 6,
+    `теней ${roadWorld.shadows}, пятен ${roadWorld.pools}`,
+  )
+  const pwa = await page.evaluate(() => ({
+    capable:
+      document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute("content") === "yes" ||
+      document.querySelector('meta[name="mobile-web-app-capable"]')?.getAttribute("content") === "yes",
+    manifest: document.querySelector('link[rel="manifest"]') != null,
+    theme: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") ?? "",
+  }))
+  check(
+    "PWA: с экрана «Домой» без браузерных стрелок",
+    pwa.capable && pwa.manifest && pwa.theme !== "",
+    `capable:${pwa.capable}, manifest:${pwa.manifest}, theme:${pwa.theme}`,
+  )
   check("объём: искры летят мимо камеры", world.motes >= 10, `${world.motes} искр`)
   check("маршрут заказов: точки бегут по нитке", world.dots >= 4, `${world.dots} точек`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
@@ -195,7 +256,7 @@ try {
       }
     })
   const e1 = await yardVis()
-  await wpage.waitForTimeout(430)
+  await wpage.waitForTimeout(560)
   const e2 = await yardVis()
   check(
     "ворп: фонари заканчиваются, мир гаснет",

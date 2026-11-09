@@ -1357,11 +1357,38 @@ body {
   opacity: 1;
 }
 
+/* Предметы стоят на земле: мягкая тень-эллипс под штабелями и
+   кранами, тёплое пятно света под фонарями (свет проливается на
+   асфальт). Слегка перед плоскостью земли — без z-боя. */
+.yard-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 130%;
+  height: 34px;
+  transform: translateX(-50%) translateZ(2px);
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+}
+
+.yard-pool {
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  width: 240px;
+  height: 64px;
+  transform: translateX(-50%) translateZ(2px);
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0) 70%);
+  pointer-events: none;
+}
+
 /* «Проезжаем плиту — и фонари заканчиваются»: в ворпе риги мира
    мягко гаснут, двор больше не рождается впереди (см. ending в
    login-world) — дорога приезжает, программа начинается. */
 [data-login-world] .world-rig {
-  transition: opacity 0.6s ease 0.05s;
+  transition: opacity 0.5s ease 0.03s;
 }
 
 [data-login-world][data-warp="1"] .world-rig {

@@ -41,14 +41,15 @@ const MOTE_TOTAL = 4200
 
 const CONTAINER_COLORS = ["#24425f", "#5b3423", "#2a4c44", "#3c3a58", "#31517a"]
 
-/** Штабеля контейнеров: x у оси полёта (y подбирается по высоте). */
+/** Штабеля контейнеров: строго ВНЕ дороги (полширины 240 + запас)
+    и в пределах земли (±1000) — ничто не висит в пустоте. */
 const STACK_X: ReadonlyArray<number> = [
-  -780, -560, -330, -120, 90, 300, 520, 700, -450, 420, -90, 180, -240,
+  -820, -560, -380, -700, -460, -900, 380, 460, 560, 700, 820, 900, -640,
 ]
-/** Краны-порталы: выше и реже. */
-const CRANE_X: ReadonlyArray<number> = [-520, 560, -260]
-/** Фонари с тёплыми конусами. */
-const POLE_X: ReadonlyArray<number> = [-140, 180, -420, 460, -660, 660]
+/** Краны-порталы: выше, реже, не заходят на дорогу. */
+const CRANE_X: ReadonlyArray<number> = [-560, 620, -440]
+/** Фонари — РЯДОМ С ДОРОГОЙ: чередуются через обочину, как на трассе. */
+const POLE_X: ReadonlyArray<number> = [-310, 310, -310, 310, -310, 310]
 /** Точки-заказы: по центральной нитке маршрута. */
 const DOT_X: ReadonlyArray<number> = [-50, 0, 40, -30, 20]
 
@@ -228,26 +229,29 @@ export function LoginWorld({
       z: number
       total: number
       i: number
+      /** штабеля при перерождении слегка сдвигаются (жизнь двора);
+          краны и фонари стоят ровно — фонарный ряд вдоль дороги */
+      jitter: boolean
     }> = []
     let k = 0
     STACK_X.forEach((x, i) => {
       // низ штабеля (высота 160) стоит НА земле (плоскость y=56)
-      yard.push({ el: els[k], baseX: x, x, y: 56 - 80, z: 260 + i * 580, total: YARD_TOTAL, i: k })
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 80, z: 260 + i * 580, total: YARD_TOTAL, i: k, jitter: true })
       k += 1
     })
     CRANE_X.forEach((x, i) => {
       // кран высотой 330: ноги на земле
-      yard.push({ el: els[k], baseX: x, x, y: 56 - 165, z: 1100 + i * 2500, total: YARD_TOTAL, i: k })
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 165, z: 1100 + i * 2500, total: YARD_TOTAL, i: k, jitter: false })
       k += 1
     })
     POLE_X.forEach((x, i) => {
       // фонарь высотой 280: столб на земле
-      yard.push({ el: els[k], baseX: x, x, y: 56 - 140, z: 350 + i * 1250, total: YARD_TOTAL, i: k })
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 140, z: 350 + i * 1250, total: YARD_TOTAL, i: k, jitter: false })
       k += 1
     })
     DOT_X.forEach((x, i) => {
       // точки-заказы катятся по самой земле
-      yard.push({ el: els[k], baseX: x, x, y: 51, z: 280 + i * 1500, total: YARD_TOTAL, i: k })
+      yard.push({ el: els[k], baseX: x, x, y: 51, z: 280 + i * 1500, total: YARD_TOTAL, i: k, jitter: false })
       k += 1
     })
     // искры-частицы у самой камеры (скорость полёта читается сразу)
@@ -263,7 +267,7 @@ export function LoginWorld({
       el.style.boxShadow = `0 0 ${s * 3}px ${color}`
       const mx = -900 + ((m * 367) % 1800)
       const my = -140 + ((m * 431) % 480)
-      yard.push({ el, baseX: mx, x: mx, y: my, z: 240 + m * 300, total: MOTE_TOTAL, i: k })
+      yard.push({ el, baseX: mx, x: mx, y: my, z: 240 + m * 300, total: MOTE_TOTAL, i: k, jitter: true })
       k += 1
     }
     const yardTransform = (e: { x: number; y: number; z: number }) =>
@@ -326,14 +330,15 @@ export function LoginWorld({
     }
 
     // ── гироскоп: БЕЗ КНОПКИ и БЕЗ УВЕДОМЛЕНИЙ ──
-    // Чувствительность поднята до «чётко»: 0.32/0.24 (после 0.20 «не
+    // Чувствительность: 0.26/0.19 — после 0.32/0.24 владелец назвал
+    // гироскоп резким; сглаживание тоже мягче (4.5 вместо 5.5).
     // четко», когда-то 0.6 «слишком»). Запрос разрешения — на трёх
     // жестах сразу (Safari капризен), сам вызов одноразовый.
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.beta == null || event.gamma == null) return
       if (!gyroCalib) gyroCalib = { b: event.beta, g: event.gamma }
-      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.32, -14, 14)
-      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.24, -9, 9)
+      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.26, -12, 12)
+      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.19, -7, 7)
       if (!gyroActive) {
         gyroActive = true
         debug.gyro = true
@@ -501,8 +506,8 @@ export function LoginWorld({
       pitchMouse += (pitchT - pitchMouse) * Math.min(1, dt * 3)
       yawDrag *= Math.exp(-dt * 0.1)
       pitchDrag *= Math.exp(-dt * 0.1)
-      yawGyro += (yawGyroT - yawGyro) * Math.min(1, dt * 5.5)
-      pitchGyro += (pitchGyroT - pitchGyro) * Math.min(1, dt * 5.5)
+      yawGyro += (yawGyroT - yawGyro) * Math.min(1, dt * 4.5)
+      pitchGyro += (pitchGyroT - pitchGyro) * Math.min(1, dt * 4.5)
       aim += ((focused ? 1 : 0) - aim) * Math.min(1, dt * 3)
       const swayY = Math.sin(t * 0.14) * 0.3
       const swayP = Math.sin(t * 0.17 + 1.2) * 0.18
@@ -530,7 +535,7 @@ export function LoginWorld({
         if (!ending && dolly - e.z > -380) {
           e.z += e.total
           debug.passed += 1
-          e.x = e.baseX + (((debug.passed + e.i) % 3) - 1) * 70
+          e.x = e.baseX + (e.jitter ? (((debug.passed + e.i) % 3) - 1) * 70 : 0)
           e.el.style.transform = yardTransform(e)
         }
         const depth = e.z - dolly
@@ -628,8 +633,7 @@ export function LoginWorld({
           <circle cx="290" cy="124" r="6" fill="#cdd6e4" opacity="0.5" />
           <circle cx="310" cy="142" r="4" fill="#cdd6e4" opacity="0.4" />
           <rect x="-100" y="470" width="1400" height="130" fill="url(#haze)" />
-          <g fill="#0e1830">
-            <rect x="-100" y="540" width="1400" height="90" />
+          <g fill="rgba(10,17,32,0.75)">
             <rect x="60" y="522" width="46" height="20" />
             <rect x="150" y="510" width="30" height="32" />
             <rect x="620" y="516" width="52" height="36" />
@@ -645,6 +649,17 @@ export function LoginWorld({
             <circle cx="1040" cy="552" r="1.6" opacity="0.45" />
           </g>
         </svg>
+        {/* низ неба темнеет к горизонту: звёзды гаснут — мы на земле,
+            а не в космосе */}
+        <div
+          data-sky-fade
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-[42%]"
+          style={{
+            background:
+              "linear-gradient(to bottom, rgba(6,11,22,0) 0%, rgba(6,11,22,0.55) 45%, #060b16 100%)",
+          }}
+        />
       </div>
 
       {/* ── ЗЕМЛЯ: плоскость в перспективе, разметка и нитка маршрута
@@ -654,26 +669,32 @@ export function LoginWorld({
           ref={groundRef}
           data-ground
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 h-[120vw] w-[120vw]"
+          className="absolute left-1/2 top-1/2 h-[5200px] w-[2000px]"
           style={{
-            transform: "translate(-50%,-50%) translateY(56px) rotateX(90deg)",
-            backgroundColor: "#0a101d",
+            // земля накрывает ВЕСЬ двор по ширине (±1000) и глубину
+            // до z=4800 — дальше проекция сходится к точке за дымкой,
+            // а лишняя длина стоила 4 к/с софтверного рендера
+            transform: "translate(-50%,-50%) translateY(56px) translateZ(2200px) rotateX(90deg)",
+            backgroundColor: "#070c16",
             backgroundImage:
-              "repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 96px)",
+              "repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 96px)",
           }}
         >
           {/* полоса-«взлётка»: боковые линии + центральная нитка маршрута,
               пунктир бежит навстречу камере */}
           <div
             ref={lineRef}
-            className="absolute left-1/2 top-0 h-full w-[360px] -translate-x-1/2"
+            data-road
+            className="absolute left-1/2 top-0 h-full w-[480px] -translate-x-1/2"
             style={{
+              // асфальт: дорога СВЕТЛЕЕ земли — читается как дорога
+              backgroundColor: "#141d2f",
               backgroundImage:
-                "linear-gradient(90deg, transparent 0 8px, rgba(255,255,255,0.06) 8px 10px, transparent 10px calc(100% - 10px), rgba(255,255,255,0.06) calc(100% - 10px) calc(100% - 8px), transparent calc(100% - 8px)), repeating-linear-gradient(180deg, rgba(34,211,238,0.55) 0 26px, transparent 26px 72px)",
-              backgroundPosition: "0 0, 0 0",
-              backgroundSize: "100% 100%, 12px 100%",
-              backgroundRepeat: "no-repeat, repeat-y",
-              boxShadow: "0 0 18px rgba(34,211,238,0.18)",
+                "linear-gradient(90deg, transparent 0 12px, rgba(226,232,240,0.55) 12px 17px, transparent 17px calc(100% - 17px), rgba(226,232,240,0.55) calc(100% - 17px) calc(100% - 12px), transparent calc(100% - 12px)), repeating-linear-gradient(180deg, rgba(34,211,238,0.8) 0 26px, transparent 26px 72px), repeating-linear-gradient(180deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 48px)",
+              backgroundPosition: "0 0, 0 0, 0 0",
+              backgroundSize: "100% 100%, 12px 100%, 100% 100%",
+              backgroundRepeat: "no-repeat, repeat-y, repeat-y",
+              boxShadow: "0 0 22px rgba(34,211,238,0.22)",
             }}
           />
         </div>
@@ -704,6 +725,7 @@ export function LoginWorld({
             className="absolute left-1/2 top-1/2"
             style={{ transform: `translate3d(${x}px, ${56 - 80}px, ${-(260 + i * 580)}px)` }}
           >
+            <div className="yard-shadow" />
             <StackArt variant={i} />
           </div>
         ))}
@@ -718,6 +740,7 @@ export function LoginWorld({
             className="absolute left-1/2 top-1/2"
             style={{ transform: `translate3d(${x}px, ${56 - 165}px, ${-(1100 + i * 2500)}px)` }}
           >
+            <div className="yard-shadow" />
             <CraneArt />
           </div>
         ))}
@@ -732,6 +755,7 @@ export function LoginWorld({
             className="absolute left-1/2 top-1/2"
             style={{ transform: `translate3d(${x}px, ${56 - 140}px, ${-(350 + i * 1250)}px)` }}
           >
+            <div className="yard-pool" />
             <PoleArt />
           </div>
         ))}

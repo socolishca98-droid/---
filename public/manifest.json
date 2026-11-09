@@ -1,9 +1,15 @@
 {
-  "name": "Logistics TMS",
-  "short_name": "TMS",
+  "name": "Loginex TMS — грузоперевозки",
+  "short_name": "Loginex",
+  "description": "Управление грузоперевозками: заказы, рейсы, водители, документы",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
-  "icons": []
+  "orientation": "portrait",
+  "background_color": "#03060d",
+  "theme_color": "#03060d",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-dark-32x32.png", "sizes": "32x32", "type": "image/png" }
+  ]
 }

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import { Toaster as SonnerToaster } from "sonner"
 import { AuthProvider } from "@/lib/auth-context"
@@ -12,6 +12,24 @@ import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 export const metadata: Metadata = {
   title: "Loginex TMS — Система управления грузоперевозками",
   description: "Loginex TMS: управление грузоперевозками, мониторинг автопарка, координация рейсов и мобильное приложение водителя",
+  // Приложение с экрана «Домой» открывается БЕЗ браузерных стрелок и
+  // адресной строки — на всех страницах, включая вход (раньше meta
+  // был только в /m-контуре, и иконка запускалась в Safari)
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Loginex TMS",
+  },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#03060d",
 }
 
 export default function RootLayout({
@@ -21,6 +39,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru" suppressHydrationWarning>
+      {/* iOS понимает только apple-префиксную мету; Next 16 эмитит
+          современную mobile-web-app-capable — дублируем для всех версий */}
+      <meta name="apple-mobile-web-app-capable" content="yes" />
       <body className="min-h-screen bg-background font-sans antialiased">
         {/* Живой фон (задача 9): декоративный слой под содержимым,
             в контуре водителя и на печати не рендерится */}
