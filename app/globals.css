@@ -1363,24 +1363,24 @@ body {
 .yard-shadow {
   position: absolute;
   left: 50%;
-  bottom: -4px;
-  width: 130%;
-  height: 34px;
+  bottom: -3px;
+  width: 108%;
+  height: 24px;
   transform: translateX(-50%) translateZ(2px);
   border-radius: 50%;
-  background: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0) 70%);
+  background: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0) 72%);
   pointer-events: none;
 }
 
 .yard-pool {
   position: absolute;
   left: 50%;
-  bottom: -12px;
-  width: 240px;
-  height: 64px;
+  bottom: -10px;
+  width: 200px;
+  height: 50px;
   transform: translateX(-50%) translateZ(2px);
   border-radius: 50%;
-  background: radial-gradient(50% 50% at 50% 50%, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0) 70%);
+  background: radial-gradient(50% 50% at 50% 50%, rgba(251, 191, 36, 0.13), rgba(251, 191, 36, 0) 72%);
   pointer-events: none;
 }
 

@@ -138,6 +138,25 @@ try {
     roadWorld.shadows >= 16 && roadWorld.pools >= 6,
     `теней ${roadWorld.shadows}, пятен ${roadWorld.pools}`,
   )
+  const tidy = await page.evaluate(() => {
+    const tx = [...document.querySelectorAll("[data-stack]")].map((el) => {
+      const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+      return m ? Math.round(parseFloat(m[1].split(",")[12])) : null
+    })
+    return {
+      cols: new Set(tx.map((v) => Math.abs(v ?? 0))).size,
+      ok: tx.every((v) => v != null && Math.abs(v) >= 400 && Math.abs(v) <= 700),
+      dots: [...document.querySelectorAll("[data-route-dot]")].every((el) => {
+        const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+        return m ? Math.abs(parseFloat(m[1].split(",")[12])) <= 2 : false
+      }),
+    }
+  })
+  check(
+    "двор опрятен: ровные колонны, бусины на нитке",
+    tidy.ok && tidy.cols <= 4 && tidy.dots,
+    `колонн штабелей ${tidy.cols}, точки на оси: ${tidy.dots}`,
+  )
   const pwa = await page.evaluate(() => ({
     capable:
       document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute("content") === "yes" ||

@@ -41,17 +41,34 @@ const MOTE_TOTAL = 4200
 
 const CONTAINER_COLORS = ["#24425f", "#5b3423", "#2a4c44", "#3c3a58", "#31517a"]
 
-/** Штабеля контейнеров: строго ВНЕ дороги (полширины 240 + запас)
-    и в пределах земли (±1000) — ничто не висит в пустоте. */
-const STACK_X: ReadonlyArray<number> = [
-  -820, -560, -380, -700, -460, -900, 380, 460, 560, 700, 820, 900, -640,
+/** Штабеля — РОВНЫЕ КОЛОННЫ терминала: фикс. позиции x и равномерный
+    ритм z (никакого разброса и бродячего дрожания — опрятный двор,
+    который никогда не сваливается в кучу). Всё вне дороги (240). */
+const STACKS: ReadonlyArray<{ x: number; z: number }> = [
+  { x: -430, z: 400 },
+  { x: -430, z: 1900 },
+  { x: -430, z: 3400 },
+  { x: -430, z: 4900 },
+  { x: -430, z: 6400 },
+  { x: 430, z: 1150 },
+  { x: 430, z: 2650 },
+  { x: 430, z: 4150 },
+  { x: 430, z: 5650 },
+  { x: -680, z: 775 },
+  { x: -680, z: 4525 },
+  { x: 680, z: 2625 },
+  { x: 680, z: 6375 },
 ]
-/** Краны-порталы: выше, реже, не заходят на дорогу. */
-const CRANE_X: ReadonlyArray<number> = [-560, 620, -440]
+/** Краны-порталы: симметрично и равномерно по глубине. */
+const CRANES: ReadonlyArray<{ x: number; z: number }> = [
+  { x: -560, z: 1200 },
+  { x: 560, z: 3700 },
+  { x: -560, z: 6200 },
+]
 /** Фонари — РЯДОМ С ДОРОГОЙ: чередуются через обочину, как на трассе. */
 const POLE_X: ReadonlyArray<number> = [-310, 310, -310, 310, -310, 310]
-/** Точки-заказы: по центральной нитке маршрута. */
-const DOT_X: ReadonlyArray<number> = [-50, 0, 40, -30, 20]
+/** Точки-заказы — бусины точно на центральной нитке маршрута. */
+const DOT_Z: ReadonlyArray<number> = [280, 1780, 3280, 4780, 6280]
 
 type WorldDebug = {
   dolly: number
@@ -229,29 +246,26 @@ export function LoginWorld({
       z: number
       total: number
       i: number
-      /** штабеля при перерождении слегка сдвигаются (жизнь двора);
-          краны и фонари стоят ровно — фонарный ряд вдоль дороги */
-      jitter: boolean
     }> = []
     let k = 0
-    STACK_X.forEach((x, i) => {
+    STACKS.forEach((p) => {
       // низ штабеля (высота 160) стоит НА земле (плоскость y=56)
-      yard.push({ el: els[k], baseX: x, x, y: 56 - 80, z: 260 + i * 580, total: YARD_TOTAL, i: k, jitter: true })
+      yard.push({ el: els[k], baseX: p.x, x: p.x, y: 56 - 80, z: p.z, total: YARD_TOTAL, i: k })
       k += 1
     })
-    CRANE_X.forEach((x, i) => {
+    CRANES.forEach((p) => {
       // кран высотой 330: ноги на земле
-      yard.push({ el: els[k], baseX: x, x, y: 56 - 165, z: 1100 + i * 2500, total: YARD_TOTAL, i: k, jitter: false })
+      yard.push({ el: els[k], baseX: p.x, x: p.x, y: 56 - 165, z: p.z, total: YARD_TOTAL, i: k })
       k += 1
     })
     POLE_X.forEach((x, i) => {
       // фонарь высотой 280: столб на земле
-      yard.push({ el: els[k], baseX: x, x, y: 56 - 140, z: 350 + i * 1250, total: YARD_TOTAL, i: k, jitter: false })
+      yard.push({ el: els[k], baseX: x, x, y: 56 - 140, z: 350 + i * 1250, total: YARD_TOTAL, i: k })
       k += 1
     })
-    DOT_X.forEach((x, i) => {
-      // точки-заказы катятся по самой земле
-      yard.push({ el: els[k], baseX: x, x, y: 51, z: 280 + i * 1500, total: YARD_TOTAL, i: k, jitter: false })
+    DOT_Z.forEach((z) => {
+      // точки-заказы катятся по самой земле — точно по нитке
+      yard.push({ el: els[k], baseX: 0, x: 0, y: 51, z, total: YARD_TOTAL, i: k })
       k += 1
     })
     // искры-частицы у самой камеры (скорость полёта читается сразу)
@@ -267,7 +281,7 @@ export function LoginWorld({
       el.style.boxShadow = `0 0 ${s * 3}px ${color}`
       const mx = -900 + ((m * 367) % 1800)
       const my = -140 + ((m * 431) % 480)
-      yard.push({ el, baseX: mx, x: mx, y: my, z: 240 + m * 300, total: MOTE_TOTAL, i: k, jitter: true })
+      yard.push({ el, baseX: mx, x: mx, y: my, z: 240 + m * 300, total: MOTE_TOTAL, i: k })
       k += 1
     }
     const yardTransform = (e: { x: number; y: number; z: number }) =>
@@ -535,7 +549,6 @@ export function LoginWorld({
         if (!ending && dolly - e.z > -380) {
           e.z += e.total
           debug.passed += 1
-          e.x = e.baseX + (e.jitter ? (((debug.passed + e.i) % 3) - 1) * 70 : 0)
           e.el.style.transform = yardTransform(e)
         }
         const depth = e.z - dolly
@@ -690,10 +703,10 @@ export function LoginWorld({
               // асфальт: дорога СВЕТЛЕЕ земли — читается как дорога
               backgroundColor: "#141d2f",
               backgroundImage:
-                "linear-gradient(90deg, transparent 0 12px, rgba(226,232,240,0.55) 12px 17px, transparent 17px calc(100% - 17px), rgba(226,232,240,0.55) calc(100% - 17px) calc(100% - 12px), transparent calc(100% - 12px)), repeating-linear-gradient(180deg, rgba(34,211,238,0.8) 0 26px, transparent 26px 72px), repeating-linear-gradient(180deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 48px)",
-              backgroundPosition: "0 0, 0 0, 0 0",
-              backgroundSize: "100% 100%, 12px 100%, 100% 100%",
-              backgroundRepeat: "no-repeat, repeat-y, repeat-y",
+                "linear-gradient(90deg, transparent 0 12px, rgba(226,232,240,0.55) 12px 17px, transparent 17px calc(100% - 17px), rgba(226,232,240,0.55) calc(100% - 17px) calc(100% - 12px), transparent calc(100% - 12px)), repeating-linear-gradient(180deg, rgba(34,211,238,0.8) 0 26px, transparent 26px 72px)",
+              backgroundPosition: "0 0, 0 0",
+              backgroundSize: "100% 100%, 12px 100%",
+              backgroundRepeat: "no-repeat, repeat-y",
               boxShadow: "0 0 22px rgba(34,211,238,0.22)",
             }}
           />
@@ -714,7 +727,7 @@ export function LoginWorld({
       {/* ── ДВОР: камера летит СКВОЗЬ двор — штабеля, краны, фонари,
           точки-заказы и искры пролетают мимо на разных глубинах ── */}
       <div ref={moveRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
-        {STACK_X.map((x, i) => (
+        {STACKS.map((p, i) => (
           <div
             key={`s${i}`}
             ref={(el) => {
@@ -723,22 +736,22 @@ export function LoginWorld({
             data-stack
             aria-hidden="true"
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate3d(${x}px, ${56 - 80}px, ${-(260 + i * 580)}px)` }}
+            style={{ transform: `translate3d(${p.x}px, ${56 - 80}px, ${-p.z}px)` }}
           >
             <div className="yard-shadow" />
             <StackArt variant={i} />
           </div>
         ))}
-        {CRANE_X.map((x, i) => (
+        {CRANES.map((p, i) => (
           <div
             key={`c${i}`}
             ref={(el) => {
-              yardRefs.current[STACK_X.length + i] = el
+              yardRefs.current[STACKS.length + i] = el
             }}
             data-crane
             aria-hidden="true"
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate3d(${x}px, ${56 - 165}px, ${-(1100 + i * 2500)}px)` }}
+            style={{ transform: `translate3d(${p.x}px, ${56 - 165}px, ${-p.z}px)` }}
           >
             <div className="yard-shadow" />
             <CraneArt />
@@ -748,7 +761,7 @@ export function LoginWorld({
           <div
             key={`p${i}`}
             ref={(el) => {
-              yardRefs.current[STACK_X.length + CRANE_X.length + i] = el
+              yardRefs.current[STACKS.length + CRANES.length + i] = el
             }}
             data-pole
             aria-hidden="true"
@@ -759,17 +772,17 @@ export function LoginWorld({
             <PoleArt />
           </div>
         ))}
-        {DOT_X.map((x, i) => (
+        {DOT_Z.map((z, i) => (
           <div
             key={`d${i}`}
             ref={(el) => {
-              yardRefs.current[STACK_X.length + CRANE_X.length + POLE_X.length + i] = el
+              yardRefs.current[STACKS.length + CRANES.length + POLE_X.length + i] = el
             }}
             data-route-dot
             aria-hidden="true"
             className="absolute left-1/2 top-1/2 h-[10px] w-[10px] rounded-full bg-cyan-300"
             style={{
-              transform: `translate3d(${x}px, 51px, ${-(280 + i * 1500)}px)`,
+              transform: `translate3d(0px, 51px, ${-z}px)`,
               boxShadow: "0 0 12px rgba(103,232,249,0.9)",
             }}
           />
@@ -778,7 +791,7 @@ export function LoginWorld({
           <div
             key={`m${i}`}
             ref={(el) => {
-              yardRefs.current[STACK_X.length + CRANE_X.length + POLE_X.length + DOT_X.length + i] = el
+              yardRefs.current[STACKS.length + CRANES.length + POLE_X.length + DOT_Z.length + i] = el
             }}
             data-login-mote
             aria-hidden="true"
