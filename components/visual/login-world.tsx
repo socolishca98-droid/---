@@ -22,9 +22,18 @@
 // Приёмка: window.__loginWorld {dolly, speed, yaw, pitch, gyro, passed,
 // warp, plunges, frames} + __loginWorldLook + __loginWorldPaused +
 // __loginWorldGyro. DOM: [data-login-world], [data-stack] ×10,
-// [data-crane] ×3, [data-pole] ×6, [data-login-mote] ×14,
-// [data-route-dot] ×5, [data-ground], [data-login-panel],
-// [data-login-doc].
+// [data-crane] ×3, [data-pole] ×6, [data-tree] ×18,
+// [data-login-mote] ×14, [data-route-dot] ×5, [data-ground],
+// [data-ground-backdrop], [data-login-panel], [data-login-doc].
+//
+// Фидбек и16: «арки меньше — пол страницы в виде горизонта; гироскоп
+// ещё душим, надо немного для объёма; всё равно проваливаемся под
+// дорогу; добавим деревья по сторонам; дорога огромная — не понять,
+// что это». Сделано: горизонт опущен на 62% высоты (небо — главный
+// план, земля — нижняя треть), краны-порталы компактнее (244px),
+// дорога сужена до 260px, земля шире (±1900) и глубже + статичный
+// подбой цвета земли снизу — провалов под дорогу нет; ели аллеей
+// по сторонам; дальний город поднят из-под земли к горизонту.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -43,7 +52,7 @@ const CONTAINER_COLORS = ["#24425f", "#5b3423", "#2a4c44", "#3c3a58", "#31517a"]
 
 /** Штабеля — РОВНЫЕ КОЛОННЫ терминала: фикс. позиции x и равномерный
     ритм z (никакого разброса и бродячего дрожания — опрятный двор,
-    который никогда не сваливается в кучу). Всё вне дороги (240). */
+    который никогда не сваливается в кучу). Всё вне дороги (полоса 130). */
 const STACKS: ReadonlyArray<{ x: number; z: number }> = [
   { x: -430, z: 400 },
   { x: -430, z: 1900 },
@@ -69,6 +78,28 @@ const CRANES: ReadonlyArray<{ x: number; z: number }> = [
 const POLE_X: ReadonlyArray<number> = [-310, 310, -310, 310, -310, 310]
 /** Точки-заказы — бусины точно на центральной нитке маршрута. */
 const DOT_Z: ReadonlyArray<number> = [280, 1780, 3280, 4780, 6280]
+/** Ели — аллея по сторонам дороги (±215) + второй ряд глубже (±400):
+ *  дорога сразу читается дорогой, у мира появляется масштаб. */
+const TREES: ReadonlyArray<{ x: number; z: number }> = [
+  { x: -215, z: 600 },
+  { x: 215, z: 1220 },
+  { x: -215, z: 1840 },
+  { x: 215, z: 2460 },
+  { x: -215, z: 3080 },
+  { x: 215, z: 3700 },
+  { x: -215, z: 4320 },
+  { x: 215, z: 4940 },
+  { x: -215, z: 5560 },
+  { x: 215, z: 6180 },
+  { x: -215, z: 6800 },
+  { x: 215, z: 7420 },
+  { x: -400, z: 910 },
+  { x: 400, z: 1840 },
+  { x: -400, z: 3700 },
+  { x: 400, z: 4630 },
+  { x: -400, z: 5560 },
+  { x: 400, z: 6490 },
+]
 
 /** Время суток: сцена живёт по местным часам пользователя.
  *  night 23–05 · dawn 05–09 · day 09–17 · dusk 17–23.
@@ -161,26 +192,27 @@ function StackArt({ variant }: { variant: number }) {
   )
 }
 
-/** Кран-портал: тельфер ездит, маячок мигает. */
+/** Кран-портал: тельфер ездит, маячок мигает. Компактный (и16:
+    «арки меньше» — портал не съедает пол-экрана). */
 function CraneArt() {
   return (
-    <svg width="460" height="330" viewBox="0 0 460 330" aria-hidden="true">
-      <rect x="60" y="66" width="14" height="264" fill="#131d36" />
-      <rect x="386" y="66" width="14" height="264" fill="#131d36" />
-      <rect x="20" y="46" width="440" height="26" fill="#131d36" />
+    <svg width="340" height="244" viewBox="0 0 340 244" aria-hidden="true">
+      <rect x="46" y="50" width="11" height="194" fill="#131d36" />
+      <rect x="283" y="50" width="11" height="194" fill="#131d36" />
+      <rect x="16" y="34" width="308" height="20" fill="#131d36" />
       <path
-        d="M28,72 L74,48 M104,72 L150,48 M180,72 L226,48 M256,72 L302,48 M332,72 L378,48 M408,72 L454,48"
+        d="M22,54 L54,36 M76,54 L108,36 M130,54 L162,36 M184,54 L216,36 M238,54 L270,36 M292,54 L324,36"
         stroke="#131d36"
-        strokeWidth="5"
+        strokeWidth="4"
       />
-      <rect x="352" y="70" width="24" height="16" fill="#182745" />
-      <rect x="356" y="73" width="12" height="8" fill="#f59e0b" opacity="0.85" />
+      <rect x="258" y="54" width="18" height="12" fill="#182745" />
+      <rect x="261" y="57" width="9" height="6" fill="#f59e0b" opacity="0.85" />
       <g className="crane-trolley">
-        <rect x="120" y="72" width="26" height="13" fill="#182745" />
-        <rect x="131" y="85" width="3" height="110" fill="#0e1730" />
-        <rect x="112" y="195" width="52" height="8" fill="#182745" />
+        <rect x="88" y="56" width="20" height="10" fill="#182745" />
+        <rect x="97" y="66" width="2.5" height="82" fill="#0e1730" />
+        <rect x="82" y="148" width="39" height="6" fill="#182745" />
       </g>
-      <circle cx="230" cy="38" r="4.5" fill="#ef4444" className="beacon" />
+      <circle cx="170" cy="27" r="3.5" fill="#ef4444" className="beacon" />
     </svg>
   )
 }
@@ -194,6 +226,20 @@ function PoleArt() {
       <polygon className="pole-cone" points="86,36 94,36 176,280 4,280" fill="rgba(245,185,66,0.09)" />
       <circle className="pole-lamp" cx="90" cy="32" r="7" fill="rgba(251,191,36,0.25)" />
       <circle className="pole-lamp" cx="90" cy="32" r="3.5" fill="#fbbf24" />
+    </svg>
+  )
+}
+
+/** Ель: три яруса кроны — тёмная, тихая, красится палитрой суток
+ *  (CSS-переменные --tod-tree*), ствол на земле. */
+function TreeArt() {
+  return (
+    <svg width="150" height="210" viewBox="0 0 150 210" aria-hidden="true">
+      <ellipse cx="75" cy="200" rx="54" ry="8" fill="rgba(0,0,0,0.4)" />
+      <rect className="tree-trunk" x="69" y="148" width="12" height="52" />
+      <polygon className="tree-leaf2" points="75,16 116,84 34,84" />
+      <polygon className="tree-leaf" points="75,42 124,120 26,120" />
+      <polygon className="tree-leaf2" points="75,76 132,158 18,158" />
     </svg>
   )
 }
@@ -276,7 +322,7 @@ export function LoginWorld({
     })
     CRANES.forEach((p) => {
       // кран высотой 330: ноги на земле
-      yard.push({ el: els[k], baseX: p.x, x: p.x, y: 56 - 165, z: p.z, total: YARD_TOTAL, i: k })
+      yard.push({ el: els[k], baseX: p.x, x: p.x, y: 56 - 122, z: p.z, total: YARD_TOTAL, i: k })
       k += 1
     })
     POLE_X.forEach((x, i) => {
@@ -287,6 +333,11 @@ export function LoginWorld({
     DOT_Z.forEach((z) => {
       // точки-заказы катятся по самой земле — точно по нитке
       yard.push({ el: els[k], baseX: 0, x: 0, y: 51, z, total: YARD_TOTAL, i: k })
+      k += 1
+    })
+    TREES.forEach((p) => {
+      // ель высотой 210: ствол на земле, аллея вдоль дороги
+      yard.push({ el: els[k], baseX: p.x, x: p.x, y: 56 - 105, z: p.z, total: YARD_TOTAL, i: k })
       k += 1
     })
     // искры-частицы у самой камеры (скорость полёта читается сразу)
@@ -361,19 +412,19 @@ export function LoginWorld({
     w.__loginWorld = debug
     w.__loginWorldLook = (dx: number, dy: number) => {
       yawDrag = clamp(yawDrag + dx * 0.045, -22, 22)
-      pitchDrag = clamp(pitchDrag + dy * 0.03, -9, 9)
+      pitchDrag = clamp(pitchDrag + dy * 0.03, -5, 5)
     }
 
     // ── гироскоп: БЕЗ КНОПКИ и БЕЗ УВЕДОМЛЕНИЙ ──
-    // Чувствительность: 0.26/0.19 — после 0.32/0.24 владелец назвал
-    // гироскоп резким; сглаживание тоже мягче (4.5 вместо 5.5).
-    // четко», когда-то 0.6 «слишком»). Запрос разрешения — на трёх
-    // жестах сразу (Safari капризен), сам вызов одноразовый.
+    // Чувствительность: 0.11/0.075 при зажиме ±5°/±3° — и16: «ещё
+    // душим, надо немного для объёма» (0.26/0.19 ±12/±7 — резковато;
+    // когда-то 0.6 — «слишком»). Запрос разрешения — на трёх жестах
+    // сразу (Safari капризен), сам вызов одноразовый.
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.beta == null || event.gamma == null) return
       if (!gyroCalib) gyroCalib = { b: event.beta, g: event.gamma }
-      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.26, -12, 12)
-      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.19, -7, 7)
+      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.11, -5, 5)
+      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.075, -3, 3)
       if (!gyroActive) {
         gyroActive = true
         debug.gyro = true
@@ -536,7 +587,7 @@ export function LoginWorld({
       // ── ракурс: курсор + палец + гироскоп (сглаженный); в фокусе
       // поля камера мягко центруется на документе ──
       const yawT = pointer ? -(pointer.x / window.innerWidth - 0.5) * 14 : 0
-      const pitchT = pointer ? -(pointer.y / window.innerHeight - 0.5) * 7 : 0
+      const pitchT = pointer ? -(pointer.y / window.innerHeight - 0.5) * 4.5 : 0
       yawMouse += (yawT - yawMouse) * Math.min(1, dt * 3)
       pitchMouse += (pitchT - pitchMouse) * Math.min(1, dt * 3)
       yawDrag *= Math.exp(-dt * 0.1)
@@ -564,7 +615,7 @@ export function LoginWorld({
 
       // ── двор: штабеля, краны, фонари, точки и искры пролетают
       // мимо и рождаются впереди — объём и скорость ──
-      const moteStart = STACKS.length + CRANES.length + POLE_X.length + DOT_Z.length
+      const moteStart = STACKS.length + CRANES.length + POLE_X.length + DOT_Z.length + TREES.length
       for (const e of yard) {
         // в ворпе двор НЕ рождается заново: штабеля, краны и фонари
         // заканчиваются — дорога «приехала», мы в программе
@@ -640,7 +691,7 @@ export function LoginWorld({
       data-warp={warping ? "1" : "0"}
       data-tod={tod}
       className="world-sky fixed inset-0 touch-none overflow-hidden"
-      style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}
+      style={{ perspective: "900px", perspectiveOrigin: "50% 62%" }}
     >
       {/* ── НЕБО: звёзды плиткой, луна, дальние огни ── */}
       <div ref={skyRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
@@ -672,21 +723,22 @@ export function LoginWorld({
             <circle cx="290" cy="124" r="6" fill="#cdd6e4" opacity="0.5" />
             <circle cx="310" cy="142" r="4" fill="#cdd6e4" opacity="0.4" />
           </g>
-          <rect x="-100" y="470" width="1400" height="130" fill="url(#haze)" />
+          <rect x="-100" y="430" width="1400" height="120" fill="url(#haze)" />
           <g className="sky-city">
-            <rect x="60" y="522" width="46" height="20" />
-            <rect x="150" y="510" width="30" height="32" />
-            <rect x="620" y="516" width="52" height="36" />
-            <rect x="700" y="528" width="26" height="24" />
-            <rect x="1020" y="512" width="40" height="34" />
+            <rect x="60" y="460" width="46" height="20" />
+            <rect x="150" y="448" width="30" height="32" />
+            <rect x="418" y="452" width="34" height="28" />
+            <rect x="620" y="444" width="52" height="36" />
+            <rect x="700" y="456" width="26" height="24" />
+            <rect x="1020" y="446" width="40" height="34" />
           </g>
           <g className="sky-windows">
-            <circle cx="90" cy="548" r="1.8" opacity="0.55" />
-            <circle cx="230" cy="552" r="1.6" opacity="0.45" />
-            <circle cx="420" cy="546" r="1.8" opacity="0.5" />
-            <circle cx="648" cy="550" r="1.6" opacity="0.45" />
-            <circle cx="860" cy="546" r="1.8" opacity="0.5" />
-            <circle cx="1040" cy="552" r="1.6" opacity="0.45" />
+            <circle cx="90" cy="474" r="1.8" opacity="0.55" />
+            <circle cx="230" cy="478" r="1.6" opacity="0.45" />
+            <circle cx="420" cy="472" r="1.8" opacity="0.5" />
+            <circle cx="648" cy="476" r="1.6" opacity="0.45" />
+            <circle cx="860" cy="472" r="1.8" opacity="0.5" />
+            <circle cx="1040" cy="478" r="1.6" opacity="0.45" />
           </g>
         </svg>
         {/* солнце: мягкий диск — живёт днём и в закат */}
@@ -701,6 +753,16 @@ export function LoginWorld({
         />
       </div>
 
+      {/* подбой земли: СТАТИЧНАЯ полоса цвета земли под 3D-плоскостью —
+          при любом наклоне камеры под дорогой не видно небо
+          («не проваливаемся под дорогу», и16) */}
+      <div
+        data-ground-backdrop
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-[66%] bottom-0"
+        style={{ background: "var(--tod-ground)" }}
+      />
+
       {/* ── ЗЕМЛЯ: плоскость в перспективе, разметка и нитка маршрута
           бегут под камерой (движение вперёд) ── */}
       <div ref={midRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
@@ -708,12 +770,13 @@ export function LoginWorld({
           ref={groundRef}
           data-ground
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 h-[5200px] w-[2000px]"
+          className="absolute left-1/2 top-1/2 h-[5200px] w-[3800px]"
           style={{
-            // земля накрывает ВЕСЬ двор по ширине (±1000) и глубину
-            // до z=4800 — дальше проекция сходится к точке за дымкой,
-            // а лишняя длина стоила 4 к/с софтверного рендера
-            transform: "translate(-50%,-50%) translateY(56px) translateZ(2200px) rotateX(90deg)",
+            // земля накрывает ВЕСЬ двор по ширине (±1900 — бока не
+            // видны и при повороте камеры) и глубину до z=3300;
+            // дальний край уходит за дымку у самого горизонта, а лишняя
+            // длина стоила 4 к/с софтверного рендера
+            transform: "translate(-50%,-50%) translateY(56px) translateZ(700px) rotateX(90deg)",
             backgroundColor: "var(--tod-ground)",
             backgroundImage:
               "repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 96px)",
@@ -724,16 +787,17 @@ export function LoginWorld({
           <div
             ref={lineRef}
             data-road
-            className="absolute left-1/2 top-0 h-full w-[480px] -translate-x-1/2"
+            className="absolute left-1/2 top-0 h-full w-[260px] -translate-x-1/2"
             style={{
-              // асфальт: дорога СВЕТЛЕЕ земли — читается как дорога
+              // асфальт: УЗКАЯ полоса с краями — читается как дорога
+              // между елями, а не «взлётка» на пол-экрана (и16)
               backgroundColor: "var(--tod-road)",
               backgroundImage:
-                "linear-gradient(90deg, transparent 0 12px, var(--tod-edge) 12px 17px, transparent 17px calc(100% - 17px), var(--tod-edge) calc(100% - 17px) calc(100% - 12px), transparent calc(100% - 12px)), repeating-linear-gradient(180deg, var(--tod-dash) 0 26px, transparent 26px 72px)",
+                "linear-gradient(90deg, transparent 0 8px, var(--tod-edge) 8px 12px, transparent 12px calc(100% - 12px), var(--tod-edge) calc(100% - 12px) calc(100% - 8px), transparent calc(100% - 8px)), repeating-linear-gradient(180deg, var(--tod-dash) 0 26px, transparent 26px 72px)",
               backgroundPosition: "0 0, 0 0",
-              backgroundSize: "100% 100%, 12px 100%",
+              backgroundSize: "100% 100%, 10px 100%",
               backgroundRepeat: "no-repeat, repeat-y",
-              boxShadow: "0 0 22px var(--tod-roadglow)",
+              boxShadow: "0 0 14px var(--tod-roadglow)",
             }}
           />
         </div>
@@ -743,7 +807,7 @@ export function LoginWorld({
           композитор не пересобирает его каждый кадр) */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-0 top-[36%] h-[24%] w-full"
+        className="pointer-events-none absolute left-0 top-[48%] h-[26%] w-full"
         style={{
           background: "var(--tod-fogbg)",
         }}
@@ -776,7 +840,7 @@ export function LoginWorld({
             data-crane
             aria-hidden="true"
             className="absolute left-1/2 top-1/2"
-            style={{ transform: `translate3d(${p.x}px, ${56 - 165}px, ${-p.z}px)` }}
+            style={{ transform: `translate3d(${p.x}px, ${56 - 122}px, ${-p.z}px)` }}
           >
             <div className="yard-shadow" />
             <CraneArt />
@@ -811,6 +875,20 @@ export function LoginWorld({
               boxShadow: "0 0 12px rgba(103,232,249,0.9)",
             }}
           />
+        ))}
+        {TREES.map((p, i) => (
+          <div
+            key={`t${i}`}
+            ref={(el) => {
+              yardRefs.current[STACKS.length + CRANES.length + POLE_X.length + DOT_Z.length + i] = el
+            }}
+            data-tree
+            aria-hidden="true"
+            className="absolute left-1/2 top-1/2"
+            style={{ transform: `translate3d(${p.x}px, ${56 - 105}px, ${-p.z}px)` }}
+          >
+            <TreeArt />
+          </div>
         ))}
         {Array.from({ length: 14 }, (_, i) => (
           <div

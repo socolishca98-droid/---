@@ -7,6 +7,9 @@
 //
 // Фазы (песочница тесная — дев между фазами перезапускаем):
 //   PHASE=desktop | warp | mobile | driver | register | all
+//
+// и16: горизонт на 62% высоты, краны 244px, дорога 260px, ели ×18,
+// подбой земли от 66% — «не проваливаемся под дорогу». 54 чека.
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -102,6 +105,9 @@ try {
       const v = m[1].split(",").map(Number)
       return v[12] // tx
     })
+    const craneSvg = document.querySelector("[data-crane] svg")
+    const backdrop = document.querySelector("[data-ground-backdrop]")
+    const br = backdrop ? backdrop.getBoundingClientRect() : null
     return {
       roadW: road ? Math.round(parseFloat(getComputedStyle(road).width)) : 0,
       asphalt: rs ? rs.backgroundColor : "нет",
@@ -111,16 +117,26 @@ try {
       poleTx: poles,
       shadows: document.querySelectorAll(".yard-shadow").length,
       pools: document.querySelectorAll(".yard-pool").length,
+      craneH: craneSvg ? parseInt(craneSvg.getAttribute("height") || "0", 10) : 0,
+      treeTx: [...document.querySelectorAll("[data-tree]")].map((el) => {
+        const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+        return m ? Math.round(parseFloat(m[1].split(",")[12])) : null
+      }),
+      po: document.querySelector("[data-login-world]")
+        ? document.querySelector("[data-login-world]").style.perspectiveOrigin
+        : "",
+      backdropTop: br ? br.top / window.innerHeight : 0,
+      backdropH: br ? br.height / window.innerHeight : 0,
     }
   })
   check(
-    "дорога видна: асфальт с краями",
-    roadWorld.roadW >= 420 && roadWorld.asphalt !== "rgba(0, 0, 0, 0)" && roadWorld.asphalt !== "transparent",
+    "дорога — узкая полоса с краями (не взлётка)",
+    roadWorld.roadW >= 220 && roadWorld.roadW <= 330 && roadWorld.asphalt !== "rgba(0, 0, 0, 0)" && roadWorld.asphalt !== "transparent",
     `${roadWorld.roadW}px, ${roadWorld.asphalt}`,
   )
   check(
     "земля накрывает весь двор (не космос)",
-    roadWorld.groundW >= 1900 && roadWorld.fadeH >= roadWorld.vh * 0.3,
+    roadWorld.groundW >= 3000 && roadWorld.fadeH >= roadWorld.vh * 0.3,
     `земля ${roadWorld.groundW}px, гашение звёзд ${Math.round((roadWorld.fadeH / roadWorld.vh) * 100)}% высоты`,
   )
   const alongRoad =
@@ -137,6 +153,30 @@ try {
     "предметы на земле: тени и пятна света",
     roadWorld.shadows >= 16 && roadWorld.pools >= 6,
     `теней ${roadWorld.shadows}, пятен ${roadWorld.pools}`,
+  )
+  const poY = parseInt((roadWorld.po.match(/(\d+)%\s+(\d+)%/) || [])[2] || "0", 10)
+  check(
+    "горизонт ниже середины — небо главный план",
+    poY >= 55,
+    `perspectiveOrigin «${roadWorld.po}»: земля — нижние ${100 - poY}% кадра`,
+  )
+  check(
+    "арки-краны компактнее (не пол-экрана)",
+    roadWorld.craneH > 0 && roadWorld.craneH <= 260,
+    `высота портала ${roadWorld.craneH}px (было 330)`,
+  )
+  check(
+    "деревья по сторонам дороги",
+    roadWorld.treeTx.length >= 16 &&
+      roadWorld.treeTx.every((tx) => tx != null && Math.abs(tx) >= 180 && Math.abs(tx) <= 600) &&
+      roadWorld.treeTx.some((tx) => tx < 0) &&
+      roadWorld.treeTx.some((tx) => tx > 0),
+    `${roadWorld.treeTx.length} елей: ${roadWorld.treeTx.slice(0, 8).join(", ")}…`,
+  )
+  check(
+    "под дорогу не проваливаемся (подбой снизу)",
+    roadWorld.backdropTop >= 0.55 && roadWorld.backdropH >= 0.25,
+    `подбой земли от ${(roadWorld.backdropTop * 100).toFixed(0)}% высоты, толщиной ${(roadWorld.backdropH * 100).toFixed(0)}%`,
   )
   const tidy = await page.evaluate(() => {
     const tx = [...document.querySelectorAll("[data-stack]")].map((el) => {
@@ -182,6 +222,7 @@ try {
       stars: getComputedStyle(document.querySelector(".sky-stars")).opacity,
       lamp: getComputedStyle(document.querySelector(".pole-cone")).opacity,
       sun: getComputedStyle(document.querySelector(".sky-sun")).opacity,
+      leaf: getComputedStyle(document.querySelector(".tree-leaf")).fill,
     }))
   }
   const todDay = await todProbe(`${BASE}/login?tod=day`)
@@ -203,8 +244,9 @@ try {
       parseFloat(todDay.sun) > 0.5 &&
       todDay.road !== todDawn.road &&
       todDay.road !== todDusk.road &&
-      parseFloat(todDay.lamp) < 0.3,
-    `день: звёзды ${todDay.stars}, солнце ${todDay.sun}; рассвет: звёзды ${todDawn.stars}; закат: дорога ${todDusk.road}; сейчас ${todNow.tod} (${hour})`,
+      parseFloat(todDay.lamp) < 0.3 &&
+      todDay.leaf !== todDawn.leaf,
+    `день: звёзды ${todDay.stars}, солнце ${todDay.sun}; рассвет: звёзды ${todDawn.stars}; закат: дорога ${todDusk.road}; ели ${todDay.leaf} vs ${todDawn.leaf}; сейчас ${todNow.tod} (${hour})`,
   )
   await todPage.close()
   check("объём: искры летят мимо камеры", world.motes >= 10, `${world.motes} искр`)

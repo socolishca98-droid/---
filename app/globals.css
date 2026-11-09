@@ -1365,7 +1365,7 @@ body {
   background:
     radial-gradient(48% 38% at 20% 14%, var(--tod-glowa), transparent 70%),
     radial-gradient(44% 34% at 84% 10%, var(--tod-glowb), transparent 72%),
-    radial-gradient(52% 40% at 72% 88%, var(--tod-glowc), transparent 74%),
+    radial-gradient(52% 40% at 74% 56%, var(--tod-glowc), transparent 74%),
     linear-gradient(var(--tod-skytop) 0%, var(--tod-skymid) 55%, var(--tod-skylow) 100%);
 }
 
@@ -1376,7 +1376,7 @@ body {
   --tod-skylow: #03060d;
   --tod-glowa: rgba(21, 94, 117, 0.16);
   --tod-glowb: rgba(99, 102, 241, 0.1);
-  --tod-glowc: rgba(245, 158, 11, 0.09);
+  --tod-glowc: rgba(245, 158, 11, 0.13);
   --tod-ground: #070c16;
   --tod-road: #141d2f;
   --tod-edge: rgba(226, 232, 240, 0.55);
@@ -1398,6 +1398,9 @@ body {
   --tod-pool: 1;
   --tod-city: rgba(10, 17, 32, 0.75);
   --tod-windows: 0.9;
+  --tod-tree: #0e1f22;
+  --tod-tree2: #0a171a;
+  --tod-trunk: #131a26;
 }
 
 [data-login-world][data-tod="dawn"] {
@@ -1428,6 +1431,9 @@ body {
   --tod-pool: 1;
   --tod-city: rgba(19, 16, 28, 0.8);
   --tod-windows: 1;
+  --tod-tree: #16302a;
+  --tod-tree2: #10231f;
+  --tod-trunk: #1a1f2c;
 }
 
 [data-login-world][data-tod="day"] {
@@ -1457,6 +1463,9 @@ body {
   --tod-pool: 0.15;
   --tod-city: rgba(88, 108, 128, 0.4);
   --tod-windows: 0.1;
+  --tod-tree: #3f5a45;
+  --tod-tree2: #31493a;
+  --tod-trunk: #3c3230;
 }
 
 [data-login-world][data-tod="dusk"] {
@@ -1487,6 +1496,9 @@ body {
   --tod-pool: 1;
   --tod-city: rgba(24, 20, 38, 0.7);
   --tod-windows: 0.9;
+  --tod-tree: #1d2b26;
+  --tod-tree2: #15211d;
+  --tod-trunk: #1d1a24;
 }
 
 /* небесные тела и город */
@@ -1529,6 +1541,19 @@ body {
 .pole-cone,
 .pole-lamp {
   opacity: var(--tod-lamp);
+}
+
+/* ели аллеи: крона двумя тонами + ствол — красятся палитрой суток */
+.tree-leaf {
+  fill: var(--tod-tree);
+}
+
+.tree-leaf2 {
+  fill: var(--tod-tree2);
+}
+
+.tree-trunk {
+  fill: var(--tod-trunk);
 }
 
 .yard-pool {
@@ -1624,7 +1649,7 @@ body {
     transform: translateX(0px);
   }
   to {
-    transform: translateX(224px);
+    transform: translateX(150px);
   }
 }
 
