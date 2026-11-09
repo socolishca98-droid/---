@@ -15,7 +15,9 @@
 // и18: геометрия двора (центры, основания на земле), Г-фонари
 // попарно, краны ×2, гироскоп 0.06, refs ели/искры разведены;
 // и18б: камера выше плоскости (GROUND_Y=160, origin 58%),
-// hit-тест «внизу земля, вверху небо». 57 чеков.
+// hit-тест «внизу земля, вверху небо».
+// и19: гироскоп 0.03 + зажим рамки, здания ×4, ворп «в свет» +
+// эстафета зарева в приветствие. 59 чеков.
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -144,6 +146,12 @@ try {
         const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
         return m ? Math.round(parseFloat(m[1].split(",")[12]) + parseFloat(getComputedStyle(el).width) / 2) : null
       }),
+      bldTx: [...document.querySelectorAll("[data-building]")].map((el) => {
+        const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+        return m ? Math.round(parseFloat(m[1].split(",")[12]) + parseFloat(getComputedStyle(el).width) / 2) : null
+      }),
+      bldKinds: [...new Set([...document.querySelectorAll("[data-building]")].map((el) => el.getAttribute("data-kind")))]
+        .join(","),
       po: document.querySelector("[data-login-world]")
         ? document.querySelector("[data-login-world]").style.perspectiveOrigin
         : "",
@@ -179,7 +187,7 @@ try {
     // риги остаются pointer-events:none (иначе съедают клик), включаем
     // точечно сами элементы мира — их и ловит elementFromPoint
     const els = [...document.querySelectorAll(
-      "[data-ground],[data-road],[data-tree],[data-pole],[data-stack],[data-crane],[data-route-dot],[data-login-mote]",
+      "[data-ground],[data-road],[data-tree],[data-pole],[data-stack],[data-crane],[data-route-dot],[data-login-mote],[data-building]",
     )]
     const saved = els.map((el) => el.style.pointerEvents)
     els.forEach((el) => (el.style.pointerEvents = "auto"))
@@ -188,7 +196,7 @@ try {
       if (!el) return "none"
       if (el.closest("[data-road]")) return "road"
       if (el.closest("[data-ground]")) return "ground"
-      if (el.closest("[data-tree],[data-pole],[data-stack],[data-crane],[data-route-dot],[data-login-mote]")) return "yard"
+      if (el.closest("[data-tree],[data-pole],[data-stack],[data-crane],[data-route-dot],[data-login-mote],[data-building]")) return "yard"
       if (el.closest("[data-login-world]")) return "sky"
       return "other"
     }
@@ -260,6 +268,15 @@ try {
     `${roadWorld.treeTx.length} елей: ${roadWorld.treeTx.slice(0, 8).join(", ")}…`,
   )
   check(
+    "придорожное: парковка отдыха, закусочная, мотель, ангар",
+    roadWorld.bldTx.length >= 4 &&
+      roadWorld.bldTx.every((tx) => tx != null && Math.abs(tx) >= 600) &&
+      roadWorld.bldTx.some((tx) => tx < 0) &&
+      roadWorld.bldTx.some((tx) => tx > 0) &&
+      roadWorld.bldKinds.split(",").filter(Boolean).length >= 4,
+    `${roadWorld.bldTx.length} зданий (${roadWorld.bldKinds}) по обочинам ${roadWorld.bldTx.join(", ")}`,
+  )
+  check(
     "под дорогу не проваливаемся (подбой снизу)",
     roadWorld.backdropTop >= 0.55 && roadWorld.backdropH >= 0.25,
     `подбой земли от ${(roadWorld.backdropTop * 100).toFixed(0)}% высоты, толщиной ${(roadWorld.backdropH * 100).toFixed(0)}%`,
@@ -316,7 +333,12 @@ try {
       const pred = oy + (groundY - py) * best.f
       return Math.abs(best.el.getBoundingClientRect().bottom - pred)
     }
-    const vals = [pick("[data-stack]"), pick("[data-tree]"), pick("[data-pole]")].filter((x) => x != null)
+    const vals = [
+      pick("[data-stack]"),
+      pick("[data-tree]"),
+      pick("[data-pole]"),
+      pick("[data-building]"),
+    ].filter((x) => x != null)
     return { n: vals.length, max: vals.length ? Math.max(...vals) : 999 }
   })
   check(
@@ -340,7 +362,17 @@ try {
   // время суток: палитры переключаются (?tod= — ручной override)
   const todPage = await context.newPage()
   const todProbe = async (url) => {
-    await todPage.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 })
+    // в песочнице хромиум изредка роняет навигацию (ERR_ABORTED,
+    // память) — это флак среды, не сцены: честно пробуем ещё раз
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await todPage.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 })
+        break
+      } catch (err) {
+        if (attempt >= 3) throw err
+        await todPage.waitForTimeout(1500)
+      }
+    }
     await todPage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
     await todPage.waitForTimeout(600)
     return todPage.evaluate(() => ({
@@ -350,6 +382,7 @@ try {
       lamp: getComputedStyle(document.querySelector(".pole-cone")).opacity,
       sun: getComputedStyle(document.querySelector(".sky-sun")).opacity,
       leaf: getComputedStyle(document.querySelector(".tree-leaf")).fill,
+      bldWin: getComputedStyle(document.querySelector(".bld-win")).opacity,
     }))
   }
   const todDay = await todProbe(`${BASE}/login?tod=day`)
@@ -372,7 +405,9 @@ try {
       todDay.road !== todDawn.road &&
       todDay.road !== todDusk.road &&
       parseFloat(todDay.lamp) < 0.3 &&
-      todDay.leaf !== todDawn.leaf,
+      todDay.leaf !== todDawn.leaf &&
+      parseFloat(todDay.bldWin) < 0.3 &&
+      parseFloat(todDawn.bldWin) > 0.5,
     `день: звёзды ${todDay.stars}, солнце ${todDay.sun}; рассвет: звёзды ${todDawn.stars}; закат: дорога ${todDusk.road}; ели ${todDay.leaf} vs ${todDawn.leaf}; сейчас ${todNow.tod} (${hour})`,
   )
   await todPage.close()
@@ -488,6 +523,22 @@ try {
   const e1 = await yardVis()
   await wpage.waitForTimeout(560)
   const e2 = await yardVis()
+  await wpage.waitForTimeout(120)
+  const bloomProbe = await wpage.evaluate(() => ({
+    op: getComputedStyle(document.querySelector(".warp-bloom")).opacity,
+    arriving: (() => {
+      try {
+        return window.sessionStorage.getItem("loginex:arriving")
+      } catch {
+        return "err"
+      }
+    })(),
+  }))
+  check(
+    "ворп: уезжаем в свет — эстафета приветствия",
+    parseFloat(bloomProbe.op) >= 0.5 && bloomProbe.arriving === "1",
+    `зарево ${bloomProbe.op}, флаг прилёта: ${bloomProbe.arriving}`,
+  )
   check(
     "ворп: фонари заканчиваются, мир гаснет",
     e1.warp === "1" && e2.vis < e1.vis && e2.rig < 0.55,

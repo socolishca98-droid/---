@@ -1404,6 +1404,8 @@ body {
   --tod-tree: #0e1f22;
   --tod-tree2: #0a171a;
   --tod-trunk: #131a26;
+  --tod-bwall: #101a2e;
+  --tod-bwall2: #0b1322;
 }
 
 [data-login-world][data-tod="dawn"] {
@@ -1440,6 +1442,8 @@ body {
   --tod-tree: #16302a;
   --tod-tree2: #10231f;
   --tod-trunk: #1a1f2c;
+  --tod-bwall: #1b2438;
+  --tod-bwall2: #141c2e;
 }
 
 [data-login-world][data-tod="day"] {
@@ -1475,6 +1479,8 @@ body {
   --tod-tree: #3f5a45;
   --tod-tree2: #31493a;
   --tod-trunk: #3c3230;
+  --tod-bwall: #5a6673;
+  --tod-bwall2: #49545f;
 }
 
 [data-login-world][data-tod="dusk"] {
@@ -1511,6 +1517,8 @@ body {
   --tod-tree: #1d2b26;
   --tod-tree2: #15211d;
   --tod-trunk: #1d1a24;
+  --tod-bwall: #1a1e3a;
+  --tod-bwall2: #131729;
 }
 
 /* небесные тела и город */
@@ -1577,6 +1585,91 @@ body {
 
 .tree-trunk {
   fill: var(--tod-trunk);
+}
+
+/* придорожные здания (и19): стены под палитрой суток, окна горят
+   ночью — как огни далёкого города */
+.bld-wall {
+  fill: var(--tod-bwall);
+}
+
+.bld-wall2 {
+  fill: var(--tod-bwall2);
+}
+
+.bld-roof {
+  fill: #0b111e;
+}
+
+.bld-win {
+  fill: #fbbf24;
+  opacity: var(--tod-windows);
+}
+
+.bld-sign {
+  fill: #d97706;
+}
+
+.bld-truck {
+  fill: #22314d;
+}
+
+/* ворп (и19): уезжаем В СВЕТ — тёплое зарево вместо чёрного
+   экрана; на следующей странице его принимает .welcome-arrival */
+.warp-bloom {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(60% 46% at 50% 58%, rgba(255, 243, 214, 0.98), rgba(255, 222, 168, 0.76) 34%, rgba(255, 205, 148, 0.3) 58%, rgba(255, 205, 148, 0) 78%),
+    linear-gradient(rgba(255, 236, 200, 0.2), rgba(255, 220, 175, 0.42));
+  transition: opacity 0.75s cubic-bezier(0.32, 0, 0.24, 1) 0.1s;
+}
+
+[data-login-world][data-warp="1"] .warp-bloom {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .warp-bloom {
+    transition: none;
+  }
+}
+
+/* прилёт (и19): зарево принимает эстафету на следующей странице,
+   перекрывает момент её загрузки и растворяется в приветствие */
+.welcome-arrival {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 46% at 50% 58%, rgba(255, 243, 214, 0.98), rgba(255, 222, 168, 0.8) 34%, rgba(255, 205, 148, 0.32) 58%, rgba(255, 205, 148, 0) 78%),
+    linear-gradient(rgba(255, 236, 200, 0.24), rgba(255, 220, 175, 0.48));
+  animation: arrival-in 260ms cubic-bezier(0.32, 0, 0.24, 1) both;
+}
+
+.welcome-arrival--leaving {
+  animation: arrival-out 400ms ease both;
+}
+
+@keyframes arrival-in {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes arrival-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .yard-pool {

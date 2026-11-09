@@ -21,10 +21,18 @@ import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
 const STORAGE_KEY = "loginex:welcome-shown"
+/** Флаг прилёта: мир входа «уехал в свет» — встречаем заревом (и19) */
+const ARRIVE_KEY = "loginex:arriving"
+/** Сколько зарево прикрывает загрузку страницы, мс */
+const ARRIVAL_VEIL_MS = 550
 /** Сколько заставка живёт на экране, мс */
 const SPLASH_MS = 1600
 /** Где приветствие не нужно: контур водителя, печать и экраны входа. */
 const EXCLUDED_PREFIXES = ["/m", "/print", "/login", "/register"]
+/** Где флаг прилёта РОЖДАЕТСЯ (ворп входа): на этих страницах его
+ *  нельзя читать и снимать — иначе эстафета не доживёт до следующей
+ *  страницы (эффект здесь перезапускается при смене auth-состояния). */
+const WARP_SOURCE_PREFIXES = ["/login", "/m/login", "/register"]
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false
@@ -56,6 +64,8 @@ export function WelcomeSplash() {
   // и клиент не совпадут (гидратационная ошибка).
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [veil, setVeil] = useState(false)
+  const [veilLeaving, setVeilLeaving] = useState(false)
   const timers = useRef<number[]>([])
 
   const dismiss = useCallback(() => {
@@ -69,22 +79,66 @@ export function WelcomeSplash() {
   const isExcludedPath = EXCLUDED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   )
+  const isWarpSource = WARP_SOURCE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
 
   useEffect(() => {
     // До входа заставку не показываем (и флаг не ставим): человек увидит её
     // ровно один раз — когда войдёт и попадёт на первую рабочую страницу.
-    if (!isAuthenticated || isExcludedPath) return
+    if (!isAuthenticated) return
 
-    if (alreadyShown() || prefersReducedMotion()) {
-      // Заставка уже была или человек просит меньше движения — флаг ставим,
-      // чтобы больше не спрашивать, и ничего не рисуем.
+    // Страница рождения ворпа (экран входа): флаг прилёта здесь только
+    // появляется — не читаем и не снимаем, иначе эффект (он перезапускается
+    // при смене auth-состояния прямо во время ворпа) съест эстафету,
+    // и страница назначения не увидит зарева (и19).
+    if (isWarpSource) return
+
+    // Эстафета от входа (и19): мир «уехал в свет» — встречаем тёплым
+    // заревом, которое перекрывает загрузку страницы, и снова
+    // здороваемся (повторный вход в той же сессии — снова приветствие)
+    let arriving = false
+    try {
+      arriving = window.sessionStorage.getItem(ARRIVE_KEY) === "1"
+      if (arriving) {
+        window.sessionStorage.removeItem(ARRIVE_KEY)
+        window.sessionStorage.removeItem(STORAGE_KEY)
+      }
+    } catch {
+      // заблокированное хранилище — просто без зарева
+    }
+
+    if (prefersReducedMotion()) {
       markShown()
       return
     }
 
-    setVisible(true)
+    if (isExcludedPath) {
+      // Контур водителя и печати: без карточки, но зарево прилёта
+      // всё равно сглаживает появление страницы
+      if (arriving) {
+        setVeil(true)
+        timers.current.push(window.setTimeout(() => setVeilLeaving(true), 900))
+        timers.current.push(window.setTimeout(() => setVeil(false), 1350))
+      }
+      return
+    }
 
-    const auto = window.setTimeout(dismiss, SPLASH_MS)
+    if (!arriving && alreadyShown()) {
+      markShown()
+      return
+    }
+
+    if (arriving) {
+      setVeil(true)
+      timers.current.push(window.setTimeout(() => setVisible(true), ARRIVAL_VEIL_MS))
+      timers.current.push(window.setTimeout(() => setVeilLeaving(true), 900))
+      timers.current.push(window.setTimeout(() => setVeil(false), 1350))
+    } else {
+      setVisible(true)
+    }
+
+    const auto = window.setTimeout(dismiss, (arriving ? ARRIVAL_VEIL_MS : 0) + SPLASH_MS)
     timers.current.push(auto)
 
     const onKey = (event: KeyboardEvent) => {
@@ -101,15 +155,23 @@ export function WelcomeSplash() {
       timers.current.forEach((timer) => window.clearTimeout(timer))
       timers.current = []
     }
-  }, [dismiss, isAuthenticated, isExcludedPath])
+  }, [dismiss, isAuthenticated, isExcludedPath, isWarpSource])
 
-  if (!visible) return null
+  if (!visible && !veil) return null
 
   const name = user?.name ?? null
   const organization = user?.organization?.name ?? null
   const now = new Date()
 
   return (
+    <>
+      {veil && (
+        <div
+          className={`welcome-arrival${veilLeaving ? " welcome-arrival--leaving" : ""}`}
+          aria-hidden="true"
+        />
+      )}
+      {visible && (
     <div
       className={`welcome-splash${leaving ? " welcome-splash--leaving" : ""}`}
       role="status"
@@ -171,5 +233,7 @@ export function WelcomeSplash() {
         </div>
       </div>
     </div>
+      )}
+    </>
   )
 }

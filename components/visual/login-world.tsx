@@ -23,8 +23,9 @@
 // warp, plunges, frames} + __loginWorldLook + __loginWorldPaused +
 // __loginWorldGyro. DOM: [data-login-world], [data-stack] ×10,
 // [data-crane] ×2, [data-pole] ×12, [data-tree] ×18,
-// [data-login-mote] ×14, [data-route-dot] ×5, [data-ground],
-// [data-ground-backdrop], [data-login-panel], [data-login-doc].
+// [data-building] ×4, [data-login-mote] ×14, [data-route-dot] ×5,
+// [data-ground], [data-ground-backdrop], [data-warp-bloom],
+// [data-login-panel], [data-login-doc].
 //
 // Фидбек и16: «арки меньше — пол страницы в виде горизонта; гироскоп
 // ещё душим, надо немного для объёма; всё равно проваливаемся под
@@ -65,6 +66,19 @@
 //      «потолке» (и16: 62% против плоскости 56) или земля ребром
 //      (и17: 57% = 56). Теперь origin 58% при GROUND_Y=160: зазор
 //      96px как в и15, земля — нижние 42% кадра, горизонт виден.
+//
+// Фидбек и19: «уменьшай ещё гироскоп; потрясёшь телефоном — опять
+// всё летает в небе; добавить парковки отдыха, закусочные и прочие
+// здания; красиво сделать анимацию входа (после авторизации —
+// чёрный экран, потом экран приветствия)». Сделано: гироскоп
+// 0.03/0.018 (зажим ±2°/±0.8°) + медленный возврат нуля калибровки
+// + ЖЁСТКИЙ зажим итогового наклона рамки (yaw ±5°, pitch ±2.5°) —
+// тряска физически не может унести мир в небо; придорожные здания
+// ×4 (парковка отдыха с «P» и грузовиком, закусочная с вывеской,
+// мотель с горящими окнами, ангар) — красятся палитрой суток; ворп
+// теперь уезжает В СВЕТ (тёплое зарево .warp-bloom + флаг прилёта
+// в sessionStorage), на следующей странице зарево принимает
+// эстафету (.welcome-arrival) и растворяется в приветствие.
 
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -149,6 +163,20 @@ const TREES: ReadonlyArray<{ x: number; z: number }> = [
   { x: 400, z: 4630 },
   { x: -400, z: 5560 },
   { x: 400, z: 6490 },
+]
+/** Придорожное (и19): парковка отдыха, закусочная, мотель, ангар —
+ *  у дороги появляется жизнь, мир читается как трасса с сервисом. */
+const BUILDINGS: ReadonlyArray<{
+  x: number
+  z: number
+  kind: "rest" | "diner" | "motel" | "barn"
+  w: number
+  h: number
+}> = [
+  { x: 880, z: 1150, kind: "rest", w: 360, h: 190 },
+  { x: -900, z: 2300, kind: "diner", w: 300, h: 170 },
+  { x: 900, z: 4900, kind: "motel", w: 340, h: 200 },
+  { x: -880, z: 6100, kind: "barn", w: 380, h: 170 },
 ]
 
 /** Время суток: сцена живёт по местным часам пользователя.
@@ -304,6 +332,86 @@ function TreeArt() {
   )
 }
 
+/** Придорожные здания (и19): стены красятся палитрой суток, окна
+ *  горят ночью (как огни далёкого города), «P» и вывеска узнаваемы. */
+function BuildingArt({ kind }: { kind: "rest" | "diner" | "motel" | "barn" }) {
+  if (kind === "diner") {
+    return (
+      <svg width="300" height="170" viewBox="0 0 300 170" aria-hidden="true">
+        <ellipse cx="150" cy="162" rx="140" ry="8" fill="rgba(0,0,0,0.4)" />
+        <rect className="bld-wall" x="30" y="60" width="240" height="100" rx="3" />
+        <rect className="bld-roof" x="22" y="48" width="256" height="16" rx="4" />
+        <rect className="bld-win" x="52" y="86" width="34" height="26" rx="2" />
+        <rect className="bld-win" x="98" y="86" width="34" height="26" rx="2" />
+        <rect className="bld-win" x="168" y="86" width="34" height="26" rx="2" />
+        <rect className="bld-wall2" x="214" y="88" width="26" height="72" rx="2" />
+        <rect className="bld-wall2" x="268" y="34" width="6" height="126" />
+        <rect className="bld-sign" x="238" y="18" width="64" height="26" rx="6" />
+        <rect x="248" y="26" width="44" height="3" rx="1.5" fill="rgba(19,23,42,0.85)" />
+        <rect x="248" y="33" width="30" height="3" rx="1.5" fill="rgba(19,23,42,0.6)" />
+      </svg>
+    )
+  }
+  if (kind === "rest") {
+    return (
+      <svg width="360" height="190" viewBox="0 0 360 190" aria-hidden="true">
+        <ellipse cx="190" cy="182" rx="165" ry="8" fill="rgba(0,0,0,0.4)" />
+        <rect className="bld-wall2" x="14" y="44" width="6" height="138" />
+        <rect x="0" y="10" width="34" height="34" rx="7" fill="#1d4ed8" />
+        <path
+          d="M11 19 v18 M11 19 h7 a5.5 5.5 0 0 1 0 11 h-7"
+          stroke="#fff"
+          strokeWidth="3.4"
+          fill="none"
+          strokeLinecap="round"
+        />
+        <rect className="bld-wall" x="64" y="80" width="118" height="102" rx="3" />
+        <rect className="bld-roof" x="56" y="70" width="134" height="14" rx="4" />
+        <rect className="bld-win" x="80" y="98" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="120" y="98" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="86" y="132" width="26" height="50" rx="2" />
+        <rect className="bld-truck" x="206" y="126" width="34" height="32" rx="3" />
+        <rect className="bld-wall2" x="242" y="122" width="92" height="44" rx="2" />
+        <circle cx="220" cy="162" r="7" fill="#0b111e" />
+        <circle cx="262" cy="162" r="7" fill="#0b111e" />
+        <circle cx="308" cy="162" r="7" fill="#0b111e" />
+      </svg>
+    )
+  }
+  if (kind === "motel") {
+    return (
+      <svg width="340" height="200" viewBox="0 0 340 200" aria-hidden="true">
+        <ellipse cx="170" cy="192" rx="160" ry="8" fill="rgba(0,0,0,0.4)" />
+        <rect className="bld-wall" x="30" y="60" width="280" height="132" rx="3" />
+        <rect className="bld-roof" x="22" y="50" width="296" height="14" rx="4" />
+        <rect className="bld-win" x="52" y="78" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="92" y="78" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="132" y="78" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="192" y="78" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="232" y="78" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="272" y="78" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="52" y="118" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="92" y="118" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="132" y="118" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="192" y="118" width="30" height="22" rx="2" />
+        <rect className="bld-win" x="232" y="118" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="272" y="118" width="30" height="22" rx="2" />
+        <rect className="bld-wall2" x="150" y="150" width="40" height="42" rx="3" />
+        <rect className="bld-win" x="157" y="156" width="26" height="30" rx="2" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="380" height="170" viewBox="0 0 380 170" aria-hidden="true">
+      <ellipse cx="190" cy="162" rx="180" ry="8" fill="rgba(0,0,0,0.4)" />
+      <path className="bld-wall" d="M30 160 V72 Q190 32 350 72 V160 Z" />
+      <path className="bld-wall2" d="M148 160 V80 Q190 62 232 80 V160 Z" />
+      <rect className="bld-win" x="60" y="98" width="26" height="20" rx="2" />
+      <rect className="bld-win" x="294" y="98" width="26" height="20" rx="2" />
+    </svg>
+  )
+}
+
 export function LoginWorld({
   variant = "logist",
   headline,
@@ -403,6 +511,11 @@ export function LoginWorld({
       yard.push({ el: els[k], baseX: p.x - 75, x: p.x - 75, y: GROUND_Y - 210, z: p.z, total: YARD_TOTAL, i: k })
       k += 1
     })
+    BUILDINGS.forEach((p) => {
+      // здание: центр p.x, основание на земле (размер у каждого свой)
+      yard.push({ el: els[k], baseX: p.x - p.w / 2, x: p.x - p.w / 2, y: GROUND_Y - p.h, z: p.z, total: YARD_TOTAL, i: k })
+      k += 1
+    })
     // искры-частицы у самой камеры (скорость полёта читается сразу)
     const MOTE_COLORS = ["rgba(251,191,36,0.9)", "rgba(103,232,249,0.85)", "rgba(226,232,240,0.8)"]
     for (let m = 0; m < 14; m++) {
@@ -475,19 +588,25 @@ export function LoginWorld({
     w.__loginWorld = debug
     w.__loginWorldLook = (dx: number, dy: number) => {
       yawDrag = clamp(yawDrag + dx * 0.045, -22, 22)
-      pitchDrag = clamp(pitchDrag + dy * 0.03, -5, 5)
+      pitchDrag = clamp(pitchDrag + dy * 0.03, -3, 3)
     }
 
     // ── гироскоп: БЕЗ КНОПКИ и БЕЗ УВЕДОМЛЕНИЙ ──
-    // Чувствительность: 0.06/0.04 при зажиме ±3.5°/±2° — и18 «убавляй»
-    // (и16: 0.11/0.075 ±5/±3; когда-то 0.6 — «слишком»). Осталось
-    // только лёгкое дыхание объёма. Запрос разрешения — на трёх
-    // жестах сразу (Safari капризен), сам вызов одноразовый.
+    // Чувствительность: 0.03/0.018 при зажиме ±2°/±0.8° — и19
+    // «уменьшай ещё» (и18: 0.06/0.04; когда-то 0.6). Плюс СТАБИЛИ-
+    // ЗАЦИЯ ТРЯСКИ: калибровка медленно ползёт к текущему положению
+    // телефона (вид сам выравнивается), а итоговый наклон рамки
+    // жёстко зажат — при любой тряске мир не может «улететь в небо».
+    // Запрос разрешения — на трёх жестах сразу (Safari капризен).
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.beta == null || event.gamma == null) return
       if (!gyroCalib) gyroCalib = { b: event.beta, g: event.gamma }
-      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.06, -3.5, 3.5)
-      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.04, -2, 2)
+      yawGyroT = clamp((event.gamma - gyroCalib.g) * 0.03, -2, 2)
+      pitchGyroT = clamp((event.beta - gyroCalib.b) * 0.018, -0.8, 0.8)
+      // медленный возврат нуля: держим телефон ровно — картинка
+      // сама выравнивается, тряска не оставляет «заваленного» вида
+      gyroCalib.g += (event.gamma - gyroCalib.g) * 0.004
+      gyroCalib.b += (event.beta - gyroCalib.b) * 0.004
       if (!gyroActive) {
         gyroActive = true
         debug.gyro = true
@@ -606,12 +725,19 @@ export function LoginWorld({
     }
     const onWarp = () => {
       // проезжаем плиту и оказываемся в программе: мягкое ускорение
-      // полёта + плита уходит за камеру — без скачков перспективы
+      // полёта + плита уходит за камеру — без скачков перспективы.
+      // Эстафета (и19): на следующей странице нас встретит тёплое
+      // зарево и экран приветствия (welcome-splash читает этот флаг)
       warpT = 1
       speed = SPEED_WARP
       ending = true
       setWarping(true)
       setPhase("past")
+      try {
+        window.sessionStorage.setItem("loginex:arriving", "1")
+      } catch {
+        /* приватный режим — просто без зарева */
+      }
     }
     const onFocusIn = (event: FocusEvent) => {
       focused = event.target instanceof Element && event.target.closest("[data-login-panel]") != null
@@ -653,16 +779,18 @@ export function LoginWorld({
       const pitchT = pointer ? -(pointer.y / window.innerHeight - 0.5) * 4.5 : 0
       yawMouse += (yawT - yawMouse) * Math.min(1, dt * 3)
       pitchMouse += (pitchT - pitchMouse) * Math.min(1, dt * 3)
-      yawDrag *= Math.exp(-dt * 0.1)
-      pitchDrag *= Math.exp(-dt * 0.1)
+      yawDrag *= Math.exp(-dt * 0.3)
+      pitchDrag *= Math.exp(-dt * 0.3)
       yawGyro += (yawGyroT - yawGyro) * Math.min(1, dt * 4.5)
       pitchGyro += (pitchGyroT - pitchGyro) * Math.min(1, dt * 4.5)
       aim += ((focused ? 1 : 0) - aim) * Math.min(1, dt * 3)
       const swayY = Math.sin(t * 0.14) * 0.3
       const swayP = Math.sin(t * 0.17 + 1.2) * 0.18
       const blend = 1 - aim * 0.06
-      yaw = (yawMouse + yawDrag + yawGyro) * blend + swayY
-      pitch = (pitchMouse + pitchDrag + pitchGyro) * blend + swayP
+      // итоговый наклон жёстко зажат: тряска/жесты/гироскоп вместе
+      // не могут повернуть мир так, чтобы дорога ушла в небо (и19)
+      yaw = clamp((yawMouse + yawDrag + yawGyro) * blend + swayY, -5, 5)
+      pitch = clamp((pitchMouse + pitchDrag + pitchGyro) * blend + swayP, -2.5, 2.5)
 
       // ── риги: камера летит (move), остальные вращаются с ней ──
       const rot = `rotateX(${(-pitch).toFixed(2)}deg) rotateY(${yaw.toFixed(2)}deg)`
@@ -678,7 +806,7 @@ export function LoginWorld({
 
       // ── двор: штабеля, краны, фонари, точки и искры пролетают
       // мимо и рождаются впереди — объём и скорость ──
-      const moteStart = STACKS.length + CRANES.length + POLES.length + DOT_Z.length + TREES.length
+      const moteStart = STACKS.length + CRANES.length + POLES.length + DOT_Z.length + TREES.length + BUILDINGS.length
       for (const e of yard) {
         // в ворпе двор НЕ рождается заново: штабеля, краны и фонари
         // заканчиваются — дорога «приехала», мы в программе
@@ -965,11 +1093,26 @@ export function LoginWorld({
             <TreeArt />
           </div>
         ))}
+        {BUILDINGS.map((p, i) => (
+          <div
+            key={`b${i}`}
+            ref={(el) => {
+              yardRefs.current[STACKS.length + CRANES.length + POLES.length + DOT_Z.length + TREES.length + i] = el
+            }}
+            data-building
+            data-kind={p.kind}
+            aria-hidden="true"
+            className="absolute left-1/2 top-1/2"
+            style={{ transform: `translate3d(${p.x - p.w / 2}px, ${GROUND_Y - p.h}px, ${-p.z}px)` }}
+          >
+            <BuildingArt kind={p.kind} />
+          </div>
+        ))}
         {Array.from({ length: 14 }, (_, i) => (
           <div
             key={`m${i}`}
             ref={(el) => {
-              yardRefs.current[STACKS.length + CRANES.length + POLES.length + DOT_Z.length + TREES.length + i] = el
+              yardRefs.current[STACKS.length + CRANES.length + POLES.length + DOT_Z.length + TREES.length + BUILDINGS.length + i] = el
             }}
             data-login-mote
             aria-hidden="true"
@@ -1063,6 +1206,11 @@ export function LoginWorld({
           </p>
         </div>
       )}
+
+      {/* ворп (и19): уезжаем В СВЕТ — тёплое зарево на прощание,
+          дальше эстафету принимает welcome-arrival следующей
+          страницы: никакого чёрного экрана между миром и программой */}
+      <div className="warp-bloom" data-warp-bloom aria-hidden="true" />
     </div>
   )
 }
