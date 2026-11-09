@@ -169,6 +169,44 @@ try {
     pwa.capable && pwa.manifest && pwa.theme !== "",
     `capable:${pwa.capable}, manifest:${pwa.manifest}, theme:${pwa.theme}`,
   )
+
+  // время суток: палитры переключаются (?tod= — ручной override)
+  const todPage = await context.newPage()
+  const todProbe = async (url) => {
+    await todPage.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 })
+    await todPage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+    await todPage.waitForTimeout(600)
+    return todPage.evaluate(() => ({
+      tod: document.querySelector("[data-login-world]")?.getAttribute("data-tod"),
+      road: getComputedStyle(document.querySelector("[data-road]")).backgroundColor,
+      stars: getComputedStyle(document.querySelector(".sky-stars")).opacity,
+      lamp: getComputedStyle(document.querySelector(".pole-cone")).opacity,
+      sun: getComputedStyle(document.querySelector(".sky-sun")).opacity,
+    }))
+  }
+  const todDay = await todProbe(`${BASE}/login?tod=day`)
+  const todDawn = await todProbe(`${BASE}/login?tod=dawn`)
+  const todDusk = await todProbe(`${BASE}/login?tod=dusk`)
+  const todNow = await todProbe(`${BASE}/login`)
+  const hour = await todPage.evaluate(() => {
+    const h = new Date().getHours()
+    return h >= 5 && h < 9 ? "dawn" : h >= 9 && h < 17 ? "day" : h >= 17 && h < 23 ? "dusk" : "night"
+  })
+  check(
+    "сцена по времени суток меняется",
+    todDay.tod === "day" &&
+      todDawn.tod === "dawn" &&
+      todDusk.tod === "dusk" &&
+      todNow.tod === hour &&
+      parseFloat(todDay.stars) === 0 &&
+      parseFloat(todDawn.stars) > 0.2 &&
+      parseFloat(todDay.sun) > 0.5 &&
+      todDay.road !== todDawn.road &&
+      todDay.road !== todDusk.road &&
+      parseFloat(todDay.lamp) < 0.3,
+    `день: звёзды ${todDay.stars}, солнце ${todDay.sun}; рассвет: звёзды ${todDawn.stars}; закат: дорога ${todDusk.road}; сейчас ${todNow.tod} (${hour})`,
+  )
+  await todPage.close()
   check("объём: искры летят мимо камеры", world.motes >= 10, `${world.motes} искр`)
   check("маршрут заказов: точки бегут по нитке", world.dots >= 4, `${world.dots} точек`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")

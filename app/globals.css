@@ -1357,6 +1357,194 @@ body {
   opacity: 1;
 }
 
+/* ═══ ВРЕМЯ СУТОК: палитры мира ═══
+   Сцена живёт по местным часам: night 23–05 · dawn 05–09 ·
+   day 09–17 · dusk 17–23. Переключается атрибутом data-tod на
+   [data-login-world]; для ручной проверки — /login?tod=day|dawn|dusk|night. */
+.world-sky {
+  background:
+    radial-gradient(48% 38% at 20% 14%, var(--tod-glowa), transparent 70%),
+    radial-gradient(44% 34% at 84% 10%, var(--tod-glowb), transparent 72%),
+    radial-gradient(52% 40% at 72% 88%, var(--tod-glowc), transparent 74%),
+    linear-gradient(var(--tod-skytop) 0%, var(--tod-skymid) 55%, var(--tod-skylow) 100%);
+}
+
+[data-login-world] {
+  /* ночь (по умолчанию — совпадает с прежним видом) */
+  --tod-skytop: #0a1322;
+  --tod-skymid: #060b16;
+  --tod-skylow: #03060d;
+  --tod-glowa: rgba(21, 94, 117, 0.16);
+  --tod-glowb: rgba(99, 102, 241, 0.1);
+  --tod-glowc: rgba(245, 158, 11, 0.09);
+  --tod-ground: #070c16;
+  --tod-road: #141d2f;
+  --tod-edge: rgba(226, 232, 240, 0.55);
+  --tod-dash: rgba(34, 211, 238, 0.8);
+  --tod-roadglow: rgba(34, 211, 238, 0.22);
+  --tod-fadebg: linear-gradient(to bottom, rgba(6, 11, 22, 0) 0%, rgba(6, 11, 22, 0.55) 45%, #060b16 100%);
+  --tod-fogbg: linear-gradient(
+    to bottom,
+    rgba(6, 11, 22, 0) 0%,
+    rgba(6, 11, 22, 0.8) 35%,
+    rgba(6, 11, 22, 0.5) 45%,
+    rgba(6, 11, 22, 0.15) 65%,
+    rgba(6, 11, 22, 0) 85%
+  );
+  --tod-stars: 1;
+  --tod-moon: 1;
+  --tod-sun: 0;
+  --tod-lamp: 1;
+  --tod-pool: 1;
+  --tod-city: rgba(10, 17, 32, 0.75);
+  --tod-windows: 0.9;
+}
+
+[data-login-world][data-tod="dawn"] {
+  --tod-skytop: #131c33;
+  --tod-skymid: #2a3352;
+  --tod-skylow: #7a4a33;
+  --tod-glowa: rgba(21, 94, 117, 0.1);
+  --tod-glowb: rgba(99, 102, 241, 0.06);
+  --tod-glowc: rgba(245, 158, 11, 0.22);
+  --tod-ground: #0a0f1a;
+  --tod-road: #1a2338;
+  --tod-edge: rgba(232, 236, 244, 0.6);
+  --tod-dash: rgba(103, 232, 249, 0.75);
+  --tod-roadglow: rgba(103, 232, 249, 0.2);
+  --tod-fadebg: linear-gradient(to bottom, rgba(42, 51, 82, 0) 0%, rgba(64, 48, 50, 0.5) 45%, #4a3527 100%);
+  --tod-fogbg: linear-gradient(
+    to bottom,
+    rgba(42, 51, 82, 0) 0%,
+    rgba(88, 62, 45, 0.7) 36%,
+    rgba(88, 62, 45, 0.4) 50%,
+    rgba(42, 51, 82, 0.12) 70%,
+    rgba(42, 51, 82, 0) 85%
+  );
+  --tod-stars: 0.45;
+  --tod-moon: 0.25;
+  --tod-sun: 0.25;
+  --tod-lamp: 1;
+  --tod-pool: 1;
+  --tod-city: rgba(19, 16, 28, 0.8);
+  --tod-windows: 1;
+}
+
+[data-login-world][data-tod="day"] {
+  --tod-skytop: #46617f;
+  --tod-skymid: #7d97b0;
+  --tod-skylow: #c2d2de;
+  --tod-glowa: rgba(255, 255, 255, 0.16);
+  --tod-glowb: rgba(147, 197, 253, 0.14);
+  --tod-glowc: rgba(245, 158, 11, 0.05);
+  --tod-ground: #2e3947;
+  --tod-road: #4a5468;
+  --tod-edge: rgba(255, 255, 255, 0.85);
+  --tod-dash: rgba(59, 130, 246, 0.55);
+  --tod-roadglow: rgba(59, 130, 246, 0.15);
+  --tod-fadebg: linear-gradient(to bottom, rgba(194, 210, 222, 0) 0%, rgba(194, 210, 222, 0.5) 45%, #c2d2de 100%);
+  --tod-fogbg: linear-gradient(
+    to bottom,
+    rgba(194, 210, 222, 0) 0%,
+    rgba(203, 213, 225, 0.75) 40%,
+    rgba(194, 210, 222, 0.35) 55%,
+    rgba(194, 210, 222, 0) 80%
+  );
+  --tod-stars: 0;
+  --tod-moon: 0;
+  --tod-sun: 0.9;
+  --tod-lamp: 0.12;
+  --tod-pool: 0.15;
+  --tod-city: rgba(88, 108, 128, 0.4);
+  --tod-windows: 0.1;
+}
+
+[data-login-world][data-tod="dusk"] {
+  --tod-skytop: #1d2440;
+  --tod-skymid: #43315a;
+  --tod-skylow: #b06a3a;
+  --tod-glowa: rgba(21, 94, 117, 0.08);
+  --tod-glowb: rgba(129, 102, 241, 0.12);
+  --tod-glowc: rgba(251, 146, 60, 0.25);
+  --tod-ground: #0d1120;
+  --tod-road: #1c2440;
+  --tod-edge: rgba(232, 236, 244, 0.6);
+  --tod-dash: rgba(103, 232, 249, 0.8);
+  --tod-roadglow: rgba(103, 232, 249, 0.2);
+  --tod-fadebg: linear-gradient(to bottom, rgba(29, 36, 64, 0) 0%, rgba(102, 62, 48, 0.5) 45%, #6e422c 100%);
+  --tod-fogbg: linear-gradient(
+    to bottom,
+    rgba(29, 36, 64, 0) 0%,
+    rgba(116, 68, 44, 0.65) 38%,
+    rgba(116, 68, 44, 0.35) 52%,
+    rgba(29, 36, 64, 0.12) 72%,
+    rgba(29, 36, 64, 0) 85%
+  );
+  --tod-stars: 0.35;
+  --tod-moon: 0;
+  --tod-sun: 0.3;
+  --tod-lamp: 1;
+  --tod-pool: 1;
+  --tod-city: rgba(24, 20, 38, 0.7);
+  --tod-windows: 0.9;
+}
+
+/* небесные тела и город */
+.sky-stars {
+  opacity: var(--tod-stars);
+}
+
+.sky-moon {
+  opacity: var(--tod-moon);
+}
+
+.sky-city {
+  fill: var(--tod-city);
+}
+
+.sky-windows {
+  fill: #fbbf24;
+  opacity: var(--tod-windows);
+}
+
+.sky-sun {
+  position: absolute;
+  right: 15%;
+  top: 9%;
+  width: 230px;
+  height: 230px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 250, 220, 0.95) 0%,
+    rgba(255, 236, 170, 0.5) 26%,
+    rgba(255, 220, 150, 0.18) 45%,
+    rgba(255, 220, 150, 0) 70%
+  );
+  opacity: var(--tod-sun);
+  pointer-events: none;
+}
+
+/* фонари днём выключены */
+.pole-cone,
+.pole-lamp {
+  opacity: var(--tod-lamp);
+}
+
+.yard-pool {
+  opacity: var(--tod-pool);
+}
+
+/* днём светлое небо: стекло документа чуть плотнее (текст читается),
+   подсказка — темнее */
+[data-login-world][data-tod="day"] [data-login-doc] {
+  background-color: rgba(11, 19, 34, 0.54);
+}
+
+[data-login-world][data-tod="day"] [data-login-hint] p {
+  color: rgba(15, 23, 42, 0.8);
+}
+
 /* Предметы стоят на земле: мягкая тень-эллипс под штабелями и
    кранами, тёплое пятно света под фонарями (свет проливается на
    асфальт). Слегка перед плоскостью земли — без z-боя. */

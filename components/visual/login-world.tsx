@@ -70,6 +70,12 @@ const POLE_X: ReadonlyArray<number> = [-310, 310, -310, 310, -310, 310]
 /** Точки-заказы — бусины точно на центральной нитке маршрута. */
 const DOT_Z: ReadonlyArray<number> = [280, 1780, 3280, 4780, 6280]
 
+/** Время суток: сцена живёт по местным часам пользователя.
+ *  night 23–05 · dawn 05–09 · day 09–17 · dusk 17–23.
+ *  Палитры — в globals.css (CSS-переменные --tod-*). */
+type Tod = "night" | "dawn" | "day" | "dusk"
+const MOTE_FACTOR: Record<Tod, number> = { night: 1, dawn: 0.85, dusk: 0.85, day: 0.35 }
+
 type WorldDebug = {
   dolly: number
   speed: number
@@ -185,9 +191,9 @@ function PoleArt() {
     <svg width="180" height="280" viewBox="0 0 180 280" aria-hidden="true">
       <rect x="87" y="26" width="6" height="254" fill="#182742" />
       <rect x="76" y="18" width="28" height="10" rx="3" fill="#182742" />
-      <polygon points="86,36 94,36 176,280 4,280" fill="rgba(245,185,66,0.09)" />
-      <circle cx="90" cy="32" r="7" fill="rgba(251,191,36,0.25)" />
-      <circle cx="90" cy="32" r="3.5" fill="#fbbf24" />
+      <polygon className="pole-cone" points="86,36 94,36 176,280 4,280" fill="rgba(245,185,66,0.09)" />
+      <circle className="pole-lamp" cx="90" cy="32" r="7" fill="rgba(251,191,36,0.25)" />
+      <circle className="pole-lamp" cx="90" cy="32" r="3.5" fill="#fbbf24" />
     </svg>
   )
 }
@@ -216,6 +222,21 @@ export function LoginWorld({
   const yardRefs = useRef<Array<HTMLDivElement | null>>([])
 
   const stars = useMemo(() => starTile(), [])
+
+  /** Фаза суток: по часам клиента; ?tod=… — для проверки вручную.
+   *  Вычисляем ПОСЛЕ монтирования: сервер рендерит «ночь» (не знает
+   *  часовой пояс клиента), клиент сразу поправляет — иначе hydration
+   *  рассинхронизируется. */
+  const [tod, setTod] = useState<Tod>("night")
+  const todRef = useRef<Tod>("night")
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("tod")
+    const h = new Date().getHours()
+    const byHour: Tod = h >= 5 && h < 9 ? "dawn" : h >= 9 && h < 17 ? "day" : h >= 17 && h < 23 ? "dusk" : "night"
+    const next: Tod = param === "day" || param === "dawn" || param === "dusk" || param === "night" ? param : byHour
+    todRef.current = next
+    setTod(next)
+  }, [])
 
   /** Прилёт плиты: far — дорога бежит чистой; here — по касанию плита
    *  красиво прилетает издалека («мы приехали»); past — после верного
@@ -543,6 +564,7 @@ export function LoginWorld({
 
       // ── двор: штабеля, краны, фонари, точки и искры пролетают
       // мимо и рождаются впереди — объём и скорость ──
+      const moteStart = STACKS.length + CRANES.length + POLE_X.length + DOT_Z.length
       for (const e of yard) {
         // в ворпе двор НЕ рождается заново: штабеля, краны и фонари
         // заканчиваются — дорога «приехала», мы в программе
@@ -552,7 +574,9 @@ export function LoginWorld({
           e.el.style.transform = yardTransform(e)
         }
         const depth = e.z - dolly
-        e.el.style.opacity = clamp(depth / 420, 0, 1).toFixed(3)
+        // искры днём — пылинки в воздухе, ночью — светлячки
+        const mf = e.i >= moteStart ? MOTE_FACTOR[todRef.current] : 1
+        e.el.style.opacity = (clamp(depth / 420, 0, 1) * mf).toFixed(3)
       }
 
       debug.frames += 1
@@ -614,14 +638,15 @@ export function LoginWorld({
       ref={viewportRef}
       data-login-world
       data-warp={warping ? "1" : "0"}
-      className="fixed inset-0 touch-none overflow-hidden bg-[radial-gradient(48%_38%_at_20%_14%,rgba(21,94,117,0.16),transparent_70%),radial-gradient(44%_34%_at_84%_10%,rgba(99,102,241,0.10),transparent_72%),radial-gradient(52%_40%_at_72%_88%,rgba(245,158,11,0.09),transparent_74%),radial-gradient(125%_95%_at_50%_30%,#0a1322_0%,#060b16_55%,#03060d_100%)]"
+      data-tod={tod}
+      className="world-sky fixed inset-0 touch-none overflow-hidden"
       style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}
     >
       {/* ── НЕБО: звёзды плиткой, луна, дальние огни ── */}
       <div ref={skyRef} className="world-rig pointer-events-none absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
         <div
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 h-[165vh] w-[165vw]"
+          className="sky-stars absolute left-1/2 top-1/2 h-[165vh] w-[165vw]"
           style={{
             backgroundImage: stars,
             backgroundSize: "340px 340px",
@@ -641,19 +666,21 @@ export function LoginWorld({
               <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
             </linearGradient>
           </defs>
-          <circle cx="300" cy="132" r="66" fill="rgba(232,237,246,0.06)" />
-          <circle cx="300" cy="132" r="28" fill="#e8edf6" opacity="0.9" />
-          <circle cx="290" cy="124" r="6" fill="#cdd6e4" opacity="0.5" />
-          <circle cx="310" cy="142" r="4" fill="#cdd6e4" opacity="0.4" />
+          <g className="sky-moon">
+            <circle cx="300" cy="132" r="66" fill="rgba(232,237,246,0.06)" />
+            <circle cx="300" cy="132" r="28" fill="#e8edf6" opacity="0.9" />
+            <circle cx="290" cy="124" r="6" fill="#cdd6e4" opacity="0.5" />
+            <circle cx="310" cy="142" r="4" fill="#cdd6e4" opacity="0.4" />
+          </g>
           <rect x="-100" y="470" width="1400" height="130" fill="url(#haze)" />
-          <g fill="rgba(10,17,32,0.75)">
+          <g className="sky-city">
             <rect x="60" y="522" width="46" height="20" />
             <rect x="150" y="510" width="30" height="32" />
             <rect x="620" y="516" width="52" height="36" />
             <rect x="700" y="528" width="26" height="24" />
             <rect x="1020" y="512" width="40" height="34" />
           </g>
-          <g fill="#fbbf24">
+          <g className="sky-windows">
             <circle cx="90" cy="548" r="1.8" opacity="0.55" />
             <circle cx="230" cy="552" r="1.6" opacity="0.45" />
             <circle cx="420" cy="546" r="1.8" opacity="0.5" />
@@ -662,16 +689,15 @@ export function LoginWorld({
             <circle cx="1040" cy="552" r="1.6" opacity="0.45" />
           </g>
         </svg>
+        {/* солнце: мягкий диск — живёт днём и в закат */}
+        <div className="sky-sun" aria-hidden="true" />
         {/* низ неба темнеет к горизонту: звёзды гаснут — мы на земле,
             а не в космосе */}
         <div
           data-sky-fade
           aria-hidden="true"
           className="absolute inset-x-0 bottom-0 h-[42%]"
-          style={{
-            background:
-              "linear-gradient(to bottom, rgba(6,11,22,0) 0%, rgba(6,11,22,0.55) 45%, #060b16 100%)",
-          }}
+          style={{ background: "var(--tod-fadebg)" }}
         />
       </div>
 
@@ -688,7 +714,7 @@ export function LoginWorld({
             // до z=4800 — дальше проекция сходится к точке за дымкой,
             // а лишняя длина стоила 4 к/с софтверного рендера
             transform: "translate(-50%,-50%) translateY(56px) translateZ(2200px) rotateX(90deg)",
-            backgroundColor: "#070c16",
+            backgroundColor: "var(--tod-ground)",
             backgroundImage:
               "repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 96px)",
           }}
@@ -701,13 +727,13 @@ export function LoginWorld({
             className="absolute left-1/2 top-0 h-full w-[480px] -translate-x-1/2"
             style={{
               // асфальт: дорога СВЕТЛЕЕ земли — читается как дорога
-              backgroundColor: "#141d2f",
+              backgroundColor: "var(--tod-road)",
               backgroundImage:
-                "linear-gradient(90deg, transparent 0 12px, rgba(226,232,240,0.55) 12px 17px, transparent 17px calc(100% - 17px), rgba(226,232,240,0.55) calc(100% - 17px) calc(100% - 12px), transparent calc(100% - 12px)), repeating-linear-gradient(180deg, rgba(34,211,238,0.8) 0 26px, transparent 26px 72px)",
+                "linear-gradient(90deg, transparent 0 12px, var(--tod-edge) 12px 17px, transparent 17px calc(100% - 17px), var(--tod-edge) calc(100% - 17px) calc(100% - 12px), transparent calc(100% - 12px)), repeating-linear-gradient(180deg, var(--tod-dash) 0 26px, transparent 26px 72px)",
               backgroundPosition: "0 0, 0 0",
               backgroundSize: "100% 100%, 12px 100%",
               backgroundRepeat: "no-repeat, repeat-y",
-              boxShadow: "0 0 22px rgba(34,211,238,0.22)",
+              boxShadow: "0 0 22px var(--tod-roadglow)",
             }}
           />
         </div>
@@ -719,8 +745,7 @@ export function LoginWorld({
         aria-hidden="true"
         className="pointer-events-none absolute left-0 top-[36%] h-[24%] w-full"
         style={{
-          background:
-            "linear-gradient(to bottom, rgba(6,11,22,0) 0%, rgba(6,11,22,0.8) 35%, rgba(6,11,22,0.5) 45%, rgba(6,11,22,0.15) 65%, rgba(6,11,22,0) 85%)",
+          background: "var(--tod-fogbg)",
         }}
       />
 
