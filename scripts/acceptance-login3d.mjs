@@ -8,8 +8,14 @@
 // Фазы (песочница тесная — дев между фазами перезапускаем):
 //   PHASE=desktop | warp | mobile | driver | register | all
 //
-// и16: горизонт на 62% высоты, краны 244px, дорога 260px, ели ×18,
-// подбой земли от 66% — «не проваливаемся под дорогу». 54 чека.
+// и16: горизонт ниже середины, краны 244px, дорога 260px, ели ×18,
+// подбой земли — «не проваливаемся под дорогу».
+// и17: горизонт 57% + СВЕТЛЯЩАЯСЯ ЛИНИЯ .world-horizon, земля со
+// светлым дальним краем, дорога растворяется вдали.
+// и18: геометрия двора (центры, основания на земле), Г-фонари
+// попарно, краны ×2, гироскоп 0.06, refs ели/искры разведены;
+// и18б: камера выше плоскости (GROUND_Y=160, origin 58%),
+// hit-тест «внизу земля, вверху небо». 57 чеков.
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -79,6 +85,12 @@ try {
       stacks: document.querySelectorAll("[data-stack]").length,
       motes: document.querySelectorAll("[data-login-mote]").length,
       dots: document.querySelectorAll("[data-route-dot]").length,
+      moteLit: [...document.querySelectorAll("[data-login-mote]")].filter(
+        (el) => getComputedStyle(el).backgroundColor !== "rgba(0, 0, 0, 0)",
+      ).length,
+      treesAnimated: [...document.querySelectorAll("[data-tree]")].filter(
+        (el) => el.style.opacity !== "",
+      ).length,
       ground3d: ground ? getComputedStyle(ground).transform !== "none" : false,
       panelW: r ? Math.round(r.width) : 0,
       panelH: r ? Math.round(r.height) : 0,
@@ -90,7 +102,7 @@ try {
   })
   check("мир: перспектива включена", world.perspective === "900px", `perspective ${world.perspective}`)
   check("терминал: штабеля в объёме", world.stacks >= 8, `${world.stacks} штабелей`)
-  check("терминал: краны-порталы", world.cranes >= 3, `${world.cranes} крана`)
+  check("терминал: краны-порталы (реже)", world.cranes >= 2, `${world.cranes} крана на цикл`)
   check("объём: земля — плоскость в перспективе", world.ground3d, world.ground3d ? "rotateX(90°)" : "нет")
 
   // дорога/земля/небо и13: дорога видна, двор на земле, не «космос»
@@ -103,7 +115,12 @@ try {
       const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
       if (!m) return null
       const v = m[1].split(",").map(Number)
-      return v[12] // tx
+      // визуальный центр = столб Г-фонаря: tx + полширины
+      return v[12] + parseFloat(getComputedStyle(el).width) / 2
+    })
+    const poleZ = [...document.querySelectorAll("[data-pole]")].map((el) => {
+      const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+      return m ? Math.round(parseFloat(m[1].split(",")[14])) : null
     })
     const craneSvg = document.querySelector("[data-crane] svg")
     const backdrop = document.querySelector("[data-ground-backdrop]")
@@ -115,20 +132,80 @@ try {
       fadeH: fade ? Math.round(fade.getBoundingClientRect().height) : 0,
       vh: window.innerHeight,
       poleTx: poles,
+      poleZ,
+      poleSvgW: (() => {
+        const s = document.querySelector("[data-pole] svg")
+        return s ? parseInt(s.getAttribute("width") || "0", 10) : 0
+      })(),
       shadows: document.querySelectorAll(".yard-shadow").length,
       pools: document.querySelectorAll(".yard-pool").length,
       craneH: craneSvg ? parseInt(craneSvg.getAttribute("height") || "0", 10) : 0,
       treeTx: [...document.querySelectorAll("[data-tree]")].map((el) => {
         const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
-        return m ? Math.round(parseFloat(m[1].split(",")[12])) : null
+        return m ? Math.round(parseFloat(m[1].split(",")[12]) + parseFloat(getComputedStyle(el).width) / 2) : null
       }),
       po: document.querySelector("[data-login-world]")
         ? document.querySelector("[data-login-world]").style.perspectiveOrigin
         : "",
+      horizonTop: (() => {
+        const h = document.querySelector(".world-horizon")
+        const r = h ? h.getBoundingClientRect() : null
+        return r ? r.top / window.innerHeight : -1
+      })(),
+      horizonH: (() => {
+        const h = document.querySelector(".world-horizon")
+        const r = h ? h.getBoundingClientRect() : null
+        return r ? r.height : 0
+      })(),
+      groundGrad: ground
+        ? getComputedStyle(ground).backgroundImage.startsWith("linear-gradient(")
+        : false,
+      camAbove: (() => {
+        const po = document.querySelector("[data-login-world]").style.perspectiveOrigin.match(/(\d+)%\s+(\d+)%/)
+        const py = po ? (parseFloat(po[2]) / 100 - 0.5) * window.innerHeight : 9999
+        return py <= 120 // плоскость земли y=160: камера обязана быть выше
+      })(),
+      hitBottom: null,
+      hitLow: null,
+      hitSky: null,
       backdropTop: br ? br.top / window.innerHeight : 0,
       backdropH: br ? br.height / window.innerHeight : 0,
     }
   })
+  // hit-тест: внизу — земля/двор, вверху — небо (ловит «дорогу на
+  // потолке» и «землю ребром»: rect у Chrome для 3D через камеру врёт,
+  // а hit-тест честный). Ригам на секунду включаем pointer-events.
+  const hits = await page.evaluate(() => {
+    // риги остаются pointer-events:none (иначе съедают клик), включаем
+    // точечно сами элементы мира — их и ловит elementFromPoint
+    const els = [...document.querySelectorAll(
+      "[data-ground],[data-road],[data-tree],[data-pole],[data-stack],[data-crane],[data-route-dot],[data-login-mote]",
+    )]
+    const saved = els.map((el) => el.style.pointerEvents)
+    els.forEach((el) => (el.style.pointerEvents = "auto"))
+    const classify = (fy) => {
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight * fy)
+      if (!el) return "none"
+      if (el.closest("[data-road]")) return "road"
+      if (el.closest("[data-ground]")) return "ground"
+      if (el.closest("[data-tree],[data-pole],[data-stack],[data-crane],[data-route-dot],[data-login-mote]")) return "yard"
+      if (el.closest("[data-login-world]")) return "sky"
+      return "other"
+    }
+    const out = { bottom: classify(0.88), low: classify(0.65), sky: classify(0.3) }
+    els.forEach((el, i) => (el.style.pointerEvents = saved[i]))
+    return out
+  })
+  roadWorld.hitBottom = hits.bottom
+  roadWorld.hitLow = hits.low
+  roadWorld.hitSky = hits.sky
+  check(
+    "внизу земля, вверху небо (дорога не в небе)",
+    ["road", "ground", "yard"].includes(roadWorld.hitBottom) &&
+      ["road", "ground", "yard"].includes(roadWorld.hitLow) &&
+      ["sky", "yard"].includes(roadWorld.hitSky),
+    `низ кадра: ${roadWorld.hitBottom}, у горизонта: ${roadWorld.hitLow}, верх: ${roadWorld.hitSky}`,
+  )
   check(
     "дорога — узкая полоса с краями (не взлётка)",
     roadWorld.roadW >= 220 && roadWorld.roadW <= 330 && roadWorld.asphalt !== "rgba(0, 0, 0, 0)" && roadWorld.asphalt !== "transparent",
@@ -136,22 +213,31 @@ try {
   )
   check(
     "земля накрывает весь двор (не космос)",
-    roadWorld.groundW >= 3000 && roadWorld.fadeH >= roadWorld.vh * 0.3,
-    `земля ${roadWorld.groundW}px, гашение звёзд ${Math.round((roadWorld.fadeH / roadWorld.vh) * 100)}% высоты`,
+    roadWorld.groundW >= 3000 && roadWorld.fadeH >= roadWorld.vh * 0.3 && roadWorld.camAbove,
+    `земля ${roadWorld.groundW}px, камера выше плоскости: ${roadWorld.camAbove}, гашение звёзд ${Math.round((roadWorld.fadeH / roadWorld.vh) * 100)}%`,
   )
+  const polePairs = (() => {
+    const byZ = new Map()
+    for (const z of roadWorld.poleZ) if (z != null) byZ.set(z, (byZ.get(z) ?? 0) + 1)
+    let n = 0
+    for (const c of byZ.values()) if (c >= 2) n += 1
+    return n
+  })()
   const alongRoad =
-    roadWorld.poleTx.length >= 6 &&
+    roadWorld.poleTx.length >= 10 &&
     roadWorld.poleTx.every((tx) => tx != null && Math.abs(tx) >= 240 && Math.abs(tx) <= 420) &&
     roadWorld.poleTx.some((tx) => tx < 0) &&
-    roadWorld.poleTx.some((tx) => tx > 0)
+    roadWorld.poleTx.some((tx) => tx > 0) &&
+    polePairs >= 5 &&
+    roadWorld.poleSvgW >= 280
   check(
-    "фонари стоят вдоль дороги (обочины)",
+    "фонари-«Г» попарно с двух сторон дороги",
     alongRoad,
-    roadWorld.poleTx.map((tx) => Math.round(tx)).join(", "),
+    `${roadWorld.poleTx.length} шт, столбы ±${[...new Set(roadWorld.poleTx.map((t) => Math.round(Math.abs(t))))].join("/")}px, пар по глубине ${polePairs}, кронштейн ${roadWorld.poleSvgW}px`,
   )
   check(
     "предметы на земле: тени и пятна света",
-    roadWorld.shadows >= 16 && roadWorld.pools >= 6,
+    roadWorld.shadows >= 14 && roadWorld.pools >= 6,
     `теней ${roadWorld.shadows}, пятен ${roadWorld.pools}`,
   )
   const poY = parseInt((roadWorld.po.match(/(\d+)%\s+(\d+)%/) || [])[2] || "0", 10)
@@ -178,24 +264,65 @@ try {
     roadWorld.backdropTop >= 0.55 && roadWorld.backdropH >= 0.25,
     `подбой земли от ${(roadWorld.backdropTop * 100).toFixed(0)}% высоты, толщиной ${(roadWorld.backdropH * 100).toFixed(0)}%`,
   )
+  check(
+    "горизонт — светящаяся линия (дорога не в небе)",
+    roadWorld.horizonTop > 0.5 &&
+      roadWorld.horizonTop < 0.62 &&
+      roadWorld.horizonH > 0 &&
+      roadWorld.horizonH <= 24 &&
+      roadWorld.groundGrad,
+    `линия на ${(roadWorld.horizonTop * 100).toFixed(1)}% высоты (${Math.round(roadWorld.horizonH)}px), земля с дальним светлым краем: ${roadWorld.groundGrad}`,
+  )
   const tidy = await page.evaluate(() => {
-    const tx = [...document.querySelectorAll("[data-stack]")].map((el) => {
+    const center = (el) => {
       const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
-      return m ? Math.round(parseFloat(m[1].split(",")[12])) : null
-    })
+      if (!m) return null
+      return Math.round(parseFloat(m[1].split(",")[12]) + parseFloat(getComputedStyle(el).width) / 2)
+    }
+    const tx = [...document.querySelectorAll("[data-stack]")].map(center)
     return {
       cols: new Set(tx.map((v) => Math.abs(v ?? 0))).size,
       ok: tx.every((v) => v != null && Math.abs(v) >= 400 && Math.abs(v) <= 700),
-      dots: [...document.querySelectorAll("[data-route-dot]")].every((el) => {
-        const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
-        return m ? Math.abs(parseFloat(m[1].split(",")[12])) <= 2 : false
-      }),
+      dots: [...document.querySelectorAll("[data-route-dot]")].every((el) => Math.abs(center(el)) <= 2),
     }
   })
   check(
     "двор опрятен: ровные колонны, бусины на нитке",
     tidy.ok && tidy.cols <= 4 && tidy.dots,
     `колонн штабелей ${tidy.cols}, точки на оси: ${tidy.dots}`,
+  )
+  const grounded = await page.evaluate(() => {
+    const dolly = window.__loginWorld.dolly
+    const oy =
+      (parseFloat(
+        (document.querySelector("[data-login-world]").style.perspectiveOrigin.match(/(\d+)%\s+(\d+)%/) || [])[2] || "50",
+      ) /
+        100) *
+      window.innerHeight
+    const pick = (sel) => {
+      let best = null
+      for (const el of document.querySelectorAll(sel)) {
+        const m = getComputedStyle(el).transform.match(/matrix3d\(([^)]+)\)/)
+        if (!m) continue
+        const v = m[1].split(",").map(Number)
+        const f = 900 / (900 - (dolly + v[14]))
+        if (f < 0.3 || f > 1.3) continue
+        const score = Math.abs(f - 0.6)
+        if (!best || score < best.score) best = { el, f, score }
+      }
+      if (!best) return null
+      const py = oy - window.innerHeight / 2
+      const groundY = 160 // GROUND_Y в login-world.tsx
+      const pred = oy + (groundY - py) * best.f
+      return Math.abs(best.el.getBoundingClientRect().bottom - pred)
+    }
+    const vals = [pick("[data-stack]"), pick("[data-tree]"), pick("[data-pole]")].filter((x) => x != null)
+    return { n: vals.length, max: vals.length ? Math.max(...vals) : 999 }
+  })
+  check(
+    "двор стоит на земле (основания на плоскости)",
+    grounded.n >= 2 && grounded.max <= 15,
+    `макс. отклонение основания ${grounded.max.toFixed(1)}px у ${grounded.n} типов (до и18 было 20–90px)`,
   )
   const pwa = await page.evaluate(() => ({
     capable:
@@ -249,7 +376,11 @@ try {
     `день: звёзды ${todDay.stars}, солнце ${todDay.sun}; рассвет: звёзды ${todDawn.stars}; закат: дорога ${todDusk.road}; ели ${todDay.leaf} vs ${todDawn.leaf}; сейчас ${todNow.tod} (${hour})`,
   )
   await todPage.close()
-  check("объём: искры летят мимо камеры", world.motes >= 10, `${world.motes} искр`)
+  check(
+    "объём: искры горят и летят, ели в полёте (refs целы)",
+    world.motes >= 10 && world.moteLit >= 10 && world.treesAnimated >= 16,
+    `искр ${world.motes} (горят ${world.moteLit}), елей с анимацией ${world.treesAnimated}/18`,
+  )
   check("маршрут заказов: точки бегут по нитке", world.dots >= 4, `${world.dots} точек`)
   check("форма — объект мира (3D-трансформ)", world.panel3d, world.panel3d ? "matrix3d" : "нет")
 
@@ -516,7 +647,7 @@ try {
   }))
   check(
     "водитель: терминал в объёме",
-    driver.world && driver.cranes >= 3 && driver.stacks >= 8 && driver.motes >= 10 && driver.dots >= 4,
+    driver.world && driver.cranes >= 2 && driver.stacks >= 8 && driver.motes >= 10 && driver.dots >= 4,
     `кранов ${driver.cranes}, штабелей ${driver.stacks}, искр ${driver.motes}, точек ${driver.dots}`,
   )
   check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)

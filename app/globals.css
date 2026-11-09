@@ -1377,7 +1377,10 @@ body {
   --tod-glowa: rgba(21, 94, 117, 0.16);
   --tod-glowb: rgba(99, 102, 241, 0.1);
   --tod-glowc: rgba(245, 158, 11, 0.13);
-  --tod-ground: #070c16;
+  --tod-ground: #0a101f;
+  --tod-groundfar: #131c31;
+  --tod-horizon: rgba(245, 158, 11, 0.5);
+  --tod-roadfar: rgba(245, 158, 11, 0.28);
   --tod-road: #141d2f;
   --tod-edge: rgba(226, 232, 240, 0.55);
   --tod-dash: rgba(34, 211, 238, 0.8);
@@ -1410,7 +1413,10 @@ body {
   --tod-glowa: rgba(21, 94, 117, 0.1);
   --tod-glowb: rgba(99, 102, 241, 0.06);
   --tod-glowc: rgba(245, 158, 11, 0.22);
-  --tod-ground: #0a0f1a;
+  --tod-ground: #0d1322;
+  --tod-groundfar: #1c2440;
+  --tod-horizon: rgba(251, 146, 60, 0.65);
+  --tod-roadfar: rgba(251, 146, 60, 0.32);
   --tod-road: #1a2338;
   --tod-edge: rgba(232, 236, 244, 0.6);
   --tod-dash: rgba(103, 232, 249, 0.75);
@@ -1444,6 +1450,9 @@ body {
   --tod-glowb: rgba(147, 197, 253, 0.14);
   --tod-glowc: rgba(245, 158, 11, 0.05);
   --tod-ground: #2e3947;
+  --tod-groundfar: #46566a;
+  --tod-horizon: rgba(226, 232, 240, 0.55);
+  --tod-roadfar: rgba(226, 232, 240, 0.3);
   --tod-road: #4a5468;
   --tod-edge: rgba(255, 255, 255, 0.85);
   --tod-dash: rgba(59, 130, 246, 0.55);
@@ -1475,7 +1484,10 @@ body {
   --tod-glowa: rgba(21, 94, 117, 0.08);
   --tod-glowb: rgba(129, 102, 241, 0.12);
   --tod-glowc: rgba(251, 146, 60, 0.25);
-  --tod-ground: #0d1120;
+  --tod-ground: #10142a;
+  --tod-groundfar: #232042;
+  --tod-horizon: rgba(251, 146, 60, 0.75);
+  --tod-roadfar: rgba(251, 146, 60, 0.4);
   --tod-road: #1c2440;
   --tod-edge: rgba(232, 236, 244, 0.6);
   --tod-dash: rgba(103, 232, 249, 0.8);
@@ -1541,6 +1553,17 @@ body {
 .pole-cone,
 .pole-lamp {
   opacity: var(--tod-lamp);
+}
+
+/* горизонт — светящаяся линия, где небо встречает землю (и17) */
+.world-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 57%;
+  height: 12px;
+  background: linear-gradient(180deg, transparent 0%, var(--tod-horizon) 44% 56%, transparent 100%);
+  pointer-events: none;
 }
 
 /* ели аллеи: крона двумя тонами + ствол — красятся палитрой суток */
