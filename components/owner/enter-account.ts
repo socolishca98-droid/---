@@ -25,6 +25,22 @@ export async function enterAccount(account: {
   }
   // Вход выполнен, но запись в журнал не сохранилась — сказать об этом вслух.
   if (result.data?.warning) toast.warning(result.data.warning)
+
+  // и31: до перехода проверяем, что выданная сессия действительно действует.
+  // Раньше молчаливый редирект уносил владельца в чужой кабинет, где его
+  // встречал экран входа — «нажимаю на профиль, и меня выкидывает». Теперь
+  // причина показывается здесь, на месте.
+  const check = await fetch(`/api/auth/session?kind=${account.kind === "driver" ? "driver" : "staff"}`, {
+    cache: "no-store",
+  })
+  if (!check.ok) {
+    const failure = (await check.json().catch(() => ({}))) as { error?: string; reason?: string }
+    console.warn("[enter-account] сессия цели не действует:", failure?.reason ?? check.status)
+    toast.error(failure?.error || "Аккаунт открылся, но его сессия не действует")
+    if (failure?.reason) toast.info(`Причина: ${failure.reason}`)
+    return
+  }
+
   toast.success(`Открываю аккаунт: ${account.name}`)
   const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? account.fallbackHref ?? "/lm"
   // Полная перезагрузка: cookie сессии меняется, клиентские контексты читают её заново

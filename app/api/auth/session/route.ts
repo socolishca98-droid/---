@@ -20,9 +20,56 @@ import {
   touchSession,
 } from "@/lib/auth/session"
 
-import { DRIVER_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
+import { DRIVER_COOKIE, STAFF_COOKIE, STAFF_ROLES } from "@/lib/auth/constants"
 import { loadActingOwner } from "@/lib/auth/impersonation"
 import { isOwnerEmail } from "@/lib/auth/owner"
+import { verifySessionToken } from "@/lib/auth/token"
+import { prisma } from "@/lib/prisma"
+
+/**
+ * Почему сессия не действует. Вызывается ТОЛЬКО на отказном ответе —
+// обычный запрос причины не вычисляет.
+ *
+ * Зачем: «меня выкинуло на страницу входа» без причины — это час
+ * дебага по одному описанию. Причина видна владельцу в сообщении
+ * (клиент «входа как» показывает её до перехода) и в журнале браузера.
+ */
+async function sessionFailReason(
+  request: NextRequest,
+  kind: "staff" | "driver",
+): Promise<string> {
+  try {
+    const token =
+      kind === "driver"
+        ? request.cookies.get(DRIVER_COOKIE)?.value
+        : request.cookies.get(STAFF_COOKIE)?.value
+    const payload = token ? await verifySessionToken(token) : null
+    if (!payload) return "token_invalid"
+    if (payload.kind !== kind) return "kind_mismatch"
+    const [row, user] = await Promise.all([
+      prisma.session.findUnique({
+        where: { id: payload.jti },
+        select: { userId: true, revokedAt: true, expiresAt: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { status: true, role: true, driverId: true },
+      }),
+    ])
+    if (!row) return "session_row_missing"
+    if (row.userId !== payload.sub) return "session_user_mismatch"
+    if (row.revokedAt) return "session_revoked"
+    if (row.expiresAt.getTime() <= Date.now()) return "session_expired"
+    if (!user) return "user_missing"
+    if (user.status === "suspended") return "user_suspended"
+    if (user.status !== "active") return "user_inactive"
+    if (kind === "staff" && !STAFF_ROLES.includes(user.role as never)) return "role_rejected"
+    if (kind === "driver" && (user.role !== "driver" || !user.driverId)) return "role_rejected"
+    return "unknown"
+  } catch {
+    return "check_failed"
+  }
+}
 
 export const dynamic = "force-dynamic"
 
@@ -44,7 +91,12 @@ export async function GET(request: NextRequest) {
       const session = await loadDriverSession(request)
       if (!session) {
         return NextResponse.json(
-          { success: false, error: "Сессия водителя недействительна", code: "unauthorized" },
+          {
+            success: false,
+            error: "Сессия водителя недействительна",
+            code: "unauthorized",
+            reason: await sessionFailReason(request, "driver"),
+          },
           { status: 401 },
         )
       }
@@ -61,7 +113,12 @@ export async function GET(request: NextRequest) {
       const session = await loadStaffSession(request)
       if (!session) {
         return NextResponse.json(
-          { success: false, error: "Сессия недействительна", code: "unauthorized" },
+          {
+            success: false,
+            error: "Сессия недействительна",
+            code: "unauthorized",
+            reason: await sessionFailReason(request, "staff"),
+          },
           { status: 401 },
         )
       }

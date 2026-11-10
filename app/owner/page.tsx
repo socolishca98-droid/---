@@ -96,7 +96,14 @@ interface AccountsResponse {
     id: string
     name: string
     users: { id: string; name: string; email: string | null; role: string; status: string }[]
-    drivers: { id: string; userId: string | null; name: string; phone: string; vehiclePlate: string | null }[]
+    drivers: {
+      id: string
+      userId: string | null
+      name: string
+      phone: string
+      vehiclePlate: string | null
+      userStatus: string | null
+    }[]
   }[]
 }
 
@@ -128,6 +135,7 @@ export default function OwnerHomePage() {
         name: u.name,
         sub: `${ROLE_LABELS[u.role] ?? u.role} · ${u.email ?? "без почты"}`,
         org: org.name,
+        closed: u.status === "suspended" || u.status === "pending",
       })),
       ...org.drivers.map((d) => ({
         key: `d-${d.id}`,
@@ -136,6 +144,7 @@ export default function OwnerHomePage() {
         name: d.name,
         sub: `Водитель · ${d.phone}${d.vehiclePlate ? ` · ${d.vehiclePlate}` : ""}`,
         org: org.name,
+        closed: d.userStatus === "suspended" || d.userStatus === "pending",
       })),
     ])
   }, [people.data, search])
@@ -253,12 +262,13 @@ export default function OwnerHomePage() {
                   </div>
                   <button
                     type="button"
-                    disabled={busyId === m.id}
+                    disabled={busyId === m.id || m.closed}
+                    title={m.closed ? "Доступ закрыт — войти в эту учётную запись нельзя" : undefined}
                     onClick={() => enter({ kind: m.kind, id: m.id, name: m.name })}
                     className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-[13px] transition-colors duration-200 hover:bg-secondary disabled:opacity-60"
                   >
                     {busyId === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCog className="h-3.5 w-3.5" />}
-                    Войти
+                    {m.closed ? "Доступ закрыт" : "Войти"}
                   </button>
                 </li>
               ))}

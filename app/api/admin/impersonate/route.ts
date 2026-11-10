@@ -96,10 +96,28 @@ export async function POST(request: NextRequest) {
     // находим или создаём её — иначе сессию выпустить не для кого.
     const existing = await prisma.user.findFirst({
       where: { driverId: driver.id },
-      select: { id: true, status: true, email: true },
+      select: { id: true, status: true, email: true, suspendReason: true },
     })
 
     if (existing) {
+      // Та же защита, что и у входа по userId: сессия закрытой учётной
+      // записи отвергается на каждом запросе — владелец уехал бы в чужой
+      // кабинет и сразу выпал на экран входа, не понимая почему.
+      // и31: раньше эта ветка статус не проверяла — поиск на /owner
+      // давал «Войти» по закрытым водителям, и симптом был именно таким.
+      if (existing.status !== "active") {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              existing.status === "suspended"
+                ? `Доступ закрыт: ${existing.suspendReason ?? "учётная запись заблокирована"}`
+                : "Учётная запись не активна — войти в неё нельзя",
+            code: "target_inactive",
+          },
+          { status: 409 },
+        )
+      }
       targetUserId = existing.id
       targetEmail = existing.email
     } else {
