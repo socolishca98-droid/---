@@ -22,6 +22,7 @@ import "leaflet/dist/leaflet.css"
 import {
   ChevronDown,
   ChevronUp,
+  Compass,
   Crosshair,
   Info,
   LocateFixed,
@@ -361,6 +362,8 @@ export function DriversMap() {
             radius: isSelected ? 20 : 15,
             fillOpacity: isSelected ? 0.3 : 0.16,
           })
+          // Выбранная машина «дышит» — ореел пульсирует
+          halo.getElement()?.classList.toggle("lm-halo-pulse", isSelected)
         }
       } else {
         // Ореол под маркером: мягкое свечение цвета статуса
@@ -369,6 +372,7 @@ export function DriversMap() {
           stroke: false,
           fillColor: statusColor,
           fillOpacity: 0.16,
+          className: isSelected ? "lm-halo-pulse" : undefined,
         })
         newHalo.addTo(map)
         driverHalos.current.set(driver.id, newHalo)
@@ -437,6 +441,8 @@ export function DriversMap() {
       const existing = routeLines.current.get(route.id)
       if (existing) {
         existing.main.setLatLngs(route.coordinates)
+        // Нить выбранного рейса «едет»: бегущий пунктир по ходу движения
+        existing.main.getElement()?.classList.toggle("lm-route-flow", isActive)
         existing.main.setStyle({
           color,
           weight,
@@ -462,6 +468,7 @@ export function DriversMap() {
           color,
           weight,
           pane: "routePane",
+          className: isActive ? "lm-route-flow" : undefined,
         }).addTo(map)
         routeLines.current.set(route.id, { casing, main })
       }
@@ -788,7 +795,7 @@ export function DriversMap() {
         // иначе кнопки «На карте» и «Позвонить» прячутся под неё
         <div className="pointer-events-none absolute inset-x-0 bottom-16 z-[3]">
           <div className="mx-auto max-w-md px-3">
-            <div className="pointer-events-auto rounded-xl border border-border bg-card shadow-xl p-3.5 backdrop-blur">
+            <div className="lm-glass-card pointer-events-auto p-3.5" data-lm-glass>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-[14.5px] font-medium text-foreground">{selectedDriver.name}</p>
@@ -813,14 +820,15 @@ export function DriversMap() {
                 <button
                   type="button"
                   onClick={() => focusDriver(selectedDriver)}
-                  className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] font-medium text-foreground active:opacity-70"
+                  aria-label="Показать на карте"
+                  className="lm-glass-btn flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] font-medium text-foreground active:opacity-70"
                 >
-                  <Crosshair className="h-4 w-4" /> На карте
+                  <Compass className="h-4 w-4" /> На карте
                 </button>
                 {telHref(selectedDriver.phone) ? (
                   <a
                     href={telHref(selectedDriver.phone) as string}
-                    className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[13px] font-medium text-success active:opacity-70"
+                    className="lm-glass-btn lm-glass-btn-success flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-success/15 text-[13px] font-medium text-success active:opacity-70"
                   >
                     <Phone className="h-4 w-4" /> Позвонить
                   </a>
@@ -988,7 +996,7 @@ export function DriversMap() {
                 <button
                   type="button"
                   onClick={() => void load()}
-                  className="mt-2 flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] text-foreground/90"
+                  className="lm-glass-btn mt-2 flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-secondary text-[13px] text-foreground/90"
                 >
                   <RefreshCw className="h-4 w-4" /> Обновить
                 </button>

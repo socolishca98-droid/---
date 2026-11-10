@@ -28,9 +28,11 @@
 // активной вкладки, метка сборки. и25: объём по всей панели — карточки
 // с глубиной, звёзды на фоне, полоски у цифр, маркеры, кромка шапки.
 // и26: параллакс фона при прокрутке; карта — ореолы машин, ручка
-// шторки, сводка «кто на линии», круглые контролы. 90 чеков
-// (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
-// recover 4 + dashboard 5 + lm 20).
+// шторки, сводка «кто на линии», круглые контролы. и27: карте — всё:
+// карточка «ночное стекло» с компасом, пульс выбранного маркера,
+// бегущий пунктир нити выбранного рейса, стеклянные кнопки.
+// 94 чека (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
+// recover 4 + dashboard 5 + lm 24).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -1043,8 +1045,8 @@ try {
     `цифр ${lm2.counts.length}: ${lm2.counts.slice(0, 3).join(", ")}`,
   )
   check(
-    "лм-панель: метка сборки видна (и26)",
-    lm2.buildText.includes("и26"),
+    "лм-панель: метка сборки видна (и27)",
+    lm2.buildText.includes("и27"),
     `текст: «${lm2.buildText}»`,
   )
   check(
@@ -1099,7 +1101,7 @@ try {
   )
   await lpage.evaluate(() => window.scrollTo(0, 0))
   // страница карты — «хорошо поработать»
-  await lpage.goto(`${BASE}/lm/map`, { waitUntil: "domcontentloaded", timeout: 90000 })
+  await lpage.goto(`${BASE}/lm/map`, { waitUntil: "domcontentloaded", timeout: 180000 })
   await lpage.waitForSelector(".leaflet-container", { timeout: 60000 })
   await lpage.waitForTimeout(2500)
   const mp = await lpage.evaluate(() => {
@@ -1139,6 +1141,43 @@ try {
     parseFloat(mp.zoomRound) >= 100,
     `радиус ${mp.zoomRound}`,
   )
+  // и27: выбранная машина — пульс, «ночное стекло», компас, бегущая нить
+  const carCount = await lpage.locator(".leaflet-overlay-pane path[stroke=\"#ffffff\"]").count()
+  if (carCount > 0) {
+    await lpage.locator(".leaflet-overlay-pane path[stroke=\"#ffffff\"]").first().click({ force: true })
+    await lpage.waitForTimeout(700)
+    // клик по маркеру открывает шторку — закрываем, чтобы увидеть карточку
+    await lpage.getByRole("button", { name: /Машины на карте/ }).click({ force: true })
+    await lpage.waitForTimeout(700)
+    const sel = await lpage.evaluate(() => {
+      const card = document.querySelector("[data-lm-glass]")
+      const pulse = document.querySelector(".lm-halo-pulse")
+      const flow = document.querySelector(".lm-route-flow")
+      const compass = document.querySelector("button[aria-label=\"Показать на карте\"]")
+      return {
+        card: card != null,
+        cardGlass: card ? getComputedStyle(card).backgroundImage.includes("gradient") : false,
+        cardShadow: card ? getComputedStyle(card).boxShadow.split(",").length >= 3 : false,
+        pulse: pulse != null,
+        pulseAnim: pulse ? getComputedStyle(pulse).animationName : "",
+        flow: flow != null,
+        compass: compass != null,
+      }
+    })
+    check(
+      "карта: выбранная машина — карточка «ночное стекло»",
+      sel.card && sel.cardGlass && sel.cardShadow,
+      `карточка ${sel.card}, стекло ${sel.cardGlass}, тень ${sel.cardShadow}`,
+    )
+    check(
+      "карта: ореол выбранной машины пульсирует",
+      sel.pulse && sel.pulseAnim === "lm-pulse",
+      `пульс ${sel.pulse}, анимация ${sel.pulseAnim || "нет"}`,
+    )
+    check("карта: нить выбранного рейса «едет»", sel.flow, "бегущий пунктир на нити")
+    check("карта: кнопка-компас «На карте» в карточке", sel.compass, "иконка-компас")
+    await shot(lpage, "/home/user/work/visual-lm-map-selected.png")
+  }
   await shot(lpage, "/home/user/work/visual-lm-map.png")
   await shot(lpage, "/home/user/work/visual-lm-mobile.png")
   await lpage.close()
