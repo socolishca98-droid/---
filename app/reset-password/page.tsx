@@ -18,6 +18,7 @@ import { AlertCircle, CheckCircle2, KeyRound, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { formatHumanDate } from "@/lib/ui/greeting"
 import { Label } from "@/components/ui/label"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { LoginWorld } from "@/components/visual/login-world"
@@ -39,6 +40,11 @@ function ResetPasswordForm() {
   const token = (searchParams?.get("token") || "").trim()
 
   const [checking, setChecking] = useState(true)
+
+  // Дата на пропуске — на клиенте, чтобы SSR не расходился с гидратацией
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => setNow(new Date()), [])
+  const dateLabel = now ? formatHumanDate(now) : undefined
   const [linkError, setLinkError] = useState("")
   const [password, setPassword] = useState("")
   const [repeat, setRepeat] = useState("")
@@ -145,6 +151,7 @@ function ResetPasswordForm() {
 
   return (
     <ResetWorld
+      dateLabel={dateLabel}
       title={done ? "Пароль изменён" : "Новый пароль"}
       subtitle={
         done
@@ -230,10 +237,12 @@ function ResetPasswordForm() {
 function ResetWorld({
   title,
   subtitle,
+  dateLabel,
   children,
 }: {
   title: string
   subtitle?: string
+  dateLabel?: string
   children: React.ReactNode
 }) {
   return (
@@ -256,7 +265,7 @@ function ResetWorld({
     >
       <div className="mb-4 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-          Восстановление доступа
+          Восстановление{dateLabel ? ` · ${dateLabel}` : ""}
         </p>
         <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">{title}</h1>
         {subtitle ? (

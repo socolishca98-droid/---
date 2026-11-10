@@ -36,7 +36,9 @@
 // тёплый «цвет груза» вместо радуги. и29: нитки ПО ДОРОГАМ — успешная
 // OSRM-геометрия сохраняется в БД (RouteGeometryCache) и переживает
 // недоступность маршрутизатора. 98 чеков (desktop 33 + warp 3 +
-// mobile 11 + driver 8 + register 6 + recover 4 + dashboard 5 + lm 28).
+// mobile 11 + driver 10 + register 7 + recover 5 + dashboard 5 + lm 28).
+// и30: паритет страниц входа — приветствие/дата и «дыхание» рамки у
+// водителя, дата на регистрации и восстановлении. 102 чека.
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -740,6 +742,29 @@ try {
     `кранов ${driver.cranes}, штабелей ${driver.stacks}, искр ${driver.motes}, точек ${driver.dots}`,
   )
   check("водитель: поля и запуск «В путь»", driver.phone && driver.password && driver.button, `поля:${driver.phone && driver.password}, кнопка:${driver.button}`)
+  // и30: паритет с входом логиста — приветствие, дата, «дыхание» рамки
+  const driverEntry = await dpage.evaluate(() => {
+    const doc = document.querySelector("[data-login-doc]")
+    const text = doc?.textContent ?? ""
+    const dateRe = /(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье), \d+ [а-я]+/
+    return { date: dateRe.test(text), greeting: /Добр/.test(text) }
+  })
+  check(
+    "водитель: приветствие и дата на пропуске — как у логиста",
+    driverEntry.greeting && driverEntry.date,
+    `приветствие ${driverEntry.greeting}, дата ${driverEntry.date}`,
+  )
+  await dpage.focus("#driver-phone")
+  await dpage.waitForTimeout(600)
+  const breathe = await dpage.evaluate(() => {
+    const doc = document.querySelector("[data-login-doc]")
+    return doc ? getComputedStyle(doc).animationName : ""
+  })
+  check(
+    "водитель: рамка пропуска «дышит» при вводе",
+    breathe === "login-card-breathe",
+    `анимация ${breathe || "нет"}`,
+  )
   check("водитель: заголовок в небе", driver.headline.includes("Доброй"), `«${driver.headline}»`)
 
   // палец по дороге
@@ -823,6 +848,11 @@ try {
     rDoc.doc && rDoc.barcode && rDoc.scroll,
     `документ ${rDoc.doc}, штрихкод ${rDoc.barcode}`,
   )
+  const regDate = await rpage.evaluate(() => {
+    const text = document.querySelector("[data-login-doc]")?.textContent ?? ""
+    return /(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье), \d+ [а-я]+/.test(text)
+  })
+  check("регистрация: дата на пропуске — как у логиста", regDate, "строка с днём недели")
   await rpage.waitForTimeout(600)
   await shot(rpage, "/home/user/work/visual-register.png")
   check("регистрация: скриншот сохранён", true, "work/visual-register.png")
@@ -854,6 +884,11 @@ try {
     forgot.world && forgot.doc && forgot.email && forgot.back,
     `мир ${forgot.world}, документ ${forgot.doc}, назад ко входу ${forgot.back}`,
   )
+  const forgotDate = await fpage.evaluate(() => {
+    const text = document.querySelector("[data-login-doc]")?.textContent ?? ""
+    return /(понедельник|вторник|среда|четверг|пятница|суббота|воскресенье), \d+ [а-я]+/.test(text)
+  })
+  check("восстановление: дата на пропуске — как у логиста", forgotDate, "строка с днём недели")
   const tpage = await fContext.newPage()
   const tErrors = []
   tpage.on("pageerror", (e) => tErrors.push(String(e).slice(0, 150)))

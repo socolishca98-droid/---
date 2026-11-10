@@ -34,6 +34,7 @@ import {
 } from "lucide-react"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { LoginWorld } from "@/components/visual/login-world"
+import { formatHumanDate } from "@/lib/ui/greeting"
 
 type Mode = "create" | "join"
 
@@ -43,6 +44,11 @@ function RegisterForm() {
 
   const inviteFromLink = (searchParams?.get("invite") || "").trim().toUpperCase()
   const [mode, setMode] = useState<Mode>(inviteFromLink ? "join" : "create")
+
+  // Дата на пропуске — считаем на клиенте, чтобы SSR не расходился с гидратацией
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => setNow(new Date()), [])
+  const dateLabel = now ? formatHumanDate(now) : undefined
 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -156,7 +162,7 @@ function RegisterForm() {
       >
         <div className="mb-3 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-            Регистрация
+            Регистрация{dateLabel ? ` · ${dateLabel}` : ""}
           </p>
           <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">
             {submitted ? (submitted.canLogin ? "Организация готова" : "Заявка отправлена") : "Новый пропуск"}

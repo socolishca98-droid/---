@@ -24,6 +24,7 @@ import { Phone, Loader2, ArrowRight, Lock, AlertCircle, Truck } from "lucide-rea
 import { LoginWorld } from "@/components/visual/login-world"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
 export default function DriverLoginPage() {
   const router = useRouter()
@@ -76,6 +77,12 @@ export default function DriverLoginPage() {
 
   const canSubmit = phone.trim().length > 0 && password.length > 0
 
+  // Приветствие по времени суток считаем на клиенте: SSR и гидратация
+  // не должны расходиться из-за часов — как на входе логиста
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => setNow(new Date()), [])
+  const dateLabel = now ? formatHumanDate(now) : undefined
+
   return (
     <div className="relative min-h-dvh">
       <LoginWorld
@@ -98,7 +105,19 @@ export default function DriverLoginPage() {
           </div>
         }
       >
-        <form onSubmit={handleLogin} className="w-full space-y-3">
+        <div className="mb-4 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-400">
+            {now ? formatGreeting(undefined, now) : "Вход"}
+            {dateLabel ? ` · ${dateLabel}` : ""}
+          </p>
+          <h1 className="mt-1 text-[17px] font-bold tracking-tight text-white sm:text-xl">
+            Вход в приложение
+          </h1>
+          <p className="mt-1 hidden text-xs leading-relaxed text-slate-400 sm:block">
+            Рейсы, маршрут и документы — без звонков диспетчеру
+          </p>
+        </div>
+        <form onSubmit={handleLogin} className="w-full space-y-3 sm:space-y-4">
           <div>
             <label htmlFor="driver-phone" className="mb-1.5 block text-[13px] text-slate-400">
               Телефон
@@ -113,7 +132,7 @@ export default function DriverLoginPage() {
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="+7 (999) 123-45-67"
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] py-3.5 pl-12 pr-4 text-[16px] sm:py-4 text-white placeholder-slate-600 caret-orange-400 transition-colors focus:border-orange-400/70 focus:bg-white/[0.09] focus:outline-none"
+                className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] pl-12 pr-4 text-[16px] text-white placeholder:text-slate-500 caret-orange-400 transition-colors focus-visible:border-orange-400/60 focus-visible:bg-white/[0.08] focus-visible:outline-none"
               />
             </div>
           </div>
@@ -131,7 +150,7 @@ export default function DriverLoginPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="выдал логист"
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] py-3.5 pl-12 pr-4 text-[16px] sm:py-4 text-white placeholder-slate-600 caret-orange-400 transition-colors focus:border-orange-400/70 focus:bg-white/[0.09] focus:outline-none"
+                className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] pl-12 pr-4 text-[16px] text-white placeholder:text-slate-500 caret-orange-400 transition-colors focus-visible:border-orange-400/60 focus-visible:bg-white/[0.08] focus-visible:outline-none"
               />
             </div>
           </div>
@@ -149,7 +168,7 @@ export default function DriverLoginPage() {
           <button
             type="submit"
             disabled={isLoading || !canSubmit}
-            className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 py-3.5 sm:py-4 text-[16px] font-bold text-white shadow-[0_12px_40px_-10px_rgba(251,146,60,0.65)] transition active:scale-[0.98] active:brightness-95 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
+            className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-400 text-[15px] font-bold text-white shadow-[0_12px_40px_-10px_rgba(251,146,60,0.65)] transition active:scale-[0.98] active:brightness-95 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
           >
             {isLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />

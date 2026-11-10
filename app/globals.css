@@ -1124,6 +1124,12 @@ body {
   animation: login-card-breathe 3.4s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .login-card-glow:focus-within {
+    animation: none;
+  }
+}
+
 @keyframes login-card-breathe {
   0%,
   100% {

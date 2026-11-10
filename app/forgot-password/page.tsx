@@ -13,7 +13,7 @@
  * логист, об этом сказано прямо на странице.
  */
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import Link from "next/link"
 
 import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Mail } from "lucide-react"
@@ -23,9 +23,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { LoginWorld } from "@/components/visual/login-world"
+import { formatHumanDate } from "@/lib/ui/greeting"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
+
+  // Дата на пропуске — на клиенте, чтобы SSR не расходился с гидратацией
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => setNow(new Date()), [])
+  const dateLabel = now ? formatHumanDate(now) : undefined
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [done, setDone] = useState(false)
@@ -83,7 +89,7 @@ export default function ForgotPasswordPage() {
     >
       <div className="mb-4 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-          Восстановление доступа
+          Восстановление{dateLabel ? ` · ${dateLabel}` : ""}
         </p>
         <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">
           {done ? "Проверьте почту" : "Забыли пароль"}

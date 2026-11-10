@@ -1121,7 +1121,7 @@ export function LoginWorld({
               ) : (
                 <div
                   data-login-doc
-                  className="relative rounded-2xl border border-white/10 bg-[#0b1322]/40 px-5 pb-3.5 pt-3 shadow-[0_30px_70px_-25px_rgba(0,0,0,0.8)] backdrop-blur-xl"
+                  className="login-card-glow relative rounded-2xl border border-white/10 bg-[#0b1322]/40 px-5 pb-3.5 pt-3 shadow-[0_30px_70px_-25px_rgba(0,0,0,0.8)] backdrop-blur-xl"
                 >
                   <div
                     aria-hidden="true"
