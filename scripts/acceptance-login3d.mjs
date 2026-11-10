@@ -23,8 +23,10 @@
 // (≥40px перекрытия); дашборд — нижняя навигация «как у приложения».
 // и23: панель логиста /lm — там, где владелец живёт на телефоне:
 // main-каркас (пауза прилёта), лестница panel-rise карточек главной,
-// въезд нижней навигации. 75 чеков (desktop 33 + warp 3 + mobile 11 +
-// driver 8 + register 6 + recover 4 + dashboard 5 + lm 5).
+// въезд нижней навигации. и24: «видно глазами» — плитки «Сделать
+// сейчас» с крупными цифрами-счётчиками, ночной фон панели, пилюля
+// активной вкладки, метка сборки. 80 чеков (desktop 33 + warp 3 +
+// mobile 11 + driver 8 + register 6 + recover 4 + dashboard 5 + lm 10).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -1008,6 +1010,49 @@ try {
   )
   const lErr = lErrors.filter((t) => !isNoise(t))
   check("лм-панель: ошибок нет", lErr.length === 0, lErr.slice(0, 2).join(" || ") || "нет")
+  // и24: перемены, видимые в статичном кадре
+  const lm2 = await lpage.evaluate(() => {
+    const tiles = [...document.querySelectorAll(".lm-tile")]
+    const build = document.querySelector("[data-build]")
+    const activeTab = document.querySelector("nav [data-active=\"true\"]")
+    const canvas = document.querySelector(".lm-canvas-night")
+    return {
+      tiles: tiles.length,
+      tileGradient: tiles.length > 0 && getComputedStyle(tiles[0]).backgroundImage.includes("gradient"),
+      counts: [...document.querySelectorAll(".lm-tile-count")]
+        .map((el) => el.textContent.trim())
+        .filter(Boolean),
+      buildText: build?.textContent.trim() ?? "",
+      activeTabs: document.querySelectorAll("nav [data-active=\"true\"]").length,
+      activePill: activeTab?.querySelector(".lm-nav-pill") != null,
+      canvasNight: canvas != null && getComputedStyle(canvas).backgroundImage.includes("gradient"),
+    }
+  })
+  check(
+    "лм-панель: «Сделать сейчас» — крупные плитки с градиентом",
+    lm2.tiles >= 2 && lm2.tileGradient,
+    `плиток ${lm2.tiles}, градиент ${lm2.tileGradient}`,
+  )
+  check(
+    "лм-панель: на плитках — крупные цифры-счётчики",
+    lm2.counts.length >= 2 && lm2.counts.every((t) => /\d/.test(t)),
+    `цифр ${lm2.counts.length}: ${lm2.counts.slice(0, 3).join(", ")}`,
+  )
+  check(
+    "лм-панель: метка сборки видна (и24)",
+    lm2.buildText.includes("и24"),
+    `текст: «${lm2.buildText}»`,
+  )
+  check(
+    "лм-панель: активная вкладка — со светящейся пилюлей",
+    lm2.activeTabs === 1 && lm2.activePill,
+    `активных ${lm2.activeTabs}, пилюля ${lm2.activePill}`,
+  )
+  check(
+    "лм-панель: фон — ночной, в тон миру входа",
+    lm2.canvasNight,
+    "градиент на холсте панели",
+  )
   await shot(lpage, "/home/user/work/visual-lm-mobile.png")
   await lpage.close()
   await lContext.close()

@@ -30,6 +30,8 @@ import {
   Wallet,
 } from "lucide-react"
 
+import { AnimatedNumber } from "@/components/visual/animated-number"
+
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { OrderCard } from "@/components/logist-mobile/order-card"
 import { PullToRefresh } from "@/components/logist-mobile/pull-to-refresh"
@@ -62,10 +64,14 @@ interface HomeAction {
   key: string
   href: string
   icon: ComponentType<{ className?: string }>
-  /** Готовая фраза: «2 заявки на доступ» */
+  /** Готовая фраза: «2 заявки на доступ» — для aria-label */
   title: string
   hint: string
   tone: "danger" | "warn" | "default"
+  /** Число — крупной цифрой на плитке */
+  count: number
+  /** Подпись под цифрой: «заказов просрочено» */
+  caption: string
 }
 
 export default function LogistHomePage() {
@@ -161,6 +167,8 @@ export default function LogistHomePage() {
       title: `${pendingCount} ${plural(pendingCount, ["заявка", "заявки", "заявок"])} на доступ`,
       hint: "ждут одобрения",
       tone: "warn",
+      count: pendingCount,
+      caption: `${plural(pendingCount, ["заявка", "заявки", "заявок"])} на доступ`,
     },
     {
       key: "overdue",
@@ -169,6 +177,8 @@ export default function LogistHomePage() {
       title: `${overdueOrders.length} ${plural(overdueOrders.length, ["заказ", "заказа", "заказов"])} просрочено`,
       hint: "срок уже прошёл",
       tone: "danger",
+      count: overdueOrders.length,
+      caption: `${plural(overdueOrders.length, ["заказ", "заказа", "заказов"])} просрочено`,
     },
     {
       key: "unassigned",
@@ -177,6 +187,8 @@ export default function LogistHomePage() {
       title: `${unassignedOrders.length} ${plural(unassignedOrders.length, ["заказ", "заказа", "заказов"])} без водителя`,
       hint: "нужно назначить",
       tone: "warn",
+      count: unassignedOrders.length,
+      caption: `${plural(unassignedOrders.length, ["заказ", "заказа", "заказов"])} без водителя`,
     },
     {
       key: "routes",
@@ -185,6 +197,8 @@ export default function LogistHomePage() {
       title: `${routesWithoutDriver.length} ${plural(routesWithoutDriver.length, ["рейс", "рейса", "рейсов"])} без водителя`,
       hint: "рейс не поедет",
       tone: "warn",
+      count: routesWithoutDriver.length,
+      caption: `${plural(routesWithoutDriver.length, ["рейс", "рейса", "рейсов"])} без водителя`,
     },
     {
       key: "docs-missing",
@@ -193,6 +207,8 @@ export default function LogistHomePage() {
       title: `${routesAwaitingDocuments.length} ${plural(routesAwaitingDocuments.length, ["рейс", "рейса", "рейсов"])} ждут данные для документов`,
       hint: "рейс закрыт, а счёт и акт не выйдут",
       tone: "warn",
+      count: routesAwaitingDocuments.length,
+      caption: `${plural(routesAwaitingDocuments.length, ["рейс", "рейса", "рейсов"])} ждут документы`,
     },
     {
       key: "payments-overdue",
@@ -201,6 +217,8 @@ export default function LogistHomePage() {
       title: `${overduePayments.length} ${plural(overduePayments.length, ["оплата", "оплаты", "оплат"])} просрочено`,
       hint: `на ${overduePaymentsSum.toLocaleString("ru-RU").replace(/\u00a0/g, " ")} ₽ — срок прошёл`,
       tone: "danger",
+      count: overduePayments.length,
+      caption: `${plural(overduePayments.length, ["оплата", "оплаты", "оплат"])} просрочено`,
     },
   ] as HomeAction[])
     .filter((action) => {
@@ -218,6 +236,10 @@ export default function LogistHomePage() {
     month: "long",
     weekday: "long",
   })
+  const hour = new Date().getHours()
+  const greeting =
+    hour < 5 ? "Доброй ночи" : hour < 12 ? "Доброе утро" : hour < 18 ? "Добрый день" : "Добрый вечер"
+
 
   const refresh = () => {
     orders.reload()
@@ -228,7 +250,7 @@ export default function LogistHomePage() {
 
   return (
     <>
-      <LogistHeader title="Главная" subtitle={today} userName={user?.name} />
+      <LogistHeader title={greeting} subtitle={today} userName={user?.name} />
 
       <PullToRefresh onRefresh={refresh} className="px-4 pt-4">
         {/* Карточка дежурного убрана вместе с экраном: возвращаемся к нему
@@ -249,24 +271,30 @@ export default function LogistHomePage() {
           <div className="lm-stagger space-y-2.5">
             {actions.map((action) => {
               const Icon = action.icon
-              const tone =
+              const tileTone =
                 action.tone === "danger"
-                  ? "border-destructive/35 bg-destructive/10 text-destructive"
-                  : "border-warning/30 bg-warning/10 text-warning"
-              const iconTone = action.tone === "danger" ? "text-destructive" : "text-warning"
+                  ? "lm-tile lm-tile-danger"
+                  : "lm-tile lm-tile-warn"
 
               return (
                 <Link
                   key={action.key}
                   href={action.href}
-                  className={`flex min-h-[64px] items-center gap-3 rounded-xl border px-4 active:opacity-90 ${tone}`}
+                  aria-label={action.title}
+                  data-count={action.count}
+                  className={`${tileTone} active:opacity-90`}
                 >
-                  <Icon className={`h-5 w-5 shrink-0 ${iconTone}`} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[14.5px] font-semibold">{action.title}</span>
-                    <span className="mt-0.5 block text-[12px] text-muted-foreground/90">{action.hint}</span>
+                  <span className="lm-tile-badge">
+                    <Icon className="h-5.5 w-5.5" />
                   </span>
-                  <ArrowRight className={`h-4 w-4 shrink-0 ${iconTone}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2.5">
+                      <AnimatedNumber value={action.count} className="lm-tile-count" />
+                      <span className="lm-tile-caption">{action.caption}</span>
+                    </span>
+                    <span className="lm-tile-hint block">{action.hint}</span>
+                  </span>
+                  <ArrowRight className="h-4.5 w-4.5 shrink-0 opacity-80" />
                 </Link>
               )
             })}
@@ -454,6 +482,13 @@ export default function LogistHomePage() {
           </div>
         )}
         </div>
+
+        {/* Метка сборки: если она не совпадает с последней — версия
+            не долетела до телефона, и дело в доставке, не в правках */}
+        <p className="lm-build" data-build="и24">
+          <span className="lm-build-dot" aria-hidden />
+          сборка и24
+        </p>
       </PullToRefresh>
     </>
   )

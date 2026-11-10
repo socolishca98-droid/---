@@ -56,7 +56,7 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen text-foreground">
       {/* Статичный фон компьютерной версии: градиент + сетка, без анимаций */}
-      <div className="theme-canvas" aria-hidden>
+      <div className="theme-canvas lm-canvas-night" aria-hidden>
         <div className="theme-canvas__grid" />
       </div>
 

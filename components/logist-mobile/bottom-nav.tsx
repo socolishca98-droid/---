@@ -39,11 +39,15 @@ export function LogistBottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
+              data-active={active ? "true" : undefined}
               className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium ${
                 active ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.9} />
+              <span className="relative flex">
+                <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.9} />
+                {active ? <span className="lm-nav-pill" aria-hidden /> : null}
+              </span>
               {tab.label}
             </Link>
           )
