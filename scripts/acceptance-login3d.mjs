@@ -25,8 +25,10 @@
 // main-каркас (пауза прилёта), лестница panel-rise карточек главной,
 // въезд нижней навигации. и24: «видно глазами» — плитки «Сделать
 // сейчас» с крупными цифрами-счётчиками, ночной фон панели, пилюля
-// активной вкладки, метка сборки. 80 чеков (desktop 33 + warp 3 +
-// mobile 11 + driver 8 + register 6 + recover 4 + dashboard 5 + lm 10).
+// активной вкладки, метка сборки. и25: объём по всей панели — карточки
+// с глубиной, звёзды на фоне, полоски у цифр, маркеры, кромка шапки.
+// 85 чеков (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
+// recover 4 + dashboard 5 + lm 15).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -1053,6 +1055,34 @@ try {
     lm2.canvasNight,
     "градиент на холсте панели",
   )
+  // и25: объём по всей панели
+  const lm3 = await lpage.evaluate(() => {
+    const canvas = document.querySelector(".lm-canvas-night")
+    const card = document.querySelector("main .bg-card")
+    const header = document.querySelector("header")
+    const stars = canvas ? getComputedStyle(canvas, "::after") : null
+    return {
+      stars: stars != null && stars.backgroundImage !== "none",
+      cardDepth:
+        card != null &&
+        getComputedStyle(card).boxShadow.includes("inset") &&
+        getComputedStyle(card).boxShadow.split(",").length >= 3,
+      cardSheen: card != null && getComputedStyle(card).backgroundImage.includes("gradient"),
+      kpiBars: document.querySelectorAll(".lm-kpi-bar").length,
+      marks: document.querySelectorAll(".lm-section-mark").length,
+      headerGlow:
+        header != null && getComputedStyle(header, "::after").backgroundImage.includes("gradient"),
+    }
+  })
+  check("лм-панель: в глубине фона — огни и звёзды", lm3.stars, "точки на ночном холсте")
+  check(
+    "лм-панель: карточки получили объём (градиент + глубокая тень)",
+    lm3.cardDepth && lm3.cardSheen,
+    `тень ${lm3.cardDepth}, блик ${lm3.cardSheen}`,
+  )
+  check("лм-панель: у цифр — цветные полоски-акценты", lm3.kpiBars >= 4, `полосок ${lm3.kpiBars}`)
+  check("лм-панель: заголовки секций — со светящимся маркером", lm3.marks >= 2, `маркеров ${lm3.marks}`)
+  check("лм-панель: шапка — светящаяся кромка снизу", lm3.headerGlow, "градиент по нижней границе")
   await shot(lpage, "/home/user/work/visual-lm-mobile.png")
   await lpage.close()
   await lContext.close()

@@ -59,6 +59,7 @@ export function KpiCard({
 
   const content = (
     <div className="panel-rise rounded-xl border border-border bg-card shadow-sm p-3.5 active:opacity-70">
+      <span className="lm-kpi-bar" data-tone={tone} aria-hidden />
       {loading ? (
         <div className="h-6 w-12 animate-pulse rounded-md bg-secondary" />
       ) : (
@@ -98,7 +99,10 @@ export function SectionTitle({
 
   return (
     <div className="mb-2.5 mt-6 flex items-baseline justify-between gap-3">
-      <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
+      <h2 className="text-[15px] font-semibold text-foreground">
+        <span className="lm-section-mark" aria-hidden />
+        {title}
+      </h2>
       {action ? (
         <div className="shrink-0 text-[13px] font-medium text-primary">
           {isLink ? (

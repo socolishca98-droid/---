@@ -73,8 +73,8 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
         <main
           className={
             hideNav
-              ? "pb-[env(safe-area-inset-bottom)]"
-              : "pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-10"
+              ? "lm-deep pb-[env(safe-area-inset-bottom)]"
+              : "lm-deep pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-10"
           }
         >
           {children}
