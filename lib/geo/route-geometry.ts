@@ -29,6 +29,7 @@ import {
 /** Основной публичный OSRM. */
 const OSRM_BASE = OSRM_BASE_URL
 import type { Coordinates } from "@/lib/geo/geocode"
+import { prisma } from "@/lib/prisma"
 
 export type RouteGeometrySource = "osrm" | "line"
 
@@ -237,9 +238,62 @@ async function buildGeometry(points: readonly Coordinates[]): Promise<RouteGeome
   return fallback
 }
 
+// --- слой БД: дороги не меняются, успешный ответ живёт вечно --------------
+//
+// Публичный OSRM лимитирует по IP: с хостинга владельца оба сервера
+// регулярно недоступны, и карта деградировала в ломаную «по точкам» —
+// владелец видел маршрут «рядом с дорогами». Теперь успешная геометрия
+// пишется в БД, а при недоступной сети читается оттуда. Ошибки БД
+// (нет таблицы, нет файла) глушим: кэш — ускоритель, не критический путь.
+
+async function readDbGeometry(key: string): Promise<RouteGeometry | null> {
+  try {
+    const row = await prisma.routeGeometryCache.findUnique({ where: { key } })
+    if (!row) return null
+    const coordinates = JSON.parse(row.coordinates) as [number, number][]
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return null
+    return {
+      coordinates,
+      distanceKm: row.distanceKm,
+      durationMin: row.durationMin,
+      source: row.source === "osrm" ? "osrm" : "line",
+    }
+  } catch {
+    return null
+  }
+}
+
+async function writeDbGeometry(key: string, value: RouteGeometry): Promise<void> {
+  // Ломаные не храним: они строятся мгновенно и локально
+  if (value.source !== "osrm") return
+  try {
+    await prisma.routeGeometryCache.upsert({
+      where: { key },
+      create: {
+        key,
+        coordinates: JSON.stringify(value.coordinates),
+        distanceKm: value.distanceKm,
+        durationMin: value.durationMin,
+        source: value.source,
+      },
+      update: {
+        coordinates: JSON.stringify(value.coordinates),
+        distanceKm: value.distanceKm,
+        durationMin: value.durationMin,
+        source: value.source,
+        fetchedAt: new Date(),
+      },
+    })
+  } catch {
+    // Нет таблицы или БД — не беда: остаётся кэш в памяти процесса
+  }
+}
+
 /**
  * Геометрия рейса по точкам объезда (включая позицию водителя и базу).
- * Результат кэшируется; повторный вызов с теми же точками сети не делает.
+ * Порядок: кэш памяти → кэш БД → сеть (OSRM основной, затем запасной).
+ * Результат сети записывается в БД — дороги не меняются, и после
+ * первого успешного ответа нить всегда идёт по дорогам.
  */
 export async function getRouteGeometry(points: readonly Coordinates[]): Promise<RouteGeometry> {
   const valid = points.filter(isValidCoordinates)
@@ -256,10 +310,21 @@ export async function getRouteGeometry(points: readonly Coordinates[]): Promise<
   const existing = pending.get(key)
   if (existing) return existing
 
+  // Дороги не меняются: геометрия из БД не стареет
+  const fromDb = await readDbGeometry(key)
+  if (fromDb && fromDb.source === "osrm") {
+    store.set(key, { value: fromDb, expiresAt: Date.now() + CACHE_TTL_MS })
+    pruneCache()
+    return fromDb
+  }
+
   const task = buildGeometry(valid)
     .then((value) => {
       store.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS })
       pruneCache()
+      if (value.source === "osrm") {
+        void writeDbGeometry(key, value)
+      }
       return value
     })
     .finally(() => {

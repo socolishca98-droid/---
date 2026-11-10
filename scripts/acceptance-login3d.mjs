@@ -33,8 +33,10 @@
 // бегущий пунктир нити выбранного рейса, стеклянные кнопки.
 // и28: активные объекты карты — система: машины-чипы с грузовиком
 // (форма=тип, рамка=статус), точки «П»/«В», база-склад, нити — единый
-// тёплый «цвет груза» вместо радуги. 97 чеков (desktop 33 + warp 3 +
-// mobile 11 + driver 8 + register 6 + recover 4 + dashboard 5 + lm 27).
+// тёплый «цвет груза» вместо радуги. и29: нитки ПО ДОРОГАМ — успешная
+// OSRM-геометрия сохраняется в БД (RouteGeometryCache) и переживает
+// недоступность маршрутизатора. 98 чеков (desktop 33 + warp 3 +
+// mobile 11 + driver 8 + register 6 + recover 4 + dashboard 5 + lm 28).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -1047,8 +1049,8 @@ try {
     `цифр ${lm2.counts.length}: ${lm2.counts.slice(0, 3).join(", ")}`,
   )
   check(
-    "лм-панель: метка сборки видна (и28)",
-    lm2.buildText.includes("и28"),
+    "лм-панель: метка сборки видна (и29)",
+    lm2.buildText.includes("и29"),
     `текст: «${lm2.buildText}»`,
   )
   check(
@@ -1160,6 +1162,22 @@ try {
     `цветов нитей: ${mp.routeColors.join(", ") || "нет"}`,
   )
   check("карта: база — значок-склад", mp.base, "склад в кольце")
+  // и29: нитки по дорогам — OSRM-геометрия (или кэш БД), не ломаная
+  const roads = await lpage.evaluate(async () => {
+    const data = await (await fetch("/api/lm/map")).json()
+    const routes = data.routes ?? []
+    const osrm = routes.filter((r) => r.geometrySource === "osrm")
+    return {
+      total: routes.length,
+      osrm: osrm.length,
+      detailed: osrm.filter((r) => (r.points ?? []).length >= 50).length,
+    }
+  })
+  check(
+    "карта: нитки по дорогам (OSRM-геометрия, не ломаная)",
+    roads.total === 0 || (roads.osrm >= 1 && roads.detailed >= 1),
+    `маршрутов ${roads.total}, по дорогам ${roads.osrm}, детальных ≥50 точек: ${roads.detailed}`,
+  )
   check(
     "карта: контролы — круглые, стеклянные",
     parseFloat(mp.zoomRound) >= 100,
