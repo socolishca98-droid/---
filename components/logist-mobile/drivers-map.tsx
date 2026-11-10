@@ -90,7 +90,15 @@ const STATUS_COLORS: Record<string, string> = {
   maintenance: "#fbbf24",
 }
 
-/** Легенда: что значат цвета точек и линий на карте. */
+/** Порядок статусов в живой сводке «кто на линии» */
+const FLEET_ORDER: Array<{ status: string; label: string }> = [
+  { status: "busy", label: "в рейсе" },
+  { status: "available", label: "свободны" },
+  { status: "maintenance", label: "ремонт" },
+  { status: "offline", label: "не на связи" },
+]
+
+/** Легенда: что значит цвета точек и линий на карте. */
 const LEGEND_ITEMS: Array<{ color: string; label: string }> = [
   { color: STATUS_COLORS.available, label: "Свободен" },
   { color: STATUS_COLORS.busy, label: "В рейсе" },
@@ -155,6 +163,8 @@ export function DriversMap() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const driverMarkers = useRef<Map<string, L.CircleMarker>>(new Map())
+  // Ореолы-свечения под маркерами машин (идут парой с маркерами)
+  const driverHalos = useRef<Map<string, L.CircleMarker>>(new Map())
   const routeLines = useRef<Map<string, { casing: L.Polyline; main: L.Polyline }>>(new Map())
   const returnLines = useRef<Map<string, L.Polyline>>(new Map())
   /** Кольца «откуда»/«куда» на концах нитей рейсов — чтобы видеть точки маршрута. */
@@ -323,7 +333,7 @@ export function DriversMap() {
       }
     }
 
-    // Машины
+    // Машины (маркер + ореол-свечение — машина «фонарик» на тёмной карте)
     const driverPoints: Array<[number, number]> = []
     const alive = new Set<string>()
     for (const driver of drivers) {
@@ -335,19 +345,39 @@ export function DriversMap() {
 
       const isSelected = driver.id === selected
       const existing = driverMarkers.current.get(driver.id)
+      const statusColor = STATUS_COLORS[driver.status] ?? STATUS_COLORS.offline
+      const halo = driverHalos.current.get(driver.id)
       if (existing) {
         existing.setLatLng(position)
         existing.setStyle({
-          fillColor: STATUS_COLORS[driver.status] ?? STATUS_COLORS.offline,
+          fillColor: statusColor,
           radius: isSelected ? 12 : 9,
           weight: isSelected ? 4 : 2.5,
         })
+        if (halo) {
+          halo.setLatLng(position)
+          halo.setStyle({
+            fillColor: statusColor,
+            radius: isSelected ? 20 : 15,
+            fillOpacity: isSelected ? 0.3 : 0.16,
+          })
+        }
       } else {
+        // Ореол под маркером: мягкое свечение цвета статуса
+        const newHalo = L.circleMarker(position, {
+          radius: 15,
+          stroke: false,
+          fillColor: statusColor,
+          fillOpacity: 0.16,
+        })
+        newHalo.addTo(map)
+        driverHalos.current.set(driver.id, newHalo)
+
         const marker = L.circleMarker(position, {
           radius: 9,
           color: "#ffffff",
           weight: 2.5,
-          fillColor: STATUS_COLORS[driver.status] ?? STATUS_COLORS.offline,
+          fillColor: statusColor,
           fillOpacity: 1,
         })
         marker.on("click", () => {
@@ -362,6 +392,11 @@ export function DriversMap() {
       if (alive.has(id)) continue
       map.removeLayer(marker)
       driverMarkers.current.delete(id)
+      const halo = driverHalos.current.get(id)
+      if (halo) {
+        map.removeLayer(halo)
+        driverHalos.current.delete(id)
+      }
     }
 
     // Нитки рейсов.
@@ -668,7 +703,7 @@ export function DriversMap() {
             <button
               type="button"
               onClick={fitAll}
-              className="flex h-10 items-center gap-2 rounded-md border border-border bg-black/60 px-3.5 text-[13px] font-medium text-foreground backdrop-blur"
+              className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-black/70 shadow-lg shadow-black/50 px-3.5 text-[13px] font-medium text-foreground backdrop-blur"
             >
               <Crosshair className="h-4 w-4" />
               Все
@@ -692,7 +727,7 @@ export function DriversMap() {
               type="button"
               onClick={() => zoom(1)}
               aria-label="Приблизить"
-              className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-black/60 text-foreground backdrop-blur"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 shadow-lg shadow-black/50 text-foreground backdrop-blur"
             >
               <Plus className="h-4.5 w-4.5" />
             </button>
@@ -700,7 +735,7 @@ export function DriversMap() {
               type="button"
               onClick={() => zoom(-1)}
               aria-label="Отдалить"
-              className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-black/60 text-foreground backdrop-blur"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 shadow-lg shadow-black/50 text-foreground backdrop-blur"
             >
               <Minus className="h-4.5 w-4.5" />
             </button>
@@ -708,7 +743,7 @@ export function DriversMap() {
               type="button"
               onClick={locateMe}
               aria-label="Моё местоположение"
-              className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-black/60 text-foreground backdrop-blur"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 shadow-lg shadow-black/50 text-foreground backdrop-blur"
             >
               {locating ? (
                 <RefreshCw className="h-4.5 w-4.5 animate-spin" />
@@ -800,6 +835,7 @@ export function DriversMap() {
       <div className="absolute inset-x-0 bottom-0 z-[4]">
         <div className="mx-auto max-w-md">
           <div className="rounded-t-3xl border border-b-0 border-border surface-glass backdrop-blur">
+            <span className="lm-sheet-grabber" aria-hidden />
             {/*
               Честная плашка про пробки. Время в программе считается по пробегу
               и историческим коэффициентам, живых пробок у нас нет — как в
@@ -838,6 +874,23 @@ export function DriversMap() {
                 {sheetOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
               </span>
             </button>
+
+            {/* Живая сводка «кто на линии»: видно и в закрытой шторке */}
+            <div className="lm-fleet-summary" aria-hidden>
+              {FLEET_ORDER.map((entry) => {
+                const count = onMapDrivers.filter((d) => d.status === entry.status).length
+                if (count === 0) return null
+                return (
+                  <span key={entry.status}>
+                    <span
+                      className="lm-fleet-dot"
+                      style={{ backgroundColor: STATUS_COLORS[entry.status], color: STATUS_COLORS[entry.status] }}
+                    />
+                    {count} {entry.label}
+                  </span>
+                )
+              })}
+            </div>
 
             {sheetOpen ? (
               <div className="max-h-[42vh] overflow-y-auto overscroll-contain px-3 pb-3">

@@ -12,6 +12,7 @@
 
 "use client"
 
+import { useEffect, useRef } from "react"
 import { usePathname } from "next/navigation"
 
 import { AccountSwitchBanner } from "@/components/account-switch-banner"
@@ -51,13 +52,42 @@ export function hidesBottomNav(pathname: string): boolean {
 
 export function LogistMobileChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/lm"
+
+  // и26: параллакс ночного холста. Сетка едет быстрее свечений —
+  // фон получает глубину при прокрутке. rAF + passive: дёшево для
+  // батареи; при «уменьшить движение» не включаем вовсе.
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return
+    let raf = 0
+    const apply = () => {
+      raf = 0
+      const y = window.scrollY
+      if (canvasRef.current) {
+        canvasRef.current.style.transform = `translate3d(0, ${Math.round(y * 0.16)}px, 0)`
+      }
+      if (gridRef.current) {
+        gridRef.current.style.transform = `translate3d(0, ${Math.round(y * 0.34)}px, 0)`
+      }
+    }
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(apply)
+    }
+    apply()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
   const hideNav = hidesBottomNav(pathname)
 
   return (
     <div className="min-h-screen text-foreground">
       {/* Статичный фон компьютерной версии: градиент + сетка, без анимаций */}
-      <div className="theme-canvas lm-canvas-night" aria-hidden>
-        <div className="theme-canvas__grid" />
+      <div ref={canvasRef} className="theme-canvas lm-canvas-night" aria-hidden>
+        <div ref={gridRef} className="theme-canvas__grid" />
       </div>
 
       {/* На компьютере меню переезжает влево: нижняя полоса на мониторе —

@@ -1643,6 +1643,51 @@ body {
    тот же индиго, что растворил сцену входа; стоит неподвижно,
    перекрывая подмену страниц, и мягко уходит, открывая карточку */
 /* ============================================================
+   и26: параллакс ночного холста и подача карты.
+   ============================================================ */
+
+/* Параллакс: слои фона едут с разной скоростью при прокрутке —
+   сетка «ближе» (быстрее), свечения и звёзды «дальше» (медленнее).
+   Сдвиг задаёт JS в chrome.tsx (rAF, passive scroll). */
+.theme-canvas,
+.theme-canvas__grid {
+  will-change: transform;
+}
+
+/* Ручка нижней шторки карты — «грибок» по центру */
+.lm-sheet-grabber {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  margin: 10px auto 0;
+  background: color-mix(in oklab, currentColor 22%, transparent);
+}
+
+/* Живая сводка «кто на линии» — всегда видна в шапке шторки карты */
+.lm-fleet-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 0 16px 10px;
+  font-size: 11.5px;
+  color: color-mix(in oklab, currentColor 68%, transparent);
+}
+
+.lm-fleet-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lm-fleet-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ============================================================
    и25: «объём по всей программе» — та же подача, но на ВСЕХ экранах
    панели: любая карточка (bg-card) получает градиент-подложку,
    свет сверху, глубокую двухслойную тень и тактильный отклик

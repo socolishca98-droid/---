@@ -27,8 +27,10 @@
 // сейчас» с крупными цифрами-счётчиками, ночной фон панели, пилюля
 // активной вкладки, метка сборки. и25: объём по всей панели — карточки
 // с глубиной, звёзды на фоне, полоски у цифр, маркеры, кромка шапки.
-// 85 чеков (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
-// recover 4 + dashboard 5 + lm 15).
+// и26: параллакс фона при прокрутке; карта — ореолы машин, ручка
+// шторки, сводка «кто на линии», круглые контролы. 90 чеков
+// (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
+// recover 4 + dashboard 5 + lm 20).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -1041,8 +1043,8 @@ try {
     `цифр ${lm2.counts.length}: ${lm2.counts.slice(0, 3).join(", ")}`,
   )
   check(
-    "лм-панель: метка сборки видна (и24)",
-    lm2.buildText.includes("и24"),
+    "лм-панель: метка сборки видна (и26)",
+    lm2.buildText.includes("и26"),
     `текст: «${lm2.buildText}»`,
   )
   check(
@@ -1083,6 +1085,61 @@ try {
   check("лм-панель: у цифр — цветные полоски-акценты", lm3.kpiBars >= 4, `полосок ${lm3.kpiBars}`)
   check("лм-панель: заголовки секций — со светящимся маркером", lm3.marks >= 2, `маркеров ${lm3.marks}`)
   check("лм-панель: шапка — светящаяся кромка снизу", lm3.headerGlow, "градиент по нижней границе")
+  // и26: параллакс фона + страница карты
+  await lpage.evaluate(() => window.scrollTo(0, 420))
+  await lpage.waitForTimeout(400)
+  const par = await lpage.evaluate(() => ({
+    canvas: getComputedStyle(document.querySelector(".theme-canvas")).transform,
+    grid: getComputedStyle(document.querySelector(".theme-canvas__grid")).transform,
+  }))
+  check(
+    "лм-панель: фон с параллаксом — слои едут с разной скоростью",
+    par.canvas !== "none" && par.grid !== "none" && par.canvas !== par.grid,
+    `холст ${par.canvas.slice(0, 24)} · сетка ${par.grid.slice(0, 24)}`,
+  )
+  await lpage.evaluate(() => window.scrollTo(0, 0))
+  // страница карты — «хорошо поработать»
+  await lpage.goto(`${BASE}/lm/map`, { waitUntil: "domcontentloaded", timeout: 90000 })
+  await lpage.waitForSelector(".leaflet-container", { timeout: 60000 })
+  await lpage.waitForTimeout(2500)
+  const mp = await lpage.evaluate(() => {
+    const cars = [...document.querySelectorAll(".leaflet-overlay-pane path")].filter(
+      (p) => p.getAttribute("stroke") === "#ffffff",
+    ).length
+    const halos = [...document.querySelectorAll(".leaflet-overlay-pane path")].filter(
+      (p) => p.getAttribute("fill-opacity") === "0.16",
+    ).length
+    const zoomBtn = document.querySelector("button[aria-label=\"Приблизить\"]")
+    return {
+      tiles: document.querySelectorAll(".leaflet-tile-loaded").length,
+      grabber: document.querySelector(".lm-sheet-grabber") != null,
+      summary: document.querySelector(".lm-fleet-summary")?.textContent.trim() ?? "",
+      cars,
+      halos,
+      zoomRound: zoomBtn ? getComputedStyle(zoomBtn).borderRadius : "",
+    }
+  })
+  check(
+    "карта: тёмные тайлы загрузились, холст на месте",
+    mp.tiles >= 1,
+    `тайлов ${mp.tiles}`,
+  )
+  check(
+    "карта: шторка с ручкой и сводкой «кто на линии»",
+    mp.grabber && mp.summary.length > 0,
+    `ручка ${mp.grabber}, сводка: «${mp.summary.slice(0, 40)}»`,
+  )
+  check(
+    "карта: машины со свечением-ореолом",
+    mp.cars === 0 || mp.halos >= mp.cars,
+    `машин ${mp.cars}, ореолов ${mp.halos}`,
+  )
+  check(
+    "карта: контролы — круглые, стеклянные",
+    parseFloat(mp.zoomRound) >= 100,
+    `радиус ${mp.zoomRound}`,
+  )
+  await shot(lpage, "/home/user/work/visual-lm-map.png")
   await shot(lpage, "/home/user/work/visual-lm-mobile.png")
   await lpage.close()
   await lContext.close()
