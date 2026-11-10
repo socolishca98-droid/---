@@ -27,6 +27,7 @@ export function LogistBottomNav() {
 
   return (
     <nav
+      data-lm-bottom-nav
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-border surface-glass backdrop-blur lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >

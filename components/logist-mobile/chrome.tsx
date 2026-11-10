@@ -67,7 +67,10 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
       <div className={`mx-auto max-w-md ${panelWidth(pathname)} lg:pl-[250px] lg:pr-6`}>
         {/* Полоса «Вы вошли как …» — только у владельца, когда он смотрит чужой аккаунт */}
         <AccountSwitchBanner className="sticky top-0 z-40" />
-        <div
+        {/* и23: main — чтобы пауза прилёта (html[data-arriving] main)
+            действовала и здесь: после «ночного тоннеля» карточки
+            панели встают по очереди ПОСЛЕ ухода тон-подложки */}
+        <main
           className={
             hideNav
               ? "pb-[env(safe-area-inset-bottom)]"
@@ -75,7 +78,7 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
           }
         >
           {children}
-        </div>
+        </main>
       </div>
 
       {hideNav ? null : <LogistBottomNav />}

@@ -6,7 +6,7 @@
 // форма — компактный пропуск-документ; гироскоп 0.32 без уведомлений.
 //
 // Фазы (песочница тесная — дев между фазами перезапускаем):
-//   PHASE=desktop | warp | mobile | driver | register | recover | dashboard | all
+//   PHASE=desktop | warp | mobile | driver | register | recover | dashboard | lm | all
 //
 // и16: горизонт ниже середины, краны 244px, дорога 260px, ели ×18,
 // подбой земли — «не проваливаемся под дорогу».
@@ -21,8 +21,10 @@
 // восстановление — в мире, дашборд: пауза под подложкой + safe-area.
 // и22: придорожное ×6 (АЗС и склад), на телефоне — ЗАМЕТНО в кадре
 // (≥40px перекрытия); дашборд — нижняя навигация «как у приложения».
-// 70 чеков (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
-// recover 4 + dashboard 5).
+// и23: панель логиста /lm — там, где владелец живёт на телефоне:
+// main-каркас (пауза прилёта), лестница panel-rise карточек главной,
+// въезд нижней навигации. 75 чеков (desktop 33 + warp 3 + mobile 11 +
+// driver 8 + register 6 + recover 4 + dashboard 5 + lm 5).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -935,6 +937,80 @@ try {
   await shot(opage, "/home/user/work/visual-owner-mobile.png")
   await opage.close()
   await oContext.close()
+  }
+
+  if (PHASE === "all" || PHASE === "lm") {
+  // Панель логиста /lm — экраны, где владелец проводит время на телефоне
+  const lContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  })
+  const lpage = await lContext.newPage()
+  const lErrors = []
+  lpage.on("pageerror", (e) => lErrors.push(String(e).slice(0, 150)))
+  lpage.on("console", (m) => { if (m.type() === "error") lErrors.push(m.text().slice(0, 150)) })
+  await lpage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await lpage.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
+  await lpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await lpage.tap("body").catch(() => {})
+  await lpage.waitForTimeout(1600)
+  await lpage.fill("input#email", envValue("OWNER_EMAIL"))
+  await lpage.fill("input#password", envValue("OWNER_PASSWORD"))
+  await lpage.click("button[type=\"submit\"]", { force: true })
+  await lpage.waitForURL("**/owner", { timeout: 90000 })
+  await lpage.waitForTimeout(2500) // сплэш /owner доиграет
+  // владелец открывает панель логиста — ту, где он живёт на телефоне
+  await lpage.goto(`${BASE}/lm`, { waitUntil: "domcontentloaded", timeout: 90000 })
+  await lpage.waitForSelector("[data-lm-bottom-nav]", { timeout: 60000 })
+  await lpage.waitForTimeout(2500) // лестница карточек доиграет
+  const lm1 = await lpage.evaluate(() => {
+    const nav = document.querySelector("[data-lm-bottom-nav]")
+    const risers = [...document.querySelectorAll("main .panel-rise, main .lm-stagger > *")]
+    return {
+      navButtons: nav ? nav.querySelectorAll("a, button").length : 0,
+      hasMain: document.querySelector("main") != null,
+      overflow: (document.scrollingElement?.scrollWidth ?? 0) <= window.innerWidth + 1,
+      rise: risers.filter((el) => getComputedStyle(el).animationName === "panel-rise").length,
+    }
+  })
+  check(
+    "лм-панель: каркас — main + нижняя навигация 5 вкладок",
+    lm1.hasMain && lm1.navButtons >= 5,
+    `main ${lm1.hasMain}, кнопок ${lm1.navButtons}`,
+  )
+  check("лм-панель: не шире экрана (без бокового скролла)", lm1.overflow, "scrollWidth ok")
+  check(
+    "лм-панель: карточки главной встают по очереди (panel-rise)",
+    lm1.rise >= 4,
+    `анимируется элементов: ${lm1.rise}`,
+  )
+  // эстафета прилёта: флаг + reload — карточки на паузе под тон-подложкой
+  await lpage.evaluate(() => sessionStorage.setItem("loginex:arriving", "1"))
+  await lpage.reload({ waitUntil: "domcontentloaded", timeout: 90000 })
+  await lpage.waitForSelector("[data-lm-bottom-nav]", { timeout: 60000 })
+  const veilUp = await lpage
+    .waitForFunction(() => document.documentElement.getAttribute("data-arriving") === "1", null, { timeout: 8000 })
+    .then(() => true, () => false)
+  const lArr = await lpage.evaluate(() => {
+    const el = document.querySelector("main .panel-rise, main .lm-stagger > *")
+    return {
+      paused: el ? getComputedStyle(el).animationPlayState : "нет элементов",
+    }
+  })
+  await lpage.waitForTimeout(2200)
+  const lAfter = await lpage.evaluate(() => document.documentElement.getAttribute("data-arriving"))
+  check(
+    "лм-панель: эстафета прилёта — пауза под тон-подложкой, потом снята",
+    veilUp && lArr.paused === "paused" && lAfter === null,
+    `подложка ${veilUp}, play-state=${lArr.paused}, после=${lAfter}`,
+  )
+  const lErr = lErrors.filter((t) => !isNoise(t))
+  check("лм-панель: ошибок нет", lErr.length === 0, lErr.slice(0, 2).join(" || ") || "нет")
+  await shot(lpage, "/home/user/work/visual-lm-mobile.png")
+  await lpage.close()
+  await lContext.close()
   }
 
   console.log(`ИТОГ: ${results.filter((r) => r.ok).length}/${results.length} проверок пройдено`)

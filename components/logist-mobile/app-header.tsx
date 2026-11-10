@@ -42,7 +42,7 @@ export function LogistHeader({
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-border surface-glass backdrop-blur"
+      className="panel-rise sticky top-0 z-30 border-b border-border surface-glass backdrop-blur"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div

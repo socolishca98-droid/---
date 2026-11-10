@@ -871,7 +871,7 @@ export function DriversMap() {
                     Никого не нашли по запросу «{query.trim()}». Сотрите запрос — машины вернутся.
                   </p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="lm-stagger space-y-2">
                     {visibleDrivers.map((driver) => {
                       const meta = DRIVER_STATUS_META[driver.status] ?? DRIVER_STATUS_META.offline
                       const tel = telHref(driver.phone)

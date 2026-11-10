@@ -246,7 +246,7 @@ export default function LogistHomePage() {
             </span>
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="lm-stagger space-y-2.5">
             {actions.map((action) => {
               const Icon = action.icon
               const tone =
@@ -274,7 +274,7 @@ export default function LogistHomePage() {
         )}
 
         {/* Четыре цифры — короткая сводка, не больше */}
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <div className="panel-rise mt-4 grid grid-cols-2 gap-2.5">
           <KpiCard
             label="Заказов в работе"
             value={activeOrders.length}
