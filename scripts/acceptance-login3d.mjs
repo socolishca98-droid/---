@@ -6,7 +6,7 @@
 // форма — компактный пропуск-документ; гироскоп 0.32 без уведомлений.
 //
 // Фазы (песочница тесная — дев между фазами перезапускаем):
-//   PHASE=desktop | warp | mobile | driver | register | all
+//   PHASE=desktop | warp | mobile | driver | register | recover | dashboard | all
 //
 // и16: горизонт ниже середины, краны 244px, дорога 260px, ели ×18,
 // подбой земли — «не проваливаемся под дорогу».
@@ -16,10 +16,11 @@
 // попарно, краны ×2, гироскоп 0.06, refs ели/искры разведены;
 // и18б: камера выше плоскости (GROUND_Y=160, origin 58%),
 // hit-тест «внизу земля, вверху небо».
-// и19: здания ×4, зажим рамки. и20: гироскоп ВЫКЛЮЧЕН, вход —
-// «ночный тоннель». и21: здания ВИДНЫ на телефоне (адаптив по ширине),
-// регистрация — пропуск-документ, восстановление пароля — в мире,
-// дашборд на телефоне: пауза контента под тон-подложкой + safe-area.
+// и19: здания, зажим рамки. и20: гироскоп ВЫКЛЮЧЕН, вход — «ночной
+// тоннель». и21: здания на телефоне, регистрация — документ,
+// восстановление — в мире, дашборд: пауза под подложкой + safe-area.
+// и22: придорожное ×6 (АЗС и склад), на телефоне — ЗАМЕТНО в кадре
+// (≥40px перекрытия); дашборд — нижняя навигация «как у приложения».
 // 70 чеков (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
 // recover 4 + dashboard 5).
 
@@ -272,12 +273,12 @@ try {
     `${roadWorld.treeTx.length} елей: ${roadWorld.treeTx.slice(0, 8).join(", ")}…`,
   )
   check(
-    "придорожное: парковка отдыха, закусочная, мотель, ангар",
-    roadWorld.bldTx.length >= 4 &&
+    "придорожное: парковка, закусочная, АЗС, мотель, склад, ангар",
+    roadWorld.bldTx.length === 6 &&
       roadWorld.bldTx.every((tx) => tx != null && Math.abs(tx) >= 600) &&
       roadWorld.bldTx.some((tx) => tx < 0) &&
       roadWorld.bldTx.some((tx) => tx > 0) &&
-      roadWorld.bldKinds.split(",").filter(Boolean).length >= 4,
+      roadWorld.bldKinds.split(",").filter(Boolean).length >= 5,
     `${roadWorld.bldTx.length} зданий (${roadWorld.bldKinds}) по обочинам ${roadWorld.bldTx.join(", ")}`,
   )
   check(
@@ -642,7 +643,9 @@ try {
       let vis = 0
       for (const el of document.querySelectorAll("[data-building]")) {
         const r = el.getBoundingClientRect()
-        if (r.right > 12 && r.left < window.innerWidth - 12 && r.bottom > window.innerHeight * 0.2) vis += 1
+        // заметность: не «один пиксель у кромки», а ≥40px по горизонтали
+        const overlap = Math.min(r.right, window.innerWidth) - Math.max(r.left, 0)
+        if (overlap >= 40 && r.bottom > window.innerHeight * 0.2) vis += 1
       }
       return vis
     })
@@ -654,7 +657,7 @@ try {
   check(
     "телефон: здания у дороги в кадре (не за обрезом)",
     bldMax >= 2,
-    `видно зданий: ${bldMax} из 4 (макс. за 3 замера)`,
+    `видно зданий: ${bldMax} из 6 (макс. за 3 замера, каждая ≥40px)`,
   )
 
   // поля работают, экран не скроллится (мир fixed)
@@ -892,13 +895,18 @@ try {
   await opage.waitForTimeout(2200)
   const landed = await opage.evaluate(() => {
     const header = document.querySelector("header")
-    const mobileNav = [...document.querySelectorAll("header nav")].find((n) =>
-      String(n.className).includes("md:hidden"),
-    )
+    const bar = document.querySelector("[data-bottom-nav]")
+    const barRect = bar ? bar.getBoundingClientRect() : null
     return {
       attr: document.documentElement.getAttribute("data-arriving"),
       safeArea: (header?.getAttribute("style") ?? "").includes("safe-area"),
-      navVisible: mobileNav != null && mobileNav.offsetParent !== null && mobileNav.querySelectorAll("a").length >= 2,
+      barVisible:
+        barRect != null &&
+        barRect.width > 200 &&
+        barRect.bottom <= window.innerHeight + 1 &&
+        barRect.top > window.innerHeight * 0.75,
+      barButtons: bar ? bar.querySelectorAll("a, button").length : 0,
+      barSafeBottom: (bar?.getAttribute("style") ?? "").includes("safe-area-inset-bottom"),
       overflow: (document.scrollingElement?.scrollWidth ?? 0) <= window.innerWidth + 1,
       rise: [...document.querySelectorAll("main [style]")].filter((el) =>
         String(el.style.animation).includes("rise-in"),
@@ -912,9 +920,9 @@ try {
     `во время подложки data-arriving=${arriving.attr}, после=${landed.attr}`,
   )
   check(
-    "дашборд: мобильный каркас — навигация и safe-area",
-    landed.navVisible && landed.safeArea,
-    `навигация ${landed.navVisible}, safe-area ${landed.safeArea}`,
+    "дашборд: нижняя навигация «как у приложения» + safe-area",
+    landed.barVisible && landed.barButtons >= 3 && landed.barSafeBottom && landed.safeArea,
+    `панель ${landed.barVisible}, кнопок ${landed.barButtons}, safe-area шапка ${landed.safeArea}`,
   )
   check("дашборд: не шире экрана (без бокового скролла)", landed.overflow, `scrollWidth ok`)
   check(

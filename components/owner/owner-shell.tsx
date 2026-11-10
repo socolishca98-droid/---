@@ -165,10 +165,51 @@ export function OwnerShell({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 pb-16 pt-6 md:px-8">
+      <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 md:px-8 md:pb-16">
         <AccountSwitchBanner className="mb-4 rounded-lg border" />
         {children}
       </main>
+
+      {/* и22: нижняя навигация для большого пальца — как у телефонных
+          приложений: въезжает снизу, не отъедает высоту у шапки, видна
+          на любом пролёте. На десктопе её нет (там строка в шапке). */}
+      <nav
+        data-bottom-nav
+        aria-label="Основная навигация"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/92 backdrop-blur md:hidden"
+        style={{
+          paddingTop: "8px",
+          paddingBottom: "calc(10px + env(safe-area-inset-bottom))",
+          animation: "bar-in 460ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        }}
+      >
+        <div className="mx-auto flex max-w-6xl px-4">
+          {NAV.map((item) => {
+            const active = item.match(pathname)
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-1 flex-col items-center gap-1 rounded-lg py-1 text-[11px] font-medium transition-colors duration-200 ${
+                  active ? "text-foreground" : "text-muted-foreground active:opacity-70"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                {item.label}
+              </Link>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setIsProfileOpen(true)}
+            className="flex flex-1 flex-col items-center gap-1 rounded-lg py-1 text-[11px] font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground active:opacity-70"
+          >
+            <UserCog className="h-5 w-5" />
+            Профиль
+          </button>
+        </div>
+      </nav>
 
       {/* Свои имя, телефон и пароль — без участия администратора компании. */}
       <OwnerProfileDialog

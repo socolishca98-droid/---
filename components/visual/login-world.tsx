@@ -23,7 +23,7 @@
 // warp, plunges, frames} + __loginWorldLook + __loginWorldPaused.
 // DOM: [data-login-world], [data-stack] ×10,
 // [data-crane] ×2, [data-pole] ×12, [data-tree] ×18,
-// [data-building] ×4, [data-login-mote] ×14, [data-route-dot] ×5,
+// [data-building] ×6, [data-login-mote] ×14, [data-route-dot] ×5,
 // [data-ground], [data-ground-backdrop], [data-warp-dusk],
 // [data-login-panel], [data-login-doc].
 //
@@ -167,14 +167,16 @@ const TREES: ReadonlyArray<{ x: number; z: number }> = [
 const BUILDINGS: ReadonlyArray<{
   x: number
   z: number
-  kind: "rest" | "diner" | "motel" | "barn"
+  kind: "rest" | "diner" | "gas" | "motel" | "depot" | "barn"
   w: number
   h: number
 }> = [
   { x: 880, z: 1150, kind: "rest", w: 360, h: 190 },
   { x: -900, z: 2300, kind: "diner", w: 300, h: 170 },
-  { x: 900, z: 4900, kind: "motel", w: 340, h: 200 },
-  { x: -880, z: 6100, kind: "barn", w: 380, h: 170 },
+  { x: 900, z: 3500, kind: "gas", w: 340, h: 180 },
+  { x: -880, z: 4700, kind: "motel", w: 340, h: 200 },
+  { x: 900, z: 5900, kind: "depot", w: 380, h: 150 },
+  { x: -880, z: 6900, kind: "barn", w: 380, h: 170 },
 ]
 
 /** Время суток: сцена живёт по местным часам пользователя.
@@ -329,9 +331,11 @@ function TreeArt() {
   )
 }
 
-/** Придорожные здания (и19): стены красятся палитрой суток, окна
- *  горят ночью (как огни далёкого города), «P» и вывеска узнаваемы. */
-function BuildingArt({ kind }: { kind: "rest" | "diner" | "motel" | "barn" }) {
+/** Придорожные здания (и19→и22): стены красятся палитрой суток,
+ *  окна горят ночью, «P», вывеска, АЗС и склад узнаваемы. На
+ *  телефоне здания стоят ближе к дороге (bldSpread) — иначе узкий
+ *  кадр их просто не показывал. */
+function BuildingArt({ kind }: { kind: "rest" | "diner" | "gas" | "motel" | "depot" | "barn" }) {
   if (kind === "diner") {
     return (
       <svg width="300" height="170" viewBox="0 0 300 170" aria-hidden="true">
@@ -372,6 +376,44 @@ function BuildingArt({ kind }: { kind: "rest" | "diner" | "motel" | "barn" }) {
         <circle cx="220" cy="162" r="7" fill="#0b111e" />
         <circle cx="262" cy="162" r="7" fill="#0b111e" />
         <circle cx="308" cy="162" r="7" fill="#0b111e" />
+      </svg>
+    )
+  }
+  if (kind === "gas") {
+    return (
+      <svg width="340" height="180" viewBox="0 0 340 180" aria-hidden="true">
+        <ellipse cx="170" cy="172" rx="160" ry="8" fill="rgba(0,0,0,0.4)" />
+        <rect className="bld-wall2" x="66" y="86" width="8" height="86" />
+        <rect className="bld-wall2" x="226" y="86" width="8" height="86" />
+        <rect className="bld-roof" x="34" y="70" width="232" height="16" rx="5" />
+        <rect className="bld-wall" x="34" y="86" width="232" height="10" />
+        <rect className="bld-truck" x="98" y="104" width="34" height="42" rx="4" />
+        <rect className="bld-win" x="104" y="112" width="22" height="14" rx="2" />
+        <rect className="bld-wall" x="160" y="102" width="42" height="56" rx="4" />
+        <rect className="bld-win" x="168" y="110" width="26" height="18" rx="2" />
+        <rect className="bld-wall2" x="288" y="52" width="30" height="120" rx="4" />
+        <rect className="bld-sign" x="292" y="60" width="22" height="26" rx="3" />
+        <rect x="296" y="66" width="14" height="3" rx="1.5" fill="rgba(19,23,42,0.85)" />
+        <rect x="296" y="72" width="10" height="3" rx="1.5" fill="rgba(19,23,42,0.6)" />
+      </svg>
+    )
+  }
+  if (kind === "depot") {
+    return (
+      <svg width="380" height="150" viewBox="0 0 380 150" aria-hidden="true">
+        <ellipse cx="190" cy="142" rx="180" ry="8" fill="rgba(0,0,0,0.4)" />
+        <rect className="bld-wall" x="30" y="62" width="320" height="80" rx="3" />
+        <rect className="bld-roof" x="22" y="52" width="336" height="14" rx="4" />
+        <rect className="bld-wall2" x="150" y="78" width="84" height="64" rx="2" />
+        <rect x="158" y="78" width="2" height="64" fill="rgba(0,0,0,0.35)" />
+        <rect x="174" y="78" width="2" height="64" fill="rgba(0,0,0,0.35)" />
+        <rect x="190" y="78" width="2" height="64" fill="rgba(0,0,0,0.35)" />
+        <rect x="206" y="78" width="2" height="64" fill="rgba(0,0,0,0.35)" />
+        <rect x="222" y="78" width="2" height="64" fill="rgba(0,0,0,0.35)" />
+        <rect className="bld-win" x="52" y="82" width="24" height="18" rx="2" />
+        <rect className="bld-win" x="86" y="82" width="24" height="18" rx="2" />
+        <rect className="bld-win" x="270" y="82" width="24" height="18" rx="2" />
+        <rect className="bld-win" x="304" y="82" width="24" height="18" rx="2" />
       </svg>
     )
   }
@@ -467,12 +509,12 @@ export function LoginWorld({
     const line = lineRef.current
     if (!viewport || !sky || !mid || !move || !near || !ground || !line) return
 
-    // и21: на телефоне горизонтальный обзор узкий (390px против 1200) —
-    // здания на |x|≈880-920 там физически вне кадра, из-за чего вход
-    // водителя и регистрацию владелец видел «без изменений». Сдвигаем
-    // придорожное к дороге пропорционально ширине окна: телефон ×0.42
-    // (≈370 — за аллеей елей, но в кадре), планшет ≈×0.64, десктоп как было.
-    const bldSpread = Math.min(1, Math.max(0.42, window.innerWidth / 1200))
+    // и21→и22: на телефоне горизонтальный обзор узкий (390px против
+    // 1200) — здания на |x|≈880-920 там физически вне кадра. Сдвигаем
+    // придорожное к дороге пропорционально ширине окна: телефон ×0.38
+    // (≈335 — между аллеей елей и колоннами штабелей, заметно в кадре,
+    // а не у самой кромки), планшет ≈×0.64, десктоп как было.
+    const bldSpread = Math.min(1, Math.max(0.38, window.innerWidth / 1200))
 
     // Двор: все элементы, которые пролетают мимо камеры и рождаются
     // впереди. y — по высоте (земля на +96 мира), z — впереди по оси.
