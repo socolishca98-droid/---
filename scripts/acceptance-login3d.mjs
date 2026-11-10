@@ -16,9 +16,12 @@
 // попарно, краны ×2, гироскоп 0.06, refs ели/искры разведены;
 // и18б: камера выше плоскости (GROUND_Y=160, origin 58%),
 // hit-тест «внизу земля, вверху небо».
-// и19: здания ×4, зажим рамки. и20: гироскоп ВЫКЛЮЧЕН (наклон —
-// только палец/курсор), вход — «ночной тоннель» вместо зарева.
-// 59 чеков.
+// и19: здания ×4, зажим рамки. и20: гироскоп ВЫКЛЮЧЕН, вход —
+// «ночный тоннель». и21: здания ВИДНЫ на телефоне (адаптив по ширине),
+// регистрация — пропуск-документ, восстановление пароля — в мире,
+// дашборд на телефоне: пауза контента под тон-подложкой + safe-area.
+// 70 чеков (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
+// recover 4 + dashboard 5).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -632,6 +635,28 @@ try {
     `до ${yawBefore.toFixed(2)}°, после тряски ${yawAfter.toFixed(2)}° (отклик ${Math.abs(yawAfter - yawBefore).toFixed(2)}°, дрейф мира в норме)`,
   )
 
+  // придорожное на телефоне (и21): здания сдвигаются к дороге
+  // пропорционально ширине окна — раньше на 390px они были за обрезом
+  const bldVis = () =>
+    mpage.evaluate(() => {
+      let vis = 0
+      for (const el of document.querySelectorAll("[data-building]")) {
+        const r = el.getBoundingClientRect()
+        if (r.right > 12 && r.left < window.innerWidth - 12 && r.bottom > window.innerHeight * 0.2) vis += 1
+      }
+      return vis
+    })
+  let bldMax = 0
+  for (let i = 0; i < 3; i += 1) {
+    bldMax = Math.max(bldMax, await bldVis())
+    await mpage.waitForTimeout(600)
+  }
+  check(
+    "телефон: здания у дороги в кадре (не за обрезом)",
+    bldMax >= 2,
+    `видно зданий: ${bldMax} из 4 (макс. за 3 замера)`,
+  )
+
   // поля работают, экран не скроллится (мир fixed)
   await mpage.fill("[data-login-panel] input#email", "logist")
   const mTyped = await mpage.evaluate(() => document.querySelector("input#email")?.value ?? "")
@@ -768,6 +793,19 @@ try {
     opacity: document.querySelector(".doc-arrive") ? getComputedStyle(document.querySelector(".doc-arrive")).opacity : "?",
   }))
   check("регистрация: касание — карточка прилетает", rArrive.state === "here" && parseFloat(rArrive.opacity) >= 0.9, `state ${rArrive.state}, opacity ${rArrive.opacity}`)
+  const rDoc = await rpage.evaluate(() => {
+    const doc = document.querySelector("[data-login-doc]")
+    return {
+      doc: doc != null,
+      barcode: doc ? doc.textContent.includes("ЯРОСЛАВЛЬ") : false,
+      scroll: doc ? doc.scrollWidth <= doc.clientWidth + 1 : false,
+    }
+  })
+  check(
+    "регистрация: пропуск-документ со штрихкодом (не карточка)",
+    rDoc.doc && rDoc.barcode && rDoc.scroll,
+    `документ ${rDoc.doc}, штрихкод ${rDoc.barcode}`,
+  )
   await rpage.waitForTimeout(600)
   await shot(rpage, "/home/user/work/visual-register.png")
   check("регистрация: скриншот сохранён", true, "work/visual-register.png")
@@ -775,6 +813,120 @@ try {
   check("регистрация: ошибок нет", rErr.length === 0, rErr.slice(0, 2).join(" || ") || "нет")
   await rpage.close()
   await regContext.close()
+  }
+
+  // ── Восстановление пароля: те же мир и пропуск ──
+  if (PHASE === "all" || PHASE === "recover") {
+  const fContext = await browser.newContext({ viewport: { width: 1200, height: 800 } })
+  const fpage = await fContext.newPage()
+  const fErrors = []
+  fpage.on("pageerror", (e) => fErrors.push(String(e).slice(0, 150)))
+  fpage.on("console", (m) => { if (m.type() === "error") fErrors.push(m.text().slice(0, 150)) })
+  await fpage.goto(`${BASE}/forgot-password`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await fpage.waitForSelector("input#email", { timeout: 30000 })
+  await fpage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await fpage.waitForTimeout(400)
+  const forgot = await fpage.evaluate(() => ({
+    world: document.querySelector("[data-login-world]") != null,
+    doc: document.querySelector("[data-login-doc]") != null,
+    email: document.querySelector("input#email") != null,
+    back: [...document.querySelectorAll("a")].some((a) => a.getAttribute("href") === "/login"),
+  }))
+  check(
+    "восстановление: мир и пропуск-документ",
+    forgot.world && forgot.doc && forgot.email && forgot.back,
+    `мир ${forgot.world}, документ ${forgot.doc}, назад ко входу ${forgot.back}`,
+  )
+  const tpage = await fContext.newPage()
+  const tErrors = []
+  tpage.on("pageerror", (e) => tErrors.push(String(e).slice(0, 150)))
+  await tpage.goto(`${BASE}/reset-password?token=acceptance-fake`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await tpage.waitForFunction(() => window.__loginWorld != null || document.querySelector("main, [data-login-world]") != null, null, { timeout: 30000 })
+  await tpage.waitForTimeout(1200)
+  const reset = await tpage.evaluate(() => ({
+    world: document.querySelector("[data-login-world]") != null,
+    verdict: document.body.textContent.includes("Ссылка не работает") || document.body.textContent.includes("ссылк"),
+  }))
+  check(
+    "восстановление: смена пароля — в мире, вердикт по ссылке",
+    reset.world && reset.verdict,
+    `мир ${reset.world}, вердикт показан ${reset.verdict}`,
+  )
+  const fErr = fErrors.filter((t) => !isNoise(t))
+  const tErr = tErrors.filter((t) => !isNoise(t))
+  check("восстановление: ошибок нет (почта)", fErr.length === 0, fErr.slice(0, 2).join(" || ") || "нет")
+  check("восстановление: ошибок нет (смена)", tErr.length === 0, tErr.slice(0, 2).join(" || ") || "нет")
+  await fpage.close()
+  await tpage.close()
+  await fContext.close()
+  }
+
+  // ── Дашборд владельца на телефоне: прилёт по эстафете ──
+  if (PHASE === "all" || PHASE === "dashboard") {
+  const oContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  })
+  const opage = await oContext.newPage()
+  const oErrors = []
+  opage.on("pageerror", (e) => oErrors.push(String(e).slice(0, 150)))
+  opage.on("console", (m) => { if (m.type() === "error") oErrors.push(m.text().slice(0, 150)) })
+  await opage.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await opage.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
+  await opage.waitForFunction(() => window.__loginWorld != null, null, { timeout: 20000 })
+  await opage.tap("body").catch(() => {})
+  await opage.waitForTimeout(1600)
+  await opage.fill("input#email", envValue("OWNER_EMAIL"))
+  await opage.fill("input#password", envValue("OWNER_PASSWORD"))
+  await opage.click("button[type=\"submit\"]", { force: true })
+  // /owner здесь НЕ перехватываем: смотрим настоящий дашборд
+  await opage.waitForURL("**/owner", { timeout: 90000 })
+  await opage.waitForSelector("main", { timeout: 60000 })
+  await opage.waitForTimeout(450)
+  const arriving = await opage.evaluate(() => ({
+    attr: document.documentElement.getAttribute("data-arriving"),
+    paused: getComputedStyle(document.querySelector("main [style]") ?? document.querySelector("main")).animationPlayState,
+  }))
+  await opage.waitForTimeout(2200)
+  const landed = await opage.evaluate(() => {
+    const header = document.querySelector("header")
+    const mobileNav = [...document.querySelectorAll("header nav")].find((n) =>
+      String(n.className).includes("md:hidden"),
+    )
+    return {
+      attr: document.documentElement.getAttribute("data-arriving"),
+      safeArea: (header?.getAttribute("style") ?? "").includes("safe-area"),
+      navVisible: mobileNav != null && mobileNav.offsetParent !== null && mobileNav.querySelectorAll("a").length >= 2,
+      overflow: (document.scrollingElement?.scrollWidth ?? 0) <= window.innerWidth + 1,
+      rise: [...document.querySelectorAll("main [style]")].filter((el) =>
+        String(el.style.animation).includes("rise-in"),
+      ).length,
+      splash: document.querySelector(".welcome-splash") != null,
+    }
+  })
+  check(
+    "дашборд: прилёт — контент на паузе под тон-подложкой",
+    arriving.attr === "1" && landed.attr === null,
+    `во время подложки data-arriving=${arriving.attr}, после=${landed.attr}`,
+  )
+  check(
+    "дашборд: мобильный каркас — навигация и safe-area",
+    landed.navVisible && landed.safeArea,
+    `навигация ${landed.navVisible}, safe-area ${landed.safeArea}`,
+  )
+  check("дашборд: не шире экрана (без бокового скролла)", landed.overflow, `scrollWidth ok`)
+  check(
+    "дашборд: карточки встают по очереди (rise-in)",
+    landed.rise >= 4 || landed.splash,
+    `анимируется элементов: ${landed.rise}`,
+  )
+  const oErr = oErrors.filter((t) => !isNoise(t))
+  check("дашборд: ошибок нет", oErr.length === 0, oErr.slice(0, 2).join(" || ") || "нет")
+  await shot(opage, "/home/user/work/visual-owner-mobile.png")
+  await opage.close()
+  await oContext.close()
   }
 
   console.log(`ИТОГ: ${results.filter((r) => r.ok).length}/${results.length} проверок пройдено`)

@@ -17,15 +17,10 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { AlertCircle, CheckCircle2, KeyRound, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { LoginWorld } from "@/components/visual/login-world"
 // Минимальную длину пароля берём из lib/auth/constants — файла без node:util.
 // Импорт из lib/auth/password тянул в клиентский бандл node:util, и страница
 // падала на этапе оценки модуля, не показав форму (см. аудит, блокер Б-2).
@@ -120,54 +115,44 @@ function ResetPasswordForm() {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Проверяем ссылку...
-          </CardContent>
-        </Card>
-      </div>
+      <ResetWorld title="Проверяем ссылку">
+        <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Проверяем ссылку...
+        </div>
+      </ResetWorld>
     )
   }
 
   if (linkError) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl tracking-tight">Ссылка не работает</CardTitle>
-            <CardDescription className="leading-relaxed">{linkError}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Ссылки живут один час и работают один раз. Запросите новую — она придёт на
-              почту учётной записи.
-            </p>
-            <Button asChild className="w-full">
-              <Link href="/forgot-password">Запросить новую ссылку</Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/login">Вернуться ко входу</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <ResetWorld title="Ссылка не работает" subtitle={linkError}>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Ссылки живут один час и работают один раз. Запросите новую — она придёт на
+            почту учётной записи.
+          </p>
+          <Button asChild className="w-full">
+            <Link href="/forgot-password">Запросить новую ссылку</Link>
+          </Button>
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/login">Вернуться ко входу</Link>
+          </Button>
+        </div>
+      </ResetWorld>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl tracking-tight">Новый пароль</CardTitle>
-          <CardDescription className="leading-relaxed">
-            {done
-              ? "Пароль изменён"
-              : `Придумайте пароль: не короче ${MIN_PASSWORD_LENGTH} символов, буквы и цифры`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <ResetWorld
+      title={done ? "Пароль изменён" : "Новый пароль"}
+      subtitle={
+        done
+          ? "Прежние сессии закрыты"
+          : `Не короче ${MIN_PASSWORD_LENGTH} символов, буквы и цифры`
+      }
+    >
+      <div className="max-h-[46dvh] overflow-y-auto pr-1">
           {done ? (
             <div className="space-y-4">
               <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/40 p-3 text-sm">
@@ -235,9 +220,58 @@ function ResetPasswordForm() {
               </Button>
             </form>
           )}
-        </CardContent>
-      </Card>
-    </div>
+      </div>
+    </ResetWorld>
+  )
+}
+
+/** Общий каркас страницы смены пароля (и21): тот же мир «Ночной
+ *  рейс» и пропуск-документ, что у входа и регистрации. */
+function ResetWorld({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  children: React.ReactNode
+}) {
+  return (
+    <LoginWorld
+      headline={
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/45">
+            {PRODUCT_NAME}
+          </p>
+          <h2 className="mt-3 text-[30px] font-extrabold leading-[1.06] tracking-tight text-white sm:text-[40px]">
+            Новый
+            <br />
+            пароль
+          </h2>
+          <p className="mt-3 text-[13px] leading-relaxed text-slate-400 sm:text-sm">
+            Пропуск перевыпустим за минуту — и снова в путь.
+          </p>
+        </div>
+      }
+    >
+      <div className="mb-4 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+          Восстановление доступа
+        </p>
+        <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">{title}</h1>
+        {subtitle ? (
+          <p className="mt-1 hidden text-xs leading-relaxed text-muted-foreground sm:block">
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+      {children}
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        <Link href="/login" className="hover:text-foreground">
+          Вернуться ко входу
+        </Link>
+      </p>
+    </LoginWorld>
   )
 }
 
@@ -246,12 +280,10 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
-          <Card className="w-full max-w-md">
-            <CardContent className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Проверяем ссылку...
-            </CardContent>
-          </Card>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Проверяем ссылку...
+          </div>
         </div>
       }
     >

@@ -84,6 +84,16 @@ export function WelcomeSplash() {
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   )
 
+  // и21: пока тон-подложка прилёта держит экран, контент страницы под
+  // ней стоит на паузе (html[data-arriving]) — анимации дашборда
+  // доиграют, когда подложка уйдёт: прилёт читается как продолжение
+  // тоннеля, а не «всё уже отыграло за шторкой»
+  useEffect(() => {
+    if (!veil) return
+    document.documentElement.setAttribute("data-arriving", "1")
+    return () => document.documentElement.removeAttribute("data-arriving")
+  }, [veil])
+
   useEffect(() => {
     // До входа заставку не показываем (и флаг не ставим): человек увидит её
     // ровно один раз — когда войдёт и попадёт на первую рабочую страницу.

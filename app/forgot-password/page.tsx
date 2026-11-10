@@ -19,16 +19,10 @@ import Link from "next/link"
 import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, Mail } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { LoginWorld } from "@/components/visual/login-world"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -67,17 +61,40 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl tracking-tight">Восстановление пароля</CardTitle>
-          <CardDescription className="leading-relaxed">
-            {done
-              ? "Проверьте почту — ссылка для смены пароля отправлена"
-              : `Укажите почту учётной записи ${PRODUCT_NAME} — пришлём ссылку для смены пароля`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    // и21: восстановление — в том же мире «Ночной рейс», что и вход:
+    // пропуск-документ, приезд по касанию, дорога за стеклом
+    <LoginWorld
+      headline={
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/45">
+            {PRODUCT_NAME}
+          </p>
+          <h2 className="mt-3 text-[30px] font-extrabold leading-[1.06] tracking-tight text-white sm:text-[40px]">
+            Снова
+            <br />
+            в строй
+          </h2>
+          <p className="mt-3 text-[13px] leading-relaxed text-slate-400 sm:text-sm">
+            Почта, ссылка, новый пароль — и дорога дальше. Без звонков
+            администратору.
+          </p>
+        </div>
+      }
+    >
+      <div className="mb-4 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+          Восстановление доступа
+        </p>
+        <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">
+          {done ? "Проверьте почту" : "Забыли пароль"}
+        </h1>
+        <p className="mt-1 hidden text-xs leading-relaxed text-muted-foreground sm:block">
+          {done
+            ? "Ссылка для смены пароля отправлена"
+            : "Пришлём ссылку для смены пароля на почту учётной записи"}
+        </p>
+      </div>
+      <div className="max-h-[46dvh] overflow-y-auto pr-1">
           {done ? (
             <div className="space-y-4">
               <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/40 p-3">
@@ -153,17 +170,17 @@ export default function ForgotPasswordPage() {
             </form>
           )}
 
-          <div className="mt-6 border-t border-border/50 pt-4">
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="size-4" />
-              Вернуться ко входу
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      </div>
+
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          Вернуться ко входу
+        </Link>
+      </p>
+    </LoginWorld>
   )
 }

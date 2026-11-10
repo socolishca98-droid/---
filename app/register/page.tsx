@@ -25,13 +25,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   AlertCircle,
   Building2,
   CheckCircle2,
@@ -121,7 +114,13 @@ function RegisterForm() {
         canLogin: data.status === "active",
       })
       if (data.status === "active") {
-        setTimeout(() => router.push("/login"), 2500)
+        // и21: уходим красиво — «ночный тоннель» до страницы входа
+        // (эстафету подхватит приветствие после первого входа)
+        const reduced =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        if (!reduced) window.dispatchEvent(new CustomEvent("login:warp"))
+        setTimeout(() => router.push("/login"), reduced ? 2500 : 2200)
       }
     } catch {
       setError("Ошибка соединения. Попробуйте ещё раз")
@@ -131,10 +130,10 @@ function RegisterForm() {
   }
 
   return (
-    // Регистрация — в том же 3D-мире «Ночной рейс»: камера едет сквозь
-    // ночь, ворота-модули пролетают мимо, карточка регистрации — объект
-    // мира (панель без плиты: своя карточка). На телефоне карточка
-    // прокручивается при необходимости, мир остаётся на месте.
+    // Регистрация — в том же 3D-мире «Ночной рейс» (и21: раньше была
+    // «своя карточка» мимо системы — теперь тоже пропуск-документ со
+    // штрихкодом и приездом по касанию). Форма длинная: зона полей
+    // прокручивается внутри пропуска, вкладки и итог — всегда на виду.
     <div className="relative min-h-dvh">
       <LoginWorld
         headline={
@@ -154,18 +153,19 @@ function RegisterForm() {
             </p>
           </div>
         }
-        bare
       >
-        <div className="w-full max-w-md">
-          <Card className="card-materialize max-h-[68dvh] overflow-y-auto border-border/60 bg-card/55 shadow-2xl shadow-black/40 backdrop-blur-2xl">
-          <CardHeader className="space-y-3 pb-4">
-            <CardTitle className="text-xl">Регистрация</CardTitle>
-            <CardDescription>
-              Создайте организацию для своей компании или присоединитесь к существующей по коду
-              приглашения
-            </CardDescription>
-
-            {!submitted && (
+        <div className="mb-3 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            Регистрация
+          </p>
+          <h1 className="mt-1 text-[17px] font-bold tracking-tight sm:text-xl">
+            {submitted ? (submitted.canLogin ? "Организация готова" : "Заявка отправлена") : "Новый пропуск"}
+          </h1>
+          <p className="mt-1 hidden text-xs leading-relaxed text-muted-foreground sm:block">
+            Свою компанию — или по коду приглашения от администратора
+          </p>
+        </div>
+        {!submitted && (
               <Tabs
                 value={mode}
                 onValueChange={(value) => setMode(value as Mode)}
@@ -183,8 +183,7 @@ function RegisterForm() {
                 </TabsList>
               </Tabs>
             )}
-          </CardHeader>
-          <CardContent>
+        <div className="max-h-[48dvh] overflow-y-auto pr-1">
             {submitted ? (
               <div className="space-y-4">
                 <div
@@ -368,16 +367,14 @@ function RegisterForm() {
                 </Button>
               </form>
             )}
-          </CardContent>
-        </Card>
-
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Уже есть доступ?{" "}
-            <Link href="/login" className="text-primary hover:underline">
-              Войти
-            </Link>
-          </p>
         </div>
+
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          Уже есть доступ?{" "}
+          <Link href="/login" className="text-primary hover:underline">
+            Войти
+          </Link>
+        </p>
       </LoginWorld>
     </div>
   )

@@ -66,7 +66,12 @@ export function OwnerShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur">
+      {/* и21: safe-area сверху — в PWA на телефоне с вырезом шапка не
+          прячется под статус-бар; на десктопе env() = 0, ничего не меняет */}
+      <header
+        className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3 md:px-8">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
