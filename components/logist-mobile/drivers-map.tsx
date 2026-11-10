@@ -107,21 +107,47 @@ const LEGEND_ITEMS: Array<{ color: string; label: string }> = [
   { color: STATUS_COLORS.offline, label: "Не на связи" },
 ]
 
-/** Цвета нитей: рейсы должны отличаться друг от друга, иначе каша. */
-const ROUTE_COLORS = ["#fb923c", "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#facc15", "#22d3ee"]
+/** Иконки активных объектов (и28): форма = тип, цвет = смысл. */
+const TRUCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>`
+const WAREHOUSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5V20H3V9.5Z"/><path d="M7 20v-7h10v7"/><path d="M7 16.5h10"/></svg>`
 
 /**
- * Стабильный цвет рейса. Раньше цвет брался по номеру в списке: когда рейсов
- * становилось больше или меньше, у одного и того же рейса цвет «прыгал», и
- * глаз терял нить при обновлении карты. Теперь цвет привязан к идентификатору
- * рейса и не меняется между обновлениями.
+ * Цвет груза. Одна нить = один смысл: янтарная дорога «с грузом»,
+ * бледный пунктир — порожняк. Радуга по id выглядела пёстро, но не
+ * отвечала на вопрос «что это»: цвет теперь несут объекты (машина —
+ * статус, точки — принадлежность к грузу), а не ленты маршрутов.
  */
-function colorForRoute(id: string): string {
-  let hash = 0
-  for (let index = 0; index < id.length; index += 1) {
-    hash = (hash * 31 + id.charCodeAt(index)) % 100000
-  }
-  return ROUTE_COLORS[hash % ROUTE_COLORS.length]
+const ROUTE_COLOR = "#f5b04d"
+
+/** Чип-машина: тёмный квадрат с грузовиком, рамка — статус водителя */
+function truckIcon(status: string, isSelected: boolean): L.DivIcon {
+  const color = STATUS_COLORS[status] ?? STATUS_COLORS.offline
+  return L.divIcon({
+    className: "lm-pin-wrap",
+    html: `<span class="lm-truck${isSelected ? " is-selected" : ""}" style="--pin-color:${color}">${TRUCK_SVG}</span>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  })
+}
+
+/** Значок точки рейса: «П» — груз забирают, «В» — сдают */
+function stopIcon(kind: "Погрузка" | "Выгрузка"): L.DivIcon {
+  return L.divIcon({
+    className: "lm-pin-wrap",
+    html: `<span class="lm-stop lm-stop--${kind === "Погрузка" ? "load" : "unload"}">${kind === "Погрузка" ? "П" : "В"}</span>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  })
+}
+
+/** База: склад в тёплом кольце */
+function baseIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "lm-pin-wrap",
+    html: `<span class="lm-base">${WAREHOUSE_SVG}</span>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  })
 }
 
 /**
@@ -163,14 +189,14 @@ function readMapTheme(): string {
 export function DriversMap() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
-  const driverMarkers = useRef<Map<string, L.CircleMarker>>(new Map())
+  const driverMarkers = useRef<Map<string, L.Marker>>(new Map())
   // Ореолы-свечения под маркерами машин (идут парой с маркерами)
   const driverHalos = useRef<Map<string, L.CircleMarker>>(new Map())
   const routeLines = useRef<Map<string, { casing: L.Polyline; main: L.Polyline }>>(new Map())
   const returnLines = useRef<Map<string, L.Polyline>>(new Map())
   /** Кольца «откуда»/«куда» на концах нитей рейсов — чтобы видеть точки маршрута. */
-  const routeEndpoints = useRef<Map<string, L.CircleMarker>>(new Map())
-  const baseMarker = useRef<L.CircleMarker | null>(null)
+  const routeEndpoints = useRef<Map<string, L.Marker>>(new Map())
+  const baseMarker = useRef<L.Marker | null>(null)
   const fitDone = useRef(false)
 
   const [tilesReady, setTilesReady] = useState(false)
@@ -320,13 +346,7 @@ export function DriversMap() {
     if (base?.coordinates) {
       points.push(base.coordinates)
       if (!baseMarker.current) {
-        baseMarker.current = L.circleMarker(base.coordinates, {
-          radius: 7,
-          color: "#fb923c",
-          weight: 3,
-          fillColor: "#0b0b0e",
-          fillOpacity: 1,
-        })
+        baseMarker.current = L.marker(base.coordinates, { icon: baseIcon() })
           .bindTooltip(`База: ${base.name}`, { direction: "top" })
           .addTo(map)
       } else {
@@ -350,11 +370,7 @@ export function DriversMap() {
       const halo = driverHalos.current.get(driver.id)
       if (existing) {
         existing.setLatLng(position)
-        existing.setStyle({
-          fillColor: statusColor,
-          radius: isSelected ? 12 : 9,
-          weight: isSelected ? 4 : 2.5,
-        })
+        existing.setIcon(truckIcon(driver.status, isSelected))
         if (halo) {
           halo.setLatLng(position)
           halo.setStyle({
@@ -377,13 +393,7 @@ export function DriversMap() {
         newHalo.addTo(map)
         driverHalos.current.set(driver.id, newHalo)
 
-        const marker = L.circleMarker(position, {
-          radius: 9,
-          color: "#ffffff",
-          weight: 2.5,
-          fillColor: statusColor,
-          fillOpacity: 1,
-        })
+        const marker = L.marker(position, { icon: truckIcon(driver.status, isSelected) })
         marker.on("click", () => {
           setSelected(driver.id)
           setSheetOpen(true)
@@ -418,7 +428,7 @@ export function DriversMap() {
     const crowded = routes.length > 6
     routes.forEach((route) => {
       aliveRoutes.add(route.id)
-      const color = colorForRoute(route.id)
+      const color = ROUTE_COLOR
       const isActive = selected !== null && route.driverId === selected
       const dimmed = selected !== null && !isActive
       const weight = crowded ? 2.5 : 3.5
@@ -519,16 +529,8 @@ export function DriversMap() {
         const existing = routeEndpoints.current.get(key)
         if (existing) {
           existing.setLatLng(endpoint.point)
-          existing.setStyle({ color })
         } else {
-          const marker = L.circleMarker(endpoint.point, {
-            radius: 6,
-            color: "#ffffff",
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 1,
-            pane: "routePane",
-          })
+          const marker = L.marker(endpoint.point, { icon: stopIcon(endpoint.kind as "Погрузка" | "Выгрузка") })
             .bindTooltip(
               approximate
                 ? `${endpoint.kind}: ${endpoint.label || "—"} · маршрут расчётный`
@@ -768,20 +770,29 @@ export function DriversMap() {
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                 {LEGEND_ITEMS.map((item) => (
                   <span key={item.label} className="flex items-center gap-2">
-                    <span
-                      className="inline-block h-3 w-3 rounded-full border-2 border-white"
-                      style={{ backgroundColor: item.color }}
-                    />
+                    <span className="lm-legend-chip" style={{ color: item.color }} />
                     {item.label}
                   </span>
                 ))}
                 <span className="flex items-center gap-2">
-                  <span className="inline-block h-3 w-3 rounded-full border-[3px] border-[#fb923c] bg-[#0b0b0e]" />
+                  <span className="lm-legend-stop">П</span>
+                  Погрузка
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="lm-legend-stop">В</span>
+                  Выгрузка
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="lm-legend-base">{WAREHOUSE_SVG}</span>
                   База
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="inline-block h-1 w-4 rounded-full bg-[#fb923c]" />
-                  Нитка рейса
+                  <span className="lm-legend-route" />
+                  С грузом
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="lm-legend-return" />
+                  Порожняк
                 </span>
               </div>
             </div>

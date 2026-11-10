@@ -31,8 +31,10 @@
 // шторки, сводка «кто на линии», круглые контролы. и27: карте — всё:
 // карточка «ночное стекло» с компасом, пульс выбранного маркера,
 // бегущий пунктир нити выбранного рейса, стеклянные кнопки.
-// 94 чека (desktop 33 + warp 3 + mobile 11 + driver 8 + register 6 +
-// recover 4 + dashboard 5 + lm 24).
+// и28: активные объекты карты — система: машины-чипы с грузовиком
+// (форма=тип, рамка=статус), точки «П»/«В», база-склад, нити — единый
+// тёплый «цвет груза» вместо радуги. 97 чеков (desktop 33 + warp 3 +
+// mobile 11 + driver 8 + register 6 + recover 4 + dashboard 5 + lm 27).
 
 import { chromium } from "playwright"
 import { readFileSync } from "node:fs"
@@ -1045,8 +1047,8 @@ try {
     `цифр ${lm2.counts.length}: ${lm2.counts.slice(0, 3).join(", ")}`,
   )
   check(
-    "лм-панель: метка сборки видна (и27)",
-    lm2.buildText.includes("и27"),
+    "лм-панель: метка сборки видна (и28)",
+    lm2.buildText.includes("и28"),
     `текст: «${lm2.buildText}»`,
   )
   check(
@@ -1105,9 +1107,8 @@ try {
   await lpage.waitForSelector(".leaflet-container", { timeout: 60000 })
   await lpage.waitForTimeout(2500)
   const mp = await lpage.evaluate(() => {
-    const cars = [...document.querySelectorAll(".leaflet-overlay-pane path")].filter(
-      (p) => p.getAttribute("stroke") === "#ffffff",
-    ).length
+    const trucks = [...document.querySelectorAll(".lm-truck")]
+    const truck = trucks[0]
     const halos = [...document.querySelectorAll(".leaflet-overlay-pane path")].filter(
       (p) => p.getAttribute("fill-opacity") === "0.16",
     ).length
@@ -1116,8 +1117,20 @@ try {
       tiles: document.querySelectorAll(".leaflet-tile-loaded").length,
       grabber: document.querySelector(".lm-sheet-grabber") != null,
       summary: document.querySelector(".lm-fleet-summary")?.textContent.trim() ?? "",
-      cars,
+      cars: trucks.length,
       halos,
+      truckShape: truck ? parseFloat(getComputedStyle(truck).borderRadius) < 20 : false,
+      truckGlow: truck ? getComputedStyle(truck).boxShadow.includes("px") : false,
+      stopsLoad: document.querySelectorAll(".lm-stop--load").length,
+      stopsUnload: document.querySelectorAll(".lm-stop--unload").length,
+      base: document.querySelector(".lm-base") != null,
+      routeColors: [
+        ...new Set(
+          [...document.querySelectorAll(".leaflet-route-pane path, .leaflet-overlay-pane path")]
+            .filter((p) => !p.getAttribute("fill-opacity"))
+            .map((p) => getComputedStyle(p).stroke),
+        ),
+      ],
       zoomRound: zoomBtn ? getComputedStyle(zoomBtn).borderRadius : "",
     }
   })
@@ -1132,19 +1145,30 @@ try {
     `ручка ${mp.grabber}, сводка: «${mp.summary.slice(0, 40)}»`,
   )
   check(
-    "карта: машины со свечением-ореолом",
-    mp.cars === 0 || mp.halos >= mp.cars,
-    `машин ${mp.cars}, ореолов ${mp.halos}`,
+    "карта: машины — чипы-грузовики со свечением (форма ≠ точка)",
+    mp.cars === 0 || (mp.cars >= 1 && mp.truckShape && mp.truckGlow && mp.halos >= mp.cars),
+    `машин ${mp.cars}, чип ${mp.truckShape}, ореолов ${mp.halos}`,
   )
+  check(
+    "карта: погрузка «П» и выгрузка «В» — разные значки",
+    mp.stopsLoad + mp.stopsUnload === 0 || (mp.stopsLoad >= 1 && mp.stopsUnload >= 1),
+    `П: ${mp.stopsLoad}, В: ${mp.stopsUnload}`,
+  )
+  check(
+    "карта: нити — единый тёплый «цвет груза» (без радуги)",
+    mp.routeColors.length <= 2,
+    `цветов нитей: ${mp.routeColors.join(", ") || "нет"}`,
+  )
+  check("карта: база — значок-склад", mp.base, "склад в кольце")
   check(
     "карта: контролы — круглые, стеклянные",
     parseFloat(mp.zoomRound) >= 100,
     `радиус ${mp.zoomRound}`,
   )
-  // и27: выбранная машина — пульс, «ночное стекло», компас, бегущая нить
-  const carCount = await lpage.locator(".leaflet-overlay-pane path[stroke=\"#ffffff\"]").count()
+  // и27+и28: выбранная машина — пульс, «ночное стекло», компас, бегущая нить
+  const carCount = await lpage.locator(".lm-truck").count()
   if (carCount > 0) {
-    await lpage.locator(".leaflet-overlay-pane path[stroke=\"#ffffff\"]").first().click({ force: true })
+    await lpage.locator(".lm-truck").first().click({ force: true })
     await lpage.waitForTimeout(700)
     // клик по маркеру открывает шторку — закрываем, чтобы увидеть карточку
     await lpage.getByRole("button", { name: /Машины на карте/ }).click({ force: true })
