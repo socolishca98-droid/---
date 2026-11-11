@@ -17,7 +17,12 @@
 //   6. вход в аккаунт ДРУГОЙ организации → /lm (кросс-орг);
 //   7. полоса не врёт на собственной панели владельца;
 //   8. ловушка со скриншотов: водительская сессия умерла → вход водителя
-//      встречает кнопкой возврата в панель, а не тупиком.
+//      встречает кнопкой возврата в панель, а не тупиком;
+//   9. и35: proxy-вылеты на вход несут код причины (no_session_cookie /
+//      token_rejected) и превращаются в понятные надписи;
+//  10. и36: сценарий скриншота «Вы вошли как …, а я на авторизации» —
+//      окаменелая полоса исчезает, гонка «нажал и ушёл назад» закрывается
+//      опросом сессии, почта в поле телефона получает подсказку.
 //
 // Запуск: дев на 3100 уже поднят (после правок proxy.ts — рестарт!),
 // затем: node scripts/e2e-owner-flow.mjs
@@ -337,6 +342,107 @@ try {
     ((await rejectNotice.first().textContent()) ?? "").slice(0, 90),
   )
   await anonContext.close()
+
+  // ── 10. и36: сценарий со скриншота владельца — «Вы вошли как …», а он на входе ──
+  // Скриншот IMG_4426: вход водителя, сверху полоса «Вы вошли как … Вернуться»,
+  // в поле «Телефон» — почта владельца, ошибка «Неверный телефон или пароль».
+  // Полоса — «окаменелость»: её данные замерли при клиентском уходе в /m/login.
+  // Здесь воспроизводим всё целиком: живой кабинет → смерть сессии → возврат
+  // на вход без перезагрузки → полоса обязана исчезнуть, причина — остаться.
+  const ctxB = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: IPHONE_UA,
+  })
+  const pageB = await ctxB.newPage()
+  await pageB.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await pageB.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
+  await pageB.fill("#email", envValue("OWNER_EMAIL") || "owner@local.test")
+  await pageB.fill("#password", envValue("OWNER_PASSWORD") || "Proverka123")
+  await pageB.locator("#password").press("Enter")
+  await pageB.waitForURL("**/owner", { timeout: 90000 })
+  await pageB.waitForSelector("text=Компании на платформе", { timeout: 30000 })
+  await pageB.fill("input[placeholder*='Найти человека']", "Иванов")
+  await pageB.waitForSelector("text=Иванов Сергей Петрович", { timeout: 30000 })
+  await pageB.locator("li", { hasText: "Иванов Сергей Петрович" }).first().locator("button", { hasText: "Войти" }).click()
+  await pageB.waitForURL(/\/m$/, { timeout: 30000 })
+  await pageB.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  check("и36: вход в Иванова — кабинет с полосой (подготовка сцены)", true, await pageB.locator("text=Вы вошли как").first().textContent())
+
+  // убиваем сессию Иванова в базе и ждём, пока истекут ОБА кэша:
+  // серверный (15 с) и клиентский (60 с) — как человек, вернувшийся через минуту
+  const ivanovDriver = await prisma.driver.findFirst({ where: { phone: "+79161234501" }, select: { id: true } })
+  const ivanovUser = ivanovDriver
+    ? await prisma.user.findFirst({ where: { driverId: ivanovDriver.id }, select: { id: true } })
+    : null
+  const revokedIvanov = ivanovUser
+    ? await prisma.session.updateMany({
+        where: { userId: ivanovUser.id, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "e2e_i36_banner_fossil" },
+      })
+    : null
+  check("и36: сессия Иванова отозвана в базе", (revokedIvanov?.count ?? 0) > 0, `строк: ${revokedIvanov?.count ?? 0}`)
+  // Ждём истечения ОБЕИХ кэшей: клиентского (60 с, module-level у хука) и
+  // серверного (15 с). Клиентский переход внутри кабинета («Рейсы») монтирует
+  // новый экземпляр хука — при живом кэше он показал бы устаревшего Иванова.
+  await pageB.waitForTimeout(62_000)
+  // программный клик: внизу страницы висит бейдж dev-режима Next.js и
+  // перехватывает pointer-события над нижней навигацией
+  await pageB.locator("a[href='/m/orders']").first().evaluate((el) => el.click())
+  await pageB.waitForURL(/\/m\/login\?reason=/, { timeout: 30000 })
+  const fossilNotice = pageB.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
+  await fossilNotice.waitFor({ timeout: 30000 })
+  check(
+    "и36: причина на входе после тихой смерти сессии",
+    /недействительна/.test((await fossilNotice.first().textContent()) ?? ""),
+    ((await fossilNotice.first().textContent()) ?? "").slice(0, 80),
+  )
+  await pageB.waitForTimeout(800)
+  const staleBanners = await pageB.locator("text=Вы вошли как").count()
+  check(
+    "и36: «окаменелая» полоса «Вы вошли как» на входе НЕ висит (главное со скриншота)",
+    staleBanners === 0,
+    `полос на входе: ${staleBanners}`,
+  )
+  const ownerEscape = pageB.locator("button", { hasText: "Вы владелец" })
+  await ownerEscape.waitFor({ timeout: 15000 })
+  check("и36: честный путь назад — кнопка владельца на месте", true, (await ownerEscape.first().textContent())?.trim() ?? "")
+
+  // ── 10б. Спасение из гонки «нажал "Войти как" и ушёл назад» ─────────────
+  // Cookie имперсонации прилетают, когда человек уже сидит на входе и никаких
+  // событий (focus/pageshow) не происходит. Опрос сессии (и36) должен сам
+  // увести в кабинет. Сессию Орлова выпускаем серверным вызовом — как ответ
+  // имперсонации, пришедший на открытую страницу.
+  const csrfJson = await (await ctxB.request.get(`${BASE}/api/auth/csrf`)).json()
+  const impRes = await ctxB.request.post(`${BASE}/api/admin/impersonate`, {
+    headers: { "X-CSRF-Token": csrfJson.csrfToken },
+    data: { driverId: orlovDriver?.id },
+  })
+  check("и36: сессия Орлова выпущена поверх (как опоздавший ответ)", impRes.ok(), `HTTP ${impRes.status()}`)
+  await pageB.waitForURL(/\/m$/, { timeout: 20000 })
+  await pageB.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  check(
+    "и36: опрос сам увёл в кабинет (гонка закрыта без действий человека)",
+    /Орлов/.test((await pageB.locator("text=Вы вошли как").first().textContent()) ?? ""),
+    await pageB.locator("text=Вы вошли как").first().textContent(),
+  )
+  await ctxB.close()
+
+  // ── 10в. Почта в поле «Телефон» — ловушка со скриншота ──────────────────
+  // Браузер владельца подставляет его почту в поле телефона; раньше вход
+  // отвечал «Неверный телефон или пароль». Теперь — прямая подсказка.
+  await page.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await page.waitForSelector("#driver-phone", { timeout: 30000 })
+  await page.fill("#driver-phone", "socolishca98@gmail.com")
+  await page.fill("#driver-password", "Proverka123")
+  await page.locator("#driver-password").press("Enter")
+  const emailHint = page.locator("[role=alert]", { hasText: "по номеру телефона" })
+  await emailHint.waitFor({ timeout: 15000 })
+  const emailHintText = (await emailHint.first().textContent()) ?? ""
+  check(
+    "и36: почта в поле телефона — подсказка, а не «Неверный телефон или пароль»",
+    /по номеру телефона/.test(emailHintText) && !/Неверный телефон/.test(emailHintText),
+    emailHintText.slice(0, 90),
+  )
 
   // ── Фон: ошибок страницы не накопилось ──────────────────────────────────
   const realErrors = errors.filter((e) => !e.includes("favicon"))

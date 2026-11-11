@@ -9,7 +9,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Loader2, Undo2, UserCog } from "lucide-react"
 import { toast } from "sonner"
 
@@ -30,8 +30,16 @@ export function AccountSwitchBanner({
   sessionKind?: "staff" | "driver"
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { data } = useJsonApi<SessionResponse>(`/api/auth/session?kind=${sessionKind}`)
   const [busy, setBusy] = useState(false)
+
+  // и36: на экране входа полоса не показывается. Её данные живут в клиентском
+  // состоянии и могут остаться от прошлой сцены (живой кабинет, кэш страницы)
+  // — тогда над формой висит «Вы вошли как …», а форма просит войти: экран
+  // врёт человеку. Путь назад со входа — своя кнопка (server-side, и33):
+  // она знает, жива ли сессия владельца, и не врёт.
+  if (pathname === "/m/login") return null
 
   const owner = data?.impersonation ?? null
   if (!owner) return null

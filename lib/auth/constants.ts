@@ -18,6 +18,13 @@ export const DRIVER_COOKIE = "loginex_driver_session"
  *  чужой аккаунт. Нужна, чтобы одним нажатием вернуться к себе. */
 export const IMPERSONATION_COOKIE = "loginex_owner_session"
 
+/**
+ * и36: последняя причина вылета на вход водителя. Дублируется из ?reason=
+ * в sessionStorage: кнопка «назад» и кэш страницы возвращают старый URL без
+ * параметров — заметка о причине не должна теряться вместе с ними.
+ */
+export const DRIVER_KICK_REASON_KEY = "loginex_driver_kick_reason"
+
 /** Заголовки, которые middleware проставляет после проверки токена.
  *  Входящие запросы с такими заголовками middleware всегда очищает,
  *  чтобы клиент не мог их подделать. */

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
 import { classifySessionResponse, retryDelayMs } from "@/lib/auth/refresh-policy"
+import { DRIVER_KICK_REASON_KEY } from "@/lib/auth/constants"
 
 // ============================================
 // ТИПЫ
@@ -153,6 +154,13 @@ export function useDriverSession(
     // Причину НЕ обнуляем после первого редиректа: на /m хук используют
     // несколько компонентов, и второй редирект (без причины) затирал
     // параметр первого — надпись так и не появлялась.
+    // и36: дублируем в sessionStorage — кнопка «назад» и кэш страницы
+    // возвращают URL без параметров, а заметка переживать это должна.
+    if (lastSessionFailReason) {
+      try {
+        sessionStorage.setItem(DRIVER_KICK_REASON_KEY, lastSessionFailReason)
+      } catch {}
+    }
     const suffix = lastSessionFailReason
       ? `?reason=${encodeURIComponent(lastSessionFailReason)}`
       : ""

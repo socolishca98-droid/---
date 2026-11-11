@@ -22,7 +22,7 @@ import { toast } from "sonner"
 import { LoginWorld } from "@/components/visual/login-world"
 import { useDriverSession } from "@/hooks/use-driver-session"
 import { apiSend } from "@/hooks/use-json-api"
-import { PRODUCT_NAME } from "@/lib/auth/constants"
+import { DRIVER_KICK_REASON_KEY, PRODUCT_NAME } from "@/lib/auth/constants"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
 
 /**
@@ -86,16 +86,44 @@ export function DriverLoginForm({
   const [error, setError] = useState("")
   const [isReturning, setIsReturning] = useState(false)
 
-  // и34: с чем водителя только что выкинуло на этот экран
+  // и34: с чем водителя только что выкинуло на этот экран.
+  // и36: причина дублируется в sessionStorage — кнопка «назад» и кэш
+  // браузера возвращают старый URL без ?reason, и заметка исчезала вместе
+  // с параметром. Теперь последняя причина переживает любые возвраты.
   const reasonParam = searchParams.get("reason")
-  const reasonNotice = reasonParam
-    ? `Сессия водителя недействительна: ${SESSION_REASON_TEXT[reasonParam] ?? reasonParam}.`
+  const [storedReason, setStoredReason] = useState<string | null>(null)
+  useEffect(() => {
+    if (reasonParam) {
+      try {
+        sessionStorage.setItem(DRIVER_KICK_REASON_KEY, reasonParam)
+      } catch {}
+      return
+    }
+    try {
+      setStoredReason(sessionStorage.getItem(DRIVER_KICK_REASON_KEY))
+    } catch {}
+  }, [reasonParam])
+  const kickReason = reasonParam ?? storedReason
+  const reasonNotice = kickReason
+    ? `Сессия водителя недействительна: ${SESSION_REASON_TEXT[kickReason] ?? kickReason}.`
     : null
 
   // Сессия уже есть — незачем показывать форму
   useEffect(() => {
     if (isAuthenticated) router.replace("/m")
   }, [isAuthenticated, router])
+
+  // и36: страница восстановлена из кэша браузера (bfcache) — это «замороженный»
+  // снимок с прежним JavaScript: на нём могут быть старые надписи и старые
+  // кнопки, которые врут. Честный выход — перерисоваться с сервера: он видит
+  // cookie и базу и нарисует правду.
+  useEffect(() => {
+    const onPageshow = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload()
+    }
+    window.addEventListener("pageshow", onPageshow)
+    return () => window.removeEventListener("pageshow", onPageshow)
+  }, [])
 
   // и34: вернулись на эту страницу (кнопка «назад», смена вкладки), а cookie
   // сессии могла уже прилететь — например, владелец нажал «Войти», ушёл
@@ -117,11 +145,42 @@ export function DriverLoginForm({
     }
   }, [refresh])
 
+  // и36: гонка «нажал "Войти как" и ушёл назад раньше ответа». Cookie
+  // имперсонации прилетают в браузер, когда человек уже сидит на этом
+  // экране, — и ни одно событие (focus/pageshow) при этом не срабатывает.
+  // Пока человек ничего не печатает, тихо перепроверяем сессию первые
+  // полминуты: живая сессия сама уведит в кабинет.
+  useEffect(() => {
+    if (isAuthenticated) return
+    if (phone.trim() || password) return
+    const poll = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        void refresh()
+      }
+    }, 4000)
+    const stop = setTimeout(() => clearInterval(poll), 32_000)
+    return () => {
+      clearInterval(poll)
+      clearTimeout(stop)
+    }
+  }, [isAuthenticated, phone, password, refresh])
+
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!phone.trim() || !password) {
       setError("Укажите телефон и пароль")
+      return
+    }
+
+    // и36: браузер владельца подставляет его почту в поле «Телефон» — и вход
+    // отвечает «Неверный телефон или пароль», хотя человек ничего не путал.
+    // Ловим до отправки и объясняем словами, куда какая учётная запись
+    // входит (жалоба со скриншота: email в поле телефона).
+    if (phone.trim().includes("@")) {
+      setError(
+        "Здесь вход водителя — по номеру телефона. Почта — для входа логиста или владельца: ссылка «Вход для логиста» под кнопкой",
+      )
       return
     }
 
@@ -135,6 +194,11 @@ export function DriverLoginForm({
       setError(result.error || "Не удалось войти")
       return
     }
+
+    // вошли — причина прошлого вылета больше не актуальна
+    try {
+      sessionStorage.removeItem(DRIVER_KICK_REASON_KEY)
+    } catch {}
 
     // Успешный вход — рывок сквозь мир и только потом редирект
     const reduced =
