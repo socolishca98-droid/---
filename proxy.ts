@@ -74,6 +74,9 @@ function withIdentity(
     headers.set(IDENTITY_HEADERS.role, payload.role)
     headers.set(IDENTITY_HEADERS.sessionId, payload.jti)
   }
+  // и37: полный путь запроса — серверным страницам (layout не знает свой
+  // путь) для журнала диагностики «входа как»
+  headers.set("x-loginex-path", `${request.nextUrl.pathname}${request.nextUrl.search}`)
   // Идентификатор запроса для /api/*: один и тот же номер виден и в журнале
   // действий, и в логах — по нему можно собрать всё, что произошло вокруг
   // одной операции (например, «вход как»).

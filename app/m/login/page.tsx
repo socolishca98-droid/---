@@ -18,7 +18,7 @@
 // «Вы вошли как» исчезает вместе с умершей сессией. Cookie — httpOnly,
 // увидеть её может только сервер: он и рисует кнопку возврата в панель.
 
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 
 import { redirect } from "next/navigation"
 
@@ -79,6 +79,34 @@ export default async function DriverLoginPage() {
     driverCookie = store.get(DRIVER_COOKIE)?.value ? "present" : "none"
   } catch {
     // остаётся "none" — диагностика не должна ломать страницу входа
+  }
+
+  // и37: серверная запись состояния — что прислал браузер и с чем пришёл.
+  // Разбирается по журналу; после закрывания инцидента датчик убирается.
+  try {
+    const h = await headers()
+    const store = await cookies()
+    const names = [STAFF_COOKIE, "loginex_owner_session", DRIVER_COOKIE, "loginex_csrf"].filter(
+      (name) => Boolean(store.get(name)?.value),
+    )
+    const reason = new URL(`http://local${h.get("x-loginex-path") ?? "/"}`).searchParams.get("reason")
+    await prisma.auditLog.create({
+      data: {
+        actorId: "diagnostic",
+        action: "diag_m_login",
+        targetType: "diagnostic",
+        metadata: JSON.stringify({
+          reason,
+          cookies: names,
+          driverCookie,
+          ownerMode: owner?.mode ?? null,
+          ua: (h.get("user-agent") ?? "").slice(0, 120),
+          ref: h.get("referer") ?? null,
+        }),
+      },
+    })
+  } catch {
+    // датчик не имеет права ломать вход
   }
 
   return <DriverLoginForm owner={owner} diagnostic={{ driverCookie }} />

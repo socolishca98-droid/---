@@ -269,5 +269,35 @@ export async function POST(request: NextRequest) {
     response.cookies.set({ name: DRIVER_COOKIE, value: "", ...cookieOptions(), maxAge: 0 })
   }
 
+  // и37: серверная запись выпуска — долетела ли сессия до базы и какие
+  // cookie реально уехали в ответе (по числу строк Set-Cookie видно,
+  // не склеил ли их рантайм). Разбирается по журналу с прода.
+  try {
+    const back = await prisma.session.findUnique({
+      where: { id: session.sessionId },
+      select: { id: true, expiresAt: true },
+    })
+    await prisma.auditLog.create({
+      data: {
+        organizationId: targetOrganizationId,
+        actorId: owner.id,
+        actorEmail: owner.email,
+        action: "diag_impersonate",
+        targetType: "diagnostic",
+        targetId: targetUserId,
+        metadata: JSON.stringify({
+          kind,
+          target: targetName,
+          sessionId: session.sessionId,
+          dbReadable: Boolean(back),
+          setCookies: response.headers.getSetCookie().map((value) => value.split("=")[0]),
+          requestId,
+        }),
+      },
+    })
+  } catch {
+    // датчик не должен ломать «вход как»
+  }
+
   return response
 }
