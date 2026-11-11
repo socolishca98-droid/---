@@ -47,6 +47,13 @@ export function resetDriverSessionCache(): void {
 }
 
 /** Один запрос проверки сессии на всех, кому он нужен в эту секунду. */
+/**
+ * Почему последняя проверка сессии провалилась (reason из 401, и31).
+ * Показывается на экране входа — человек (и владелец платформы при
+ * разборе инцидента) видит причину, а не «просто выкинуло».
+ */
+let lastSessionFailReason: string | null = null
+
 function loadDriverSession(): Promise<{ driver: any; mustChange: boolean } | null> {
   if (inFlightDriverSession) return inFlightDriverSession
 
@@ -56,7 +63,11 @@ function loadDriverSession(): Promise<{ driver: any; mustChange: boolean } | nul
     // Разовая ошибка сервера или лимит запросов — не повод выбрасывать
     // водителя на экран входа: наверху refresh повторит попытку с паузой
     if (outcome === "transient") throw new Error(`сервер ответил ${res.status}`)
-    if (outcome !== "ok") return null
+    if (outcome !== "ok") {
+      const failure = (await res.json().catch(() => null)) as { reason?: string } | null
+      lastSessionFailReason = failure?.reason ?? null
+      return null
+    }
 
     const data = await res.json()
     const sessionDriver = data?.session?.driver as DriverSession | undefined
@@ -132,7 +143,15 @@ export function useDriverSession(
 
   const redirectToLogin = useCallback(() => {
     if (!requireAuth) return
-    router.replace(loginPath)
+    // Причину смерти сессии несём на экран входа: там она превращается
+    // в понятную надпись, а не исчезает вместе с редиректом.
+    // Причину НЕ обнуляем после первого редиректа: на /m хук используют
+    // несколько компонентов, и второй редирект (без причины) затирал
+    // параметр первого — надпись так и не появлялась.
+    const suffix = lastSessionFailReason
+      ? `?reason=${encodeURIComponent(lastSessionFailReason)}`
+      : ""
+    router.replace(`${loginPath}${suffix}`)
   }, [requireAuth, loginPath, router])
 
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)

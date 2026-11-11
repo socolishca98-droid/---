@@ -5,12 +5,18 @@ import { toast } from "sonner"
 
 import { apiSend } from "@/hooks/use-json-api"
 
+export interface EnterAccountResult {
+  ok: boolean
+  /** Человекочитаемая причина неудачи — для постоянного блока на странице */
+  error?: string
+}
+
 export async function enterAccount(account: {
   kind: "staff" | "driver"
   id: string
   name: string
   fallbackHref?: string
-}): Promise<void> {
+}): Promise<EnterAccountResult> {
   const body = account.kind === "driver" ? { driverId: account.id } : { userId: account.id }
   const result = await apiSend<{ redirectTo?: string; warning?: string }>(
     "/api/admin/impersonate",
@@ -21,7 +27,7 @@ export async function enterAccount(account: {
     // Например, доступ к учётной записи закрыт: сессия всё равно не заработала
     // бы, и владелец уехал бы в чужой кабинет чтобы сразу выпасть на вход.
     toast.error(result.error || "Не удалось войти в аккаунт")
-    return
+    return { ok: false, error: result.error || "Не удалось войти в аккаунт" }
   }
   // Вход выполнен, но запись в журнал не сохранилась — сказать об этом вслух.
   if (result.data?.warning) toast.warning(result.data.warning)
@@ -36,22 +42,24 @@ export async function enterAccount(account: {
   // Пароль хостинга (Vercel Deployment Protection) перехватил запрос:
   // скажем прямо, что это настройка хостинга, а не сломанный вход
   if (check.status === 401 && check.headers.get("www-authenticate")) {
-    toast.error(
-      "Сайт требует пароль хостинга (Vercel Protection) — из-за него вход в аккаунт и срывается. Отключите: Vercel → проект → Settings → Deployment Protection → Disable",
-      { duration: 12000 },
-    )
-    return
+    const hostingError =
+      "сайт требует пароль хостинга (Vercel Protection) — введите его при открытии сайта и повторите, либо отключите: Vercel → проект → Settings → Deployment Protection → Disable"
+    toast.error(hostingError, { duration: 12000 })
+    return { ok: false, error: hostingError }
   }
   if (!check.ok) {
     const failure = (await check.json().catch(() => ({}))) as { error?: string; reason?: string }
     console.warn("[enter-account] сессия цели не действует:", failure?.reason ?? check.status)
     toast.error(failure?.error || "Аккаунт открылся, но его сессия не действует")
-    if (failure?.reason) toast.info(`Причина: ${failure.reason}`)
-    return
+    return {
+      ok: false,
+      error: `${failure?.error || "аккаунт открылся, но его сессия не действует"}${failure?.reason ? ` (причина: ${failure.reason})` : ""}`,
+    }
   }
 
   toast.success(`Открываю аккаунт: ${account.name}`)
   const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? account.fallbackHref ?? "/lm"
   // Полная перезагрузка: cookie сессии меняется, клиентские контексты читают её заново
   window.location.assign(target)
+  return { ok: true }
 }

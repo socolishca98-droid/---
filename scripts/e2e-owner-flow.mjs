@@ -141,6 +141,57 @@ try {
   const ownBanner = await page.locator("text=Вы вошли как").count()
   check("на собственной панели владельца полоса «Вы вошли как [сам себя]» не висит", ownBanner === 0, `найдено полос: ${ownBanner}`)
 
+  // ── 5б. Страница управления: «Войти как водитель» (путь владельца из скриншотов) ──
+  const orgLink = page.locator("a[href^='/owner/org/']").first()
+  await orgLink.click()
+  await page.waitForURL(/\/owner\/org\//, { timeout: 30000 })
+  await page.waitForSelector("text=Войти как водитель", { timeout: 30000 })
+  const orgPath = new URL(page.url()).pathname
+  await page.locator("button", { hasText: "Войти как водитель" }).first().evaluate((el) => el.click())
+  await page.waitForURL(/\/m$/, { timeout: 30000 })
+  await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  check("страница управления: «Войти как водитель» — сразу кабинет водителя", true, `${orgPath} → ${page.url()}`)
+  await page.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
+  await page.waitForURL("**/owner", { timeout: 30000 })
+
+  // ── 5в. ПРОТУХШИЙ cookie имперсонации (хвост прошлых итераций) ──────────
+  // Раньше impersonate не перезаписывал старый токен: полоса пропадала,
+  // «Вернуться» из чужого кабинета не работал. Теперь перезаписывает.
+  await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await page.waitForSelector("text=Компании на платформе", { timeout: 30000 })
+  await context.addCookies([{ name: "loginex_owner_session", value: "stale-garbage-token", domain: "localhost", path: "/", httpOnly: true }])
+  await page.fill("input[placeholder*='Найти человека']", "Кузнецов")
+  await page.waitForSelector("text=Кузнецов Андрей Владимирович", { timeout: 30000 })
+  await page.locator("li", { hasText: "Кузнецов Андрей Владимирович" }).first().locator("button", { hasText: "Войти" }).click()
+  await page.waitForURL(/\/m$/, { timeout: 30000 })
+  await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  check("протухший cookie имперсонации перезаписан: полоса на месте", true, "Кузнецов")
+  await page.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
+  await page.waitForURL("**/owner", { timeout: 30000 })
+  check("«Вернуться» работает после протухшего cookie", true, page.url())
+
+  // ── 5г. Ошибка «входа как»: НЕ тост, а постоянный блок с причиной ───────
+  // Кнопка у закрытых аккаунтов блокируется сама (и31), поэтому отказ
+  // подставляем точечно — перехватываем ответ API, как будто сервер
+  // отказал уже после нажатия (закрытый доступ, сбой, защита хостинга).
+  await context.route("**/api/admin/impersonate", (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ success: false, error: "Доступ закрыт: e2e проверка блока ошибки", code: "target_inactive" }),
+    }),
+  )
+  await page.fill("input[placeholder*='Найти человека']", "Кузнецов")
+  await page.waitForSelector("text=Кузнецов Андрей Владимирович", { timeout: 30000 })
+  await page.locator("li", { hasText: "Кузнецов Андрей Владимирович" }).first().locator("button", { hasText: "Войти" }).click()
+  const errorBlock = page.locator("[role=alert]", { hasText: "Не удалось войти в аккаунт" })
+  await errorBlock.waitFor({ timeout: 30000 })
+  const errorText = (await errorBlock.first().textContent()) ?? ""
+  check("отказ «войти как»: постоянный блок с причиной (не тост)", /Доступ закрыт/.test(errorText), errorText.slice(0, 90))
+  await errorBlock.locator("button[aria-label='Закрыть']").evaluate((el) => el.click())
+  await context.unroute("**/api/admin/impersonate")
+  await page.waitForTimeout(500)
+
   // ── 6. Вход в логиста → /lm, возврат → /owner ───────────────────────────
   await page.fill("input[placeholder*='Найти человека']", "logist@local.test")
   await page.waitForSelector("text=logist@local.test", { timeout: 30000 })
@@ -194,6 +245,10 @@ try {
 
   await page.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 60000 })
   await page.waitForURL(/\/m\/login/, { timeout: 30000 })
+  // и34: причина смерти сессии видна на входе — не «просто выкинуло»
+  const reasonNotice = page.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
+  await reasonNotice.waitFor({ timeout: 30000 })
+  check("причина смерти сессии показана на входе", /завершена/.test((await reasonNotice.first().textContent()) ?? ""), (await reasonNotice.first().textContent())?.slice(0, 90) ?? "")
   const returnButton = page.locator("button", { hasText: "вернуться в панель" })
   await returnButton.waitFor({ timeout: 30000 })
   check("вход водителя встречает владельца кнопкой возврата, а не тупиком", true, await returnButton.first().textContent())

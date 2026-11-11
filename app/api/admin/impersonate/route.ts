@@ -222,9 +222,15 @@ export async function POST(request: NextRequest) {
   }
   const response = NextResponse.json(payload)
 
-  // Свою сессию сохраняем один раз — на время просмотра чужого аккаунта
+  // Свою сессию сохраняем на время просмотра чужого аккаунта — и ВСЕГДА
+  // перезаписываем (и34). Раньше cookie писалась только если её не было:
+  // протухший хвост от прошлых итераций (владелец перелогинился, а старый
+  // токен остался) не обновлялся — и «Вернуться» бился об «Сохранённой
+  // сессии владельца нет», а полоса «Вы вошли как» пропадала совсем.
+  // Перезапись безопасна: успешный «вход как» возможен только из
+  // собственной сессии владельца — чужую штабную cookie сервер не пропустит.
   const ownToken = request.cookies.get(STAFF_COOKIE)?.value
-  if (ownToken && !request.cookies.get(IMPERSONATION_COOKIE)?.value) {
+  if (ownToken) {
     response.cookies.set({ name: IMPERSONATION_COOKIE, value: ownToken, ...cookieOptions() })
   }
 

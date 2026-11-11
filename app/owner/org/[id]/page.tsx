@@ -154,9 +154,14 @@ export default function OwnerOrgPage() {
   const accountsError = accounts.error ?? null
   const journalError = journal.error ?? null
 
+  // и34: причина неудачного «войти как» — постоянным блоком на странице
+  const [enterError, setEnterError] = useState<string | null>(null)
+
   async function enter(item: { kind: "staff" | "driver"; id: string; name: string }) {
     setBusyId(item.id)
-    await enterAccount(item)
+    setEnterError(null)
+    const result = await enterAccount(item)
+    if (!result.ok) setEnterError(result.error ?? "неизвестная ошибка")
     setBusyId(null)
   }
 
@@ -282,6 +287,26 @@ export default function OwnerOrgPage() {
 
       {org ? (
         <>
+          {enterError ? (
+            <div
+              role="alert"
+              className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-[13.5px] leading-relaxed text-destructive"
+              style={{ animation: "rise-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both" }}
+            >
+              <span>
+                <b>Не удалось войти в аккаунт:</b> {enterError}
+              </span>
+              <button
+                type="button"
+                aria-label="Закрыть"
+                onClick={() => setEnterError(null)}
+                className="shrink-0 rounded-md px-2 py-0.5 text-[13px] text-destructive/80 transition-colors hover:bg-destructive/15"
+              >
+                ✕
+              </button>
+            </div>
+          ) : null}
+
           <header
             className="mt-4 flex items-start gap-3"
             style={{ animation: "rise-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both" }}

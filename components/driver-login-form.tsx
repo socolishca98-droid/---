@@ -15,7 +15,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Phone, Loader2, ArrowRight, Lock, AlertCircle, Truck, Undo2 } from "lucide-react"
 import { toast } from "sonner"
@@ -24,6 +24,22 @@ import { useDriverSession } from "@/hooks/use-driver-session"
 import { apiSend } from "@/hooks/use-json-api"
 import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { formatGreeting, formatHumanDate } from "@/lib/ui/greeting"
+
+/**
+ * Почему водительская сессия умерла (и31 reason, и34 — показываем).
+ * Человек видит причину на входе, а не «просто выкинуло»; владелец
+ * платформы по этой надписи разбирает инциденты на проде.
+ */
+const SESSION_REASON_TEXT: Record<string, string> = {
+  token_invalid: "сессия повреждена — войдите заново",
+  session_row_missing: "сессия не найдена на сервере — войдите заново",
+  session_revoked: "сессия завершена (выход или «Завершить сессии»)",
+  session_expired: "срок сессии истёк — войдите заново",
+  user_missing: "учётная запись удалена",
+  user_suspended: "доступ к учётной записи закрыт",
+  user_inactive: "учётная запись не активна",
+  role_rejected: "роль учётной записи изменилась",
+}
 
 export interface DriverLoginOwner {
   /** Имя владельца — не используется в надписи, оставлено для будущих нужд */
@@ -39,7 +55,8 @@ export interface DriverLoginOwner {
 
 export function DriverLoginForm({ owner }: { owner: DriverLoginOwner | null }) {
   const router = useRouter()
-  const { login, isAuthenticated } = useDriverSession({ requireAuth: false })
+  const searchParams = useSearchParams()
+  const { login, isAuthenticated, refresh } = useDriverSession({ requireAuth: false })
 
   const [phone, setPhone] = useState<string>("")
   const [password, setPassword] = useState<string>("")
@@ -47,10 +64,36 @@ export function DriverLoginForm({ owner }: { owner: DriverLoginOwner | null }) {
   const [error, setError] = useState("")
   const [isReturning, setIsReturning] = useState(false)
 
+  // и34: с чем водителя только что выкинуло на этот экран
+  const reasonParam = searchParams.get("reason")
+  const reasonNotice = reasonParam
+    ? `Сессия водителя недействительна: ${SESSION_REASON_TEXT[reasonParam] ?? reasonParam}.`
+    : null
+
   // Сессия уже есть — незачем показывать форму
   useEffect(() => {
     if (isAuthenticated) router.replace("/m")
   }, [isAuthenticated, router])
+
+  // и34: вернулись на эту страницу (кнопка «назад», смена вкладки), а cookie
+  // сессии могла уже прилететь — например, владелец нажал «Войти», ушёл
+  // раньше ответа и вернулся. Перепроверяем без перезагрузки: если сессия
+  // жива — эффект выше уведёт в кабинет.
+  useEffect(() => {
+    const recheck = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        void refresh()
+      }
+    }
+    document.addEventListener("visibilitychange", recheck)
+    window.addEventListener("pageshow", recheck)
+    window.addEventListener("focus", recheck)
+    return () => {
+      document.removeEventListener("visibilitychange", recheck)
+      window.removeEventListener("pageshow", recheck)
+      window.removeEventListener("focus", recheck)
+    }
+  }, [refresh])
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -144,6 +187,16 @@ export function DriverLoginForm({ owner }: { owner: DriverLoginOwner | null }) {
           </div>
         }
       >
+        {reasonNotice ? (
+          <div
+            role="alert"
+            className="login-shake mb-4 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-[13px] leading-relaxed text-red-400"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{reasonNotice}</span>
+          </div>
+        ) : null}
+
         {owner ? (
           <button
             type="button"

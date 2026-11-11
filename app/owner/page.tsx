@@ -111,6 +111,9 @@ export default function OwnerHomePage() {
   const { user } = useStaffSession()
   const [query, setQuery] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
+  // и34: причина неудачного «войти как» живёт на странице, пока её не
+  // закроют — тост исчезает, и владелец видит «страница не отвечает»
+  const [enterError, setEnterError] = useState<string | null>(null)
 
   const overview = useJsonApi<OverviewResponse>(user ? "/api/admin/overview" : null)
   const search = query.trim().length >= 2
@@ -151,7 +154,9 @@ export default function OwnerHomePage() {
 
   async function enter(item: { kind: "staff" | "driver"; id: string; name: string }, busyKey?: string) {
     setBusyId(busyKey ?? item.id)
-    await enterAccount(item)
+    setEnterError(null)
+    const result = await enterAccount(item)
+    if (!result.ok) setEnterError(result.error ?? "неизвестная ошибка")
     setBusyId(null)
   }
 
@@ -167,6 +172,25 @@ export default function OwnerHomePage() {
           водителей и её журнал действий.
         </p>
       </header>
+
+      {enterError ? (
+        <div
+          role="alert"
+          className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-[13.5px] leading-relaxed text-destructive"
+        >
+          <span>
+            <b>Не удалось войти в аккаунт:</b> {enterError}
+          </span>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            onClick={() => setEnterError(null)}
+            className="shrink-0 rounded-md px-2 py-0.5 text-[13px] text-destructive/80 transition-colors hover:bg-destructive/15"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       {forbidden ? (
         <div className="mt-6">
