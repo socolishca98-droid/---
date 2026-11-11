@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
-import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
+import { classifySessionResponse, retryDelayMs } from "@/lib/auth/refresh-policy"
 
 // ============================================
 // ТИПЫ
@@ -52,7 +52,7 @@ function loadDriverSession(): Promise<{ driver: any; mustChange: boolean } | nul
 
   const request = (async () => {
     const res = await fetch("/api/auth/session?kind=driver", { cache: "no-store" })
-    const outcome = classifySessionStatus(res.status)
+    const outcome = classifySessionResponse(res)
     // Разовая ошибка сервера или лимит запросов — не повод выбрасывать
     // водителя на экран входа: наверху refresh повторит попытку с паузой
     if (outcome === "transient") throw new Error(`сервер ответил ${res.status}`)

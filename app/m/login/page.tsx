@@ -128,7 +128,7 @@ export default function DriverLoginPage() {
                 id="driver-phone"
                 type="tel"
                 inputMode="tel"
-                autoComplete="username"
+                autoComplete="tel"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="+7 (999) 123-45-67"

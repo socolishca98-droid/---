@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
+import { classifySessionResponse, retryDelayMs } from "@/lib/auth/refresh-policy"
 
 export interface StaffUser {
   id: string
@@ -92,7 +92,7 @@ function loadStaffSession(): Promise<{
 
   const request = (async () => {
     const res = await fetch("/api/auth/session?kind=staff", { cache: "no-store" })
-    const outcome = classifySessionStatus(res.status)
+    const outcome = classifySessionResponse(res)
     if (outcome === "transient") throw new Error(`сервер ответил ${res.status}`)
     if (outcome !== "ok") return null
 

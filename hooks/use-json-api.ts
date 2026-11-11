@@ -167,6 +167,14 @@ export async function apiSend<T = unknown>(
       // Живой случай — помощник сборки: 409 already_taken приходит с already
       // созданным заказом в поле order, и без него маршрут не отправить
       // повторно («этот груз уже взят в работу» — и тупик).
+      if (res.status === 401 && res.headers.get("www-authenticate")) {
+        return {
+          ok: false,
+          error:
+            "Сайт требует пароль хостинга (Vercel Protection). Отключите: Vercel → проект → Settings → Deployment Protection → Disable",
+          data: {} as T,
+        }
+      }
       return { ok: false, error: json?.error || `Ошибка ${res.status}`, data: json as T }
     }
     return { ok: true, data: json as T }

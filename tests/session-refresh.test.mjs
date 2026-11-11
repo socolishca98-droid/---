@@ -12,7 +12,7 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { classifySessionStatus, retryDelayMs, isSessionPayload } = require(
+const { classifySessionStatus, classifySessionResponse, retryDelayMs, isSessionPayload } = require(
   "../.test-build/lib/auth/refresh-policy.js"
 )
 
@@ -60,4 +60,25 @@ test("данные сессии проверяются по существу, а
   assert.equal(isSessionPayload({ success: true, session: null }), false)
   assert.equal(isSessionPayload(null), false)
   assert.equal(isSessionPayload("текст"), false)
+})
+
+test("и32: 401 от пароля хостинга (WWW-Authenticate) — не наш сервер, сессию не теряем", () => {
+  // Vercel Deployment Protection: хостинг перехватывает запрос своим 401
+  // с заголовком WWW-Authenticate (Basic) — браузер рисует системный диалог
+  // «Войти на сайте … с помощью пароля». Наш прошлый код считал любой 401
+  // «сессии нет» и выкидывал водителя/логиста на экран входа.
+  const hosting = {
+    status: 401,
+    headers: { get: (n) => (n.toLowerCase() === "www-authenticate" ? 'Basic realm="Vercel.Deployment.Protection"' : null) },
+  }
+  assert.equal(classifySessionResponse(hosting), "transient")
+
+  // Наш 401 без заголовка — по-прежнему честное «сессии нет»
+  const ours = { status: 401, headers: { get: () => null } }
+  assert.equal(classifySessionResponse(ours), "unauthorized")
+
+  // Ответ без заголовков вовсе — работаем как раньше, по коду
+  assert.equal(classifySessionResponse({ status: 200 }), "ok")
+  assert.equal(classifySessionResponse({ status: 429 }), "transient")
+  assert.equal(classifySessionResponse({ status: 403 }), "unauthorized")
 })

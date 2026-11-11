@@ -25,6 +25,27 @@ export function classifySessionStatus(status: number): SessionOutcome {
   return "unauthorized"
 }
 
+/**
+ * Тот же разбор, но по живому ответу: 401 с WWW-Authenticate — это не наш
+ * сервер отзывает сессию, а хостинг (Vercel Deployment Protection) просит
+ * пароль защиты деплоя. Такой ответ приходит НАД приложением (браузер сам
+ * рисует системный диалог «Войти на сайте … с помощью пароля»), до логики
+ * сессий он не доходит. Считаем его временной ошибкой: не выкидываем
+ * водителя и логиста на экран входа из-за настройки хостинга.
+ */
+export function classifySessionResponse(res: {
+  status: number
+  headers?: { get(name: string): string | null }
+}): SessionOutcome {
+  if (
+    res.status === 401 &&
+    res.headers?.get("www-authenticate") != null
+  ) {
+    return "transient"
+  }
+  return classifySessionStatus(res.status)
+}
+
 /** Паузы перед повторами при временной ошибке: 2 с, 5 с, дальше раз в 30 секунд. */
 const RETRY_DELAYS_MS = [2000, 5000, 30000]
 

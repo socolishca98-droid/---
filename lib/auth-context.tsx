@@ -21,7 +21,7 @@ import {
   type ReactNode,
 } from "react"
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
-import { classifySessionStatus, retryDelayMs } from "@/lib/auth/refresh-policy"
+import { classifySessionResponse, retryDelayMs } from "@/lib/auth/refresh-policy"
 
 export interface SessionUser {
   id: string
@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async (attempt = 0): Promise<void> => {
     try {
       const res = await fetch("/api/auth/session?kind=staff", { cache: "no-store" })
-      const outcome = classifySessionStatus(res.status)
+      const outcome = classifySessionResponse(res)
 
       if (outcome === "unauthorized") {
         setUser(null)

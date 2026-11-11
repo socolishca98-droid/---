@@ -33,6 +33,15 @@ export async function enterAccount(account: {
   const check = await fetch(`/api/auth/session?kind=${account.kind === "driver" ? "driver" : "staff"}`, {
     cache: "no-store",
   })
+  // Пароль хостинга (Vercel Deployment Protection) перехватил запрос:
+  // скажем прямо, что это настройка хостинга, а не сломанный вход
+  if (check.status === 401 && check.headers.get("www-authenticate")) {
+    toast.error(
+      "Сайт требует пароль хостинга (Vercel Protection) — из-за него вход в аккаунт и срывается. Отключите: Vercel → проект → Settings → Deployment Protection → Disable",
+      { duration: 12000 },
+    )
+    return
+  }
   if (!check.ok) {
     const failure = (await check.json().catch(() => ({}))) as { error?: string; reason?: string }
     console.warn("[enter-account] сессия цели не действует:", failure?.reason ?? check.status)
