@@ -21,9 +21,16 @@ interface SessionResponse {
   isOwner?: boolean
 }
 
-export function AccountSwitchBanner({ className = "" }: { className?: string }) {
+export function AccountSwitchBanner({
+  className = "",
+  sessionKind = "staff",
+}: {
+  className?: string
+  /** В каком контуре висит баннер: в /m показываем водителя, а не штабную cookie */
+  sessionKind?: "staff" | "driver"
+}) {
   const router = useRouter()
-  const { data } = useJsonApi<SessionResponse>("/api/auth/session")
+  const { data } = useJsonApi<SessionResponse>(`/api/auth/session?kind=${sessionKind}`)
   const [busy, setBusy] = useState(false)
 
   const owner = data?.impersonation ?? null

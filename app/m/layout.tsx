@@ -31,7 +31,7 @@ export default function MobileLayout({
     <div className="min-h-screen bg-[#09090b] text-white flex justify-center">
       <div className="w-full max-w-md mx-auto relative">
         {/* Уведомление владельцу: он смотрит приложение водителя, а не свой кабинет */}
-        <AccountSwitchBanner className="sticky top-0 z-50" />
+        <AccountSwitchBanner className="sticky top-0 z-50" sessionKind="driver" />
         {children}
       </div>
     </div>

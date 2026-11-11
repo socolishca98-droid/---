@@ -1055,6 +1055,19 @@ try {
   )
   const lErr = lErrors.filter((t) => !isNoise(t))
   check("лм-панель: ошибок нет", lErr.length === 0, lErr.slice(0, 2).join(" || ") || "нет")
+  // и31: данные главной приходят из четырёх API; на холодном сервере первый
+  // ответ идёт ~10с (компиляция роута) и фиксированной паузы не хватало —
+  // плитки «Сделать сейчас» просто не успевали появиться. Ждём данные, а не
+  // секунды. «Срочного нет» — законный исход, если демо-данные разобрали.
+  await lpage
+    .waitForFunction(
+      () =>
+        document.querySelectorAll(".lm-tile").length > 0 ||
+        document.body.innerText.includes("Срочного нет"),
+      null,
+      { timeout: 30000 },
+    )
+    .then(() => true, () => false)
   // и24: перемены, видимые в статичном кадре
   const lm2 = await lpage.evaluate(() => {
     const tiles = [...document.querySelectorAll(".lm-tile")]
