@@ -71,7 +71,12 @@ function loadDriverSession(): Promise<{ driver: any; mustChange: boolean } | nul
 
     const data = await res.json()
     const sessionDriver = data?.session?.driver as DriverSession | undefined
-    if (!sessionDriver?.id) return null
+    if (!sessionDriver?.id) {
+      // и35: этот уход на вход раньше был единственным без причины —
+      // 200-й ответ без данных водителя тоже объясняем на экране входа
+      lastSessionFailReason = "session_without_driver"
+      return null
+    }
 
     return { driver: sessionDriver, mustChange: Boolean(data.session.user?.mustChangePassword) }
   })().finally(() => {

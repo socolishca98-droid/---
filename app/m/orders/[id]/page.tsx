@@ -185,7 +185,9 @@ export default function OrderDetailsPage() {
 
   useEffect(() => {
     if (isSessionLoading) return
-    if (!isAuthenticated) router.replace("/m/login")
+    // и35: уход на вход с причиной — как у хука сессии, чтобы экран входа
+    // объяснил, что произошло, а не «просто выкинуло»
+    if (!isAuthenticated) router.replace("/m/login?reason=not_authenticated")
   }, [isSessionLoading, isAuthenticated, router])
 
   useEffect(() => {

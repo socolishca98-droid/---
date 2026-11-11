@@ -235,6 +235,18 @@ export async function proxy(request: NextRequest) {
     const loginUrl = new URL(access.loginPath, request.url)
     const next = `${pathname}${search}`
     if (next && next !== access.loginPath) loginUrl.searchParams.set("next", next)
+    // и35: это был последний вылет на экран входа БЕЗ причины — edge не
+    // видит базу, но знает, прислал ли браузер cookie вообще. Код различает
+    // «cookie сессии не дошла до сервера» и «прислана, но подпись/срок/роль
+    // не прошли»; экран входа (driver-login-form) превращает код в надпись.
+    const relevantCookies =
+      access.area === "staff"
+        ? [STAFF_COOKIE]
+        : access.area === "driver"
+          ? [DRIVER_COOKIE]
+          : [STAFF_COOKIE, DRIVER_COOKIE]
+    const hasCookieValue = relevantCookies.some((name) => request.cookies.get(name)?.value)
+    loginUrl.searchParams.set("reason", hasCookieValue ? "token_rejected" : "no_session_cookie")
     return NextResponse.redirect(loginUrl)
   }
 

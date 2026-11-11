@@ -39,6 +39,12 @@ const SESSION_REASON_TEXT: Record<string, string> = {
   user_suspended: "доступ к учётной записи закрыт",
   user_inactive: "учётная запись не активна",
   role_rejected: "роль учётной записи изменилась",
+  // и35: страница открыта без действующей cookie — защита на входе в раздел
+  no_session_cookie:
+    "страница запросилась без cookie сессии — обновите страницу или войдите заново",
+  token_rejected: "cookie сессии не принята сервером (подпись или срок) — войдите заново",
+  session_without_driver: "сессия ответила без данных водителя — войдите заново",
+  not_authenticated: "страница открыта без активной сессии — войдите заново",
 }
 
 export interface DriverLoginOwner {
@@ -53,7 +59,23 @@ export interface DriverLoginOwner {
   mode: "impersonation" | "own"
 }
 
-export function DriverLoginForm({ owner }: { owner: DriverLoginOwner | null }) {
+/**
+ * и35: серверная диагностика для владельца — видит ли сервер cookie
+ * водителя в запросе страницы входа. Разделяет «cookie не дошла до
+ * сервера» (браузер, приложение, защита) и «cookie есть, но сессия
+ * мертва» (база, отзыв, срок). Водителям не показывается.
+ */
+export interface DriverLoginDiagnostic {
+  driverCookie: "present" | "none"
+}
+
+export function DriverLoginForm({
+  owner,
+  diagnostic,
+}: {
+  owner: DriverLoginOwner | null
+  diagnostic?: DriverLoginDiagnostic
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { login, isAuthenticated, refresh } = useDriverSession({ requireAuth: false })
@@ -213,6 +235,21 @@ export function DriverLoginForm({ owner }: { owner: DriverLoginOwner | null }) {
               ? "Вы владелец — вернуться в панель"
               : "Вы владелец — открыть панель"}
           </button>
+        ) : null}
+
+        {owner ? (
+          <p
+            data-driver-cookie={diagnostic?.driverCookie ?? "unknown"}
+            className="mb-4 text-center text-[11px] leading-relaxed text-slate-500"
+          >
+            Диагностика: cookie водителя{" "}
+            {diagnostic?.driverCookie === "present"
+              ? "есть в этом запросе"
+              : diagnostic?.driverCookie === "none"
+                ? "нет в этом запросе"
+                : "не проверена"}
+            {reasonParam ? ` · код: ${reasonParam}` : ""}
+          </p>
         ) : null}
 
         <div className="mb-4 text-center">

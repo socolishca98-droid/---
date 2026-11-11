@@ -24,7 +24,7 @@ import { redirect } from "next/navigation"
 
 import { DriverLoginForm } from "@/components/driver-login-form"
 import { actingOwnerFromCookies } from "@/lib/auth/impersonation"
-import { STAFF_COOKIE } from "@/lib/auth/constants"
+import { STAFF_COOKIE, DRIVER_COOKIE } from "@/lib/auth/constants"
 import { verifySessionToken } from "@/lib/auth/token"
 import { isOwnerEmail } from "@/lib/auth/owner"
 import { driverSessionFromCookies } from "@/lib/auth/session"
@@ -69,5 +69,17 @@ export default async function DriverLoginPage() {
     // AUTH_SECRET не задан или база недоступна — обычный вход водителя
   }
 
-  return <DriverLoginForm owner={owner} />
+  // и35: сервер видит httpOnly-cookie — клиент не видит. Есть ли cookie
+  // водителя в ЭТОМ запросе, знает только сервер; это разделяет «cookie
+  // не дошла до сервера» (браузер или приложение её не прислали) и
+  // «cookie есть, но сессия мертва». Показывается только владельцу.
+  let driverCookie: "present" | "none" = "none"
+  try {
+    const store = await cookies()
+    driverCookie = store.get(DRIVER_COOKIE)?.value ? "present" : "none"
+  } catch {
+    // остаётся "none" — диагностика не должна ломать страницу входа
+  }
+
+  return <DriverLoginForm owner={owner} diagnostic={{ driverCookie }} />
 }

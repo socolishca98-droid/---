@@ -220,6 +220,31 @@ export async function POST(request: NextRequest) {
     },
     redirectTo,
   }
+
+  // Журнал — неотъемлемая часть этого действия: без записи о том, кто кем
+  // являлся, «вход как» становится неконтролируемым. Предупреждаем явно.
+  const logged = await logAudit({
+    organizationId: targetOrganizationId,
+    actorId: owner.id,
+    actorEmail: owner.email,
+    action: "impersonate",
+    targetId: targetUserId,
+    targetType: targetDriverId ? "driver" : "user",
+    targetEmail: targetEmail,
+    metadata: { role: targetRole, name: targetName, driverId: targetDriverId, requestId },
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  })
+  if (!logged) {
+    payload.warning = AUDIT_WARNING
+  }
+
+  // и35: ОДИН ответ — и тело, и cookie. Раньше cookie ставились на
+  // промежуточный response, а наружу возвращался ДРУГОЙ объект
+  // (NextResponse.json(payload, { headers: response.headers })) — двойная
+  // сериализация заголовков. На локальном Node два Set-Cookie переносились
+  // честно (E2E зелёные), но пересборка заголовков в чужом рантайме может
+  // склеить обе cookie в одну строку — браузер такое отбрасывает целиком,
+  // и «вход как» на проде терял бы cookie водителя. Собираем ответ один раз.
   const response = NextResponse.json(payload)
 
   // Свою сессию сохраняем на время просмотра чужого аккаунта — и ВСЕГДА
@@ -244,23 +269,5 @@ export async function POST(request: NextRequest) {
     response.cookies.set({ name: DRIVER_COOKIE, value: "", ...cookieOptions(), maxAge: 0 })
   }
 
-  const logged = await logAudit({
-    organizationId: targetOrganizationId,
-    actorId: owner.id,
-    actorEmail: owner.email,
-    action: "impersonate",
-    targetId: targetUserId,
-    targetType: targetDriverId ? "driver" : "user",
-    targetEmail: targetEmail,
-    metadata: { role: targetRole, name: targetName, driverId: targetDriverId, requestId },
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-  })
-
-  // Журнал — неотъемлемая часть этого действия: без записи о том, кто кем
-  // являлся, «вход как» становится неконтролируемым. Предупреждаем явно.
-  if (!logged) {
-    payload.warning = AUDIT_WARNING
-  }
-
-  return NextResponse.json(payload, { headers: response.headers })
+  return response
 }

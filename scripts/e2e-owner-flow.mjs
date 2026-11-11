@@ -127,12 +127,34 @@ try {
   check("поиск находит водителя в любой компании, кнопка «Войти» активна", true, "Орлов Никита Андреевич")
 
   // ── 4. Вход в водителя → сразу кабинет водителя ─────────────────────────
+  // и35: заодно ловим ответ имперсонации — обе cookie обязаны ехать
+  // РАЗДЕЛЬНЫМИ Set-Cookie. Склеенные в одну строку через запятую
+  // браузер отбрасывает целиком — и «вход как» молча терял бы cookie.
+  const impersonateResponses = []
+  page.on("response", (res) => {
+    try {
+      if (new URL(res.url()).pathname === "/api/admin/impersonate") {
+        impersonateResponses.push(res)
+      }
+    } catch {}
+  })
   await orlovRow.locator("button", { hasText: "Войти" }).click()
   await page.waitForURL(/\/m$/, { timeout: 30000 })
   await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
   const bannerText = await page.locator("text=Вы вошли как").first().textContent()
   check("вход в водителя — сразу кабинет водителя /m", /\/m$/.test(page.url()), page.url())
   check("полоса показывает, чей аккаунт открыт", Boolean(bannerText?.includes("Орлов")), bannerText ?? "")
+
+  const impersonateRes = impersonateResponses.find((r) => r.request().method() === "POST")
+  const setCookies = impersonateRes
+    ? (await impersonateRes.headersArray()).filter((h) => h.name.toLowerCase() === "set-cookie")
+    : []
+  const setCookieNames = setCookies.map((h) => h.value.split("=")[0])
+  check(
+    "обе cookie имперсонации едут раздельными Set-Cookie (не склеены)",
+    setCookieNames.includes("loginex_owner_session") && setCookieNames.includes("loginex_driver_session") && setCookies.length >= 2,
+    setCookieNames.join(", ") || "ответ не пойман",
+  )
 
   // ── 5. Полоса не врёт на собственной панели ─────────────────────────────
   await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 60000 })
@@ -253,11 +275,68 @@ try {
   await returnButton.waitFor({ timeout: 30000 })
   check("вход водителя встречает владельца кнопкой возврата, а не тупиком", true, await returnButton.first().textContent())
 
+  // и35: серверная диагностика — cookie водителя в запросе ЕСТЬ (умерла
+  // сессия в базе, а не cookie). Различие видит только сервер: клиент
+  // httpOnly-cookie не читает.
+  const diag = page.locator("[data-driver-cookie]")
+  await diag.waitFor({ timeout: 30000 })
+  const diagAttr = await diag.first().getAttribute("data-driver-cookie")
+  const diagText = ((await diag.first().textContent()) ?? "").trim()
+  check(
+    "диагностика: cookie водителя на месте, умерла сессия (не cookie)",
+    diagAttr === "present" && /есть в этом запросе/.test(diagText),
+    diagText.slice(0, 90),
+  )
+
   // кнопка живёт в анимирующемся 3D-мире — координатный клик мимо;
   // жмём программно, как будто человек попал точно
   await returnButton.first().evaluate((el) => el.click())
   await page.waitForURL("**/owner", { timeout: 30000 })
   check("кнопка возврата приводит на страницу разработчика", true, page.url())
+
+  // ── 9. и35: proxy-вылет на вход больше не бывает «просто так» ───────────
+  // Защита разделов (proxy) работает на подписи токена, без базы — это был
+  // последний источник вылета на вход БЕЗ причины. Теперь редирект несёт код:
+  // no_session_cookie (браузер cookie не прислал) или token_rejected
+  // (прислал, но подпись/срок/роль не прошли) — и вход объясняет это словами.
+  const anonContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: IPHONE_UA,
+  })
+  const anonPage = await anonContext.newPage()
+  await anonPage.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await anonPage.waitForURL(/\/m\/login\?/, { timeout: 30000 })
+  check(
+    "без cookie: вылет на вход несёт код no_session_cookie",
+    /reason=no_session_cookie/.test(anonPage.url()),
+    anonPage.url(),
+  )
+  const anonNotice = anonPage.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
+  await anonNotice.waitFor({ timeout: 30000 })
+  check(
+    "без cookie: заметка объясняет причину словами",
+    /без cookie/.test((await anonNotice.first().textContent()) ?? ""),
+    ((await anonNotice.first().textContent()) ?? "").slice(0, 90),
+  )
+
+  await anonContext.addCookies([
+    { name: "loginex_driver_session", value: "garbage-token-e2e", domain: "localhost", path: "/", httpOnly: true },
+  ])
+  await anonPage.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await anonPage.waitForURL(/\/m\/login\?/, { timeout: 30000 })
+  check(
+    "мусорная cookie: вылет на вход несёт код token_rejected",
+    /reason=token_rejected/.test(anonPage.url()),
+    anonPage.url(),
+  )
+  const rejectNotice = anonPage.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
+  await rejectNotice.waitFor({ timeout: 30000 })
+  check(
+    "мусорная cookie: заметка говорит, что cookie не принята",
+    /не принята/.test((await rejectNotice.first().textContent()) ?? ""),
+    ((await rejectNotice.first().textContent()) ?? "").slice(0, 90),
+  )
+  await anonContext.close()
 
   // ── Фон: ошибок страницы не накопилось ──────────────────────────────────
   const realErrors = errors.filter((e) => !e.includes("favicon"))
@@ -270,4 +349,7 @@ try {
 
 const failed = results.filter((r) => !r.ok)
 console.log(`\nИТОГ: ${results.length - failed.length}/${results.length} проверок пройдено`)
+// Браузер держит event loop живым: без закрытия УСПЕШНЫЙ прогон не
+// завершался вовсе (висел до таймаута обёртки) — закрыть явно
+await browser.close().catch(() => {})
 if (failed.length > 0) process.exit(1)
