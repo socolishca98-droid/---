@@ -261,3 +261,22 @@ test("стрелка «назад» ведёт по дереву раздело�
   assert.equal(mobileParentPath("/"), "/lm")
   assert.equal(mobileParentPath("/dashboard"), "/lm")
 })
+
+test("и33: владельца платформы — на его панель, с любого устройства", () => {
+  // Жалоба: «по моему логину и паролю открывалась страница разработчика» —
+  // а прокси уводил его в кабинет (компьютер) или панель логиста (телефон)
+  assert.equal(staffHome("admin", null, DESKTOP, { owner: true }), "/owner")
+  assert.equal(staffHome("admin", null, IPHONE, { owner: true }), "/owner")
+  assert.equal(staffHome("logist", null, IPHONE, { owner: true }), "/owner")
+
+  // без метки владельца — прежнее поведение
+  assert.equal(staffHome("admin", null, DESKTOP), "/dashboard")
+  assert.equal(staffHome("admin", null, IPHONE), "/lm")
+
+  // явный ?next= уважаем и для владельца: его отправили за конкретной страницей
+  assert.equal(staffHome("admin", "/orders", DESKTOP, { owner: true }), "/orders")
+  assert.equal(staffHome("admin", "/orders", IPHONE, { owner: true }), "/orders")
+
+  // открытый редирект не открываем и владельцу
+  assert.equal(staffHome("admin", "https://evil.example", DESKTOP, { owner: true }), "/owner")
+})

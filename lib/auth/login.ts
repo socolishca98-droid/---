@@ -178,6 +178,9 @@ export async function authenticateWithPassword(
     name: user.name,
     driverId: user.driverId,
     ttlMs: isOwnerEmail(user.email) ? OWNER_SESSION_TTL_MINUTES * 60 * 1000 : undefined,
+    // и33: подписанная метка владельца в токене — прокси ведёт его
+    // на страницу разработчика, а не в общий кабинет
+    owner: isOwnerEmail(user.email),
     request,
   })
 

@@ -183,22 +183,30 @@ export async function proxy(request: NextRequest) {
 
   // --- Публичные пути -------------------------------------------------------
   if (access.area === "public") {
-    // Уже вошедшего сотрудника не держим на экране входа
-    if ((pathname === "/" || pathname === "/login") && staffPayload) {
+    // Уже вошедшего сотрудника не держим на корне «/» (и33: с «/login»
+    // слепой edge-bounce убран — он не видел отозванных в базе сессий
+    // и гонял человека по кругу «кабинет → вход → кабинет». Теперь
+    // страницу входа проверяет сервер — по базе, как и API).
+    if (pathname === "/" && staffPayload) {
       return NextResponse.redirect(
         new URL(
           staffHome(
             staffPayload.role,
             request.nextUrl.searchParams.get("next"),
             request.headers.get("user-agent"),
+            // и33: владельца — на его панель, а не в общий кабинет.
+            // Метка подписана в токене при входе; старые токены без метки
+            // живут по прежнему правилу до конца своей сессии.
+            { owner: staffPayload.owner === true },
           ),
           request.url,
         ),
       )
     }
-    if (pathname === "/m/login" && driverPayload) {
-      return NextResponse.redirect(new URL("/m", request.url))
-    }
+    // и33: вход водителя тоже не отбиваем слепо по подписи токена —
+    // отозванная в базе сессия оставляла подписанную cookie, и человек
+    // бесконечно перелетал между /m и /m/login. Живую сессию теперь
+    // проверяет сама страница /m/login (сервер, по базе).
     return withIdentity(request, staffPayload ?? driverPayload)
   }
 

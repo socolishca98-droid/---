@@ -127,7 +127,11 @@ export async function GET(request: NextRequest) {
         success: true,
         session: publicSessionView(session),
         impersonation: context.owner,
-        isOwner: !context.owner && isOwnerEmail(session.user.email),
+        // и33: «владелец» — свойство ТЕКУЩЕЙ сессии, а не отсутствие чужой
+        // cookie. Пока владелец смотрит чужой ВОДИТЕЛЬНЫЙ аккаунт, штабная
+        // сессия — его собственная, и пульт /owner обязан открываться:
+        // раньше isOwner гаснул и пульт вышибал его в /lm или кабинет.
+        isOwner: isOwnerEmail(session.user.email),
       })
     }
 
@@ -143,7 +147,7 @@ export async function GET(request: NextRequest) {
       success: true,
       session: publicSessionView(session),
       impersonation: context.owner,
-      isOwner: !context.owner && session.kind === "staff" && isOwnerEmail(session.user.email),
+      isOwner: session.kind === "staff" && isOwnerEmail(session.user.email),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"

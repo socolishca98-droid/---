@@ -37,10 +37,22 @@ export interface ActingOwner {
  * null — если «вход как» не выполнялся или токен уже недействителен.
  */
 export async function loadActingOwner(request: NextRequest): Promise<ActingOwner | null> {
-  const token = request.cookies.get(IMPERSONATION_COOKIE)?.value
+  return actingOwnerFromCookies(request.cookies)
+}
+
+/**
+ * Тот же владелец, но из любого хранилища cookie — не только из запроса.
+ * и33: страница входа водителя — серверный компонент, ей доступен cookies()
+ * из next/headers. Когда чужая водительская сессия умерла и владелец
+ * остался на входе водителя, страница показывает ему путь назад в панель.
+ */
+export async function actingOwnerFromCookies(
+  cookies: { get(name: string): { value?: string } | undefined },
+): Promise<ActingOwner | null> {
+  const token = cookies.get(IMPERSONATION_COOKIE)?.value
   if (!token) return null
   // Без основной сессии «вход как» уже не действует: остался только хвост cookie
-  if (!request.cookies.get(STAFF_COOKIE)?.value) return null
+  if (!cookies.get(STAFF_COOKIE)?.value) return null
 
   const payload = await verifySessionToken(token)
   if (!payload || payload.kind !== "staff") return null

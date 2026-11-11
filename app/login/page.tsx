@@ -10,10 +10,9 @@ import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 import { LoginForm } from "@/components/login-form"
 import type { Metadata } from "next"
-import { PRODUCT_NAME, STAFF_COOKIE } from "@/lib/auth/constants"
-import { verifySessionToken } from "@/lib/auth/token"
+import { PRODUCT_NAME } from "@/lib/auth/constants"
 import { isOwnerEmail } from "@/lib/auth/owner"
-import { prisma } from "@/lib/prisma"
+import { staffSessionFromCookies } from "@/lib/auth/session"
 
 export const dynamic = "force-dynamic"
 
@@ -32,15 +31,18 @@ export default async function LoginPage({
   // Уже вошедший сотрудник не должен видеть форму входа
   const cookieStore = await cookies()
   try {
-    const session = await verifySessionToken(cookieStore.get(STAFF_COOKIE)?.value)
-    if (session && session.kind === "staff") {
+    // и33: проверяем сессию ЦЕЛИКОМ — подпись, живую строку в базе и
+    // активную учётку (как API). Раньше смотрели только подпись: человек
+    // с отозванной сессией улетал с входа в кабинет, там его встречал
+    // 401 — и по кругу, без возможности войти заново.
+    const session = await staffSessionFromCookies(cookieStore)
+    if (session) {
       // Логист работает с телефона — его место в мобильной панели /lm,
       // у администратора такой панели нет, ему нужна полная версия
       // Владелец платформы — на свой стартовый экран /owner
-      const owner = await prisma.user.findUnique({ where: { id: session.sub }, select: { email: true } })
-      const home = isOwnerEmail(owner?.email)
+      const home = isOwnerEmail(session.user.email)
         ? "/owner"
-        : session.role === "logist"
+        : session.user.role === "logist"
           ? "/lm"
           : "/dashboard"
       const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null

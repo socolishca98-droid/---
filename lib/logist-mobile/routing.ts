@@ -57,10 +57,16 @@ export function staffHome(
   role: string | undefined,
   nextParam: string | null,
   userAgent?: string | null,
+  options?: { owner?: boolean },
 ): string {
   void role
   const explicit = safeInternalPath(nextParam)
   if (explicit) return explicit
+  // и33: дом владельца платформы — его панель «Вход в любой аккаунт».
+  // Жалоба: «по моему логину и паролю открывалась страница разработчика» —
+  // а прокси уводил его в кабинет или панель логиста. Телефон не исключение:
+  // панель адаптивна, владелец пользуется ею с телефона.
+  if (options?.owner) return "/owner"
   // Роль не влияет: с телефона — мобильная панель, с компьютера — полная версия
   return isMobileDevice(userAgent) ? "/lm" : "/dashboard"
 }

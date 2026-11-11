@@ -16,7 +16,7 @@ import { toast } from "sonner"
 import { apiSend, useJsonApi } from "@/hooks/use-json-api"
 
 interface SessionResponse {
-  session?: { user?: { name?: string; role?: string } }
+  session?: { user?: { name?: string; role?: string; email?: string } }
   impersonation?: { name: string | null; email: string | null } | null
   isOwner?: boolean
 }
@@ -35,6 +35,12 @@ export function AccountSwitchBanner({
 
   const owner = data?.impersonation ?? null
   if (!owner) return null
+  // и33: владелец в собственной сессии (например, открыл панель, пока
+  // действует вход в чужой водительский аккаунт) — полоса «Вы вошли как
+  // [сам себя]» только путает. API от имени владельца отдаёт только имя
+  // и почту, поэтому сравниваем по email.
+  const sessionEmail = data?.session?.user?.email?.toLowerCase()
+  if (sessionEmail && owner.email && sessionEmail === owner.email.toLowerCase()) return null
 
   const who = data?.session?.user?.name ?? "чужой аккаунт"
 

@@ -112,7 +112,18 @@ function cookieNameFor(kind: SessionKind): string {
 }
 
 async function readPayload(request: NextRequest, kind: SessionKind) {
-  const token = request.cookies.get(cookieNameFor(kind))?.value
+  return readPayloadFromCookies(request.cookies, kind)
+}
+
+/**
+ * Тот же разбор токена, но из любого хранилища cookie (и33): серверной
+ * странице доступен cookies() из next/headers, запроса у неё нет.
+ */
+async function readPayloadFromCookies(
+  cookies: { get(name: string): { value?: string } | undefined },
+  kind: SessionKind,
+) {
+  const token = cookies.get(cookieNameFor(kind))?.value
   const payload = await verifySessionToken(token)
   if (!payload) return null
   if (payload.kind !== kind) return null
@@ -192,7 +203,19 @@ export function forgetSessionCache(sessionId?: string): void {
 
 /** Сессия сотрудника или null (без исключений) */
 export async function loadStaffSession(request: NextRequest): Promise<StaffSession | null> {
-  const payload = await readPayload(request, "staff")
+  return staffSessionFromCookies(request.cookies)
+}
+
+/**
+ * Штабная сессия из cookie-хранилища — для серверных страниц (и33).
+ * Проверяет всё то же, что и API: подпись, живую строку сессии в базе
+ * и активную учётку. Страница входа не должна отправлять дальше человека
+ * с отозванной сессией — иначе он кружит между страницей и кабинетом.
+ */
+export async function staffSessionFromCookies(
+  cookies: { get(name: string): { value?: string } | undefined },
+): Promise<StaffSession | null> {
+  const payload = await readPayloadFromCookies(cookies, "staff")
   if (!payload) return null
 
   const key = cacheKey("staff", payload.sub, payload.jti)
@@ -244,7 +267,17 @@ export async function loadStaffSession(request: NextRequest): Promise<StaffSessi
 
 /** Сессия водителя или null (без исключений) */
 export async function loadDriverSession(request: NextRequest): Promise<DriverSession | null> {
-  const payload = await readPayload(request, "driver")
+  return driverSessionFromCookies(request.cookies)
+}
+
+/**
+ * Водительская сессия из cookie-хранилища — для серверной страницы
+ * входа водителя (и33): живая сессия уходит в /m, мёртвая — форма.
+ */
+export async function driverSessionFromCookies(
+  cookies: { get(name: string): { value?: string } | undefined },
+): Promise<DriverSession | null> {
+  const payload = await readPayloadFromCookies(cookies, "driver")
   if (!payload) return null
 
   const key = cacheKey("driver", payload.sub, payload.jti)
@@ -428,6 +461,8 @@ export interface IssueSessionParams {
   kind: SessionKind
   name?: string
   driverId?: string | null
+  /** метка владельца платформы в токене — для маршрутизации на панель (и33) */
+  owner?: boolean
   /** срок жизни сессии; по умолчанию общий AUTH_SESSION_TTL_HOURS */
   ttlMs?: number
   request?: NextRequest
@@ -466,6 +501,7 @@ export async function issueSession(params: IssueSessionParams): Promise<IssuedSe
       sessionId: session.id,
       name: params.name,
       driverId: params.driverId,
+      owner: params.owner,
       ttlMs,
     }),
   )

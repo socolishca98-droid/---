@@ -160,3 +160,18 @@ test("exp соответствует заданному TTL", async () => {
   assert.ok(p.exp - p.iat === 12 * 60 * 60)
   assert.ok(p.iat >= before)
 })
+
+test("и33: метка владельца платформы подписывается и читается обратно", async () => {
+  const withOwner = payload({ owner: true })
+  assert.equal(withOwner.owner, true, "метка попадает в payload")
+
+  const token = await signSessionToken(withOwner, SECRET)
+  const decoded = await verifySessionToken(token, SECRET)
+  assert.equal(decoded.owner, true, "метка переживает подпись и проверку")
+
+  // без метки поле не появляется вовсе — старые токены живут по-старому
+  const plain = payload()
+  assert.equal("owner" in plain, false)
+  const decodedPlain = await verifySessionToken(await signSessionToken(plain, SECRET), SECRET)
+  assert.equal("owner" in decodedPlain, false)
+})

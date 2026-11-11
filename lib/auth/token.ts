@@ -28,6 +28,13 @@ export interface SessionTokenPayload {
   exp: number
   /** id карточки Driver — только для kind = "driver" */
   driverId?: string
+  /**
+   * Владелец платформы (и33). Метка ставится при выпуске токена по email
+   * (isOwnerEmail) и нужна edge-прокси: не обращаясь к базе, он решает,
+   * куда вести человека с «/» и «/login». На безопасность не влияет —
+   * страница и API панели в каждом запросе проверяют владельца по базе.
+   */
+  owner?: boolean
   /** отображаемое имя (не секрет, используется для быстрого рендера) */
   name?: string
 }
@@ -192,6 +199,7 @@ export function buildTokenPayload(params: {
   sessionId: string
   name?: string
   driverId?: string | null
+  owner?: boolean
   ttlMs: number
 }): SessionTokenPayload {
   const nowSec = Math.floor(Date.now() / 1000)
@@ -204,6 +212,7 @@ export function buildTokenPayload(params: {
     exp: nowSec + Math.floor(params.ttlMs / 1000),
     name: params.name,
     ...(params.driverId ? { driverId: params.driverId } : {}),
+    ...(params.owner ? { owner: true } : {}),
   }
 }
 
