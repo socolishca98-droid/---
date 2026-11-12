@@ -82,8 +82,64 @@ async function accessContext(request: NextRequest) {
   }
 }
 
+/**
+ * и38: датчик главного слепого пятна — клиентского опроса сессии.
+ * Прошлые датчики видели страницы и выпуск сессии, но не сам /api/auth/session,
+ * которым клиент решает, жить ли в кабинете. Пишем только для kind=driver
+ * (остальные вызовы — шум публичного трафика). Убирается после разбора.
+ */
+async function logApiSessionDiag(
+  request: NextRequest,
+  kind: string,
+  status: number,
+  startedAt: number,
+): Promise<void> {
+  if (kind !== "driver") return
+  try {
+    const h = request.headers
+    const store = request.cookies
+    const names = [STAFF_COOKIE, "loginex_owner_session", DRIVER_COOKIE, "loginex_csrf"].filter(
+      (name) => Boolean(store.get(name)?.value),
+    )
+    let verify = "none"
+    const token = store.get(DRIVER_COOKIE)?.value
+    if (token) {
+      const payload = await verifySessionToken(token).catch(() => null)
+      verify = payload ? `ok:${payload.jti.slice(0, 18)}` : "invalid"
+    }
+    await prisma.auditLog.create({
+      data: {
+        actorId: "diagnostic",
+        action: "diag_api_session",
+        targetType: "diagnostic",
+        metadata: JSON.stringify({
+          status,
+          ms: Date.now() - startedAt,
+          cookies: names,
+          verify,
+          ident: h.get("x-loginex-session-id")?.slice(0, 18) ?? null,
+          dest: h.get("sec-fetch-dest") ?? null,
+          mode: h.get("sec-fetch-mode") ?? null,
+          site: h.get("sec-fetch-site") ?? null,
+          ref: h.get("referer") ?? null,
+          ua: (h.get("user-agent") ?? "").slice(0, 60),
+        }),
+      },
+    })
+  } catch {
+    // датчик не имеет права ломать API сессии
+  }
+}
+
 export async function GET(request: NextRequest) {
   const kind = request.nextUrl.searchParams.get("kind") || "auto"
+  const startedAt = Date.now()
+  const response = await getSession(request, kind)
+  await logApiSessionDiag(request, kind, response.status, startedAt)
+  return response
+}
+
+async function getSession(request: NextRequest, kind: string) {
   const context = await accessContext(request)
 
   try {
