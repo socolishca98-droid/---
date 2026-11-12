@@ -233,7 +233,29 @@ export function useDriverSession(
 
   useEffect(() => {
     void refresh()
+
+    // и40: телефон умеет замораживать и выбрасывать вкладку из памяти
+    // (iOS под давлением памяти), а потом показывать СТАРЫЙ снимок страницы.
+    // Человек видит вчерашний экран — хотя сессия жива. Оживляем вкладку:
+    // возврат к ней и восстановление из кэша перепроверяют сессию; живая —
+    // данные обновляются, мёртвая — честный уход на вход с причиной.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      // чаще раза в минуту не спрашиваем — как и обычный кэш сессии
+      if (cachedDriverSession && Date.now() - cachedDriverSession.at < SESSION_TTL_MS) return
+      void refresh()
+    }
+    const onPageShow = (event: PageTransitionEvent) => {
+      // bfcache: страница вернулась из кэша целиком, со старыми данными —
+      // перезагружаем; сервер сам решит, кабинет это или вход
+      if (event.persisted) window.location.reload()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("pageshow", onPageShow)
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("pageshow", onPageShow)
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
     }
   }, [refresh])
