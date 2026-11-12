@@ -14,6 +14,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
 import { classifySessionResponse, retryDelayMs } from "@/lib/auth/refresh-policy"
 import { DRIVER_KICK_REASON_KEY } from "@/lib/auth/constants"
@@ -41,6 +43,9 @@ let cachedDriverSession: { at: number; driver: any; mustChange: boolean } | null
  */
 let inFlightDriverSession: Promise<{ driver: any; mustChange: boolean } | null> | null = null
 
+/** и39: сообщение о пароле хостинга показывается один раз за жизнь страницы. */
+let protectionWarned = false
+
 /** Сбросить кэш — после выхода водителя. */
 export function resetDriverSessionCache(): void {
   cachedDriverSession = null
@@ -63,7 +68,20 @@ function loadDriverSession(): Promise<{ driver: any; mustChange: boolean } | nul
     const outcome = classifySessionResponse(res)
     // Разовая ошибка сервера или лимит запросов — не повод выбрасывать
     // водителя на экран входа: наверху refresh повторит попытку с паузой
-    if (outcome === "transient") throw new Error(`сервер ответил ${res.status}`)
+    if (outcome === "transient") {
+      // и39: хостинг (Vercel Deployment Protection) перехватил запрос и
+      // просит пароль защиты деплоя — системный диалог рисует браузер, до
+      // приложения он не доходит. Если промолчать, это выглядит как
+      // «выкинуло без причины». Называем виновника вслух — один раз.
+      if (res.status === 401 && res.headers.get("www-authenticate") != null && !protectionWarned) {
+        protectionWarned = true
+        toast.error(
+          "Сайт требует пароль хостинга (Vercel Protection) — это настройка хостинга, а не сбой входа. Отключите: Vercel → проект → Settings → Deployment Protection → Disable",
+          { duration: 15000 },
+        )
+      }
+      throw new Error(`сервер ответил ${res.status}`)
+    }
     if (outcome !== "ok") {
       const failure = (await res.json().catch(() => null)) as { reason?: string } | null
       lastSessionFailReason = failure?.reason ?? null

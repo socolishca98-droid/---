@@ -430,12 +430,20 @@ try {
   // ── 10в. Почта в поле «Телефон» — ловушка со скриншота ──────────────────
   // Браузер владельца подставляет его почту в поле телефона; раньше вход
   // отвечал «Неверный телефон или пароль». Теперь — прямая подсказка.
-  await page.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
-  await page.waitForSelector("#driver-phone", { timeout: 30000 })
-  await page.fill("#driver-phone", "socolishca98@gmail.com")
-  await page.fill("#driver-password", "Proverka123")
-  await page.locator("#driver-password").press("Enter")
-  const emailHint = page.locator("[role=alert]", { hasText: "по номеру телефона" })
+  // Свежий контекст без cookie: в основном контексте после 10б живёт
+  // сессия Орлова, и опрос и36 уводит страницу с входа в кабинет.
+  const ctxC = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: IPHONE_UA,
+  })
+  const pageC = await ctxC.newPage()
+  pageC.on("pageerror", (err) => errors.push(String(err)))
+  await pageC.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await pageC.waitForSelector("#driver-phone", { timeout: 30000 })
+  await pageC.fill("#driver-phone", "socolishca98@gmail.com")
+  await pageC.fill("#driver-password", "Proverka123")
+  await pageC.locator("#driver-password").press("Enter")
+  const emailHint = pageC.locator("[role=alert]", { hasText: "по номеру телефона" })
   await emailHint.waitFor({ timeout: 15000 })
   const emailHintText = (await emailHint.first().textContent()) ?? ""
   check(
@@ -443,6 +451,7 @@ try {
     /по номеру телефона/.test(emailHintText) && !/Неверный телефон/.test(emailHintText),
     emailHintText.slice(0, 90),
   )
+  await ctxC.close()
 
   // ── Фон: ошибок страницы не накопилось ──────────────────────────────────
   const realErrors = errors.filter((e) => !e.includes("favicon"))
