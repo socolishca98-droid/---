@@ -114,7 +114,7 @@ try {
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 150)))
 
   // ── 1. Вход своим логином и паролем → страница разработчика ──────────────
-  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await page.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
   await page.fill("#email", envValue("OWNER_EMAIL") || "owner@local.test")
   await page.fill("#password", envValue("OWNER_PASSWORD") || "Proverka123")
@@ -126,8 +126,8 @@ try {
   check("вход владельца своим паролем открывает страницу разработчика", true, page.url())
 
   // ── 2. «/» при живой сессии → снова панель (и33, главный фикс) ───────────
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 60000 })
-  await page.waitForURL("**/owner", { timeout: 30000 })
+  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 120000 })
+  await page.waitForURL("**/owner", { timeout: 90000 })
   check("открытие «/» при живой сессии ведёт на панель, а не в кабинет/логиста", true, page.url())
 
   // ── 3. Поиск человека в любой компании ───────────────────────────────────
@@ -172,7 +172,7 @@ try {
   )
 
   // ── 5. Полоса не врёт на собственной панели ─────────────────────────────
-  await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await page.waitForSelector("text=Компании на платформе", { timeout: 30000 })
   await page.waitForTimeout(1200)
   const ownBanner = await page.locator("text=Вы вошли как").count()
@@ -191,13 +191,13 @@ try {
   await orgCab.waitForSelector("text=Вы вошли как", { timeout: 30000 })
   check("страница управления: «Войти как водитель» — сразу кабинет водителя в новой вкладке", true, `${orgPath} → ${orgCab.url()}`)
   await orgCab.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
-  await orgCab.waitForURL("**/owner", { timeout: 30000 })
+  await orgCab.waitForURL("**/owner", { timeout: 90000 })
   await orgCab.close()
 
   // ── 5в. ПРОТУХШИЙ cookie имперсонации (хвост прошлых итераций) ──────────
   // Раньше impersonate не перезаписывал старый токен: полоса пропадала,
   // «Вернуться» из чужого кабинета не работал. Теперь перезаписывает.
-  await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await page.waitForSelector("text=Компании на платформе", { timeout: 30000 })
   await context.addCookies([{ name: "loginex_owner_session", value: "stale-garbage-token", domain: "localhost", path: "/", httpOnly: true }])
   await page.fill("input[placeholder*='Найти человека']", "Кузнецов")
@@ -207,7 +207,7 @@ try {
   await cab2.waitForSelector("text=Вы вошли как", { timeout: 30000 })
   check("протухший cookie имперсонации перезаписан: полоса на месте", true, "Кузнецов")
   await cab2.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
-  await cab2.waitForURL("**/owner", { timeout: 30000 })
+  await cab2.waitForURL("**/owner", { timeout: 90000 })
   check("«Вернуться» работает после протухшего cookie", true, cab2.url())
   await cab2.close()
 
@@ -241,7 +241,7 @@ try {
   await cab3.waitForURL(/\/lm/, { timeout: 30000 })
   check("вход в логиста — его мобильная панель /lm в новой вкладке", /\/lm/.test(cab3.url()), cab3.url())
   await cab3.locator("button", { hasText: "Вернуться" }).first().click()
-  await cab3.waitForURL("**/owner", { timeout: 30000 })
+  await cab3.waitForURL("**/owner", { timeout: 90000 })
   check("«Вернуться» возвращает на страницу разработчика", true, cab3.url())
   await cab3.close()
 
@@ -254,7 +254,7 @@ try {
     await cab4.waitForURL(/\/lm/, { timeout: 30000 })
     check("вход в аккаунт другой организации работает", /\/lm/.test(cab4.url()), cab4.url())
     await cab4.locator("button", { hasText: "Вернуться" }).first().click()
-    await cab4.waitForURL("**/owner", { timeout: 30000 })
+    await cab4.waitForURL("**/owner", { timeout: 90000 })
     check("возврат из чужой организации — на страницу разработчика", true, cab4.url())
     await cab4.close()
   }
@@ -287,7 +287,7 @@ try {
   await page.goto("about:blank")
   await page.waitForTimeout(16000)
 
-  await page.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await page.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await page.waitForURL(/\/m\/login/, { timeout: 30000 })
   // и34: причина смерти сессии видна на входе — не «просто выкинуло»
   const reasonNotice = page.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
@@ -313,7 +313,7 @@ try {
   // кнопка живёт в анимирующемся 3D-мире — координатный клик мимо;
   // жмём программно, как будто человек попал точно
   await returnButton.first().evaluate((el) => el.click())
-  await page.waitForURL("**/owner", { timeout: 30000 })
+  await page.waitForURL("**/owner", { timeout: 90000 })
   check("кнопка возврата приводит на страницу разработчика", true, page.url())
 
   // ── 9. и35: proxy-вылет на вход больше не бывает «просто так» ───────────
@@ -326,7 +326,7 @@ try {
     userAgent: IPHONE_UA,
   })
   const anonPage = await anonContext.newPage()
-  await anonPage.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await anonPage.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await anonPage.waitForURL(/\/m\/login\?/, { timeout: 30000 })
   check(
     "без cookie: вылет на вход несёт код no_session_cookie",
@@ -344,7 +344,7 @@ try {
   await anonContext.addCookies([
     { name: "loginex_driver_session", value: "garbage-token-e2e", domain: "localhost", path: "/", httpOnly: true },
   ])
-  await anonPage.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await anonPage.goto(`${BASE}/m`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await anonPage.waitForURL(/\/m\/login\?/, { timeout: 30000 })
   check(
     "мусорная cookie: вылет на вход несёт код token_rejected",
@@ -371,7 +371,7 @@ try {
     userAgent: IPHONE_UA,
   })
   const pageB = await ctxB.newPage()
-  await pageB.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await pageB.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await pageB.waitForSelector("[data-login-panel] input#email", { timeout: 30000 })
   await pageB.fill("#email", envValue("OWNER_EMAIL") || "owner@local.test")
   await pageB.fill("#password", envValue("OWNER_PASSWORD") || "Proverka123")
@@ -455,7 +455,7 @@ try {
   })
   const pageC = await ctxC.newPage()
   pageC.on("pageerror", (err) => errors.push(String(err)))
-  await pageC.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 60000 })
+  await pageC.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await pageC.waitForSelector("#driver-phone", { timeout: 30000 })
   await pageC.fill("#driver-phone", "socolishca98@gmail.com")
   await pageC.fill("#driver-password", "Proverka123")

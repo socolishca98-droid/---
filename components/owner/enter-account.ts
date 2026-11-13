@@ -63,6 +63,18 @@ export async function enterAccount(account: {
   // «замороженный» снимок старой страницы вместо свежей — новая вкладка
   // создаётся с нуля и заморозиться не может. Если браузер запретил
   // открытие (редко) — обычный переход в этой вкладке.
+  // и43: но в «отдельной программе» (PWA, с иконки на рабочем столе) новых
+  // вкладок нет: window.open там открывает невидимое окно или чужой браузер,
+  // и человек остаётся смотреть на старый экран. В программе — переход
+  // в ЭТОМ ЖЕ окне: куда нажал — там и оказался, без двусмысленности.
+  const standalone =
+    typeof window !== "undefined" &&
+    (window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
+  if (standalone) {
+    window.location.assign(target)
+    return { ok: true }
+  }
   const opened = window.open(target, "_blank")
   if (!opened) {
     // Полная перезагрузка: cookie сессии меняется, клиентские контексты читают её заново
