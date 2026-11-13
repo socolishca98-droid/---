@@ -59,7 +59,14 @@ export async function enterAccount(account: {
 
   toast.success(`Открываю аккаунт: ${account.name}`)
   const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? account.fallbackHref ?? "/lm"
-  // Полная перезагрузка: cookie сессии меняется, клиентские контексты читают её заново
-  window.location.assign(target)
+  // и42: кабинет открывается В НОВОЙ ВКЛАДКЕ. Телефон умеет показывать
+  // «замороженный» снимок старой страницы вместо свежей — новая вкладка
+  // создаётся с нуля и заморозиться не может. Если браузер запретил
+  // открытие (редко) — обычный переход в этой вкладке.
+  const opened = window.open(target, "_blank")
+  if (!opened) {
+    // Полная перезагрузка: cookie сессии меняется, клиентские контексты читают её заново
+    window.location.assign(target)
+  }
   return { ok: true }
 }

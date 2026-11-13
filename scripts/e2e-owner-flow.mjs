@@ -39,6 +39,15 @@ function envValue(key) {
   return match ? match.slice(key.length + 1).trim().replace(/^["']|["']$/g, "") : ""
 }
 
+// и42: «Войти как …» открывает аккаунт в новой вкладке — ловим её.
+// Новая вкладка создаётся с нуля и не может быть «замороженным снимком».
+async function enterVia(page, rowText) {
+  const popupPromise = page.waitForEvent("popup", { timeout: 30000 })
+  await page.locator("li", { hasText: rowText }).first().locator("button", { hasText: "Войти" }).click()
+  return await popupPromise
+}
+
+
 const results = []
 function check(name, ok, detail = "") {
   results.push({ name, ok, detail })
@@ -143,12 +152,13 @@ try {
       }
     } catch {}
   })
-  await orlovRow.locator("button", { hasText: "Войти" }).click()
-  await page.waitForURL(/\/m$/, { timeout: 30000 })
-  await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
-  const bannerText = await page.locator("text=Вы вошли как").first().textContent()
-  check("вход в водителя — сразу кабинет водителя /m", /\/m$/.test(page.url()), page.url())
+  const cab1 = await enterVia(page, "Орлов Никита Андреевич")
+  await cab1.waitForURL(/\/m$/, { timeout: 30000 })
+  await cab1.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  const bannerText = await cab1.locator("text=Вы вошли как").first().textContent()
+  check("вход в водителя — сразу кабинет в новой вкладке /m", /\/m$/.test(cab1.url()), cab1.url())
   check("полоса показывает, чей аккаунт открыт", Boolean(bannerText?.includes("Орлов")), bannerText ?? "")
+  await cab1.close()
 
   const impersonateRes = impersonateResponses.find((r) => r.request().method() === "POST")
   const setCookies = impersonateRes
@@ -174,12 +184,15 @@ try {
   await page.waitForURL(/\/owner\/org\//, { timeout: 30000 })
   await page.waitForSelector("text=Войти как водитель", { timeout: 30000 })
   const orgPath = new URL(page.url()).pathname
+  const orgCabPromise = page.waitForEvent("popup", { timeout: 30000 })
   await page.locator("button", { hasText: "Войти как водитель" }).first().evaluate((el) => el.click())
-  await page.waitForURL(/\/m$/, { timeout: 30000 })
-  await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
-  check("страница управления: «Войти как водитель» — сразу кабинет водителя", true, `${orgPath} → ${page.url()}`)
-  await page.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
-  await page.waitForURL("**/owner", { timeout: 30000 })
+  const orgCab = await orgCabPromise
+  await orgCab.waitForURL(/\/m$/, { timeout: 30000 })
+  await orgCab.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  check("страница управления: «Войти как водитель» — сразу кабинет водителя в новой вкладке", true, `${orgPath} → ${orgCab.url()}`)
+  await orgCab.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
+  await orgCab.waitForURL("**/owner", { timeout: 30000 })
+  await orgCab.close()
 
   // ── 5в. ПРОТУХШИЙ cookie имперсонации (хвост прошлых итераций) ──────────
   // Раньше impersonate не перезаписывал старый токен: полоса пропадала,
@@ -189,13 +202,14 @@ try {
   await context.addCookies([{ name: "loginex_owner_session", value: "stale-garbage-token", domain: "localhost", path: "/", httpOnly: true }])
   await page.fill("input[placeholder*='Найти человека']", "Кузнецов")
   await page.waitForSelector("text=Кузнецов Андрей Владимирович", { timeout: 30000 })
-  await page.locator("li", { hasText: "Кузнецов Андрей Владимирович" }).first().locator("button", { hasText: "Войти" }).click()
-  await page.waitForURL(/\/m$/, { timeout: 30000 })
-  await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  const cab2 = await enterVia(page, "Кузнецов Андрей Владимирович")
+  await cab2.waitForURL(/\/m$/, { timeout: 30000 })
+  await cab2.waitForSelector("text=Вы вошли как", { timeout: 30000 })
   check("протухший cookie имперсонации перезаписан: полоса на месте", true, "Кузнецов")
-  await page.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
-  await page.waitForURL("**/owner", { timeout: 30000 })
-  check("«Вернуться» работает после протухшего cookie", true, page.url())
+  await cab2.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
+  await cab2.waitForURL("**/owner", { timeout: 30000 })
+  check("«Вернуться» работает после протухшего cookie", true, cab2.url())
+  await cab2.close()
 
   // ── 5г. Ошибка «входа как»: НЕ тост, а постоянный блок с причиной ───────
   // Кнопка у закрытых аккаунтов блокируется сама (и31), поэтому отказ
@@ -223,33 +237,36 @@ try {
   await page.fill("input[placeholder*='Найти человека']", "logist@local.test")
   await page.waitForSelector("text=logist@local.test", { timeout: 30000 })
   const logistRow = page.locator("li", { hasText: "logist@local.test" }).first()
-  await logistRow.locator("button", { hasText: "Войти" }).click()
-  await page.waitForURL(/\/lm/, { timeout: 30000 })
-  check("вход в логиста — его мобильная панель /lm", /\/lm/.test(page.url()), page.url())
-  await page.locator("button", { hasText: "Вернуться" }).first().click()
-  await page.waitForURL("**/owner", { timeout: 30000 })
-  check("«Вернуться» возвращает на страницу разработчика", true, page.url())
+  const cab3 = await enterVia(page, "logist@local.test")
+  await cab3.waitForURL(/\/lm/, { timeout: 30000 })
+  check("вход в логиста — его мобильная панель /lm в новой вкладке", /\/lm/.test(cab3.url()), cab3.url())
+  await cab3.locator("button", { hasText: "Вернуться" }).first().click()
+  await cab3.waitForURL("**/owner", { timeout: 30000 })
+  check("«Вернуться» возвращает на страницу разработчика", true, cab3.url())
+  await cab3.close()
 
   // ── 7. Кросс-организация: аккаунт из ДРУГОЙ компании ────────────────────
   if (other) {
     await page.fill("input[placeholder*='Найти человека']", "Соколова")
     await page.waitForSelector("text=Соколова Мария Игоревна", { timeout: 30000 })
     const otherRow = page.locator("li", { hasText: "Соколова Мария Игоревна" }).first()
-    await otherRow.locator("button", { hasText: "Войти" }).click()
-    await page.waitForURL(/\/lm/, { timeout: 30000 })
-    check("вход в аккаунт другой организации работает", /\/lm/.test(page.url()), page.url())
-    await page.locator("button", { hasText: "Вернуться" }).first().click()
-    await page.waitForURL("**/owner", { timeout: 30000 })
-    check("возврат из чужой организации — на страницу разработчика", true, page.url())
+    const cab4 = await enterVia(page, "Соколова Мария Игоревна")
+    await cab4.waitForURL(/\/lm/, { timeout: 30000 })
+    check("вход в аккаунт другой организации работает", /\/lm/.test(cab4.url()), cab4.url())
+    await cab4.locator("button", { hasText: "Вернуться" }).first().click()
+    await cab4.waitForURL("**/owner", { timeout: 30000 })
+    check("возврат из чужой организации — на страницу разработчика", true, cab4.url())
+    await cab4.close()
   }
 
   // ── 8. Ловушка со скриншотов: водительская сессия умерла ────────────────
   await page.fill("input[placeholder*='Найти человека']", "Орлов")
   await page.waitForSelector("text=Орлов Никита Андреевич", { timeout: 30000 })
   const trapRow = page.locator("li", { hasText: "Орлов Никита Андреевич" }).first()
-  await trapRow.locator("button", { hasText: "Войти" }).click()
-  await page.waitForURL(/\/m$/, { timeout: 30000 })
-  await page.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  const cab5 = await enterVia(page, "Орлов Никита Андреевич")
+  await cab5.waitForURL(/\/m$/, { timeout: 30000 })
+  await cab5.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  await cab5.close()
 
   // убиваем водительскую сессию в базе — как будто её отозвали/истёк срок
   const orlovDriver = await prisma.driver.findFirst({ where: { phone: "+79161234505" }, select: { id: true } })
@@ -363,10 +380,10 @@ try {
   await pageB.waitForSelector("text=Компании на платформе", { timeout: 30000 })
   await pageB.fill("input[placeholder*='Найти человека']", "Иванов")
   await pageB.waitForSelector("text=Иванов Сергей Петрович", { timeout: 30000 })
-  await pageB.locator("li", { hasText: "Иванов Сергей Петрович" }).first().locator("button", { hasText: "Войти" }).click()
-  await pageB.waitForURL(/\/m$/, { timeout: 30000 })
-  await pageB.waitForSelector("text=Вы вошли как", { timeout: 30000 })
-  check("и36: вход в Иванова — кабинет с полосой (подготовка сцены)", true, await pageB.locator("text=Вы вошли как").first().textContent())
+  const cabB = await enterVia(pageB, "Иванов Сергей Петрович")
+  await cabB.waitForURL(/\/m$/, { timeout: 30000 })
+  await cabB.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  check("и36: вход в Иванова — кабинет с полосой (подготовка сцены)", true, await cabB.locator("text=Вы вошли как").first().textContent())
 
   // убиваем сессию Иванова в базе и ждём, пока истекут ОБА кэша:
   // серверный (15 с) и клиентский (60 с) — как человек, вернувшийся через минуту
@@ -384,26 +401,26 @@ try {
   // Ждём истечения ОБЕИХ кэшей: клиентского (60 с, module-level у хука) и
   // серверного (15 с). Клиентский переход внутри кабинета («Рейсы») монтирует
   // новый экземпляр хука — при живом кэше он показал бы устаревшего Иванова.
-  await pageB.waitForTimeout(62_000)
+  await cabB.waitForTimeout(62_000)
   // программный клик: внизу страницы висит бейдж dev-режима Next.js и
   // перехватывает pointer-события над нижней навигацией
-  await pageB.locator("a[href='/m/orders']").first().evaluate((el) => el.click())
-  await pageB.waitForURL(/\/m\/login\?reason=/, { timeout: 30000 })
-  const fossilNotice = pageB.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
+  await cabB.locator("a[href='/m/orders']").first().evaluate((el) => el.click())
+  await cabB.waitForURL(/\/m\/login\?reason=/, { timeout: 30000 })
+  const fossilNotice = cabB.locator("[role=alert]", { hasText: "Сессия водителя недействительна" })
   await fossilNotice.waitFor({ timeout: 30000 })
   check(
     "и36: причина на входе после тихой смерти сессии",
     /недействительна/.test((await fossilNotice.first().textContent()) ?? ""),
     ((await fossilNotice.first().textContent()) ?? "").slice(0, 80),
   )
-  await pageB.waitForTimeout(800)
-  const staleBanners = await pageB.locator("text=Вы вошли как").count()
+  await cabB.waitForTimeout(800)
+  const staleBanners = await cabB.locator("text=Вы вошли как").count()
   check(
     "и36: «окаменелая» полоса «Вы вошли как» на входе НЕ висит (главное со скриншота)",
     staleBanners === 0,
     `полос на входе: ${staleBanners}`,
   )
-  const ownerEscape = pageB.locator("button", { hasText: "Вы владелец" })
+  const ownerEscape = cabB.locator("button", { hasText: "Вы владелец" })
   await ownerEscape.waitFor({ timeout: 15000 })
   check("и36: честный путь назад — кнопка владельца на месте", true, (await ownerEscape.first().textContent())?.trim() ?? "")
 
@@ -418,12 +435,12 @@ try {
     data: { driverId: orlovDriver?.id },
   })
   check("и36: сессия Орлова выпущена поверх (как опоздавший ответ)", impRes.ok(), `HTTP ${impRes.status()}`)
-  await pageB.waitForURL(/\/m$/, { timeout: 20000 })
-  await pageB.waitForSelector("text=Вы вошли как", { timeout: 30000 })
+  await cabB.waitForURL(/\/m$/, { timeout: 20000 })
+  await cabB.waitForSelector("text=Вы вошли как", { timeout: 30000 })
   check(
     "и36: опрос сам увёл в кабинет (гонка закрыта без действий человека)",
-    /Орлов/.test((await pageB.locator("text=Вы вошли как").first().textContent()) ?? ""),
-    await pageB.locator("text=Вы вошли как").first().textContent(),
+    /Орлов/.test((await cabB.locator("text=Вы вошли как").first().textContent()) ?? ""),
+    await cabB.locator("text=Вы вошли как").first().textContent(),
   )
   await ctxB.close()
 

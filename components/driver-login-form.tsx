@@ -303,6 +303,17 @@ export function DriverLoginForm({
         ) : null}
 
         {owner ? (
+          <button
+            type="button"
+            onClick={() => window.location.assign("/m")}
+            className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-2.5 text-[13px] font-medium text-emerald-300 transition active:scale-[0.98]"
+          >
+            <Truck className="h-4 w-4" />
+            Открыть кабинет водителя
+          </button>
+        ) : null}
+
+        {owner ? (
           <p
             data-driver-cookie={diagnostic?.driverCookie ?? "unknown"}
             className="mb-4 text-center text-[11px] leading-relaxed text-slate-500"
