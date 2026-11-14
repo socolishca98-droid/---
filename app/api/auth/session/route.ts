@@ -117,7 +117,7 @@ async function logApiSessionDiag(
           ms: Date.now() - startedAt,
           cookies: names,
           verify,
-          build: (process.env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7),
+          build: (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7),
           ident: h.get("x-loginex-session-id")?.slice(0, 18) ?? null,
           dest: h.get("sec-fetch-dest") ?? null,
           mode: h.get("sec-fetch-mode") ?? null,

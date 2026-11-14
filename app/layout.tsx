@@ -44,7 +44,7 @@ export default function RootLayout({
   // человек: после каждого обновления сайта цифра меняется. Нет цифры
   // или старая цифра — телефон показывает устаревшую копию (отдельные
   // программы iOS хранит намертво), и это лечится переустановкой иконки.
-  const buildTag = (process.env.VERCEL_GIT_COMMIT_SHA || "dev").slice(0, 7)
+  const buildTag = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev").slice(0, 7)
   return (
     <html lang="ru" suppressHydrationWarning>
       {/* iOS понимает только apple-префиксную мету; Next 16 эмитит
