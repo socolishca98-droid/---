@@ -17,6 +17,13 @@
 // без пути назад: его почта в поле «Телефон» не работает, а полоса
 // «Вы вошли как» исчезает вместе с умершей сессией. Cookie — httpOnly,
 // увидеть её может только сервер: он и рисует кнопку возврата в панель.
+//
+// и50: датчик журнала перенесён В НАЧАЛО — до всех redirect(). Раньше заход
+// на /m/login с живой водительской сессией уходил в redirect('/m') ещё ДО
+// записи в журнал: такие заходы были невидимы, и при разборе жалоб («на
+// экране вход, а в журнале пусто») нельзя было понять, была ли страница
+// входа вообще. Теперь журнал видит каждый заход и его исход (поле will:
+// куда страница отправит человека).
 
 import { cookies, headers } from "next/headers"
 
@@ -32,13 +39,14 @@ import { prisma } from "@/lib/prisma"
 export const dynamic = "force-dynamic"
 
 export default async function DriverLoginPage() {
+  // ── Всё состояние запроса собираем ДО датчика и ДО redirect() ────────────
   // Живая водительская сессия — сразу в кабинет, без формы (и33: раньше
   // это делал edge-proxy по одной подписи токена — и человек с отозванной
   // в базе сессией бесконечно летал между /m и /m/login. Теперь проверка
   // серверная, по базе — как у API).
+  let alive = false
   try {
-    const alive = await driverSessionFromCookies(await cookies())
-    if (alive) redirect("/m")
+    alive = Boolean(await driverSessionFromCookies(await cookies()))
   } catch {
     // база недоступна — покажем форму: вход всё равно проверит сервер
   }
@@ -88,7 +96,9 @@ export default async function DriverLoginPage() {
     // остаётся "none" — диагностика не должна ломать страницу входа
   }
 
-  // и37: серверная запись состояния — что прислал браузер и с чем пришёл.
+  // и37/и50: серверная запись состояния — что прислал браузер и с чем пришёл,
+  // ПЕРВЫМ делом, до любых redirect(): даже заход, который сейчас уйдёт в
+  // /m или /owner, остаётся в журнале с пометкой, куда он отправлен.
   // Разбирается по журналу; после закрывания инцидента датчик убирается.
   try {
     const h = await headers()
@@ -106,8 +116,10 @@ export default async function DriverLoginPage() {
           reason,
           cookies: names,
           driverCookie,
+          driverAlive: alive,
           ownerMode: owner?.mode ?? null,
           staffHome,
+          will: alive ? "/m" : staffHome,
           dest: h.get("sec-fetch-dest") ?? null,
           mode: h.get("sec-fetch-mode") ?? null,
           rsc: h.get("rsc") ?? null,
@@ -119,6 +131,10 @@ export default async function DriverLoginPage() {
   } catch {
     // датчик не имеет права ломать вход
   }
+
+  // Живая водительская сессия — в кабинет (после датчика: журнал обязан
+  // видеть и эти заходы тоже).
+  if (alive) redirect("/m")
 
   // и48: живая своя сессия — домой, без формы (после датчика: журнал
   // должен видеть и эти заходы тоже)

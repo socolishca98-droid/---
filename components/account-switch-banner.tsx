@@ -39,7 +39,10 @@ export function AccountSwitchBanner({
   // — тогда над формой висит «Вы вошли как …», а форма просит войти: экран
   // врёт человеку. Путь назад со входа — своя кнопка (server-side, и33):
   // она знает, жива ли сессия владельца, и не врёт.
-  if (pathname === "/m/login") return null
+  // и50: сравнение по префиксу — варианты адреса с параметрами/слэшем
+  // (/m/login?reason=… в восстановленных состояниях) раньше проскакивали
+  // мимо точного сравнения, и «окаменелая» полоса снова висела над формой.
+  if (pathname?.startsWith("/m/login")) return null
 
   const owner = data?.impersonation ?? null
   if (!owner) return null

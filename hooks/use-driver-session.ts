@@ -13,7 +13,6 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { clearPhotoQueue } from "@/lib/offline/photo-queue"
@@ -160,7 +159,6 @@ export function useDriverSession(
 ): UseDriverSessionReturn {
   const { requireAuth = true, loginPath = LOGIN_PATH } = options
 
-  const router = useRouter()
   const [driver, setDriver] = useState<DriverSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [mustChangePassword, setMustChangePassword] = useState(false)
@@ -182,8 +180,14 @@ export function useDriverSession(
     const suffix = lastSessionFailReason
       ? `?reason=${encodeURIComponent(lastSessionFailReason)}`
       : ""
-    router.replace(`${loginPath}${suffix}`)
-  }, [requireAuth, loginPath, router])
+    // и50: ПОЛНАЯ загрузка вместо SPA-перехода. Смерть сессии — уже
+    // аварийное состояние, и выходить из него надо с чистого листа:
+    // сервер сам решает, что показать (живому владельцу — его панель,
+    // водителю — форму). SPA-переход оставлял страницу собранной из
+    // старого клиентского состояния — включая «окаменелую» полосу
+    // «Вы вошли как» над формой входа (скриншот владельца и36/и50).
+    window.location.replace(`${loginPath}${suffix}`)
+  }, [requireAuth, loginPath])
 
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -299,9 +303,11 @@ export function useDriverSession(
       inFlightDriverSession = null
       setDriver(null)
       setMustChangePassword(false)
-      router.replace(loginPath)
+      // и50: полная загрузка — сервер после выхода сам решает, кого
+      // встретить: живому владельцу — его панель, водителю — форму входа.
+      window.location.assign(loginPath)
     }
-  }, [router, loginPath])
+  }, [loginPath])
 
   /** Локальное обновление данных (например, после выбора машины).
    *  Серверные данные подтягиваются через refresh(). */
