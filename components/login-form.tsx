@@ -89,6 +89,13 @@ export function LoginForm({ nextPath }: LoginFormProps) {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
     window.dispatchEvent(new CustomEvent("login:warp"))
     if (!reduced) await new Promise((resolve) => setTimeout(resolve, 900))
+    // и45: перед жёсткой навигацией СТОПАВИМ сцену. Уход со страницы
+    // на пике CSS-анимации ронял веб-просмотр телефона («на странице
+    // повторно возникла проблема»): пауза оставляет кадр статичным,
+    // и переход уходит со спокойной страницы. Флаг штатный — им же
+    // пользуется сцена (login-world, __loginWorldPaused).
+    ;(window as unknown as { __loginWorldPaused?: boolean }).__loginWorldPaused = true
+    await new Promise((resolve) => setTimeout(resolve, 120))
 
     // Владелец платформы — на свой стартовый экран; остальные — по роли.
     // и44: ПОЛНАЯ загрузка вместо router.replace. SPA-переход оставлял

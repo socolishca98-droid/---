@@ -122,7 +122,7 @@ async function logApiSessionDiag(
           mode: h.get("sec-fetch-mode") ?? null,
           site: h.get("sec-fetch-site") ?? null,
           ref: h.get("referer") ?? null,
-          ua: (h.get("user-agent") ?? "").slice(0, 60),
+          ua: (h.get("user-agent") ?? "").slice(0, 200),
         }),
       },
     })
