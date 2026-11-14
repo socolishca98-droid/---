@@ -16,7 +16,6 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { Phone, Loader2, ArrowRight, Lock, AlertCircle, Truck, Undo2 } from "lucide-react"
 import { toast } from "sonner"
 import { LoginWorld } from "@/components/visual/login-world"
@@ -404,12 +403,16 @@ export function DriverLoginForm({
           </button>
         </form>
 
-        <Link
+        {/* и46: ПОЛНАЯ загрузка, а не внутренний переход — «Вход для
+            логиста» из старой вкладки (открытой до обновления сайта)
+            падал: старый код запрашивал старые скрипты. Полная загрузка
+            всегда приносит текущую версию страницы. */}
+        <a
           href="/login"
           className="mt-3.5 block text-center text-[13px] text-slate-400 transition-colors hover:text-orange-400"
         >
           Вход для логиста
-        </Link>
+        </a>
 
         <p className="mt-2.5 text-center text-[11px] leading-relaxed text-slate-500">
           Телефон и пароль выдаёт логист. Забыли — он сбросит их в разделе

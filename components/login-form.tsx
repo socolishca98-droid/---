@@ -275,9 +275,13 @@ export function LoginForm({ nextPath }: LoginFormProps) {
         </p>
         <p className="text-[12px] text-muted-foreground text-center sm:text-[13px]">
           Вы водитель?{" "}
-          <Link href="/m/login" className="text-primary hover:underline font-medium">
+          {/* и46: ПОЛНАЯ загрузка, а не внутренний переход. Старая вкладка
+              (открытая до обновления сайта) падает на внутренних переходах:
+              старый код запрашивает старые скрипты, которых на сервере уже
+              нет. Полная загрузка всегда приносит текущую версию страницы. */}
+          <a href="/m/login" className="text-primary hover:underline font-medium">
             Вход в приложение водителя
-          </Link>
+          </a>
         </p>
       </div>
     </Shell>
