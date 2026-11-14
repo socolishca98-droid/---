@@ -25,9 +25,8 @@ import { redirect } from "next/navigation"
 import { DriverLoginForm } from "@/components/driver-login-form"
 import { actingOwnerFromCookies } from "@/lib/auth/impersonation"
 import { STAFF_COOKIE, DRIVER_COOKIE } from "@/lib/auth/constants"
-import { verifySessionToken } from "@/lib/auth/token"
+import { driverSessionFromCookies, staffSessionFromCookies } from "@/lib/auth/session"
 import { isOwnerEmail } from "@/lib/auth/owner"
-import { driverSessionFromCookies } from "@/lib/auth/session"
 import { prisma } from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -48,21 +47,29 @@ export default async function DriverLoginPage() {
   // impersonation — чужой аккаунт умер, вернёмся через /api/admin/return;
   // own — своя сессия жива, достаточно перейти в /owner.
   let owner: { name: string | null; mode: "impersonation" | "own" } | null = null
+  // и48: живая ШТАБНАЯ сессия без имперсонации — этому человеку форма
+  // водителя не нужна, его место — его собственный кабинет.
+  let staffHome: string | null = null
   try {
     const store = await cookies()
     const acting = await actingOwnerFromCookies(store)
     if (acting) {
       owner = { name: acting.name, mode: "impersonation" }
     } else {
-      const staff = await verifySessionToken(store.get(STAFF_COOKIE)?.value)
-      if (staff && staff.kind === "staff") {
-        const user = await prisma.user.findUnique({
-          where: { id: staff.sub },
-          select: { email: true, name: true, status: true },
-        })
-        if (user && user.status === "active" && isOwnerEmail(user.email)) {
-          owner = { name: user.name, mode: "own" }
-        }
+      // и48: жалоба владельца — после сбоев Safari показывал ему старые
+      // вкладки с этим экраном («окно авторизации»), он «ходил кругами»,
+      // входил заново своим паролем и в итоге встречал крах страницы.
+      // Живая сессия теперь уводит сразу домой: владельцу — на панель,
+      // логисту — в его панель. Имперсонация — исключение: там свой
+      // путь назад (и36), его не трогаем. Водителям форма остаётся:
+      // у них штабной сессии нет.
+      const staff = await staffSessionFromCookies(store)
+      if (staff) {
+        staffHome = isOwnerEmail(staff.user.email)
+          ? "/owner"
+          : staff.user.role === "logist"
+            ? "/lm"
+            : "/dashboard"
       }
     }
   } catch {
@@ -100,6 +107,7 @@ export default async function DriverLoginPage() {
           cookies: names,
           driverCookie,
           ownerMode: owner?.mode ?? null,
+          staffHome,
           dest: h.get("sec-fetch-dest") ?? null,
           mode: h.get("sec-fetch-mode") ?? null,
           rsc: h.get("rsc") ?? null,
@@ -111,6 +119,10 @@ export default async function DriverLoginPage() {
   } catch {
     // датчик не имеет права ломать вход
   }
+
+  // и48: живая своя сессия — домой, без формы (после датчика: журнал
+  // должен видеть и эти заходы тоже)
+  if (staffHome) redirect(staffHome)
 
   return <DriverLoginForm owner={owner} diagnostic={{ driverCookie }} />
 }
