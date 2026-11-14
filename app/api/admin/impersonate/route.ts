@@ -62,11 +62,31 @@ export async function POST(request: NextRequest) {
   const requestId =
     request.headers.get("x-request-id") ?? request.headers.get("x-correlation-id") ?? null
 
+  // и47: отказы «войти как» тоже пишутся в журнал. Раньше отказ (закрытая
+  // учётная запись, не найден пользователь) не оставлял следа: со стороны
+  // «нажал — ошибка», а в журнале — тишина, и причину приходилось угадывать.
+  const logRefusal = async (reason: string, detail?: string) => {
+    try {
+      await prisma.auditLog.create({
+        data: {
+          actorId: owner.id,
+          actorEmail: owner.email,
+          action: "impersonate_refused",
+          targetType: "user",
+          metadata: JSON.stringify({ reason, detail: detail ?? null, requestId }),
+        },
+      })
+    } catch {
+      // журнал не имеет права мешать отказу
+    }
+  }
+
   const body = (await request.json().catch(() => null)) as Body | null
   const userId = typeof body?.userId === "string" ? body.userId : null
   const driverId = typeof body?.driverId === "string" ? body.driverId : null
 
   if (!userId && !driverId) {
+    await logRefusal("no_target")
     return NextResponse.json(
       { success: false, error: "Укажите userId или driverId" },
       { status: 400 },
@@ -89,6 +109,7 @@ export async function POST(request: NextRequest) {
       select: { id: true, name: true, phone: true, status: true, organizationId: true },
     })
     if (!driver) {
+      await logRefusal("driver_not_found", driverId)
       return NextResponse.json({ success: false, error: "Водитель не найден" }, { status: 404 })
     }
 
@@ -106,6 +127,7 @@ export async function POST(request: NextRequest) {
       // и31: раньше эта ветка статус не проверяла — поиск на /owner
       // давал «Войти» по закрытым водителям, и симптом был именно таким.
       if (existing.status !== "active") {
+        await logRefusal("driver_account_inactive", `${existing.status}: ${driver.name}`)
         return NextResponse.json(
           {
             success: false,
@@ -159,9 +181,11 @@ export async function POST(request: NextRequest) {
       },
     })
     if (!user) {
+      await logRefusal("user_not_found", userId)
       return NextResponse.json({ success: false, error: "Пользователь не найден" }, { status: 404 })
     }
     if (user.role === "driver" && !user.driverId) {
+      await logRefusal("driver_without_card", user.name)
       return NextResponse.json(
         { success: false, error: "У водителя нет карточки — выберите карточку в разделе «Водители»" },
         { status: 400 },
@@ -173,6 +197,7 @@ export async function POST(request: NextRequest) {
     // Выдать такую сессию «успешно» нельзя: владелец уедет в чужой кабинет и
     // сразу получит выпад на экран входа, не понимая почему.
     if (user.status !== "active") {
+      await logRefusal("target_inactive", `${user.status}: ${user.name}`)
       return NextResponse.json(
         {
           success: false,
@@ -196,6 +221,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!targetUserId || !targetRole) {
+    await logRefusal("target_undefined")
     return NextResponse.json({ success: false, error: "Не удалось определить аккаунт" }, { status: 400 })
   }
 

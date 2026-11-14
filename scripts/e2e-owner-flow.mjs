@@ -40,11 +40,21 @@ function envValue(key) {
 }
 
 // и42: «Войти как …» открывает аккаунт в новой вкладке — ловим её.
-// Новая вкладка создаётся с нуля и не может быть «замороженным снимком».
+// и47: на телефоне (здесь всегда iPhone-UA) кабинет открывается В ТОЙ ЖЕ
+// ВКЛАДКЕ — popup не приходит. Ждём вкладку недолго; не пришла — переход
+// произошёл в самой странице, возвращаем её.
 async function enterVia(page, rowText) {
-  const popupPromise = page.waitForEvent("popup", { timeout: 30000 })
+  let popupResolve
+  const popupPromise = new Promise((resolve) => {
+    popupResolve = resolve
+  })
+  page.once("popup", (p) => popupResolve(p))
   await page.locator("li", { hasText: rowText }).first().locator("button", { hasText: "Войти" }).click()
-  return await popupPromise
+  const popup = await Promise.race([
+    popupPromise,
+    new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+  ])
+  return popup ?? page
 }
 
 // и44: вход теперь делает ПОЛНУЮ загрузку страницы (window.location.assign),
@@ -168,9 +178,13 @@ try {
   await cab1.waitForURL(/\/m$/, { timeout: 30000 })
   await cab1.waitForSelector("text=Вы вошли как", { timeout: 30000 })
   const bannerText = await cab1.locator("text=Вы вошли как").first().textContent()
-  check("вход в водителя — сразу кабинет в новой вкладке /m", /\/m$/.test(cab1.url()), cab1.url())
+  check(
+    "вход в водителя — сразу кабинет /m (и47: на телефоне — в той же вкладке, ни одной новой)",
+    /\/m$/.test(cab1.url()) && cab1 === page,
+    cab1.url(),
+  )
   check("полоса показывает, чей аккаунт открыт", Boolean(bannerText?.includes("Орлов")), bannerText ?? "")
-  await cab1.close()
+  if (cab1 !== page) await cab1.close()
 
   const impersonateRes = impersonateResponses.find((r) => r.request().method() === "POST")
   const setCookies = impersonateRes
@@ -196,15 +210,24 @@ try {
   await page.waitForURL(/\/owner\/org\//, { timeout: 30000 })
   await page.waitForSelector("text=Войти как водитель", { timeout: 30000 })
   const orgPath = new URL(page.url()).pathname
-  const orgCabPromise = page.waitForEvent("popup", { timeout: 30000 })
+  // и47: телефон — переход в той же вкладке; вкладку ждём только на десктопе
+  let orgCabResolve
+  const orgCabPromise = new Promise((resolve) => {
+    orgCabResolve = resolve
+  })
+  page.once("popup", (p) => orgCabResolve(p))
   await page.locator("button", { hasText: "Войти как водитель" }).first().evaluate((el) => el.click())
-  const orgCab = await orgCabPromise
+  const orgCab =
+    (await Promise.race([
+      orgCabPromise,
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ])) ?? page
   await orgCab.waitForURL(/\/m$/, { timeout: 30000 })
   await orgCab.waitForSelector("text=Вы вошли как", { timeout: 30000 })
-  check("страница управления: «Войти как водитель» — сразу кабинет водителя в новой вкладке", true, `${orgPath} → ${orgCab.url()}`)
+  check("страница управления: «Войти как водитель» — сразу кабинет водителя (и47: в той же вкладке)", true, `${orgPath} → ${orgCab.url()}`)
   await orgCab.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
   await orgCab.waitForURL("**/owner", { timeout: 90000 })
-  await orgCab.close()
+  if (orgCab !== page) await orgCab.close()
 
   // ── 5в. ПРОТУХШИЙ cookie имперсонации (хвост прошлых итераций) ──────────
   // Раньше impersonate не перезаписывал старый токен: полоса пропадала,
@@ -221,7 +244,7 @@ try {
   await cab2.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
   await cab2.waitForURL("**/owner", { timeout: 90000 })
   check("«Вернуться» работает после протухшего cookie", true, cab2.url())
-  await cab2.close()
+  if (cab2 !== page) await cab2.close()
 
   // ── 5г. Ошибка «входа как»: НЕ тост, а постоянный блок с причиной ───────
   // Кнопка у закрытых аккаунтов блокируется сама (и31), поэтому отказ
@@ -255,7 +278,7 @@ try {
   await cab3.locator("button", { hasText: "Вернуться" }).first().click()
   await cab3.waitForURL("**/owner", { timeout: 90000 })
   check("«Вернуться» возвращает на страницу разработчика", true, cab3.url())
-  await cab3.close()
+  if (cab3 !== page) await cab3.close()
 
   // ── 7. Кросс-организация: аккаунт из ДРУГОЙ компании ────────────────────
   if (other) {
@@ -268,7 +291,7 @@ try {
     await cab4.locator("button", { hasText: "Вернуться" }).first().click()
     await cab4.waitForURL("**/owner", { timeout: 90000 })
     check("возврат из чужой организации — на страницу разработчика", true, cab4.url())
-    await cab4.close()
+    if (cab4 !== page) await cab4.close()
   }
 
   // ── 8. Ловушка со скриншотов: водительская сессия умерла ────────────────
@@ -278,7 +301,7 @@ try {
   const cab5 = await enterVia(page, "Орлов Никита Андреевич")
   await cab5.waitForURL(/\/m$/, { timeout: 30000 })
   await cab5.waitForSelector("text=Вы вошли как", { timeout: 30000 })
-  await cab5.close()
+  if (cab5 !== page) await cab5.close()
 
   // убиваем водительскую сессию в базе — как будто её отозвали/истёк срок
   const orlovDriver = await prisma.driver.findFirst({ where: { phone: "+79161234505" }, select: { id: true } })

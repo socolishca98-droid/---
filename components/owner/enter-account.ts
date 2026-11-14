@@ -71,7 +71,20 @@ export async function enterAccount(account: {
     typeof window !== "undefined" &&
     (window.matchMedia?.("(display-mode: standalone)").matches === true ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
-  if (standalone) {
+  // и47: телефон — тоже переход в ЭТОЙ ЖЕ вкладке. На iPhone Safari
+  // window.open после пары запросов к серверу (выпуск сессии + проверка)
+  // уже не считается нажатием кнопки: вкладка кабинета открывается или
+  // навигируется В ФОНЕ — focus() телефон игнорирует, и человек смотрит
+  // на прежний экран, хотя кабинет честно открыт (журнал сервера это
+  // показывал дважды: сессия выдана, /m загружен, ошибок нет). В той же
+  // вкладке кабинет оказывается ровно там, куда человек смотрит, —
+  // «Вернуться» вверху приводит назад в панель. В программе (и43) так
+  // уже работает и подтверждено владельцем.
+  const phone =
+    typeof window !== "undefined" &&
+    (window.matchMedia?.("(pointer: coarse)").matches === true ||
+      /iPhone|iPad|Android/i.test(window.navigator.userAgent))
+  if (standalone || phone) {
     window.location.assign(target)
     return { ok: true }
   }
