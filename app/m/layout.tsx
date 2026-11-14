@@ -53,6 +53,7 @@ async function logMDiagnostic() {
           path: full,
           cookies: names,
           driverAlive: alive,
+          build: (process.env.VERCEL_GIT_COMMIT_SHA || "local").slice(0, 7),
           dest: h.get("sec-fetch-dest") ?? null,
           mode: h.get("sec-fetch-mode") ?? null,
           rsc: h.get("rsc") ?? null,

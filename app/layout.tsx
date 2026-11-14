@@ -37,12 +37,37 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // и49: видимая метка сборки на каждом экране. Разбор инцидентов на
+  // телефоне владельца упёрся в единственное неразрешимое отсюда: сервер
+  // отдаёт кабинет (журнал подтверждает каждый клик), а человек видит
+  // другое. Метка в углу показывает, СВЕЖУЮ ли копию программы видит
+  // человек: после каждого обновления сайта цифра меняется. Нет цифры
+  // или старая цифра — телефон показывает устаревшую копию (отдельные
+  // программы iOS хранит намертво), и это лечится переустановкой иконки.
+  const buildTag = (process.env.VERCEL_GIT_COMMIT_SHA || "dev").slice(0, 7)
   return (
     <html lang="ru" suppressHydrationWarning>
       {/* iOS понимает только apple-префиксную мету; Next 16 эмитит
           современную mobile-web-app-capable — дублируем для всех версий */}
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <body className="min-h-screen bg-background font-sans antialiased">
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            left: 4,
+            bottom: 2,
+            zIndex: 9999,
+            fontSize: 9,
+            lineHeight: "10px",
+            color: "#7c8090",
+            opacity: 0.55,
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          сб. {buildTag}
+        </div>
         {/* Живой фон (задача 9): декоративный слой под содержимым,
             в контуре водителя и на печати не рендерится */}
         <LiveBackground />
