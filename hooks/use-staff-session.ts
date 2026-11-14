@@ -171,7 +171,9 @@ export function useStaffSession(options: UseStaffSessionOptions = {}): UseStaffS
       cachedSession = null
       setUser(null)
       setOrganization(null)
-      router.replace("/login")
+      // и44: полная загрузка экрана входа — выход заодно приносит свежую
+      // версию программы (SPA-переход оставил бы в окне старый код)
+      window.location.assign("/login")
     }
   }, [router])
 

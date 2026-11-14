@@ -47,6 +47,21 @@ async function enterVia(page, rowText) {
   return await popupPromise
 }
 
+// и44: вход теперь делает ПОЛНУЮ загрузку страницы (window.location.assign),
+// и поле поиска может получить текст раньше, чем страница оживёт (гидратация):
+// React-контролируемый инпут при оживлении стирает ранний ввод, и поиск
+// просто не уходит. Печатаем, даём мгновение, проверяем, что текст жив, —
+// если его смыло, печатаем снова уже по ожившей странице.
+async function typeStable(page, selector, text) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.fill(selector, text)
+    await page.waitForTimeout(500)
+    const value = await page.inputValue(selector).catch(() => "")
+    if (value === text) return
+  }
+  throw new Error(`поле ${selector} не удерживает текст «${text}» (гидратация?)`)
+}
+
 
 const results = []
 function check(name, ok, detail = "") {
@@ -131,10 +146,7 @@ try {
   check("открытие «/» при живой сессии ведёт на панель, а не в кабинет/логиста", true, page.url())
 
   // ── 3. Поиск человека в любой компании ───────────────────────────────────
-  await page.fill(
-    "input[placeholder*='Найти человека']",
-    "Орлов",
-  )
+  await typeStable(page, "input[placeholder*='Найти человека']", "Орлов")
   await page.waitForSelector("text=Орлов Никита Андреевич", { timeout: 30000 })
   const orlovRow = page.locator("li", { hasText: "Орлов Никита Андреевич" }).first()
   await orlovRow.locator("button", { hasText: "Войти" }).waitFor({ timeout: 15000 })
@@ -200,7 +212,7 @@ try {
   await page.goto(`${BASE}/owner`, { waitUntil: "domcontentloaded", timeout: 120000 })
   await page.waitForSelector("text=Компании на платформе", { timeout: 30000 })
   await context.addCookies([{ name: "loginex_owner_session", value: "stale-garbage-token", domain: "localhost", path: "/", httpOnly: true }])
-  await page.fill("input[placeholder*='Найти человека']", "Кузнецов")
+  await typeStable(page, "input[placeholder*='Найти человека']", "Кузнецов")
   await page.waitForSelector("text=Кузнецов Андрей Владимирович", { timeout: 30000 })
   const cab2 = await enterVia(page, "Кузнецов Андрей Владимирович")
   await cab2.waitForURL(/\/m$/, { timeout: 30000 })
@@ -222,7 +234,7 @@ try {
       body: JSON.stringify({ success: false, error: "Доступ закрыт: e2e проверка блока ошибки", code: "target_inactive" }),
     }),
   )
-  await page.fill("input[placeholder*='Найти человека']", "Кузнецов")
+  await typeStable(page, "input[placeholder*='Найти человека']", "Кузнецов")
   await page.waitForSelector("text=Кузнецов Андрей Владимирович", { timeout: 30000 })
   await page.locator("li", { hasText: "Кузнецов Андрей Владимирович" }).first().locator("button", { hasText: "Войти" }).click()
   const errorBlock = page.locator("[role=alert]", { hasText: "Не удалось войти в аккаунт" })
@@ -234,7 +246,7 @@ try {
   await page.waitForTimeout(500)
 
   // ── 6. Вход в логиста → /lm, возврат → /owner ───────────────────────────
-  await page.fill("input[placeholder*='Найти человека']", "logist@local.test")
+  await typeStable(page, "input[placeholder*='Найти человека']", "logist@local.test")
   await page.waitForSelector("text=logist@local.test", { timeout: 30000 })
   const logistRow = page.locator("li", { hasText: "logist@local.test" }).first()
   const cab3 = await enterVia(page, "logist@local.test")
@@ -247,7 +259,7 @@ try {
 
   // ── 7. Кросс-организация: аккаунт из ДРУГОЙ компании ────────────────────
   if (other) {
-    await page.fill("input[placeholder*='Найти человека']", "Соколова")
+    await typeStable(page, "input[placeholder*='Найти человека']", "Соколова")
     await page.waitForSelector("text=Соколова Мария Игоревна", { timeout: 30000 })
     const otherRow = page.locator("li", { hasText: "Соколова Мария Игоревна" }).first()
     const cab4 = await enterVia(page, "Соколова Мария Игоревна")
@@ -260,7 +272,7 @@ try {
   }
 
   // ── 8. Ловушка со скриншотов: водительская сессия умерла ────────────────
-  await page.fill("input[placeholder*='Найти человека']", "Орлов")
+  await typeStable(page, "input[placeholder*='Найти человека']", "Орлов")
   await page.waitForSelector("text=Орлов Никита Андреевич", { timeout: 30000 })
   const trapRow = page.locator("li", { hasText: "Орлов Никита Андреевич" }).first()
   const cab5 = await enterVia(page, "Орлов Никита Андреевич")

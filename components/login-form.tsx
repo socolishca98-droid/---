@@ -16,7 +16,6 @@
  */
 
 import { useEffect, useState, type FormEvent } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
@@ -38,7 +37,6 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ nextPath }: LoginFormProps) {
-  const router = useRouter()
   const { login, user } = useAuth()
 
   // Приветствие по времени суток считаем на клиенте: серверный рендер и
@@ -92,9 +90,13 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     window.dispatchEvent(new CustomEvent("login:warp"))
     if (!reduced) await new Promise((resolve) => setTimeout(resolve, 900))
 
-    // Владелец платформы — на свой стартовый экран; остальные — по роли
-    router.replace(explicitTarget ?? (result.isOwner ? "/owner" : homeFor(result.role)))
-    router.refresh()
+    // Владелец платформы — на свой стартовый экран; остальные — по роли.
+    // и44: ПОЛНАЯ загрузка вместо router.replace. SPA-переход оставлял
+    // в окне вчерашнюю версию программы — телефон может неделями
+    // «просыпать» вкладку со старым кодом, и свежие исправления до
+    // человека не доезжали. Полная загрузка при каждом входе забирает
+    // с сайта текущую версию: застревание старого кода невозможно.
+    window.location.assign(explicitTarget ?? (result.isOwner ? "/owner" : homeFor(result.role)))
   }
 
   const handleChangePassword = async (event: FormEvent<HTMLFormElement>) => {
@@ -120,8 +122,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
         return
       }
 
-      router.replace(redirectTarget)
-      router.refresh()
+      // и44: полная загрузка — после смены пароля программа обновляется
+      window.location.assign(redirectTarget)
     } catch {
       setError("Ошибка соединения. Попробуйте ещё раз")
     } finally {

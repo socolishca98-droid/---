@@ -103,7 +103,7 @@ export default async function DriverLoginPage() {
           dest: h.get("sec-fetch-dest") ?? null,
           mode: h.get("sec-fetch-mode") ?? null,
           rsc: h.get("rsc") ?? null,
-          ua: (h.get("user-agent") ?? "").slice(0, 120),
+          ua: (h.get("user-agent") ?? "").slice(0, 200),
           ref: h.get("referer") ?? null,
         }),
       },

@@ -42,8 +42,14 @@ export const STAFF_ROLES: UserRole[] = ["admin", "logist"]
 export const USER_STATUSES = ["pending", "active", "suspended"] as const
 export type UserStatus = (typeof USER_STATUSES)[number]
 
-/** Время жизни сессии по умолчанию — 12 часов */
-const DEFAULT_TTL_HOURS = 12
+/**
+ * Время жизни сессии по умолчанию — 30 дней (и44). Раньше 12 часов:
+ * сессия умирала за ночь, и человек, пользующийся программой каждый
+ * день, каждое утро видел экран авторизации — воспринимал это как
+ * «меня выкидывает». Отозвать сессию можно в любой момент
+ * («Завершить сессии»), активность видна в журнале.
+ */
+const DEFAULT_TTL_HOURS = 720
 
 /** Максимум неудачных попыток входа до временной блокировки */
 export const MAX_FAILED_LOGINS = 5
