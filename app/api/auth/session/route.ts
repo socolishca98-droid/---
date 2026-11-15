@@ -94,6 +94,15 @@ async function logApiSessionDiag(
   status: number,
   startedAt: number,
 ): Promise<void> {
+  // и52: пульс кабинета (beat=1) — беззвучен при 200: раз в минуту от
+  // каждого открытого экрана иначе затопит журнал. Пишем только сбой
+  // (любой статус ≥ 400 — смерть сессии на открытом экране важна всегда)
+  // и контрольную метку раз в 15 минут (mark=1): ровный ряд меток =
+  // экран жив, обрыв ряда = момент, когда экран «окаменел».
+  const searchParams = request.nextUrl.searchParams
+  const isBeat = searchParams.get("beat") === "1"
+  if (isBeat && status < 400 && searchParams.get("mark") !== "1") return
+
   if (kind !== "driver") {
     // и51: неудача ШТАБНОЙ проверки при живых cookie имперсонации/водителя —
     // состояние «телефон потерял штабную cookie» (утро владельца 15.11:
@@ -127,6 +136,7 @@ async function logApiSessionDiag(
         metadata: JSON.stringify({
           kind,
           status,
+          beat: isBeat || null,
           ms: Date.now() - startedAt,
           cookies: names,
           verify,

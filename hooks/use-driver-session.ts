@@ -42,6 +42,62 @@ let cachedDriverSession: { at: number; driver: any; mustChange: boolean } | null
  */
 let inFlightDriverSession: Promise<{ driver: any; mustChange: boolean } | null> | null = null
 
+// ============================================
+// и52: пульс кабинета
+// ============================================
+
+/**
+ * Пока экран водителя открыт и видим, раз в минуту он тихо спрашивает сервер
+ * о сессии. Смерть сессии при открытом приложении раньше замечал только
+ * следующий запрос данных — запутанной ошибкой посреди экрана. Теперь:
+ *   • 200 — пульс беззвучен (журнал не засоряем, кэш сессии продлеваем);
+ *   • 401/403 — полный перезапуск страницы: сервер сам решает, кого
+ *     встретить (живому владельцу — панель, водителю — форму с причиной);
+ *   • каждый 15-й пульс (раз в 15 минут) оставляет метку в журнале —
+ *     «окаменевший» экран диагностируется по обрыву ряда меток: время
+ *     обрыва = момент смерти экрана (жалобы 13–15.11 разбирались вслепую).
+ * Пульс стартует только у вошедшего (на странице входа запросы раз в
+ * минуту — бессмысленный шум и цикл перезагрузок).
+ */
+let heartbeatStarted = false
+let heartbeatOnDead: (() => void) | null = null
+let heartbeatBeatCount = 0
+
+function startDriverHeartbeat(): void {
+  if (heartbeatStarted) return
+  heartbeatStarted = true
+  setInterval(() => {
+    if (typeof document === "undefined" || document.visibilityState !== "visible") return
+    heartbeatBeatCount += 1
+    const mark = heartbeatBeatCount % 15 === 1 ? "&mark=1" : ""
+    fetch(`/api/auth/session?kind=driver&beat=1${mark}`, { cache: "no-store" })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = (await res.json().catch(() => null)) as {
+            session?: { driver?: any; user?: { mustChangePassword?: boolean } }
+          } | null
+          const d = data?.session?.driver
+          if (d?.id) {
+            cachedDriverSession = {
+              at: Date.now(),
+              driver: d,
+              mustChange: Boolean(data?.session?.user?.mustChangePassword),
+            }
+          }
+          return
+        }
+        if (res.status === 401 || res.status === 403) {
+          const failure = (await res.json().catch(() => null)) as { reason?: string } | null
+          if (failure?.reason) lastSessionFailReason = failure.reason
+          heartbeatOnDead?.()
+        }
+      })
+      .catch(() => {
+        // сети нет — не повод выгонять: следующий пульс повторит
+      })
+  }, 60_000)
+}
+
 /** и39: сообщение о пароле хостинга показывается один раз за жизнь страницы. */
 let protectionWarned = false
 
@@ -263,6 +319,14 @@ export function useDriverSession(
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
     }
   }, [refresh])
+
+  // и52: пульс кабинета. Стартует один раз на страницу — как только
+  // появилась живая сессия; на странице входа не стартует вовсе.
+  useEffect(() => {
+    if (!driver?.id) return
+    heartbeatOnDead = () => redirectToLogin()
+    startDriverHeartbeat()
+  }, [driver?.id, redirectToLogin])
 
   const login = useCallback(
     async (phone: string, password: string): Promise<LoginDriverResult> => {

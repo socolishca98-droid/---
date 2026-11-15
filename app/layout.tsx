@@ -51,6 +51,30 @@ export default function RootLayout({
           современную mobile-web-app-capable — дублируем для всех версий */}
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <body className="min-h-screen bg-background font-sans antialiased">
+        {/* и52: воскресительный щит — на КАЖДОЙ странице, до всей гидрации.
+            Телефон умеет замораживать вкладку на часы: краска остаётся
+            (человек видит «вчерашний экран»), а JavaScript наполовину мёртв —
+            ни запросов, ни реакции на нажатия (жалобы 13–15.11: сервер по
+            журналу отдавал кабинет, а экран был старым). Живому коду вернуть
+            страницу несложно: долго скрытая вкладка при возврате полностью
+            перезагружается — сервер сам решает, что показать (живому
+            владельцу — панель/кабинет, анониму — вход). Это тот же принцип,
+            что и40 в контуре водителя, но щит закрывает ВСЕ экраны, включая
+            вход владельца, и убирает сам «окаменевший кадр», а не только
+            обновляет данные. 120 секунд выбраны осознанно: короче — можно
+            перезагрузить человеку, отвлёкшемуся на минуту от набора пароля. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+var GAP=120000,h=0;
+document.addEventListener('visibilitychange',function(){
+if(document.visibilityState==='hidden'){h=Date.now();return}
+if(h&&Date.now()-h>GAP){location.reload()}
+});
+window.addEventListener('pageshow',function(e){if(e.persisted){location.reload()}});
+}catch(e){}})()`,
+          }}
+        />
         <div
           aria-hidden
           style={{
