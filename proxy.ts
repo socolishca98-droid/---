@@ -30,6 +30,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   DRIVER_COOKIE,
   IDENTITY_HEADERS,
+  IMPERSONATION_COOKIE,
   STAFF_COOKIE,
   STAFF_ROLES,
 } from "@/lib/auth/constants"
@@ -184,6 +185,33 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // --- и51: спасение владельца, потерявшего штабную cookie -------------------
+  // Утро владельца (журнал 15.11, 06:07): телефон за ночь терял штабную cookie
+  // при живой сессии в базе — и тогда «Войти как водитель» и «Вернуться»
+  // падали в 403 ещё ЗДЕСЬ, в proxy, не доходя до своей логики. А cookie
+  // имперсонации (и34) хранит подписанную копию токена владельца — по этой
+  // подписи его можно вернуть в свой кабинет без экрана входа:
+  //   • POST /api/admin/return — пропускаем (маршрут сам всё проверит по базе
+  //     и восстановит штабную cookie);
+  //   • штабная СТРАНИЦА (переход целиком, не fetch) — отправляем в
+  //     GET /api/admin/return?next=… вместо формы входа.
+  let impersonationStaff: SessionTokenPayload | null = null
+  if (!staffPayload) {
+    const impersonation = await verifySessionToken(
+      request.cookies.get(IMPERSONATION_COOKIE)?.value,
+    ).catch(() => null)
+    if (
+      impersonation &&
+      impersonation.kind === "staff" &&
+      STAFF_ROLES.includes(impersonation.role)
+    ) {
+      impersonationStaff = impersonation
+    }
+  }
+  if (!staffPayload && impersonationStaff && pathname === "/api/admin/return") {
+    staffPayload = impersonationStaff
+  }
+
   // --- Публичные пути -------------------------------------------------------
   if (access.area === "public") {
     // Уже вошедшего сотрудника не держим на корне «/» (и33: с «/login»
@@ -225,6 +253,26 @@ export async function proxy(request: NextRequest) {
 
   if (!allowed) {
     const hasSomeToken = staffPayload !== null || driverPayload !== null
+
+    // и51: штабная страница открыта переходом (не fetch) без штабной cookie,
+    // но с живой cookie имперсонации — это не «войдите заново», а спасение:
+    // /api/admin/return восстановит сессию владельца из подписанной копии
+    // и вернёт на задуманную страницу. Иначе утро владельца начиналось
+    // с экрана входа при живой сессии в базе.
+    if (
+      !access.isApi &&
+      impersonationStaff &&
+      (request.headers.get("sec-fetch-dest") ?? "") === "document"
+    ) {
+      // и51б: origin берём из самого запроса (request.url внутри рантайма
+      // может быть адресом привязки, например 0.0.0.0 в деве) — иначе
+      // браузер уходил на «чужой» адрес и терял cookie восстановления.
+      const rescue = request.nextUrl.clone()
+      rescue.pathname = "/api/admin/return"
+      rescue.search = ""
+      rescue.searchParams.set("next", `${pathname}${search}`)
+      return NextResponse.redirect(rescue)
+    }
 
     if (access.isApi) {
       return unauthorizedJson(

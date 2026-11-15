@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T21:53:43.682Z",
+  "generatedAt": "2026-11-15T06:29:20.207Z",
   "endpoints": [
     {
       "method": "GET",
@@ -29,6 +29,11 @@
     {
       "method": "GET",
       "route": "/api/admin/overview",
+      "group": "admin"
+    },
+    {
+      "method": "GET",
+      "route": "/api/admin/return",
       "group": "admin"
     },
     {

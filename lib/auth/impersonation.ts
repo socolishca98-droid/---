@@ -17,7 +17,7 @@
 import "server-only"
 import type { NextRequest } from "next/server"
 
-import { IMPERSONATION_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
+import { IMPERSONATION_COOKIE } from "@/lib/auth/constants"
 import { verifySessionToken } from "@/lib/auth/token"
 import { isOwnerEmail } from "@/lib/auth/owner"
 
@@ -51,8 +51,6 @@ export async function actingOwnerFromCookies(
 ): Promise<ActingOwner | null> {
   const token = cookies.get(IMPERSONATION_COOKIE)?.value
   if (!token) return null
-  // Без основной сессии «вход как» уже не действует: остался только хвост cookie
-  if (!cookies.get(STAFF_COOKIE)?.value) return null
 
   const payload = await verifySessionToken(token)
   if (!payload || payload.kind !== "staff") return null
@@ -60,12 +58,26 @@ export async function actingOwnerFromCookies(
   // Токен подписан нами, но владельца всё равно проверяем по email в базе:
   // так смена OWNER_EMAIL сразу закрывает доступ прежнему владельцу.
   const { prisma } = await import("@/lib/prisma")
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: { id: true, email: true, name: true, status: true },
-  })
+  const [user, sessionRow] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, name: true, status: true },
+    }),
+    prisma.session.findUnique({
+      where: { id: payload.jti },
+      select: { revokedAt: true, expiresAt: true },
+    }),
+  ])
   if (!user || user.status !== "active") return null
   if (!isOwnerEmail(user.email)) return null
+  // и51: сессия владельца, чья подписанная копия едет в этой cookie, обязана
+  // быть живой в базе — не отозвана и не истекла. Раньше вместо проверки
+  // по базе требовалось само наличие штабной cookie: телефон мог потерять
+  // её за ночь при живой сессии, и «Вернуться» из чужого кабинета
+  // превращалось в тупик с единственным выходом — экран входа
+  // (журнал 15.11, 06:07–06:08: вход по паролю в 06:08 при живой сессии).
+  if (!sessionRow || sessionRow.revokedAt) return null
+  if (sessionRow.expiresAt.getTime() <= Date.now()) return null
 
   return { userId: user.id, email: user.email, name: user.name, token }
 }

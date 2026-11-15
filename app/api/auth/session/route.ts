@@ -94,7 +94,19 @@ async function logApiSessionDiag(
   status: number,
   startedAt: number,
 ): Promise<void> {
-  if (kind !== "driver") return
+  if (kind !== "driver") {
+    // и51: неудача ШТАБНОЙ проверки при живых cookie имперсонации/водителя —
+    // состояние «телефон потерял штабную cookie» (утро владельца 15.11:
+    // сессия в базе жива, «Вернуться» и «Войти как» падали, спасал только
+    // повторный вход по паролю). Пишем только отказы и только в этом
+    // состоянии — обычные 401 анонимов журналу не нужны.
+    if (kind !== "staff" || status < 400) return
+    const store = request.cookies
+    const hasOther = Boolean(
+      store.get(DRIVER_COOKIE)?.value || store.get("loginex_owner_session")?.value,
+    )
+    if (!hasOther) return
+  }
   try {
     const h = request.headers
     const store = request.cookies
@@ -113,6 +125,7 @@ async function logApiSessionDiag(
         action: "diag_api_session",
         targetType: "diagnostic",
         metadata: JSON.stringify({
+          kind,
           status,
           ms: Date.now() - startedAt,
           cookies: names,
