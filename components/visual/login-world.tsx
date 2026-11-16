@@ -806,6 +806,34 @@ export function LoginWorld({
     document.addEventListener("focusout", onFocusOut)
     document.addEventListener("visibilitychange", onVisibility)
 
+    // и54: «призрак» мира входа. Мир — position:fixed с 3D-трансформациями,
+    // и iOS WebKit иногда не освобождает его композитные слои при уходе со
+    // страницы: застывший кадр входа остаётся висеть над СЛЕДУЮЩЕЙ страницей
+    // (вечер 16.11, две жалобы с одним скриншотом: живой баннер «Вы вошли
+    // как…» и свежая метка сборки — над мёртвой формой входа; сервер и
+    // сессии при этом безупречны, rAF жив — сторож краски и53 молчит).
+    // Уходя со страницы (pagehide — навигация прочь, сворачивание, закрытие),
+    // сворачиваем мир ДО последнего кадра: поддереву с display:none нечего
+    // оставлять в композиторе — призраку не из чего возникнуть.
+    const onPageHide = () => {
+      try {
+        viewport.style.display = "none"
+      } catch {
+        /* мир уже разобран — не важно */
+      }
+    }
+    const onPageShow = () => {
+      // Возврат из bfcache: щит и52 всё равно перезагрузит страницу, но если
+      // этого не случится — мир обязан вернуться, а не остаться свёрнутым.
+      try {
+        viewport.style.display = ""
+      } catch {
+        /* пусто */
+      }
+    }
+    window.addEventListener("pagehide", onPageHide)
+    window.addEventListener("pageshow", onPageShow)
+
     if (reduced) {
       // статичный кадр: терминал есть, всё замерло
       const rot = "rotateX(0deg) rotateY(0deg)"
@@ -832,6 +860,8 @@ export function LoginWorld({
       document.removeEventListener("focusin", onFocusIn)
       document.removeEventListener("focusout", onFocusOut)
       document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pagehide", onPageHide)
+      window.removeEventListener("pageshow", onPageShow)
     }
   }, [variant])
 

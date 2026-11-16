@@ -66,11 +66,9 @@ let heartbeatBeatCount = 0
 function startDriverHeartbeat(): void {
   if (heartbeatStarted) return
   heartbeatStarted = true
-  setInterval(() => {
+  const beat = (mark: boolean) => {
     if (typeof document === "undefined" || document.visibilityState !== "visible") return
-    heartbeatBeatCount += 1
-    const mark = heartbeatBeatCount % 15 === 1 ? "&mark=1" : ""
-    fetch(`/api/auth/session?kind=driver&beat=1${mark}`, { cache: "no-store" })
+    fetch(`/api/auth/session?kind=driver&beat=1${mark ? "&mark=1" : ""}`, { cache: "no-store" })
       .then(async (res) => {
         if (res.ok) {
           const data = (await res.json().catch(() => null)) as {
@@ -95,6 +93,20 @@ function startDriverHeartbeat(): void {
       .catch(() => {
         // сети нет — не повод выгонять: следующий пульс повторит
       })
+  }
+  // и54: удар при ВОЗВРАЩЕНИИ в приложение. Вечер 16.11: после 23:16 журнал
+  // молчал до самого скриншота — было невозможно отличить «вкладка жива, но
+  // молчит» от «JavaScript умер и экран показывает последний кадр». Теперь
+  // каждое возвращение к видимому экрану оставляет метку в журнале: живая
+  // вкладка отметится в ту же секунду, мёртвая — нет. Это диагноз одним
+  // взглядом в журнал.
+  const onBeatVisible = () => {
+    if (document.visibilityState === "visible") beat(true)
+  }
+  document.addEventListener("visibilitychange", onBeatVisible)
+  setInterval(() => {
+    heartbeatBeatCount += 1
+    beat(heartbeatBeatCount % 15 === 1)
   }, 60_000)
 }
 

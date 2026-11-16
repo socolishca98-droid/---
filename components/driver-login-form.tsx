@@ -251,6 +251,20 @@ export function DriverLoginForm({
   useEffect(() => setNow(new Date()), [])
   const dateLabel = now ? formatHumanDate(now) : undefined
 
+  // и54: живые часы на экране входа. Вечер 16.11: телефон владельца
+  // показывал застывший «призрак» этой формы (живой баннер и метка сборки —
+  // над мёртвым кадром), и единственного способа отличить живой экран от
+  // снимка не было ни у него, ни у нас. Теперь он есть: время на входе
+  // тикает каждую секунду, пока жив JavaScript страницы. Остановились часы —
+  // перед человеком снимок: закрыть программу из переключателя и открыть
+  // заново. Живой экран входа при живой сессии сам уведёт в кабинет (и41).
+  const [tick, setTick] = useState<Date | null>(null)
+  useEffect(() => {
+    setTick(new Date())
+    const timer = setInterval(() => setTick(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
   return (
     <div className="relative min-h-dvh">
       <LoginWorld
@@ -335,6 +349,12 @@ export function DriverLoginForm({
           <h1 className="mt-1 text-[17px] font-bold tracking-tight text-white sm:text-xl">
             Вход в приложение
           </h1>
+          <p
+            data-live-clock={tick ? "1" : "0"}
+            className="mt-0.5 text-center text-[10px] tabular-nums tracking-wide text-slate-500"
+          >
+            {tick ? `живой экран · ${tick.toLocaleTimeString("ru-RU", { hour12: false })}` : "…"}
+          </p>
           <p className="mt-1 hidden text-xs leading-relaxed text-slate-400 sm:block">
             Рейсы, маршрут и документы — без звонков диспетчеру
           </p>

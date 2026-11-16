@@ -121,8 +121,27 @@ if(everAnimated){try{if(!sessionStorage.getItem('paint-reloaded')){sessionStorag
             userSelect: "none",
           }}
         >
-          сб. {buildTag}
+          сб. {buildTag} ·{" "}
+          <span id="loginex-clock" suppressHydrationWarning>
+            --:--:--
+          </span>
         </div>
+        {/* и54: живые часы в углу каждого экрана — продолжение идеи метки и49.
+            Метка отвечает «КАКУЮ копию программы видит человек», часы —
+            «ЖИВЫЙ ли это экран вообще». Вечер 16.11 доказал: телефон умеет
+            показывать застывший кадр (призрак мира входа) при живом сервере
+            и живом JavaScript — ни один датчик этого не видит, а человек
+            видит мгновенно: стоят часы — экран мёртв, программу нужно
+            закрыть и открыть заново. Часы тикают, пока жив JavaScript
+            страницы; снимок/призрак показывает застывшее время. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+function lc(){var c=document.getElementById('loginex-clock');if(c){try{c.textContent=new Date().toLocaleTimeString('ru-RU',{hour12:false})}catch(e){c.textContent=new Date().toLocaleTimeString()}}}
+lc();setInterval(lc,1000);
+}catch(e){}})()`,
+          }}
+        />
         {/* Живой фон (задача 9): декоративный слой под содержимым,
             в контуре водителя и на печати не рендерится */}
         <LiveBackground />
