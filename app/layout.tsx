@@ -75,6 +75,35 @@ window.addEventListener('pageshow',function(e){if(e.persisted){location.reload()
 }catch(e){}})()`,
           }}
         />
+        {/* и53: сторож краски. Вечер 16.11 доказал новый режим отказа: сервер
+            трижды открыл кабинет (журнал: /m alive, сессии 200), клики со
+            «застрявшего» экрана доходили до сервера («Вернуться» срабатывал) —
+            то есть JavaScript и сеть ЖИВЫ, а на экране оставалась старая
+            картина (форма входа + баннер). Так умирает композитор WebKit:
+            тяжёлые 3D-слои замирают, мелкий текст ещё перекрашивается.
+            Подпись такого состояния: requestAnimationFrame перестаёт
+            приходить, а setInterval продолжает. Сторож замечает это за
+            20 секунд: пишет в журнал метку paint=dead (с точным временем
+            смерти краски) и один раз за жизнь вкладки пробует оживить
+            экран полной перезагрузкой. Ложных срабатываний у видимой
+            страницы не бывает: rAF у живого экрана идёт непрерывно. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+var lastRaf=Date.now(),dead=false;
+function tick(){lastRaf=Date.now();requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+setInterval(function(){
+if(dead||document.visibilityState!=='visible')return;
+var gap=Date.now()-lastRaf,limit=window.__PAINT_DEAD_MS||20000;
+if(gap<=limit)return;
+dead=true;
+try{fetch('/api/auth/session?kind='+(location.pathname.indexOf('/m')===0?'driver':'staff')+'&paint=dead',{cache:'no-store',keepalive:true}).catch(function(){})}catch(e){}
+try{if(!sessionStorage.getItem('paint-reloaded')){sessionStorage.setItem('paint-reloaded','1');location.reload()}}catch(e){}
+},2000);
+}catch(e){}})()`,
+          }}
+        />
         <div
           aria-hidden
           style={{

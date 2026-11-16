@@ -101,9 +101,13 @@ async function logApiSessionDiag(
   // экран жив, обрыв ряда = момент, когда экран «окаменел».
   const searchParams = request.nextUrl.searchParams
   const isBeat = searchParams.get("beat") === "1"
-  if (isBeat && status < 400 && searchParams.get("mark") !== "1") return
+  // и53: «краска экрана умерла» (paint=dead от сторожа в корневом layout) —
+  // пишется ВСЕГДА: любой контур (водитель/штаб), любой статус. Это улика
+  // с точным временем, когда телефон перестал показывать живую страницу.
+  const paintDead = searchParams.get("paint") === "dead"
+  if (isBeat && status < 400 && searchParams.get("mark") !== "1" && !paintDead) return
 
-  if (kind !== "driver") {
+  if (kind !== "driver" && !paintDead) {
     // и51: неудача ШТАБНОЙ проверки при живых cookie имперсонации/водителя —
     // состояние «телефон потерял штабную cookie» (утро владельца 15.11:
     // сессия в базе жива, «Вернуться» и «Войти как» падали, спасал только
@@ -137,6 +141,7 @@ async function logApiSessionDiag(
           kind,
           status,
           beat: isBeat || null,
+          paint: paintDead ? "dead" : null,
           ms: Date.now() - startedAt,
           cookies: names,
           verify,
