@@ -70,21 +70,31 @@ export function AccountSwitchBanner({
 
   return (
     <div
-      className={`flex items-center gap-2 border-b border-primary/30 bg-primary/15 px-3 py-2 text-[12.5px] text-foreground ${className}`}
+      className={`border-b border-primary/30 bg-primary/15 px-3 py-2 text-[12.5px] text-foreground ${className}`}
     >
-      <UserCog className="h-4 w-4 shrink-0 text-primary" />
-      <span className="min-w-0 flex-1 truncate">
-        Вы вошли как <span className="font-semibold">{who}</span>
-      </span>
-      <button
-        type="button"
-        onClick={() => void returnToOwner()}
-        disabled={busy}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
-        Вернуться
-      </button>
+      <div className="flex items-center gap-2">
+        <UserCog className="h-4 w-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1 truncate">
+          Вы вошли как <span className="font-semibold">{who}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => void returnToOwner()}
+          disabled={busy}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+          Вернуться
+        </button>
+      </div>
+      {/* и55: подсказка-спасение. Жалобы 16–17.11: телефон показывает
+          застрявший кадр формы входа ПОВЕРХ живого кабинета — эта полоса
+          остаётся единственным живым элементом на таком экране. Говорим
+          прямо: если снизу форма входа — экран врёт, лечение одно. */}
+      <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+        Видите ниже форму входа? Это застывший кадр экрана телефона — закройте
+        программу из переключателя приложений и откройте заново.
+      </p>
     </div>
   )
 }

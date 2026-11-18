@@ -133,12 +133,21 @@ if(everAnimated){try{if(!sessionStorage.getItem('paint-reloaded')){sessionStorag
             и живом JavaScript — ни один датчик этого не видит, а человек
             видит мгновенно: стоят часы — экран мёртв, программу нужно
             закрыть и открыть заново. Часы тикают, пока жив JavaScript
-            страницы; снимок/призрак показывает застывшее время. */}
+            страницы; снимок/призрак показывает застывшее время.
+            и55: заодно «встряхивание» композитора при каждом появлении
+            экрана (pageshow/visibilitychange→visible): кратковременный
+            translateZ(0) на body создаёт новый композитный контекст —
+            WebKit иногда держит застрявшие слои прошлой страницы (жалобы
+            16–17.11: форма входа-призрак над живым кабинетом), и такое
+            вытеснение — единственный кодовый способ попытаться их сбросить. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
 function lc(){var c=document.getElementById('loginex-clock');if(c){try{c.textContent=new Date().toLocaleTimeString('ru-RU',{hour12:false})}catch(e){c.textContent=new Date().toLocaleTimeString()}}}
 lc();setInterval(lc,1000);
+function nudge(){try{document.body.style.transform='translateZ(0)';setTimeout(function(){try{document.body.style.transform=''}catch(e){}},80)}catch(e){}}
+window.addEventListener('pageshow',function(e){if(e.persisted)nudge()});
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')nudge()});
 }catch(e){}})()`,
           }}
         />
