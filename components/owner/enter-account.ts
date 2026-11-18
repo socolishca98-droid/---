@@ -11,34 +11,93 @@ export interface EnterAccountResult {
   error?: string
 }
 
+// и57: последняя открытая вкладка кабинета. Храним, чтобы следующее
+// «Войти как …» закрывала её, а не копило вкладки (и45: четыре вкладки с
+// тяжёлыми картами валили Safari). Ссылка живёт, пока жива страница
+// управления — с и56/и57 она больше никуда не уходит.
+let lastCabTab: Window | null = null
+
+/** Закрыть прежнюю вкладку кабинета — но только нашу и только кабинет. */
+function closeStaleCabTab() {
+  const tab = lastCabTab
+  lastCabTab = null
+  if (!tab || tab === window) return
+  try {
+    if (tab.closed) return
+    const sameOrigin = tab.location.origin === window.location.origin
+    const cabinetPath = /^\/(m|lm)(\/|$)/.test(tab.location.pathname)
+    if (sameOrigin && cabinetPath) tab.close()
+  } catch {
+    // вкладка ушла на другой источник или уже мертва — не трогаем
+  }
+}
+
+/**
+ * и57: страховка на случай, когда телефон открыл вкладку кабинета, но не
+ * показал её человеку. Полоса СВЕРХУ — единственное место, которое точно
+ * читаемо даже над застывшим кадром (жалобы №8–№9: верх страницы оставался
+ * живым — баннер и часы читались). Говорим прямо, где кабинет.
+ */
+function showCabHint(name: string) {
+  if (typeof document === "undefined" || !document.body) return
+  if (document.getElementById("loginex-cab-hint")) return
+  const bar = document.createElement("div")
+  bar.id = "loginex-cab-hint"
+  bar.style.cssText = [
+    "position:fixed",
+    "top:0",
+    "left:0",
+    "right:0",
+    "z-index:2147483647",
+    "background:#16a34a",
+    "color:#fff",
+    "font:600 15px/1.4 system-ui,-apple-system,sans-serif",
+    "padding:calc(10px + env(safe-area-inset-top)) 44px 10px 14px",
+    "box-shadow:0 6px 24px rgba(0,0,0,.35)",
+  ].join(";")
+  const text = document.createElement("span")
+  text.textContent = `Кабинет (${name}) открыт в НОВОЙ вкладке — переключитесь на неё: кнопка вкладок внизу справа.`
+  const close = document.createElement("button")
+  close.type = "button"
+  close.textContent = "×"
+  close.setAttribute("aria-label", "Закрыть подсказку")
+  close.style.cssText =
+    "position:absolute;right:4px;top:2px;background:none;border:0;color:#fff;font-size:22px;line-height:1;padding:8px 12px;cursor:pointer"
+  close.addEventListener("click", () => bar.remove())
+  bar.append(text, close)
+  document.body.appendChild(bar)
+  setTimeout(() => bar.remove(), 20000)
+}
+
 export async function enterAccount(account: {
   kind: "staff" | "driver"
   id: string
   name: string
   fallbackHref?: string
 }): Promise<EnterAccountResult> {
-  // и56: вкладка кабинета открывается В МОМЕНТ НАЖАТИЯ — до всех запросов.
+  // и57: вкладка кабинета открывается В МОМЕНТ НАЖАТИЯ и ВСЕГДА НОВАЯ.
   // История вопроса, коротко:
   //   и42 — кабинет в новой вкладке: свежая вкладка «заморозиться» не может;
   //   и47 — на телефоне вернули переход в ту же вкладку: window.open после
   //         пары запросов к серверу уже не считается нажатием, Safari молча
-  //         открывал вкладку в фоне, и человек смотрел на прежний экран;
-  //   жалобы 16–18.11 показали обратную сторону того же телефона: в «своей»
-  //         вкладке WebKit держит застывший кадр старой формы входа ПОВЕРХ
-  //         живого кабинета — кадр переживает и полные загрузки кабинета
-  //         (журнал: /m отдан документом, сессии 200, часы в углу тикают),
-  //         и «встряхивание» композитора (и55), и даже перезапуск программы
-  //         (18.11, жалоба №9: «закрываю, открываю — всегда этот экран»).
-  //         Владелец жмёт «Войти как водитель» — сервер честно открывает
-  //         кабинет, а человек смотрит на старую форму и делает вывод, что
-  //         без логина и пароля водителя в аккаунт не попасть.
-  // Решение и56: вкладку кабинета открываем СИНХРОННО с нажатием кнопки —
-  // в этом случае iOS признаёт жест и показывает вкладку на переднем плане
-  // (проблема и47 исчезает: не «фоновой» вкладки) — а адрес записываем в неё
-  // уже после выпуска и проверки сессии. Вкладка создаётся с нуля, и застывшему
-  // кадру в ней взяться неоткуда. Если браузер не дал вкладку (блокировщик,
-  // редкие режимы) — прежний путь: переход в той же вкладке. В «программе»
-  // с иконки (PWA, и43) вкладок нет — переход в том же окне, как и раньше.
+  //         открывал вкладку в фоне;
+  //   и56 — вкладку открыли синхронно с нажатием (жест), но ПО ИМЕНИ
+  //         «loginex-cab» (наследие и45). Жалоба №10 (18.11 22:33, журнал
+  //         19:33 UTC): и это не сработало — «опять не смог попасть».
+  //         Причина найдена: вкладка владельца, в которой он жмёт кнопку,
+  //         САМА носит имя «loginex-cab» (родом из и42-эпохи, когда кабинет
+  //         открывался в именованную вкладку). window.open("", "loginex-cab")
+  //         возвращает ЕЁ ЖЕ — «новой» вкладкой оказывается та же отравленная:
+  //         кабинет честно грузится (журнал: /m документом, сессии 200), но
+  //         поверх него тот же застывший кадр, и человек опять «не попал».
+  //   и57 — три защиты разом:
+  //         (1) всегда _blank: никакие имена не ищем, вкладка создаётся
+  //             с нуля — застрявшему кадру в ней взяться неоткуда;
+  //         (2) самозащита: если window.open почему-то вернул текущее окно —
+  //             считаем, что вкладки нет, и идём запасным путём;
+  //         (3) прежняя вкладка кабинета закрывается перед открытием новой —
+  //             вкладки не копятся (страх и45), страница управления остаётся
+  //             на месте и живёт своей жизнью.
   const standalone =
     typeof window !== "undefined" &&
     (window.matchMedia?.("(display-mode: standalone)").matches === true ||
@@ -50,12 +109,18 @@ export async function enterAccount(account: {
 
   let cabTab: Window | null = null
   if (!standalone && phone) {
+    closeStaleCabTab()
     try {
-      cabTab = window.open("", "loginex-cab")
+      cabTab = window.open("", "_blank")
     } catch {
       cabTab = null
     }
+    if (cabTab === window) {
+      // самоссылка — «новой» объявили ту же вкладку; cabinet туда не пойдёт
+      cabTab = null
+    }
     if (cabTab) {
+      lastCabTab = cabTab
       try {
         // Заставка на время выпуска сессии: вкладка не мигает пустой
         cabTab.document.write(
@@ -85,6 +150,7 @@ export async function enterAccount(account: {
     } catch {
       // уже закрыта — не важно
     }
+    if (lastCabTab === cabTab) lastCabTab = null
     cabTab = null
   }
 
@@ -133,7 +199,7 @@ export async function enterAccount(account: {
 
   const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? account.fallbackHref ?? "/lm"
 
-  // и56: кабинет — во вкладке, открытой в момент нажатия. Она свежая:
+  // и57: кабинет — во вкладке, открытой в момент нажатия. Она свежая:
   // застывший кадр старой вкладки оказаться в ней не может
   if (cabTab) {
     const tab = cabTab
@@ -157,6 +223,17 @@ export async function enterAccount(account: {
         // Safari может не дать фокус — вкладка всё равно открыта и видна
       }
       toast.success(`Кабинет открыт в новой вкладке: ${account.name}`)
+      // и57: если через секунду МЫ всё ещё активная вкладка — телефон
+      // открыл кабинет, но не показал его. Говорим прямо, где искать
+      setTimeout(() => {
+        try {
+          if (document.visibilityState === "visible" && document.hasFocus()) {
+            showCabHint(account.name)
+          }
+        } catch {
+          // проверка не имеет права мешать
+        }
+      }, 1200)
       return { ok: true }
     }
     window.location.assign(target)
@@ -179,7 +256,8 @@ export async function enterAccount(account: {
   // тяжёлой картой, и Safari в итоге падал: «на странице повторно возникла
   // проблема». Именованная вкладка переиспользуется: сколько бы входов
   // ни было — вкладка кабинета всегда одна. «Замороженный снимок» ей не
-  // страшен: вкладка самовосстанавливается (и40/и41).
+  // страшен: вкладка самовосстанавливается (и40/и41). На компьютере
+  // застывших кадров не бывает — речи о них не было ни разу.
   const opened = window.open(target, "loginex-cab")
   if (opened) {
     // и46: вкладка кабинета — на передний план. Человек нажал «Войти как» —
