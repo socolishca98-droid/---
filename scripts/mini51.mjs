@@ -28,6 +28,12 @@ try {
     viewport: { width: 390, height: 844 },
     userAgent: IPHONE_UA,
   })
+// и56: «Войти как …» на телефоне теперь открывает НОВУЮ вкладку; этот
+// сценарий проверяет свою ветку — запасной путь в той же вкладке, — поэтому
+// просим браузер не давать вкладку (окно как «заблокировано»).
+  await context.addInitScript(() => {
+    window.open = () => null
+  })
   const page = await context.newPage()
   const pageErrors = []
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 150)))

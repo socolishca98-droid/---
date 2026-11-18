@@ -1,9 +1,11 @@
-// mini55 — приёмочные проверки и55:
-//   1) «встряхивание композитора»: при pageshow/возврате к экрану body на
-//      80 мс получает translateZ(0) — попытка вытеснить застрявшие слои
-//      прошлой страницы (жалобы 16–17.11: форма входа-призрак);
-//   2) баннер «Вы вошли как …» при имперсонации несёт подсказку-спасение:
-//      «Видите ниже форму входа? … закройте программу из переключателя».
+// mini55 — приёмочные проверки и55 (обновлены под и56):
+//   1) «встряхивание композитора»: при возврате к экрану body на 80 мс
+//      получает translateZ(0) — попытка вытеснить застрявшие слои прошлой
+//      страницы (жалобы 16–17.11: форма входа-призрак);
+//   2) штабной вход владельца;
+//   3) «Войти как водитель» на телефоне открывает кабинет в НОВОЙ вкладке
+//      (и56): вкладка создаётся синхронно с нажатием, адрес — после сессии;
+//   4) баннер «Вы вошли как …» несёт подсказку про застывший кадр и вкладку.
 // Запуск: node scripts/mini55.mjs  (BASE=http://localhost:3100, дев-сервер поднят)
 
 import { chromium } from "playwright"
@@ -48,7 +50,7 @@ check(
   `до=${JSON.stringify(n0)} сразу=${JSON.stringify(n1)} после=${JSON.stringify(n2)}`,
 )
 
-// ── 2: подсказка в баннере при имперсонации ──────────────────────────────
+// ── 2: штабной вход ───────────────────────────────────────────────────────
 let okLogin = false
 for (let attempt = 1; attempt <= 4 && !okLogin; attempt++) {
   try {
@@ -65,32 +67,37 @@ for (let attempt = 1; attempt <= 4 && !okLogin; attempt++) {
 }
 check("штабной вход (владелец)", okLogin)
 
-let inDriverCab = false
+// ── 3: вход как водитель — кабинет в НОВОЙ вкладке (и56) ─────────────────
+let driverPage = null
 if (okLogin) {
   try {
     await page.waitForSelector("text=Компании на платформе", { timeout: 20000 })
     await page.click("a[href^='/owner/org/']")
     await page.waitForSelector("button:has-text('Войти как водитель')", { timeout: 20000 })
-    await page.evaluate(() => {
-      const btn = Array.from(document.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Войти как водитель"),
-      )
-      btn?.click()
-    })
-    await page.waitForURL(/\/m$/, { timeout: 30000 })
-    await page.waitForTimeout(2500)
-    inDriverCab = true
+    const btn = page.locator("button", { hasText: "Войти как водитель" }).first()
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup", { timeout: 30000 }),
+      btn.click(),
+    ])
+    await popup.waitForURL(/\/m/, { timeout: 30000 })
+    await popup.waitForTimeout(2500)
+    driverPage = popup
   } catch (e) {
-    console.log("вход как водитель не удался:", String(e).slice(0, 120))
+    console.log("вход как водитель не удался:", String(e).slice(0, 160))
   }
 }
-check("вход как водитель — кабинет /m", inDriverCab)
+check(
+  "вход как водитель — кабинет /m в новой вкладке",
+  Boolean(driverPage) && /\/m/.test(driverPage.url()),
+  driverPage ? `вкладка: ${driverPage.url()}` : "вкладка не открылась",
+)
 
-if (inDriverCab) {
-  const body = (await page.textContent("body")) ?? ""
+// ── 4: подсказка в баннере (вкладке, не программе) ────────────────────────
+if (driverPage) {
+  const body = (await driverPage.textContent("body")) ?? ""
   check(
-    "баннер несёт подсказку о застывшем кадре",
-    body.includes("Вы вошли как") && body.includes("застывший кадр"),
+    "баннер несёт подсказку о застывшем кадре и вкладке",
+    body.includes("Вы вошли как") && body.includes("застывший кадр") && body.includes("вкладк"),
   )
 }
 
