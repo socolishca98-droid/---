@@ -8,7 +8,7 @@ import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Building2, Loader2, LogOut, ScrollText, ShieldCheck, Truck, UserCog } from "lucide-react"
+import { Building2, Loader2, LogOut, ScrollText, ShieldCheck, Terminal, Truck, UserCog } from "lucide-react"
 
 import { AccountSwitchBanner } from "@/components/account-switch-banner"
 import { OwnerProfileDialog } from "@/components/owner/owner-profile-dialog"
@@ -18,6 +18,10 @@ import { useStaffSession } from "@/hooks/use-staff-session"
 const NAV = [
   { href: "/owner", label: "Компании", icon: Building2, match: (p: string) => p === "/owner" || p.startsWith("/owner/org") },
   { href: "/owner/journal", label: "Журнал", icon: ScrollText, match: (p: string) => p.startsWith("/owner/journal") },
+  // и60: кабинет разработчика — аналитика входов, живые сессии, рецепты
+  // проверок. Просьба владельца: «всё, что брал для аналитики, организуй
+  // в кабинет разработчика».
+  { href: "/owner/dev", label: "Разработчику", icon: Terminal, match: (p: string) => p.startsWith("/owner/dev") },
 ]
 
 export function OwnerShell({ children }: { children: ReactNode }) {
