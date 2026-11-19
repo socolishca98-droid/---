@@ -318,8 +318,16 @@ async function tripFor(orderIds: string[], routeId: string = world.routeA) {
 }
 
 async function callOptimizer(orderIds: string[]) {
+  // и59: время выезда фиксируем. Движок ETA строит план «от сейчас», и
+  // одни и те же плечи получали разное число суточных отдыхов в зависимости
+  // от часа прогона: тест зелёный ночью и красный утром (19.11: 23:50 UTC —
+  // PASS, 06:49 UTC — FAIL при идентичном коде маршрутов). Фиксированный
+  // выезд делает арифметику отдыхов детерминированной навсегда.
   const response = await optimizerPost(
-    makeRequest("POST", "/api/routes/optimizer", { cookie: cookieStaff, body: { orderIds } }),
+    makeRequest("POST", "/api/routes/optimizer", {
+      cookie: cookieStaff,
+      body: { orderIds, departureTime: "2026-06-01T06:00:00.000Z" },
+    }),
   )
   return { response, data: await jsonOf(response) }
 }
