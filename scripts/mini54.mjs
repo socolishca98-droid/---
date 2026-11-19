@@ -36,7 +36,7 @@ const context = await browser.newContext({
 await context.addInitScript(() => {
   window.open = () => null
 })
-const page = await context.newPage()
+let page = await context.newPage()
 
 // ── 1–3: экран входа водителя ──────────────────────────────────────────────
 await page.goto(`${BASE}/m/login`, { waitUntil: "domcontentloaded" })
@@ -110,7 +110,14 @@ if (okLogin) {
       )
       btn?.click()
     })
-    await page.waitForURL(/\/m$/, { timeout: 30000 })
+    // и58: пересадка в той же вкладке → кабинет настоящей ссылкой
+    await page.waitForURL(/\/owner\/open-account/, { timeout: 30000 })
+    await page.locator("[data-cab-open-link]").first().waitFor({ state: "visible", timeout: 30000 })
+    ;[page] = await Promise.all([
+      page.waitForEvent("popup", { timeout: 30000 }),
+      page.locator("[data-cab-open-link]").first().click(),
+    ])
+    await page.waitForURL(/\/m/, { timeout: 30000 })
     await page.waitForTimeout(2500) // гидрация + старт пульса
     inDriverCab = true
   } catch (e) {

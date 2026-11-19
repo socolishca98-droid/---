@@ -55,21 +55,34 @@ try {
   })
   await page.locator("button", { hasText: "Войти как водитель" }).first().evaluate((el) => el.click())
 
-  // 3. Кабинет водителя — В ТОЙ ЖЕ ВКЛАДКЕ, никаких фоновых вкладок
-  await page.waitForURL(/\/m$/, { timeout: 60000 })
-  await page.waitForSelector("text=Вы вошли как", { timeout: 60000 })
+  // 3. и58: кнопка НЕ открывает программную вкладку — текущая вкладка
+  //    переходит на страницу-пересадку, где кабинет открывается настоящей
+  //    ссылкой (клик человека). Это и есть «запасной путь в той же вкладке»:
+  //    даже с полностью выключенным window.open путь работает.
+  await page.waitForURL(/\/owner\/open-account/, { timeout: 60000 })
+  await page.waitForSelector("text=Сессия готова", { timeout: 60000 })
   check(
-    "«Войти как водитель» — кабинет /m в ТОЙ ЖЕ вкладке (и47)",
-    !popupFired && /\/m$/.test(page.url()),
+    "«Войти как водитель» — пересадка в ТОЙ ЖЕ вкладке, попапа не было",
+    !popupFired && /\/owner\/open-account/.test(page.url()),
     page.url(),
   )
-  const banner = await page.locator("text=Вы вошли как").first().textContent()
+
+  // 3б. Настоящая ссылка на пересадке открывает кабинет новой вкладкой
+  const cabLink = page.locator("[data-cab-open-link]").first()
+  const [cabPage] = await Promise.all([
+    page.waitForEvent("popup", { timeout: 60000 }),
+    cabLink.click(),
+  ])
+  await cabPage.waitForURL(/\/m/, { timeout: 60000 })
+  await cabPage.waitForSelector("text=Вы вошли как", { timeout: 60000 })
+  check("ссылка «Открыть кабинет» → вкладка кабинета /m", /\/m/.test(cabPage.url()), cabPage.url())
+  const banner = await cabPage.locator("text=Вы вошли как").first().textContent()
   check("полоса «Вы вошли как …» на месте", Boolean(banner && banner.length > 10), (banner ?? "").slice(0, 60))
 
   // 4. «Вернуться» возвращает на панель владельца — путь назад не теряется
-  await page.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
-  await page.waitForURL("**/owner", { timeout: 90000 })
-  check("«Вернуться» → панель владельца", true, page.url())
+  await cabPage.locator("button", { hasText: "Вернуться" }).first().evaluate((el) => el.click())
+  await cabPage.waitForURL("**/owner", { timeout: 90000 })
+  check("«Вернуться» → панель владельца", true, cabPage.url())
 
   check("ошибок страницы нет", errors.length === 0, errors.slice(0, 2).join(" | ") || "чисто")
 } finally {

@@ -36,7 +36,7 @@ try {
   await context.addInitScript(() => {
     window.open = () => null
   })
-  const page = await context.newPage()
+  let page = await context.newPage()
   const pageErrors = []
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 150)))
   const beats = []
@@ -62,8 +62,21 @@ try {
   await page.waitForURL(/\/owner\/org\//, { timeout: 60000 })
   await page.waitForSelector("text=Войти как водитель", { timeout: 60000 })
   await page.locator("button", { hasText: "Войти как водитель" }).first().evaluate((el) => el.click())
-  await page.waitForURL((u) => new URL(u).pathname === "/m", { timeout: 60000 })
+  // и58: телефон — пересадка в той же вкладке, кабинет — настоящей ссылкой
+  await page.waitForURL(/\/owner\/open-account/, { timeout: 60000 })
+  await page.locator("[data-cab-open-link]").first().waitFor({ state: "visible", timeout: 60000 })
+  ;[page] = await Promise.all([
+    page.waitForEvent("popup", { timeout: 60000 }),
+    page.locator("[data-cab-open-link]").first().click(),
+  ])
+  await page.waitForURL(/\/m/, { timeout: 60000 })
   await page.waitForSelector("text=Вы вошли как", { timeout: 60000 })
+  // и58: кабинет теперь в новой вкладке — слушатели сети/ошибок вешаем на неё
+  page.on("request", (r) => {
+    const u = r.url()
+    if (u.includes("beat=1")) beats.push(u.includes("mark=1") ? "mark" : "quiet")
+  })
+  page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 150)))
   check("вход как водитель — кабинет /m", true, page.url())
 
   // (а)+(б) Пульс: первый удар через 60с с меткой, второй через 120с — тихий

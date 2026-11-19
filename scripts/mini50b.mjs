@@ -25,7 +25,7 @@ try {
   await context.addInitScript(() => {
     window.open = () => null
   })
-  const page = await context.newPage()
+  let page = await context.newPage()
   const netLog = []
   page.on("response", (res) => {
     try {
@@ -61,7 +61,15 @@ try {
   await page.waitForURL(/\/owner\/org\//, { timeout: 60000 })
   await page.waitForSelector("text=Войти как водитель", { timeout: 60000 })
   await page.locator("button", { hasText: "Войти как водитель" }).first().evaluate((el) => el.click())
-  await page.waitForURL(/\/m$/, { timeout: 60000 })
+  // и58: телефон — пересадка в той же вкладке, кабинет — настоящей ссылкой
+  await page.waitForURL(/\/owner\/open-account/, { timeout: 60000 })
+  await page.locator("[data-cab-open-link]").first().waitFor({ state: "visible", timeout: 60000 })
+  ;[page] = await Promise.all([
+    page.waitForEvent("popup", { timeout: 60000 }),
+    page.locator("[data-cab-open-link]").first().click(),
+  ])
+  await page.waitForURL(/\/m/, { timeout: 60000 })
+
   await page.waitForSelector("text=Вы вошли как", { timeout: 60000 })
   await page.waitForTimeout(2000)
   console.log("до отзыва:", show(await markers(page)))

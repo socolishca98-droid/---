@@ -69,13 +69,17 @@ async function openOrgPage(page) {
     try {
       await openOrgPage(page)
       const btn = page.locator("button", { hasText: "Войти как водитель" }).first()
+      // и58: программной вкладки больше нет — пересадка в той же вкладке
+      await btn.click()
+      await page.waitForURL(/\/owner\/open-account/, { timeout: 30000 })
+      await page.locator("[data-cab-open-link]").first().waitFor({ state: "visible", timeout: 30000 })
       const [p] = await Promise.all([
         page.waitForEvent("popup", { timeout: 30000 }),
-        btn.click(),
+        page.locator("[data-cab-open-link]").first().click(),
       ])
       popup = p
       await popup.waitForFunction(
-        () => document.body !== null && document.body.innerText.includes("Открываю кабинет"),
+        () => document.body !== null && document.body.innerText.includes("Вы вошли как"),
         { timeout: 8000 },
       )
       loadingSeen = true
@@ -90,7 +94,7 @@ async function openOrgPage(page) {
     okLogin && Boolean(popup) && /\/m/.test(popup.url()),
     popup ? `вкладка: ${popup.url()}` : okLogin ? "вкладка не открылась" : "вход не удался",
   )
-  check("вкладка открывается сразу, с заставкой «Открываю кабинет…»", loadingSeen)
+  check("и58: кабинет открывается настоящей ссылкой с пересадки", loadingSeen)
   if (popup) {
     const body = (await popup.textContent("body")) ?? ""
     check(
@@ -118,14 +122,22 @@ async function openOrgPage(page) {
       await openOrgPage(page)
       const btn = page.locator("button", { hasText: "Войти как водитель" }).first()
       await btn.click()
-      await page.waitForURL(/\/m/, { timeout: 30000 })
-      await page.waitForTimeout(2500)
+      // и58: вкладки заблокированы — пересадка в той же вкладке; кабинет
+      // открывает НАСТОЯЩАЯ ссылка (не window.open — блокировщик её не ест)
+      await page.waitForURL(/\/owner\/open-account/, { timeout: 30000 })
+      await page.locator("[data-cab-open-link]").first().waitFor({ state: "visible", timeout: 30000 })
+      const [p3] = await Promise.all([
+        page.waitForEvent("popup", { timeout: 30000 }),
+        page.locator("[data-cab-open-link]").first().click(),
+      ])
+      await p3.waitForURL(/\/m/, { timeout: 30000 })
+      await p3.waitForTimeout(2500)
       sameTab = true
     } catch (e) {
       console.log("сценарий 3:", String(e).slice(0, 160))
     }
   }
-  check("вкладки заблокированы: переход в той же вкладке (/m)", okLogin && sameTab)
+  check("вкладки заблокированы: пересадка + кабинет настоящей ссылкой", okLogin && sameTab)
   await context.close()
 }
 

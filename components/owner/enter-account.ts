@@ -11,36 +11,16 @@ export interface EnterAccountResult {
   error?: string
 }
 
-// и57: последняя открытая вкладка кабинета. Храним, чтобы следующее
-// «Войти как …» закрывала её, а не копило вкладки (и45: четыре вкладки с
-// тяжёлыми картами валили Safari). Ссылка живёт, пока жива страница
-// управления — с и56/и57 она больше никуда не уходит.
-let lastCabTab: Window | null = null
-
-/** Закрыть прежнюю вкладку кабинета — но только нашу и только кабинет. */
-function closeStaleCabTab() {
-  const tab = lastCabTab
-  lastCabTab = null
-  if (!tab || tab === window) return
-  try {
-    if (tab.closed) return
-    const sameOrigin = tab.location.origin === window.location.origin
-    const cabinetPath = /^\/(m|lm)(\/|$)/.test(tab.location.pathname)
-    if (sameOrigin && cabinetPath) tab.close()
-  } catch {
-    // вкладка ушла на другой источник или уже мертва — не трогаем
-  }
-}
-
 /**
- * и57: страховка на случай, когда телефон открыл вкладку кабинета, но не
- * показал её человеку. Полоса СВЕРХУ — единственное место, которое точно
- * читаемо даже над застывшим кадром (жалобы №8–№9: верх страницы оставался
- * живым — баннер и часы читались). Говорим прямо, где кабинет.
+ * и58: живая полоса-страховка. Показывается в верхней части страницы —
+ * единственном месте, которое точно читаемо даже над застывшим кадром
+ * (жалобы №8–№11: верх страницы оставался живым — баннер и часы читались).
+ * Внутри — НАСТОЯЩАЯ ссылка <a target="_blank">: клик человека открывает
+ * вкладку кабинета даже под блокировщиком popup.
  */
-function showCabHint(name: string) {
+function showCabHint(name: string, target: string) {
   if (typeof document === "undefined" || !document.body) return
-  if (document.getElementById("loginex-cab-hint")) return
+  document.getElementById("loginex-cab-hint")?.remove()
   const bar = document.createElement("div")
   bar.id = "loginex-cab-hint"
   bar.style.cssText = [
@@ -54,9 +34,28 @@ function showCabHint(name: string) {
     "font:600 15px/1.4 system-ui,-apple-system,sans-serif",
     "padding:calc(10px + env(safe-area-inset-top)) 44px 10px 14px",
     "box-shadow:0 6px 24px rgba(0,0,0,.35)",
+    "display:flex",
+    "align-items:center",
+    "gap:10px",
+    "flex-wrap:wrap",
   ].join(";")
   const text = document.createElement("span")
-  text.textContent = `Кабинет (${name}) открыт в НОВОЙ вкладке — переключитесь на неё: кнопка вкладок внизу справа.`
+  text.textContent = `Кабинет (${name}) готов:`
+  const open = document.createElement("a")
+  open.href = target
+  open.target = "_blank"
+  open.rel = "noopener"
+  open.setAttribute("data-cab-open-link", "1")
+  open.textContent = "Открыть кабинет →"
+  open.style.cssText = [
+    "display:inline-block",
+    "background:#fff",
+    "color:#14532d",
+    "font:700 14px/1 system-ui,-apple-system,sans-serif",
+    "padding:9px 14px",
+    "border-radius:10px",
+    "text-decoration:none",
+  ].join(";")
   const close = document.createElement("button")
   close.type = "button"
   close.textContent = "×"
@@ -64,9 +63,10 @@ function showCabHint(name: string) {
   close.style.cssText =
     "position:absolute;right:4px;top:2px;background:none;border:0;color:#fff;font-size:22px;line-height:1;padding:8px 12px;cursor:pointer"
   close.addEventListener("click", () => bar.remove())
-  bar.append(text, close)
+  bar.append(text, open, close)
   document.body.appendChild(bar)
-  setTimeout(() => bar.remove(), 20000)
+  // Полоса живёт долго: она не мешает, а человеку всегда виден путь в кабинет
+  setTimeout(() => bar.remove(), 15 * 60 * 1000)
 }
 
 export async function enterAccount(account: {
@@ -75,29 +75,33 @@ export async function enterAccount(account: {
   name: string
   fallbackHref?: string
 }): Promise<EnterAccountResult> {
-  // и57: вкладка кабинета открывается В МОМЕНТ НАЖАТИЯ и ВСЕГДА НОВАЯ.
-  // История вопроса, коротко:
+  // и58: вкладку кабинета БОЛЬШЕ НЕ ОТКРЫВАЕМ СКРИПТОМ. История вопроса:
   //   и42 — кабинет в новой вкладке: свежая вкладка «заморозиться» не может;
   //   и47 — на телефоне вернули переход в ту же вкладку: window.open после
   //         пары запросов к серверу уже не считается нажатием, Safari молча
   //         открывал вкладку в фоне;
-  //   и56 — вкладку открыли синхронно с нажатием (жест), но ПО ИМЕНИ
-  //         «loginex-cab» (наследие и45). Жалоба №10 (18.11 22:33, журнал
-  //         19:33 UTC): и это не сработало — «опять не смог попасть».
-  //         Причина найдена: вкладка владельца, в которой он жмёт кнопку,
-  //         САМА носит имя «loginex-cab» (родом из и42-эпохи, когда кабинет
-  //         открывался в именованную вкладку). window.open("", "loginex-cab")
-  //         возвращает ЕЁ ЖЕ — «новой» вкладкой оказывается та же отравленная:
-  //         кабинет честно грузится (журнал: /m документом, сессии 200), но
-  //         поверх него тот же застывший кадр, и человек опять «не попал».
-  //   и57 — три защиты разом:
-  //         (1) всегда _blank: никакие имена не ищем, вкладка создаётся
-  //             с нуля — застрявшему кадру в ней взяться неоткуда;
-  //         (2) самозащита: если window.open почему-то вернул текущее окно —
-  //             считаем, что вкладки нет, и идём запасным путём;
-  //         (3) прежняя вкладка кабинета закрывается перед открытием новой —
-  //             вкладки не копятся (страх и45), страница управления остаётся
-  //             на месте и живёт своей жизнью.
+  //   и56 — вкладку открыли синхронно с нажатием, но ПО ИМЕНИ «loginex-cab»
+  //         (жалоба №10): window.open(«», имя) возвращал ту же отравленную
+  //         вкладку владельца;
+  //   и57 — всегда _blank + заставка. Жалоба №11 (18.11 23:16, журнал
+  //         20:16 UTC): сервер безупречен — сессия выдана, /m открыт,
+  //         сессии 200, сборка свежая, часы тикали, — но владелец снова
+  //         видел форму входа. Вывод: единственное звено, которое журнал
+  //         не видит, — сам момент открытия вкладки. На iPhone Safari
+  //         программная вкладка (window.open после похода на сервер) может
+  //         не показаться, а поверх живой страницы висит замороженный слой
+  //         прошлой отрисовки (тот же феномен «форма-призрак над живым
+  //         кабинетом», что 16–17.11).
+  //   и58 — решение возвращено браузеру и человеку:
+  //         (1) после выпуска сессии телефон переходит на страницу-
+  //             пересадку /owner/open-account — простой экран без 3D,
+  //             в композиторе WebKit нечему «замерзать»;
+  //         (2) вкладку кабинета открывает НАСТОЯЩАЯ ссылка <a target=
+  //             "_blank"> — клик человека; блокировщики popup такие ссылки
+  //             не трогают, iOS надёжно показывает новую вкладку;
+  //         (3) зелёная полоса с такой же живой кнопкой остаётся на
+  //             странице-пересадке до перехода — путь в кабинет виден
+  //             всегда, что бы ни случилось с вкладками.
   const standalone =
     typeof window !== "undefined" &&
     (window.matchMedia?.("(display-mode: standalone)").matches === true ||
@@ -107,53 +111,6 @@ export async function enterAccount(account: {
     (window.matchMedia?.("(pointer: coarse)").matches === true ||
       /iPhone|iPad|Android/i.test(window.navigator.userAgent))
 
-  let cabTab: Window | null = null
-  if (!standalone && phone) {
-    closeStaleCabTab()
-    try {
-      cabTab = window.open("", "_blank")
-    } catch {
-      cabTab = null
-    }
-    if (cabTab === window) {
-      // самоссылка — «новой» объявили ту же вкладку; cabinet туда не пойдёт
-      cabTab = null
-    }
-    if (cabTab) {
-      lastCabTab = cabTab
-      try {
-        // Заставка на время выпуска сессии: вкладка не мигает пустой
-        cabTab.document.write(
-          '<!doctype html><html><head><meta charset="utf-8">' +
-            '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-            "<title>Открываю кабинет…</title></head>" +
-            '<body style="margin:0;background:#09090b;color:#e4e4e7;' +
-            "font-family:system-ui,-apple-system,sans-serif;display:flex;" +
-            'align-items:center;justify-content:center;min-height:100vh">' +
-            '<div style="text-align:center">' +
-            '<div style="font-size:18px">Открываю кабинет…</div>' +
-            '<div style="margin-top:8px;font-size:13px;opacity:.6">секунду</div>' +
-            "</div></body></html>",
-        )
-        cabTab.document.close()
-      } catch {
-        // вкладка открыта, заставка не нарисовалась — не критично
-      }
-    }
-  }
-  // Любая неудача ниже обязана закрыть вкладку-обещание: человек не должен
-  // остаться перед пустой вкладкой «Открываю кабинет…», которая ничего не открыла
-  const closeCabTab = () => {
-    if (!cabTab) return
-    try {
-      cabTab.close()
-    } catch {
-      // уже закрыта — не важно
-    }
-    if (lastCabTab === cabTab) lastCabTab = null
-    cabTab = null
-  }
-
   const body = account.kind === "driver" ? { driverId: account.id } : { userId: account.id }
   const result = await apiSend<{ redirectTo?: string; warning?: string }>(
     "/api/admin/impersonate",
@@ -161,7 +118,6 @@ export async function enterAccount(account: {
     body,
   )
   if (!result.ok) {
-    closeCabTab()
     // Например, доступ к учётной записи закрыт: сессия всё равно не заработала
     // бы, и владелец уехал бы в чужой кабинет чтобы сразу выпасть на вход.
     toast.error(result.error || "Не удалось войти в аккаунт")
@@ -182,14 +138,12 @@ export async function enterAccount(account: {
   if (check.status === 401 && check.headers.get("www-authenticate")) {
     const hostingError =
       "сайт требует пароль хостинга (Vercel Protection) — введите его при открытии сайта и повторите, либо отключите: Vercel → проект → Settings → Deployment Protection → Disable"
-    closeCabTab()
     toast.error(hostingError, { duration: 12000 })
     return { ok: false, error: hostingError }
   }
   if (!check.ok) {
     const failure = (await check.json().catch(() => ({}))) as { error?: string; reason?: string }
     console.warn("[enter-account] сессия цели не действует:", failure?.reason ?? check.status)
-    closeCabTab()
     toast.error(failure?.error || "Аккаунт открылся, но его сессия не действует")
     return {
       ok: false,
@@ -199,44 +153,22 @@ export async function enterAccount(account: {
 
   const target = (result.data as { redirectTo?: string } | null)?.redirectTo ?? account.fallbackHref ?? "/lm"
 
-  // и57: кабинет — во вкладке, открытой в момент нажатия. Она свежая:
-  // застывший кадр старой вкладки оказаться в ней не может
-  if (cabTab) {
-    const tab = cabTab
-    cabTab = null // вкладка отдана кабинету — закрывать её больше не нужно
-    let navigated = false
+  // и58: телефон (обычный мобильный браузер) — через страницу-пересадку.
+  // Никаких программных вкладок: человек сам откроет кабинет настоящей
+  // ссылкой — и вкладка обязательно окажется перед глазами.
+  if (!standalone && phone) {
     try {
-      tab.location.assign(target)
-      navigated = true
+      localStorage.setItem(
+        "loginex_enter_account",
+        JSON.stringify({ kind: account.kind, name: account.name, at: Date.now() }),
+      )
     } catch {
-      try {
-        tab.location.href = target
-        navigated = true
-      } catch {
-        // вкладка есть, адрес в неё не пишется — остаётся запасной путь
-      }
+      // localStorage недоступен — страница-пересадка справится и без имени
     }
-    if (navigated) {
-      try {
-        tab.focus()
-      } catch {
-        // Safari может не дать фокус — вкладка всё равно открыта и видна
-      }
-      toast.success(`Кабинет открыт в новой вкладке: ${account.name}`)
-      // и57: если через секунду МЫ всё ещё активная вкладка — телефон
-      // открыл кабинет, но не показал его. Говорим прямо, где искать
-      setTimeout(() => {
-        try {
-          if (document.visibilityState === "visible" && document.hasFocus()) {
-            showCabHint(account.name)
-          }
-        } catch {
-          // проверка не имеет права мешать
-        }
-      }, 1200)
-      return { ok: true }
-    }
-    window.location.assign(target)
+    showCabHint(account.name, target)
+    window.location.assign(
+      `/owner/open-account?kind=${account.kind === "driver" ? "driver" : "staff"}&to=${encodeURIComponent(target)}`,
+    )
     return { ok: true }
   }
 
@@ -246,8 +178,7 @@ export async function enterAccount(account: {
   // вкладок нет: window.open там открывает невидимое окно или чужой браузер,
   // и человек остаётся смотреть на старый экран. В программе — переход
   // в ЭТОМ ЖЕ окне: куда нажал — там и оказался, без двусмысленности.
-  // Сюда же попадает телефон, которому не дали вкладку (блокировщик).
-  if (standalone || phone) {
+  if (standalone) {
     window.location.assign(target)
     return { ok: true }
   }

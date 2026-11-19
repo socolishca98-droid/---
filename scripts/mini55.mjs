@@ -75,9 +75,13 @@ if (okLogin) {
     await page.click("a[href^='/owner/org/']")
     await page.waitForSelector("button:has-text('Войти как водитель')", { timeout: 20000 })
     const btn = page.locator("button", { hasText: "Войти как водитель" }).first()
+    await btn.click()
+    // и58: пересадка в той же вкладке → кабинет настоящей ссылкой
+    await page.waitForURL(/\/owner\/open-account/, { timeout: 30000 })
+    await page.locator("[data-cab-open-link]").first().waitFor({ state: "visible", timeout: 30000 })
     const [popup] = await Promise.all([
       page.waitForEvent("popup", { timeout: 30000 }),
-      btn.click(),
+      page.locator("[data-cab-open-link]").first().click(),
     ])
     await popup.waitForURL(/\/m/, { timeout: 30000 })
     await popup.waitForTimeout(2500)

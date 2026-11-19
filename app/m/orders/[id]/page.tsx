@@ -186,9 +186,15 @@ export default function OrderDetailsPage() {
   useEffect(() => {
     if (isSessionLoading) return
     // и35: уход на вход с причиной — как у хука сессии, чтобы экран входа
-    // объяснил, что произошло, а не «просто выкинуло»
-    if (!isAuthenticated) router.replace("/m/login?reason=not_authenticated")
-  }, [isSessionLoading, isAuthenticated, router])
+    // объяснил, что произошло, а не «просто выкинуло».
+    // и58: ПОЛНАЯ загрузка (location.replace), а не SPA-переход: мягкий
+    // router.replace не виден серверному журналу (жалоба №11 — на экране
+    // была форма входа, а в журнале ни одного захода на /m/login), и
+    // переход собирал страницу из старого клиентского состояния.
+    if (!isAuthenticated) {
+      window.location.replace("/m/login?reason=not_authenticated")
+    }
+  }, [isSessionLoading, isAuthenticated])
 
   useEffect(() => {
     void load()

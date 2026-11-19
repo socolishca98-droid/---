@@ -139,7 +139,12 @@ if(everAnimated){try{if(!sessionStorage.getItem('paint-reloaded')){sessionStorag
             translateZ(0) на body создаёт новый композитный контекст —
             WebKit иногда держит застрявшие слои прошлой страницы (жалобы
             16–17.11: форма входа-призрак над живым кабинетом), и такое
-            вытеснение — единственный кодовый способ попытаться их сбросить. */}
+            вытеснение — единственный кодовый способ попытаться их сбросить.
+            и58 (жалоба №11, 18.11): встряхивание срабатывает и при ПЕРВОЙ
+            загрузке страницы (два отложенных толчка через 1,2 и 3 с —
+            позже гидратации, чтобы не расходиться с серверным HTML) —
+            свежая вкладка кабинета тоже открывалась уже с «призраком»
+            прошлой отрисовки. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
@@ -148,6 +153,7 @@ lc();setInterval(lc,1000);
 function nudge(){try{document.body.style.transform='translateZ(0)';setTimeout(function(){try{document.body.style.transform=''}catch(e){}},80)}catch(e){}}
 window.addEventListener('pageshow',function(e){if(e.persisted)nudge()});
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')nudge()});
+setTimeout(nudge,1200);setTimeout(nudge,3000);
 }catch(e){}})()`,
           }}
         />
