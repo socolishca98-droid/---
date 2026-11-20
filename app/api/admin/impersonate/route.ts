@@ -20,8 +20,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { forbidden, issueSession, requireStaff, sessionCookie } from "@/lib/auth/session"
 import { IMPERSONATION_COOKIE, DRIVER_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
-import { isOwnerEmail } from "@/lib/auth/owner"
-import { getSessionTtlSeconds } from "@/lib/auth/constants"
+import { isOwnerEmail, OWNER_SESSION_TTL_MINUTES } from "@/lib/auth/owner"
 import { logAudit } from "@/lib/audit"
 import type { UserRole } from "@/lib/auth/constants"
 
@@ -43,7 +42,9 @@ function cookieOptions() {
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: getSessionTtlSeconds(),
+    // и61: cookie имперсации живут столько же, сколько сессия разработчика
+    // (30 минут) — включая сохранённую копию его собственного токена.
+    maxAge: OWNER_SESSION_TTL_MINUTES * 60,
   }
 }
 
@@ -226,6 +227,11 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Выпускаем сессию цели ─────────────────────────────────────────────────
+  // и61: «войти как» — это разработчик в костюме другого аккаунта. Сессия
+  // цели живёт столько же, сколько его собственная (30 минут): иначе доступ
+  // разработчика переживал бы сам себя, живя в браузере 30 дней после
+  // истечения штабной сессии. Настоящие водители входят сами (/m/login) и
+  // получают обычный срок.
   const kind = targetRole === "driver" ? "driver" : "staff"
   const session = await issueSession({
     userId: targetUserId,
@@ -233,6 +239,7 @@ export async function POST(request: NextRequest) {
     kind,
     name: targetName,
     driverId: targetDriverId,
+    ttlMs: OWNER_SESSION_TTL_MINUTES * 60_000,
     request,
   })
 

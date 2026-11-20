@@ -15,8 +15,9 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { loadDriverSession, loadStaffSession, revokeSession, unauthorized } from "@/lib/auth/session"
-import { DRIVER_COOKIE, IMPERSONATION_COOKIE, STAFF_COOKIE, getSessionTtlSeconds } from "@/lib/auth/constants"
+import { DRIVER_COOKIE, IMPERSONATION_COOKIE, STAFF_COOKIE } from "@/lib/auth/constants"
 import { loadActingOwner } from "@/lib/auth/impersonation"
+import { OWNER_SESSION_TTL_MINUTES } from "@/lib/auth/owner"
 import { logAudit } from "@/lib/audit"
 import { getClientIp } from "@/lib/rate-limiter"
 
@@ -128,7 +129,9 @@ function returnCookies(response: NextResponse, ownerToken: string): NextResponse
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: getSessionTtlSeconds(),
+    // и61: восстановленный токен разработчика живёт не дольше его сессии
+    // (30 минут) — cookie не должна переживать то, что в ней лежит
+    maxAge: OWNER_SESSION_TTL_MINUTES * 60,
   }
   response.cookies.set({ name: STAFF_COOKIE, value: ownerToken, ...options })
   response.cookies.set({ name: DRIVER_COOKIE, value: "", ...options, maxAge: 0 })
