@@ -61,6 +61,7 @@ import {
   type Point,
   type RouteVariant,
 } from "@/lib/logist-mobile/route-builder"
+import { ordersToBuilderLoads, type OrderForBuilder } from "@/lib/logist-mobile/order-to-load"
 import { normalizeCityKey } from "@/lib/logist-mobile/city-norm"
 import { type MobileDriver } from "@/lib/logist-mobile/types"
 import {
@@ -224,6 +225,7 @@ export default function RouteAssistantPage() {
   )
 
   const loadsState = useJsonApi<LoadsResponse>(loadsUrl)
+  const ownOrdersState = useJsonApi<{ orders?: OrderForBuilder[] }>(user ? "/api/orders" : null)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
@@ -438,8 +440,9 @@ export default function RouteAssistantPage() {
   }, [loadsState.data, autoRefresh, loadsState])
 
   const loads = useMemo<BuilderLoad[]>(
-    () =>
-      mergeLoads(loadsState.data?.items ?? [], wideLoadsState.data?.items ?? []).map((row) => ({
+    () => {
+      const ownLoads = ordersToBuilderLoads(ownOrdersState.data?.orders ?? [])
+      const atiLoads = mergeLoads(loadsState.data?.items ?? [], wideLoadsState.data?.items ?? []).map((row) => ({
         id: row.id,
         loadId: row.atiLoadId,
         fromCity: row.routeFrom,
@@ -461,8 +464,10 @@ export default function RouteAssistantPage() {
         fromPoint: row.fromPoint ?? null,
         toPoint: row.toPoint ?? null,
         source: row.source ?? "boards",
-      })),
-    [loadsState.data, wideLoadsState.data],
+      }))
+      return [...ownLoads, ...atiLoads]
+    },
+    [ownOrdersState.data, loadsState.data, wideLoadsState.data],
   )
   const vehicles = useMemo<BuilderVehicle[]>(() => {
     // У машин часто не заполнен паспортный расход — прибыль тогда нечем
