@@ -569,6 +569,14 @@ export default function MobileOrganizationPage() {
                   </p>
                 ) : null}
 
+                <p className="rounded-xl bg-muted/50 px-3 py-2 text-[12.5px] leading-relaxed text-muted-foreground">
+                  <strong className="font-medium text-foreground">Как работает интеграция с АТИ:</strong>{" "}
+                  сюда попадают только грузы из ваших площадок (закрытых торгов/групп, где состоит
+                  компания). Общую ленту АТИ сторонним программам не отдаёт. Вступите в нужные
+                  площадки в личном кабинете АТИ и подключите ключ доступа ниже — после этого грузы
+                  начнут приходить сами.
+                </p>
+
                 <label className="block">
                   <span className="text-[12.5px] text-muted-foreground">
                     {connection ? "Заменить токен" : "Постоянный токен из «Мои токены» ATI.SU"}

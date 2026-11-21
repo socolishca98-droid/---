@@ -61,7 +61,6 @@ import {
   type Point,
   type RouteVariant,
 } from "@/lib/logist-mobile/route-builder"
-import { ordersToBuilderLoads, type OrderForBuilder } from "@/lib/logist-mobile/order-to-load"
 import { normalizeCityKey } from "@/lib/logist-mobile/city-norm"
 import { type MobileDriver } from "@/lib/logist-mobile/types"
 import {
@@ -225,7 +224,6 @@ export default function RouteAssistantPage() {
   )
 
   const loadsState = useJsonApi<LoadsResponse>(loadsUrl)
-  const ownOrdersState = useJsonApi<{ orders?: OrderForBuilder[] }>(user ? "/api/orders" : null)
 
   const vehiclesState = useJsonApi<{ vehicles: BuilderVehicle[] }>(user ? "/api/vehicles" : null)
   const driversState = useJsonApi<{ drivers: MobileDriver[] }>(user ? "/api/drivers" : null)
@@ -440,9 +438,8 @@ export default function RouteAssistantPage() {
   }, [loadsState.data, autoRefresh, loadsState])
 
   const loads = useMemo<BuilderLoad[]>(
-    () => {
-      const ownLoads = ordersToBuilderLoads(ownOrdersState.data?.orders ?? [])
-      const atiLoads = mergeLoads(loadsState.data?.items ?? [], wideLoadsState.data?.items ?? []).map((row) => ({
+    () =>
+      mergeLoads(loadsState.data?.items ?? [], wideLoadsState.data?.items ?? []).map((row) => ({
         id: row.id,
         loadId: row.atiLoadId,
         fromCity: row.routeFrom,
@@ -464,10 +461,8 @@ export default function RouteAssistantPage() {
         fromPoint: row.fromPoint ?? null,
         toPoint: row.toPoint ?? null,
         source: row.source ?? "boards",
-      }))
-      return [...ownLoads, ...atiLoads]
-    },
-    [ownOrdersState.data, loadsState.data, wideLoadsState.data],
+      })),
+    [loadsState.data, wideLoadsState.data],
   )
   const vehicles = useMemo<BuilderVehicle[]>(() => {
     // У машин часто не заполнен паспортный расход — прибыль тогда нечем
@@ -2303,8 +2298,9 @@ function LiveSearchCard({
               </>
             ) : (
               <p className="text-[12.5px] leading-snug text-foreground">
-                На площадках организации таких грузов нет. Попробуйте увеличить радиус или убрать
-                один из городов.
+                Подходящих грузов сейчас нет. Маршруты собираются из ваших заказов компании и
+                площадок АТИ (если компания в них состоит). Попробуйте увеличить радиус, сменить
+                город или проверьте активные заявки на площадках.
               </p>
             )}
             {result.warning ? (
