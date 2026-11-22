@@ -1806,9 +1806,14 @@ export default function RouteAssistantPage() {
           null
         : null
 
-      // 1. Каждый груз биржи становится нашим заказом (этап «Поиск»)
+      // 1. Каждый груз биржи становится нашим заказом (этап «Поиск»),
+      // а собственные заказы компании уже есть в базе — берём их id напрямую.
       const orderIds: string[] = []
       for (const leg of route.legs) {
+        if (leg.load.isOwnOrder || leg.load.id.startsWith("order:")) {
+          orderIds.push(leg.load.loadId)
+          continue
+        }
         const result = await apiSend<{
           order: { id: string }
           code?: string
@@ -2298,9 +2303,8 @@ function LiveSearchCard({
               </>
             ) : (
               <p className="text-[12.5px] leading-snug text-foreground">
-                Подходящих грузов сейчас нет. Маршруты собираются из ваших заказов компании и
-                площадок АТИ (если компания в них состоит). Попробуйте увеличить радиус, сменить
-                город или проверьте активные заявки на площадках.
+                На площадках организации таких грузов нет. Попробуйте увеличить радиус или убрать
+                один из городов.
               </p>
             )}
             {result.warning ? (
