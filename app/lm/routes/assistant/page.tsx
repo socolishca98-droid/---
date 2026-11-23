@@ -107,7 +107,7 @@ type CallStatus = "pending" | "agreed" | "declined"
 
 /** Шаги анимации построения маршрута. */
 const BUILD_STEPS = [
-  "Ищем грузы с биржи…",
+  "Подбираем заказы и грузы…",
   "Складываем цепочку плеч…",
   "Считаем деньги по каждому плечу…",
   "Проверяем, что маршрут в плюс…",
@@ -1806,14 +1806,9 @@ export default function RouteAssistantPage() {
           null
         : null
 
-      // 1. Каждый груз биржи становится нашим заказом (этап «Поиск»),
-      // а собственные заказы компании уже есть в базе — берём их id напрямую.
+      // 1. Каждый груз биржи становится нашим заказом (этап «Поиск»)
       const orderIds: string[] = []
       for (const leg of route.legs) {
-        if (leg.load.isOwnOrder || leg.load.id.startsWith("order:")) {
-          orderIds.push(leg.load.loadId)
-          continue
-        }
         const result = await apiSend<{
           order: { id: string }
           code?: string
