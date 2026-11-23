@@ -146,6 +146,14 @@ export default function LogistOrdersPage() {
           />
         ) : (
           <>
+            <div className="mb-3 flex justify-end">
+              <Link
+                href="/lm/routes/assistant"
+                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3.5 text-[13px] font-medium text-primary active:opacity-70"
+              >
+                Собрать маршрут
+              </Link>
+            </div>
             <StageStrip
               counters={counters}
               selected={stage}
