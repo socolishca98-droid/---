@@ -107,7 +107,7 @@ type CallStatus = "pending" | "agreed" | "declined"
 
 /** Шаги анимации построения маршрута. */
 const BUILD_STEPS = [
-  "Подбираем заказы и грузы…",
+  "Ищем грузы с биржи…",
   "Складываем цепочку плеч…",
   "Считаем деньги по каждому плечу…",
   "Проверяем, что маршрут в плюс…",
@@ -2648,16 +2648,17 @@ function SetupPhase({
         {selected ? <VehicleFitNote vehicle={selected} loads={fitLoads} /> : null}
       </Card>
 
-      {/* Насколько едем — главный рычаг, он на виду */}
-      <Card>
-        <p className="text-[13px] font-medium text-foreground">Сколько едем</p>
-        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-          Помощник набирает грузы, пока маршрут укладывается в это время: около 55 км/ч с грузом,
-          от 2 до 5 часов на погрузку-выгрузку по весу груза, отдых водителя после 9 часов за
-          рулём и ожидание дат загрузки. Чем дольше едем — тем
-          больше денег, но и больше смен в пути.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
+      {/* Дополнительные параметры — свёрнуты по умолчанию, чтобы не перегружать первый экран */}
+      <details className="rounded-2xl border border-border/70 bg-card p-3.5">
+        <summary className="cursor-pointer select-none text-[13px] font-medium text-foreground">
+          Дополнительные параметры (время в пути: {maxHours} ч, радиус: {startRadiusKm} км)
+        </summary>
+        <div className="mt-3">
+          <p className="text-[12px] leading-snug text-muted-foreground">
+            Помощник набирает грузы, пока маршрут укладывается в лимит времени (учитываются пробег,
+            погрузка-выгрузка и отдых водителя).
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
           {HOURS_STEPS.map((hours) => (
             <button
               key={hours}
@@ -2746,13 +2747,14 @@ function SetupPhase({
             </div>
           </div>
         ) : null}
-      </Card>
+        </div>
+      </details>
 
 
       {/* Что будет */}
       <Card className="border-primary/25 bg-primary/[0.06]">
         <p className="text-[13px] leading-snug text-muted-foreground">
-          Помощник пройдёт по {usableLoadsCount} грузам биржи и сложит цепочку по датам загрузки: из
+          Помощник пройдёт по {usableLoadsCount} свободным заказам и грузам и сложит цепочку по датам загрузки: из
           вашего города — в соседний, оттуда — дальше, и обратно домой с грузом. Убыточные плеча не
           берёт, а сколько едем — покажет картой и датами. В конце предложит варианты: короче или
           подольше.
