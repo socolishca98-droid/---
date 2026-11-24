@@ -28,7 +28,7 @@ export function LogistBottomNav() {
   return (
     <nav
       data-lm-bottom-nav
-      className="fixed bottom-3 left-3 right-3 z-40 mx-auto max-w-md rounded-2xl border border-cyan-400/25 bg-[#070b14]/90 shadow-[0_12px_40px_rgba(6,182,212,0.18)] backdrop-blur-xl lg:hidden"
+      className="fixed bottom-3 left-3 right-3 z-40 mx-auto max-w-md rounded-2xl border border-amber-500/25 bg-[#0e0c0a]/92 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="flex items-stretch justify-between px-1.5 py-1">
@@ -42,7 +42,7 @@ export function LogistBottomNav() {
               data-active={active ? "true" : undefined}
               className={`flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-medium transition-all duration-200 ${
                 active
-                  ? "bg-cyan-500/15 text-cyan-400 shadow-[inset_0_0_12px_rgba(6,182,212,0.15)]"
+                  ? "bg-amber-500/15 text-amber-400 shadow-[inset_0_0_12px_rgba(245,158,11,0.15)]"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >

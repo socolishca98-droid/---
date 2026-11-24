@@ -255,13 +255,13 @@ export default function LogistHomePage() {
       <div className="mx-auto grid max-w-md grid-cols-2 gap-2.5 px-4 pt-3">
         <Link
           href="/lm/orders/new"
-          className="flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-sky-600/10 px-3 py-3 text-[13px] font-semibold text-cyan-200 shadow-lg shadow-cyan-950/30 transition-all duration-200 active:scale-[0.98]"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-500/20 to-amber-700/10 px-3 py-3 text-[13px] font-semibold text-amber-200 shadow-lg shadow-black/40 transition-all duration-200 active:scale-[0.98]"
         >
           + Новый заказ
         </Link>
         <Link
           href="/lm/routes/assistant"
-          className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-teal-600/10 px-3 py-3 text-[13px] font-semibold text-emerald-200 shadow-lg shadow-emerald-950/30 transition-all duration-200 active:scale-[0.98]"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-stone-500/30 bg-gradient-to-br from-stone-800/80 to-stone-950/90 px-3 py-3 text-[13px] font-semibold text-stone-100 shadow-lg shadow-black/40 transition-all duration-200 active:scale-[0.98]"
         >
           Собрать маршрут
         </Link>
@@ -500,9 +500,9 @@ export default function LogistHomePage() {
 
         {/* Метка сборки: если она не совпадает с последней — версия
             не долетела до телефона, и дело в доставке, не в правках */}
-        <p className="lm-build" data-build="и78">
+        <p className="lm-build" data-build="и79">
           <span className="lm-build-dot" aria-hidden />
-          сборка и78
+          сборка и79
         </p>
       </PullToRefresh>
     </>
