@@ -42,7 +42,7 @@ export function LogistHeader({
 
   return (
     <header
-      className="panel-rise sticky top-0 z-30 border-b border-white/10 bg-zinc-950/90 backdrop-blur-xl transition-colors duration-200"
+      className="panel-rise sticky top-0 z-30 border-b border-cyan-500/20 bg-[#060911]/90 backdrop-blur-xl transition-colors duration-200"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div
