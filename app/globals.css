@@ -2003,10 +2003,10 @@ body {
 /* Фон панели глубже и «ночнее» — в тон миру входа (ночной терминал) */
 .theme-canvas.lm-canvas-night {
   background:
-    radial-gradient(880px 560px at 15% -8%, oklch(0.30 0.08 255 / 0.45), transparent 70%),
-    radial-gradient(720px 500px at 88% 4%, oklch(0.32 0.07 220 / 0.28), transparent 72%),
-    radial-gradient(1100px 760px at 50% 115%, oklch(0.24 0.06 250 / 0.42), transparent 74%),
-    linear-gradient(180deg, oklch(0.145 0.025 265), oklch(0.115 0.018 265) 55%, oklch(0.095 0.014 266));
+    radial-gradient(920px 580px at 12% -6%, oklch(0.36 0.12 200 / 0.42), transparent 68%),
+    radial-gradient(760px 520px at 90% 8%, oklch(0.32 0.11 260 / 0.36), transparent 70%),
+    radial-gradient(1000px 720px at 50% 112%, oklch(0.28 0.09 185 / 0.35), transparent 72%),
+    linear-gradient(180deg, #0b101b 0%, #090d16 55%, #070a11 100%);
 }
 
 /* Плитка «Сделать сейчас»: не строка, а крупный блок с цифрой */
