@@ -66,12 +66,19 @@ export default function OrdersPage() {
             </div>
             {/* Поиск грузов — по требованию, на отдельной странице: он не
                 занимает постоянную вкладку и не уводит из заказов */}
-            <Button asChild>
-              <Link href="/search">
-                <Search className="h-4 w-4 mr-2" />
-                Найти груз
-              </Link>
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" asChild>
+                <Link href="/lm/routes/assistant">
+                  Собрать маршрут
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/search">
+                  <Search className="h-4 w-4 mr-2" />
+                  Найти груз
+                </Link>
+              </Button>
+            </div>
           </div>
 
           <Tabs value={tab} onValueChange={(value) => setTab(value as "orders" | "parser")} className="space-y-6">
