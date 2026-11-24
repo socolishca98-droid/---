@@ -62,7 +62,7 @@ type TabId = (typeof TABS)[number]["id"]
 /** Цвет и значок подсказки: туннель показывает, куда смотреть, без чтения текста. */
 const HINT_TONE: Record<RouteStep["tone"], string> = {
   warn: "bg-warning/12 text-warning",
-  accent: "bg-primary/10 text-primary",
+  accent: "bg-primary/10 text-amber-400",
   ok: "bg-success/12 text-success",
   muted: "bg-secondary text-muted-foreground",
 }
@@ -153,7 +153,7 @@ export default function LogistRoutesPage() {
               : "border-border bg-card shadow-sm"
           }`}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-amber-400">
             <Sparkles className="h-4.5 w-4.5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -165,7 +165,7 @@ export default function LogistRoutesPage() {
             </span>
           </span>
           {proposals.length > 0 ? (
-            <span className="shrink-0 rounded-full bg-primary px-2.5 py-1 text-[12px] font-semibold text-primary-foreground">
+            <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-[12px] font-semibold text-zinc-950">
               {proposals.length}
             </span>
           ) : (
@@ -205,12 +205,12 @@ export default function LogistRoutesPage() {
                 onClick={() => setTab(item.id)}
                 className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-medium ${
                   active
-                    ? "border-primary/40 bg-primary/15 text-primary"
+                    ? "border-primary/40 bg-primary/15 text-amber-400"
                     : "border-border bg-card shadow-sm text-muted-foreground"
                 }`}
               >
                 {item.label}
-                <span className={active ? "text-primary/70" : "text-muted-foreground/70"}>
+                <span className={active ? "text-amber-400/70" : "text-muted-foreground/70"}>
                   {counts[item.id]}
                 </span>
               </button>

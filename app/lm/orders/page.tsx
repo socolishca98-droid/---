@@ -138,7 +138,7 @@ export default function LogistOrdersPage() {
             action={
               <Link
                 href="/lm/orders/new"
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-amber-500 px-4 text-[14px] font-semibold text-zinc-950 active:opacity-70"
               >
                 <Plus className="h-4 w-4" /> Новый заказ
               </Link>
@@ -146,14 +146,6 @@ export default function LogistOrdersPage() {
           />
         ) : (
           <>
-            <div className="mb-3 flex justify-end">
-              <Link
-                href="/lm/routes/assistant"
-                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3.5 text-[13px] font-medium text-primary active:opacity-70"
-              >
-                Собрать маршрут
-              </Link>
-            </div>
             <StageStrip
               counters={counters}
               selected={stage}
@@ -204,7 +196,7 @@ export default function LogistOrdersPage() {
       <Link
         href="/lm/orders/new"
         aria-label="Новый заказ"
-        className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-[max(1rem,calc(50%-13rem))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-orange-500/20 active:opacity-70"
+        className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-[max(1rem,calc(50%-13rem))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-zinc-950 shadow-lg shadow-orange-500/20 active:opacity-70"
       >
         <Plus className="h-6 w-6" />
       </Link>

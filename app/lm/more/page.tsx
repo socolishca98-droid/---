@@ -239,7 +239,7 @@ export default function LogistMorePage() {
               type="button"
               onClick={() => void saveProfile()}
               disabled={profileSaving || profileLoading}
-              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14.5px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[14.5px] font-semibold text-zinc-950 active:opacity-70 disabled:opacity-50"
             >
               {profileSaving ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : null}
               Сохранить данные
@@ -252,14 +252,14 @@ export default function LogistMorePage() {
             href="/owner"
             className="mt-3 flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/15 px-4 py-3 active:opacity-70"
           >
-            <UserCog className="h-5 w-5 shrink-0 text-primary" />
+            <UserCog className="h-5 w-5 shrink-0 text-amber-400" />
             <span className="min-w-0 flex-1">
               <span className="block text-[14.5px] font-semibold text-foreground">Вход в любой аккаунт</span>
               <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
                 Открыть кабинет сотрудника или приложение водителя без их пароля
               </span>
             </span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-primary" />
+            <ChevronRight className="h-4 w-4 shrink-0 text-amber-400" />
           </Link>
         ) : null}
 
@@ -299,7 +299,7 @@ export default function LogistMorePage() {
               type="button"
               onClick={() => void changePassword()}
               disabled={saving}
-              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14.5px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[14.5px] font-semibold text-zinc-950 active:opacity-70 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : null}
               Сохранить пароль
