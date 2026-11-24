@@ -88,6 +88,36 @@ export function LogistMobileChrome({ children }: { children: React.ReactNode }) 
       {/* Статичный фон компьютерной версии: градиент + сетка, без анимаций */}
       <div ref={canvasRef} className="theme-canvas lm-canvas-night" aria-hidden>
         <div ref={gridRef} className="theme-canvas__grid" />
+        <svg
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.16]"
+          viewBox="0 0 400 800"
+          preserveAspectRatio="xMidYMid slice"
+          fill="none"
+        >
+          <path
+            d="M-20 140 C 90 110, 140 240, 240 200 S 360 90, 430 150"
+            stroke="rgba(56, 189, 248, 0.55)"
+            strokeWidth="1.2"
+            strokeDasharray="4 6"
+          />
+          <path
+            d="M-10 420 C 110 380, 180 510, 290 450 S 380 350, 420 410"
+            stroke="rgba(52, 211, 153, 0.45)"
+            strokeWidth="1.2"
+            strokeDasharray="5 7"
+          />
+          <path
+            d="M40 760 C 120 640, 210 670, 310 560 S 370 480, 410 520"
+            stroke="rgba(148, 163, 184, 0.35)"
+            strokeWidth="1"
+            strokeDasharray="3 6"
+          />
+          <circle cx="95" cy="148" r="3" fill="rgba(56, 189, 248, 0.8)" />
+          <circle cx="240" cy="200" r="3.5" fill="rgba(56, 189, 248, 0.9)" />
+          <circle cx="165" cy="438" r="3" fill="rgba(52, 211, 153, 0.8)" />
+          <circle cx="290" cy="450" r="3.5" fill="rgba(52, 211, 153, 0.9)" />
+          <circle cx="310" cy="560" r="3" fill="rgba(148, 163, 184, 0.7)" />
+        </svg>
       </div>
 
       {/* На компьютере меню переезжает влево: нижняя полоса на мониторе —
