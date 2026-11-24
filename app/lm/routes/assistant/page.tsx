@@ -2198,7 +2198,7 @@ function LiveSearchCard({
                 onClick={() => setRadius(value)}
                 className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
                   radius === value
-                    ? "border-primary/40 bg-primary/15 text-primary"
+                    ? "border-primary/40 bg-primary/15 text-amber-400"
                     : "border-border text-foreground/90"
                 }`}
               >
@@ -2224,7 +2224,7 @@ function LiveSearchCard({
                 onClick={() => setSource(value)}
                 className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
                   source === value
-                    ? "border-primary/40 bg-primary/15 text-primary"
+                    ? "border-primary/40 bg-primary/15 text-amber-400"
                     : "border-border text-foreground/90"
                 }`}
               >
@@ -2249,7 +2249,7 @@ function LiveSearchCard({
             type="button"
             onClick={onSearch}
             disabled={busy}
-            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
+            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-amber-500 text-[14px] font-medium text-zinc-950 active:opacity-80 disabled:opacity-50"
           >
             {busy ? (
               <>
@@ -2482,7 +2482,7 @@ function SetupPhase({
                   onClick={() => setStartCity(row.city)}
                   className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
                     startCity === row.city
-                      ? "border-primary/40 bg-primary/15 text-primary"
+                      ? "border-primary/40 bg-primary/15 text-amber-400"
                       : "border-border text-foreground/90"
                   }`}
                 >
@@ -2545,7 +2545,7 @@ function SetupPhase({
 
       {/* В своём регионе грузов нет — не тупик, а кнопка «собрать регион» */}
       {regionEmpty ? (
-        <Card className="border-primary/25 bg-primary/[0.06]">
+        <Card className="border-amber-500/25 bg-amber-500/[0.07]">
           <p className="text-[13px] font-medium text-foreground">
             В {baseRegionName ?? "вашем регионе"} грузов в базе пока нет
           </p>
@@ -2557,7 +2557,7 @@ function SetupPhase({
             type="button"
             onClick={onHarvestRegion}
             disabled={harvestBusy}
-            className="mt-2.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-50"
+            className="mt-2.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[14px] font-semibold text-zinc-950 active:opacity-70 disabled:opacity-50"
           >
             {harvestBusy ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -2634,7 +2634,7 @@ function SetupPhase({
                         : `подходит ${fitsCount} из ${fitLoads.length} грузов`}
                     </span>
                   </span>
-                  {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                  {active ? <Check className="h-4 w-4 shrink-0 text-amber-400" /> : null}
                 </button>
               )
             })}
@@ -2648,17 +2648,16 @@ function SetupPhase({
         {selected ? <VehicleFitNote vehicle={selected} loads={fitLoads} /> : null}
       </Card>
 
-      {/* Дополнительные параметры — свёрнуты по умолчанию, чтобы не перегружать первый экран */}
-      <details className="rounded-2xl border border-border/70 bg-card p-3.5">
-        <summary className="cursor-pointer select-none text-[13px] font-medium text-foreground">
-          Дополнительные параметры (время в пути: {maxHours} ч, радиус: {startRadiusKm} км)
-        </summary>
-        <div className="mt-3">
-          <p className="text-[12px] leading-snug text-muted-foreground">
-            Помощник набирает грузы, пока маршрут укладывается в лимит времени (учитываются пробег,
-            погрузка-выгрузка и отдых водителя).
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+      {/* Насколько едем — главный рычаг, он на виду */}
+      <Card>
+        <p className="text-[13px] font-medium text-foreground">Сколько едем</p>
+        <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+          Помощник набирает грузы, пока маршрут укладывается в это время: около 55 км/ч с грузом,
+          от 2 до 5 часов на погрузку-выгрузку по весу груза, отдых водителя после 9 часов за
+          рулём и ожидание дат загрузки. Чем дольше едем — тем
+          больше денег, но и больше смен в пути.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {HOURS_STEPS.map((hours) => (
             <button
               key={hours}
@@ -2666,7 +2665,7 @@ function SetupPhase({
               onClick={() => setMaxHours(hours)}
               className={`min-h-[38px] rounded-md border px-3 text-[13px] active:opacity-70 ${
                 maxHours === hours
-                  ? "border-primary/40 bg-primary/15 text-primary"
+                  ? "border-primary/40 bg-primary/15 text-amber-400"
                   : "border-border text-foreground/90"
               }`}
             >
@@ -2674,8 +2673,7 @@ function SetupPhase({
             </button>
           ))}
         </div>
-        </div>
-      </details>
+      </Card>
 
       {/* Тонкая настройка: логист заходит сюда редко, поэтому свёрнуто */}
       <Card>
@@ -2713,7 +2711,7 @@ function SetupPhase({
                     onClick={() => setStartRadiusKm(value)}
                     className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
                       startRadiusKm === value
-                        ? "border-primary/40 bg-primary/15 text-primary"
+                        ? "border-primary/40 bg-primary/15 text-amber-400"
                         : "border-border text-foreground/90"
                     }`}
                   >
@@ -2737,7 +2735,7 @@ function SetupPhase({
                     onClick={() => setDetourKm(value)}
                     className={`min-h-[34px] rounded-md border px-3 text-[12.5px] active:opacity-70 ${
                       detourKm === value
-                        ? "border-primary/40 bg-primary/15 text-primary"
+                        ? "border-primary/40 bg-primary/15 text-amber-400"
                         : "border-border text-foreground/90"
                     }`}
                   >
@@ -2752,9 +2750,9 @@ function SetupPhase({
 
 
       {/* Что будет */}
-      <Card className="border-primary/25 bg-primary/[0.06]">
+      <Card className="border-amber-500/25 bg-amber-500/[0.07]">
         <p className="text-[13px] leading-snug text-muted-foreground">
-          Помощник пройдёт по {usableLoadsCount} свободным заказам и грузам и сложит цепочку по датам загрузки: из
+          Помощник пройдёт по {usableLoadsCount} грузам биржи и сложит цепочку по датам загрузки: из
           вашего города — в соседний, оттуда — дальше, и обратно домой с грузом. Убыточные плеча не
           берёт, а сколько едем — покажет картой и датами. В конце предложит варианты: короче или
           подольше.
@@ -2763,7 +2761,7 @@ function SetupPhase({
           type="button"
           onClick={onBuild}
           disabled={usableLoadsCount === 0}
-          className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[16px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
+          className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[16px] font-semibold text-zinc-950 active:opacity-70 disabled:opacity-40"
         >
           <RouteIcon className="h-5 w-5" />
           Построить маршрут
@@ -2775,7 +2773,7 @@ function SetupPhase({
         ) : null}
         <Link
           href="/lm/search"
-          className="mt-3 flex min-h-[40px] items-center justify-center gap-1.5 text-[13px] font-medium text-primary active:opacity-70"
+          className="mt-3 flex min-h-[40px] items-center justify-center gap-1.5 text-[13px] font-medium text-amber-400 active:opacity-70"
         >
           <Package className="h-4 w-4" />
           Открыть биржу грузов
@@ -2818,7 +2816,7 @@ function BuildingPhase({ step, waitingPoints }: { step: number; waitingPoints?: 
   return (
     <div className="pt-10">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/15">
-        <RouteIcon className="h-8 w-8 animate-pulse text-primary" />
+        <RouteIcon className="h-8 w-8 animate-pulse text-amber-400" />
       </div>
       <p className="mt-4 text-center text-[16px] font-semibold text-foreground">Строим маршрут</p>
       {waitingPoints ? (
@@ -2839,9 +2837,9 @@ function BuildingPhase({ step, waitingPoints }: { step: number; waitingPoints?: 
               }`}
             >
               {done ? (
-                <Check className="h-4 w-4 shrink-0 text-primary" />
+                <Check className="h-4 w-4 shrink-0 text-amber-400" />
               ) : active ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-400" />
               ) : (
                 <span className="h-4 w-4 shrink-0 rounded-full border border-border" />
               )}
@@ -3193,7 +3191,7 @@ function FailedPhase({
             <button
               type="button"
               onClick={() => onPickVehicle(betterVehicle.vehicle.id)}
-              className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+              className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-amber-500 px-4 text-[14px] font-semibold text-zinc-950 active:opacity-70"
             >
               <Truck className="h-4 w-4" />
               Собрать на {betterVehicle.vehicle.plate}
@@ -3204,7 +3202,7 @@ function FailedPhase({
 
       {/* Из своего города пусто, но рядом грузы — ведём строить от ближайшего */}
       {reason && reason.loadsFromCity === 0 && reason.loadsNearbyPriced > 0 ? (
-        <Card className="border-primary/25 bg-primary/[0.06]">
+        <Card className="border-amber-500/25 bg-amber-500/[0.07]">
           <p className="text-[13px] font-medium text-foreground">Рядом с базой есть грузы</p>
           <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
             В радиусе {startRadiusKm} км — {reason.loadsNearbyPriced} со озвученной ставкой.
@@ -3216,7 +3214,7 @@ function FailedPhase({
             <button
               type="button"
               onClick={() => onPickCity(nearestLoad.city)}
-              className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+              className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-amber-500 px-4 text-[14px] font-semibold text-zinc-950 active:opacity-70"
             >
               <MapPin className="h-4 w-4" />
               Строить от {nearestLoad.city}
@@ -3227,7 +3225,7 @@ function FailedPhase({
 
       {/* Подходят по весу и объёму, но кузов другой: не выбрасываем молча */}
       {bodyMismatched.length > 0 ? (
-        <Card className="border-primary/25 bg-primary/[0.06]">
+        <Card className="border-amber-500/25 bg-amber-500/[0.07]">
           <p className="text-[13px] font-medium text-foreground">
             {loadsPhrase(
               bodyMismatched.length,
@@ -3259,7 +3257,7 @@ function FailedPhase({
                 <button
                   type="button"
                   onClick={() => onAllowBody(load.id)}
-                  className="shrink-0 rounded-lg border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary active:opacity-70"
+                  className="shrink-0 rounded-lg border border-primary/40 bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-amber-400 active:opacity-70"
                 >
                   Взять, уточню
                 </button>
@@ -3302,7 +3300,7 @@ function FailedPhase({
           <button
             type="button"
             onClick={onMoreHours}
-            className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-medium text-primary-foreground active:opacity-70"
+            className="mt-2.5 inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-amber-500 px-4 text-[14px] font-medium text-zinc-950 active:opacity-70"
           >
             Ехать дольше ({hoursLabel(nextHoursStep(maxHours))})
           </button>
@@ -3391,7 +3389,7 @@ function FailedPhase({
                 key={city}
                 type="button"
                 onClick={() => onPickCity(city)}
-                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[13px] font-medium text-primary active:opacity-70"
+                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[13px] font-medium text-amber-400 active:opacity-70"
               >
                 <MapPin className="h-3.5 w-3.5" />
                 {city} · {count}
@@ -3405,7 +3403,7 @@ function FailedPhase({
         <button
           type="button"
           onClick={onOtherCity}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-4 text-[14px] font-semibold text-primary-foreground active:opacity-70"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-amber-500 px-4 text-[14px] font-semibold text-zinc-950 active:opacity-70"
         >
           <MapPin className="h-4 w-4" />
           Другой город
@@ -3416,7 +3414,7 @@ function FailedPhase({
         <button
           type="button"
           onClick={onOneWay}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary text-[14px] font-semibold text-primary-foreground active:opacity-70"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-amber-500 text-[14px] font-semibold text-zinc-950 active:opacity-70"
         >
           <Truck className="h-4 w-4" />
           Ехать без обратки
@@ -3535,7 +3533,7 @@ function RoutePhase({
     <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] lg:items-start lg:gap-6 lg:space-y-0">
       <div className="space-y-5 lg:min-w-0">
       {/* Итог: деньги — главное */}
-      <Card className="border-primary/25 bg-primary/[0.06]">
+      <Card className="border-amber-500/25 bg-amber-500/[0.07]">
         <p className="text-[13px] text-muted-foreground">
           Маршрут собран · {route.path[0]} → {route.path[route.path.length - 1]}
           {route.vehicle?.plate ? ` · ${route.vehicle.plate}` : ""}
@@ -3728,7 +3726,7 @@ function RoutePhase({
                   onClick={() => onSelectVariant(index)}
                   className={`min-h-[38px] rounded-lg border px-3 text-left active:opacity-70 ${
                     index === activeVariant
-                      ? "border-primary/40 bg-primary/15 text-primary"
+                      ? "border-primary/40 bg-primary/15 text-amber-400"
                       : "border-border text-foreground/90"
                   }`}
                 >
@@ -3786,13 +3784,13 @@ function RoutePhase({
         {/* Если додобор упал (справочник или биржа), совет «увеличьте радиус»
             врёт: радиус ни при чём, мы просто не увидели грузы. */}
         {route.growthHint && extendNote?.kind !== "exchange" && extendNote?.kind !== "geo" ? (
-          <div className="mt-3 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 py-2.5">
+          <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2.5">
             <p className="text-[12.5px] leading-snug text-foreground/90">{route.growthHint}</p>
             {route.growthHours ? (
               <button
                 type="button"
                 onClick={() => onMoreHours(route.growthHours as number)}
-                className="mt-2 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground active:opacity-70"
+                className="mt-2 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-[13px] font-medium text-zinc-950 active:opacity-70"
               >
                 <Clock className="h-4 w-4" />
                 Пересобрать на {hoursLabel(route.growthHours)}
@@ -3850,7 +3848,7 @@ function RoutePhase({
                 <div className="flex items-start gap-3">
                   {/* Точка маршрута */}
                   <div className="flex flex-col items-center pt-1">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-[12px] font-semibold text-amber-400">
                       {index + 1}
                     </span>
                     {index < route.legs.length - 1 ? (
@@ -3868,7 +3866,7 @@ function RoutePhase({
 
                     {/* Обратка: груз везёт машину домой — порожнего возврата нет */}
                     {leg.returnsHome ? (
-                      <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-primary/12 px-1.5 py-0.5 text-[11.5px] font-medium text-primary">
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-primary/12 px-1.5 py-0.5 text-[11.5px] font-medium text-amber-400">
                         <Home className="h-3 w-3" />
                         Обратка домой
                       </p>
@@ -3939,7 +3937,7 @@ function RoutePhase({
                       {leg.profitRub !== null ? (
                         <span
                           className={`text-[12.5px] font-medium tabular-nums ${
-                            leg.profitRub >= 0 ? "text-primary" : "text-destructive"
+                            leg.profitRub >= 0 ? "text-amber-400" : "text-destructive"
                           }`}
                         >
                           прибыль {leg.profitRub >= 0 ? "+" : "−"}
@@ -3993,7 +3991,7 @@ function RoutePhase({
                         onClick={() => onCall(leg.load.id, "agreed")}
                         className={`inline-flex min-h-[38px] items-center gap-1 rounded-lg border px-2.5 text-[12.5px] active:opacity-70 ${
                           status === "agreed"
-                            ? "border-primary/40 bg-primary/15 text-primary"
+                            ? "border-primary/40 bg-primary/15 text-amber-400"
                             : "border-border text-foreground/90"
                         }`}
                       >
@@ -4018,7 +4016,7 @@ function RoutePhase({
                     </div>
 
                     {status === "agreed" ? (
-                      <p className="mt-1.5 text-[12px] font-medium text-primary">
+                      <p className="mt-1.5 text-[12px] font-medium text-amber-400">
                         Согласовано — груз останется в маршруте при пересборке
                       </p>
                     ) : null}
@@ -4038,7 +4036,7 @@ function RoutePhase({
       ) : null}
 
       {/* Отправка машины */}
-      <Card className="border-primary/25 bg-primary/[0.06]">
+      <Card className="border-amber-500/25 bg-amber-500/[0.07]">
         <p className="text-[12.5px] leading-snug text-muted-foreground">
           {agreedCount === route.legs.length && route.legs.length > 0
             ? "Все фрахтователи согласованы — можно отправлять."
@@ -4048,7 +4046,7 @@ function RoutePhase({
           type="button"
           onClick={onSend}
           disabled={sending || route.unprofitable}
-          className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[16px] font-semibold text-primary-foreground active:opacity-70 disabled:opacity-40"
+          className="mt-3 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[16px] font-semibold text-zinc-950 active:opacity-70 disabled:opacity-40"
         >
           {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Truck className="h-5 w-5" />}
           {sending ? "Отправляю машину…" : "Отправить машину"}
@@ -4303,7 +4301,7 @@ function CallSheet({
                 aria-label="Договорились"
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border active:opacity-70 ${
                   status === "agreed"
-                    ? "border-primary/40 bg-primary/15 text-primary"
+                    ? "border-primary/40 bg-primary/15 text-amber-400"
                     : "border-border text-foreground/80"
                 }`}
               >

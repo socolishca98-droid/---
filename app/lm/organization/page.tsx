@@ -302,7 +302,7 @@ export default function MobileOrganizationPage() {
           <>
             <Card>
               <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-amber-400">
                   <Building2 className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
@@ -342,7 +342,7 @@ export default function MobileOrganizationPage() {
                 «Автопарк» → «Настройки». Ведём прямо к полям из организации. */}
             <Card className="space-y-2.5">
               <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-amber-400">
                   <FileText className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
@@ -357,7 +357,7 @@ export default function MobileOrganizationPage() {
               </div>
               <Link
                 href="/lm/settings#requisites"
-                className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:opacity-70"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-amber-500 text-[15px] font-semibold text-zinc-950 active:opacity-70"
               >
                 Заполнить реквизиты
               </Link>
@@ -391,7 +391,7 @@ export default function MobileOrganizationPage() {
                 <button
                   type="button"
                   onClick={() => setFormOpen((value) => !value)}
-                  className="flex items-center gap-1.5 text-[13px] font-medium text-primary"
+                  className="flex items-center gap-1.5 text-[13px] font-medium text-amber-400"
                 >
                   {formOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   {formOpen ? "Отмена" : "Создать"}
@@ -413,7 +413,7 @@ export default function MobileOrganizationPage() {
                           onClick={() => setRole(option.id)}
                           className={`min-h-[44px] rounded-xl text-[14px] font-medium ${
                             role === option.id
-                              ? "bg-primary/20 text-primary"
+                              ? "bg-primary/20 text-amber-400"
                               : "bg-secondary text-foreground active:opacity-70"
                           }`}
                         >
@@ -433,7 +433,7 @@ export default function MobileOrganizationPage() {
                           onClick={() => setExpiry(option.id)}
                           className={`min-h-[44px] rounded-xl text-[13.5px] font-medium ${
                             expiry === option.id
-                              ? "bg-primary/20 text-primary"
+                              ? "bg-primary/20 text-amber-400"
                               : "bg-secondary text-foreground active:opacity-70"
                           }`}
                         >
@@ -568,14 +568,6 @@ export default function MobileOrganizationPage() {
                     {connection.lastError}
                   </p>
                 ) : null}
-
-                <p className="rounded-xl bg-muted/50 px-3 py-2 text-[12.5px] leading-relaxed text-muted-foreground">
-                  <strong className="font-medium text-foreground">Как работает интеграция с АТИ:</strong>{" "}
-                  сюда попадают только грузы из ваших площадок (закрытых торгов/групп, где состоит
-                  компания). Общую ленту АТИ сторонним программам не отдаёт. Вступите в нужные
-                  площадки в личном кабинете АТИ и подключите ключ доступа ниже — после этого грузы
-                  начнут приходить сами.
-                </p>
 
                 <label className="block">
                   <span className="text-[12.5px] text-muted-foreground">

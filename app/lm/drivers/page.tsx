@@ -85,7 +85,7 @@ export default function LogistDriversPage() {
               onClick={() => setFilter(item.id)}
               className={`rounded-md border px-3 py-1.5 text-[13px] font-medium ${
                 filter === item.id
-                  ? "border-primary/40 bg-primary/15 text-primary"
+                  ? "border-primary/40 bg-primary/15 text-amber-400"
                   : "border-border bg-card shadow-sm text-muted-foreground"
               }`}
             >

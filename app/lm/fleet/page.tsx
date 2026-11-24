@@ -155,7 +155,7 @@ export default function LogistFleetPage() {
                   onClick={() => setTab(item.id)}
                   className={`shrink-0 rounded-md border px-3.5 py-2 text-[13px] font-medium ${
                     tab === item.id
-                      ? "border-primary/40 bg-primary/15 text-primary"
+                      ? "border-primary/40 bg-primary/15 text-amber-400"
                       : "border-border bg-card shadow-sm text-muted-foreground"
                   }`}
                 >
@@ -171,7 +171,7 @@ export default function LogistFleetPage() {
                   setEditing(null)
                   setVehicleDialogOpen(true)
                 }}
-                className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-70"
+                className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[14px] font-medium text-zinc-950 active:opacity-70"
               >
                 <Plus className="h-4 w-4" /> Добавить машину
               </button>
@@ -181,7 +181,7 @@ export default function LogistFleetPage() {
               <button
                 type="button"
                 onClick={() => setRepairOpen(true)}
-                className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary text-[14px] font-medium text-primary-foreground active:opacity-70"
+                className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-[14px] font-medium text-zinc-950 active:opacity-70"
               >
                 <Wrench className="h-4 w-4" /> Записать ремонт
               </button>
