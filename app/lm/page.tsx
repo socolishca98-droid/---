@@ -346,31 +346,6 @@ export default function LogistHomePage() {
           />
         </div>
 
-        {/* Главное действие и два быстрых перехода */}
-        <div className="panel-rise panel-rise-delay-1 mt-4 grid grid-cols-3 gap-2.5">
-          <Link
-            href="/lm/routes/assistant"
-            className="flex min-h-[76px] flex-col items-start justify-between rounded-xl bg-primary p-3.5 text-primary-foreground active:opacity-70"
-          >
-            <RouteIcon className="h-5.5 w-5.5" />
-            <span className="text-[13.5px] font-semibold leading-tight">Собрать маршрут</span>
-          </Link>
-          <Link
-            href="/lm/orders/new"
-            className="flex min-h-[76px] flex-col items-start justify-between rounded-xl border border-border bg-card shadow-sm p-3.5 text-foreground active:opacity-70"
-          >
-            <Plus className="h-5.5 w-5.5 text-primary" />
-            <span className="text-[13.5px] font-medium leading-tight">Новый заказ</span>
-          </Link>
-          <Link
-            href="/lm/drivers"
-            className="flex min-h-[76px] flex-col items-start justify-between rounded-xl border border-border bg-card shadow-sm p-3.5 text-foreground active:opacity-70"
-          >
-            <Truck className="h-5.5 w-5.5 text-primary" />
-            <span className="text-[13.5px] font-medium leading-tight">Водители</span>
-          </Link>
-        </div>
-
         {anyError ? (
           <div className="mt-6">
             <ErrorState message={anyError} onRetry={refresh} />
@@ -500,9 +475,9 @@ export default function LogistHomePage() {
 
         {/* Метка сборки: если она не совпадает с последней — версия
             не долетела до телефона, и дело в доставке, не в правках */}
-        <p className="lm-build" data-build="и80">
+        <p className="lm-build" data-build="и81">
           <span className="lm-build-dot" aria-hidden />
-          сборка и80
+          сборка и81
         </p>
       </PullToRefresh>
     </>
