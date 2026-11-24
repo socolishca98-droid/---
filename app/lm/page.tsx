@@ -485,9 +485,9 @@ export default function LogistHomePage() {
 
         {/* Метка сборки: если она не совпадает с последней — версия
             не долетела до телефона, и дело в доставке, не в правках */}
-        <p className="lm-build" data-build="и29">
+        <p className="lm-build" data-build="и70">
           <span className="lm-build-dot" aria-hidden />
-          сборка и29
+          сборка и70
         </p>
       </PullToRefresh>
     </>
