@@ -2674,7 +2674,8 @@ function SetupPhase({
             </button>
           ))}
         </div>
-      </Card>
+        </div>
+      </details>
 
       {/* Тонкая настройка: логист заходит сюда редко, поэтому свёрнуто */}
       <Card>
@@ -2747,8 +2748,7 @@ function SetupPhase({
             </div>
           </div>
         ) : null}
-        </div>
-      </details>
+      </Card>
 
 
       {/* Что будет */}
