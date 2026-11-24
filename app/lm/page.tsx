@@ -252,6 +252,21 @@ export default function LogistHomePage() {
     <>
       <LogistHeader title={greeting} subtitle={today} userName={user?.name} />
 
+      <div className="mx-auto grid max-w-md grid-cols-2 gap-2.5 px-4 pt-3">
+        <Link
+          href="/lm/orders/new"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-sky-600/10 px-3 py-3 text-[13px] font-semibold text-cyan-200 shadow-lg shadow-cyan-950/30 transition-all duration-200 active:scale-[0.98]"
+        >
+          + Новый заказ
+        </Link>
+        <Link
+          href="/lm/routes/assistant"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/20 to-teal-600/10 px-3 py-3 text-[13px] font-semibold text-emerald-200 shadow-lg shadow-emerald-950/30 transition-all duration-200 active:scale-[0.98]"
+        >
+          Собрать маршрут
+        </Link>
+      </div>
+
       <PullToRefresh onRefresh={refresh} className="px-4 pt-4">
         {/* Карточка дежурного убрана вместе с экраном: возвращаемся к нему
             позже, когда будет ясно, каким он должен быть. Наблюдение за
@@ -485,9 +500,9 @@ export default function LogistHomePage() {
 
         {/* Метка сборки: если она не совпадает с последней — версия
             не долетела до телефона, и дело в доставке, не в правках */}
-        <p className="lm-build" data-build="и77">
+        <p className="lm-build" data-build="и78">
           <span className="lm-build-dot" aria-hidden />
-          сборка и77
+          сборка и78
         </p>
       </PullToRefresh>
     </>
