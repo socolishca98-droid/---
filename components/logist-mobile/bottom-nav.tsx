@@ -28,8 +28,7 @@ export function LogistBottomNav() {
   return (
     <nav
       data-lm-bottom-nav
-      className="fixed bottom-3 left-3 right-3 z-40 mx-auto max-w-md rounded-2xl border border-amber-500/25 bg-[#0e0c0a]/92 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl lg:hidden"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="fixed bottom-4 left-3 right-3 z-40 mx-auto max-w-md rounded-2xl border border-amber-500/25 bg-[#0e0c0a]/92 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl lg:hidden"
     >
       <div className="flex items-stretch justify-between px-1.5 py-1">
         {TABS.map((tab) => {
