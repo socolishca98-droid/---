@@ -20,11 +20,7 @@ export function Card({
   className?: string
 }) {
   return (
-    <div
-      className={`rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-4 shadow-[0_8px_30px_rgb(0,0,0,0.45)] backdrop-blur-md backdrop-blur-sm transition-all duration-200 ${className}`}
-    >
-      {children}
-    </div>
+    <div className={`rounded-xl border border-border bg-card shadow-sm p-4 ${className}`}>{children}</div>
   )
 }
 
@@ -49,7 +45,7 @@ export function KpiCard({
     default: "text-foreground",
     warn: "text-warning",
     good: "text-success",
-    accent: "text-primary",
+    accent: "text-amber-400",
   }
 
   // «1 052 000 ₽» не влезает в плитку двойным кеглем — уменьшаем длинные значения
@@ -108,7 +104,7 @@ export function SectionTitle({
         {title}
       </h2>
       {action ? (
-        <div className="shrink-0 text-[13px] font-medium text-primary">
+        <div className="shrink-0 text-[13px] font-medium text-amber-400">
           {isLink ? (
             <Link href={(action as { label: string; href: string }).href}>
               {(action as { label: string; href: string }).label}
@@ -228,7 +224,7 @@ export function ActionButton({
 }) {
   const tones: Record<string, string> = {
     default: "bg-secondary text-foreground active:opacity-70",
-    primary: "bg-primary text-primary-foreground active:opacity-70",
+    primary: "bg-amber-400 text-amber-400-foreground active:opacity-70",
     danger: "bg-destructive/15 text-destructive border border-destructive/30 active:opacity-70",
   }
   return (
