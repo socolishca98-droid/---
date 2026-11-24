@@ -410,7 +410,7 @@ export default function LogistHomePage() {
                   <Link
                     key={route.id}
                     href={`/lm/routes/${route.id}`}
-                    className="block rounded-xl border border-warning/30 bg-warning/[0.07] p-4 active:opacity-70"
+                    className="block rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/[0.09] via-zinc-900/90 to-zinc-950/95 p-4 shadow-lg shadow-amber-950/20 transition-all duration-200 active:scale-[0.99]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
