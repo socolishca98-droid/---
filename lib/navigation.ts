@@ -45,6 +45,7 @@ export const NAV_ITEMS: NavItem[] = [
   // поиск грузов — по требованию, отдельной страницей (не постоянная вкладка)
   { name: "Поиск грузов", href: "/search", icon: Search },
   { name: "Маршруты", href: "/routes", icon: RouteIcon },
+  { name: "Сборщик маршрутов", href: "/lm/routes/assistant", icon: RouteIcon },
   { name: "Автопарк", href: "/fleet", icon: Warehouse },
   { name: "Топливо", href: "/fuel", icon: Fuel },
   { name: "Обслуживание", href: "/maintenance", icon: Wrench },
