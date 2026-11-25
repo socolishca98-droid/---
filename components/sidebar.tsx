@@ -97,8 +97,8 @@ export function Sidebar() {
         <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
           {!isCollapsed && (
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Truck className="h-5 w-5 text-primary-foreground" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500">
+                <Truck className="h-5 w-5 text-zinc-950" />
               </div>
               {/* Единое название продукта — не «ГрузоПоток» из старого макета */}
               <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
@@ -108,8 +108,8 @@ export function Sidebar() {
           )}
           {isCollapsed && (
             <Link href="/dashboard" className="mx-auto">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Truck className="h-5 w-5 text-primary-foreground" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500">
+                <Truck className="h-5 w-5 text-zinc-950" />
               </div>
             </Link>
           )}
@@ -138,7 +138,7 @@ export function Sidebar() {
               >
                 {/* Активный раздел помечен полосой: видно боковым зрением */}
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_12px_var(--primary)]" />
+                  <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]" />
                 )}
                 <item.icon className="h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-105" />
                 {!isCollapsed && (
@@ -147,7 +147,7 @@ export function Sidebar() {
                     {badgeValue > 0 && (
                       <Badge
                         variant="default"
-                        className="h-5 min-w-5 px-1.5 text-xs bg-primary text-primary-foreground"
+                        className="h-5 min-w-5 px-1.5 text-xs bg-amber-500 text-zinc-950"
                       >
                         {badgeLabel}
                       </Badge>
@@ -158,7 +158,7 @@ export function Sidebar() {
                 {isCollapsed && badgeValue > 0 && (
                   <Badge
                     variant="default"
-                    className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px] bg-primary text-primary-foreground"
+                    className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[10px] bg-amber-500 text-zinc-950"
                   >
                     {badgeLabel}
                   </Badge>
