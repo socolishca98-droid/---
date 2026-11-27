@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   // адресной строки — на всех страницах, включая вход (раньше meta
   // был только в /m-контуре, и иконка запускалась в Safari)
   manifest: "/manifest.json",
+  icons: {
+    apple: "/apple-icon-v2.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
