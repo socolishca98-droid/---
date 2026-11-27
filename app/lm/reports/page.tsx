@@ -71,6 +71,7 @@ export default function LogistReportsPage() {
 
   const report = data?.report
   const insights = data?.insights ?? []
+  const [tab, setTab] = useState<"finance" | "ops" | "directions">("finance")
 
   return (
     <>
@@ -165,8 +166,32 @@ export default function LogistReportsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
+            <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+              {(
+                [
+                  { id: "finance", label: "Финансы" },
+                  { id: "ops", label: "Операции" },
+                  { id: "directions", label: "Направления" },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  className={`rounded-lg py-2 text-[12.5px] font-medium transition-all ${
+                    tab === item.id
+                      ? "bg-amber-500/20 text-amber-300 shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {tab === "finance" ? (
+              <div className="grid grid-cols-2 gap-2.5">
+                <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
               <KpiCard
                 label="Расходы"
                 value={formatMoney(report.finance.expensesRub)}
@@ -254,7 +279,10 @@ export default function LogistReportsPage() {
                 })
               )}
             </div>
+            ) : null}
 
+            {tab === "ops" ? (
+            <>
             <SectionTitle title="Операционные цифры" />
             <Card className="space-y-2.5">
               <Row label="В срок" value={report.orders.onTimePercent != null ? `${Math.round(report.orders.onTimePercent)}%` : "—"} hint={report.orders.lateCount ? `опозданий: ${report.orders.lateCount}` : undefined} />
@@ -270,30 +298,21 @@ export default function LogistReportsPage() {
               />
               <Row label="Пробег" value={`${Math.round(report.finance.distanceKm).toLocaleString("ru-RU")} км`} />
             </Card>
+            </>
+            ) : null}
 
-            {(report.orders.topDirections ?? []).length > 0 ? (
+            {tab === "directions" && (report.orders.topDirections ?? []).length > 0 ? (
               <>
                 <SectionTitle title="Частые направления" />
-                <Card className="overflow-hidden p-0">
-                  <div className="grid grid-cols-[1fr_auto] border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <span>Направление</span>
-                    <span>Рейсов</span>
-                  </div>
-                  <div className="divide-y divide-white/10">
-                    {(report.orders.topDirections ?? []).slice(0, 5).map((direction, index) => (
-                      <div
-                        key={`${direction.from}-${direction.to}-${index}`}
-                        className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5"
-                      >
-                        <p className="min-w-0 truncate text-[13.5px] font-medium text-foreground/95">
-                          {shortCity(direction.from)} → {shortCity(direction.to)}
-                        </p>
-                        <span className="shrink-0 rounded-md bg-amber-500/15 px-2 py-0.5 text-[12px] font-semibold text-amber-300 tabular-nums">
-                          {direction.count}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                <Card className="space-y-2">
+                  {(report.orders.topDirections ?? []).slice(0, 5).map((direction, index) => (
+                    <div key={`${direction.from}-${direction.to}-${index}`} className="flex items-center justify-between gap-3">
+                      <p className="min-w-0 truncate text-[13.5px] text-foreground/90">
+                        {shortCity(direction.from)} → {shortCity(direction.to)}
+                      </p>
+                      <p className="shrink-0 text-[13px] text-muted-foreground">{direction.count}</p>
+                    </div>
+                  ))}
                 </Card>
               </>
             ) : null}
