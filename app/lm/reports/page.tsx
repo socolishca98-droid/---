@@ -274,15 +274,26 @@ export default function LogistReportsPage() {
             {(report.orders.topDirections ?? []).length > 0 ? (
               <>
                 <SectionTitle title="Частые направления" />
-                <Card className="space-y-2">
-                  {(report.orders.topDirections ?? []).slice(0, 5).map((direction, index) => (
-                    <div key={`${direction.from}-${direction.to}-${index}`} className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-[13.5px] text-foreground/90">
-                        {shortCity(direction.from)} → {shortCity(direction.to)}
-                      </p>
-                      <p className="shrink-0 text-[13px] text-muted-foreground">{direction.count}</p>
-                    </div>
-                  ))}
+                <Card className="overflow-hidden p-0">
+                  <div className="grid grid-cols-[1fr_auto] border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span>Направление</span>
+                    <span>Рейсов</span>
+                  </div>
+                  <div className="divide-y divide-white/10">
+                    {(report.orders.topDirections ?? []).slice(0, 5).map((direction, index) => (
+                      <div
+                        key={`${direction.from}-${direction.to}-${index}`}
+                        className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5"
+                      >
+                        <p className="min-w-0 truncate text-[13.5px] font-medium text-foreground/95">
+                          {shortCity(direction.from)} → {shortCity(direction.to)}
+                        </p>
+                        <span className="shrink-0 rounded-md bg-amber-500/15 px-2 py-0.5 text-[12px] font-semibold text-amber-300 tabular-nums">
+                          {direction.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </Card>
               </>
             ) : null}
