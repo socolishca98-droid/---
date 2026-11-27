@@ -190,8 +190,25 @@ export default function LogistReportsPage() {
             </div>
 
             {tab === "finance" ? (
-              <div className="grid grid-cols-2 gap-2.5">
-                <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
+              <div className="space-y-2.5">
+                <Card className="flex items-center justify-between gap-3 border-amber-500/25 bg-amber-500/[0.06]">
+                  <div>
+                    <p className="text-[11.5px] uppercase tracking-wider text-muted-foreground">Итог периода</p>
+                    <p className="mt-0.5 text-[15px] font-semibold text-foreground">
+                      {report.finance.netProfitRub >= 0 ? "Компания в плюсе" : "Убыточный период"}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-[17px] font-bold tabular-nums ${
+                      report.finance.netProfitRub >= 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
+                    {report.finance.netProfitRub >= 0 ? "+" : ""}
+                    {formatMoney(report.finance.netProfitRub)}
+                  </span>
+                </Card>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
               <KpiCard
                 label="Расходы"
                 value={formatMoney(report.finance.expensesRub)}
