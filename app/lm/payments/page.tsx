@@ -89,7 +89,7 @@ export default function LogistPaymentsPage() {
 
             {(data?.debtors ?? []).length > 0 ? (
               <>
-                <SectionTitle title="Кому должны" />
+                <SectionTitle title="К оплате" />
                 <div className="space-y-2.5">
                   {(data?.debtors ?? []).slice(0, 5).map((debtor) => (
                     <div

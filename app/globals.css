@@ -2333,3 +2333,9 @@ html[data-arriving] main * {
     animation: none;
   }
 }
+
+/* Разрешаем системное меню «Вставить» в полях ввода на iOS Safari */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
