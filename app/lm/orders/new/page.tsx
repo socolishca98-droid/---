@@ -135,10 +135,13 @@ export default function NewOrderPage() {
           (contactsIdx >= 0 ? lines[contactsIdx + 1] : undefined)
 
         const refMatch = text.match(/(реф\.?\s*[-+]?\d*°?|тент|фургон|изотерм|борт|трал)/i)
-        const extraLines = lines.filter((l) =>
-          /(\d[\d\s.,]*\s*(?:тыс\.?\s*руб|₽|руб)|предопл|загр\/выгр|отд\.машина|без торга|прям\.дог)/i.test(l) &&
-          !/нояб|дек|янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ТракРадар|^\d+\s*т,/i.test(l),
-        )
+        const extraLines = lines
+          .filter(
+            (l) =>
+              /(\d[\d\s.,]*\s*(?:тыс\.?\s*руб|₽|руб).*(?:НДС|нал)|предопл|загр\/выгр|отд\.машина|без торга|прям\.дог)/i.test(l) &&
+              !/нояб|дек|янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ТракРадар|^\d+\s*т,/i.test(l),
+          )
+          .map((l) => l.replace(/\s+\d+[.,]?\d*\s*руб\/км.*$/i, "").trim())
         const notesVal = Array.from(new Set(extraLines)).slice(0, 6).join("\n")
 
         let priceVal = ""
