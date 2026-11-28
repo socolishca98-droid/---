@@ -15,7 +15,7 @@ import {
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { useJsonApi } from "@/hooks/use-json-api"
-import { useMobileAuth } from "@/hooks/use-mobile-auth"
+import { useAuth } from "@/lib/auth-context"
 import {
   Card,
   EmptyState,
@@ -98,7 +98,7 @@ function insightHref(source?: string): string {
 }
 
 export default function MobileReportsPage() {
-  const { user, loading: authLoading } = useMobileAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const [preset, setPreset] = useState<Preset>("30d")
   const [tab, setTab] = useState<ReportTab>("finance")
 
