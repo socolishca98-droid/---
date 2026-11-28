@@ -462,6 +462,21 @@ export default function LogistOrderPage() {
                 ) : null}
               </div>
 
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Link
+                  href={`/lm/orders/${order.id}/doc?type=invoice`}
+                  className="flex min-h-[42px] items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-[13px] font-medium text-amber-300 active:opacity-70"
+                >
+                  Счёт (PDF)
+                </Link>
+                <Link
+                  href={`/lm/orders/${order.id}/doc?type=act`}
+                  className="flex min-h-[42px] items-center justify-center rounded-xl border border-border bg-background text-[13px] font-medium text-foreground active:opacity-70"
+                >
+                  Акт (PDF)
+                </Link>
+              </div>
+
               <div className="mt-3 space-y-2 border-t border-border pt-3">
                 <AddressRow
                   label="Откуда"
