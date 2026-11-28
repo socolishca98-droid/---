@@ -103,27 +103,44 @@ export default function NewOrderPage() {
         const ocr = await w.Tesseract!.recognize(dataUrl, "rus+eng")
         const text = String(ocr?.data?.text ?? "")
         const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-        const arrowMatch = text.match(/([А-ЯЁA-Z][а-яёa-z-]+(?:\s+[А-ЯЁA-Z][а-яёa-z-]+)?)\s*(?:[-–—>→]+|до)\s*([А-ЯЁA-Z][а-яёa-z-]+(?:\s+[А-ЯЁA-Z][а-яёa-z-]+)?)/)
+
+        const routeMatch = text.match(/([А-ЯЁ][а-яёА-ЯЁ\s.-]{2,30}?)\s+[-–—>→]+\s+([А-ЯЁ][а-яёА-ЯЁ\s.-]{2,30}?)(?=\s+\d|\s*$|\n)/m)
+        const tysMatch = text.match(/(\d+(?:[.,]\d+)?)\s*тыс\.?\s*руб/i)
+        const rubMatch = text.match(/(\d[\d\s]{3,})\s*(?:₽|руб)/i)
         const weightMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:т\b|тонн|кг)/i)
+        const slashMatch = text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s+([^\n]+)/)
         const volMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:м3|м³|куб)/i)
-        const priceMatch = text.match(/(\d[\d\s]{2,})\s*(?:₽|руб|р\b)/i)
         const phoneMatch = text.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}/)
+        const firmLine = lines.find((l) => /(?:^|\s)(?:ИП|ООО|АО|ПАО)\b/i.test(l) || /,\s*ИП\b/i.test(l))
+
+        let priceVal = ""
+        if (tysMatch) {
+          priceVal = String(Math.round(parseFloat(tysMatch[1].replace(",", ".")) * 1000))
+        } else if (rubMatch) {
+          priceVal = rubMatch[1].replace(/\s+/g, "")
+        }
 
         let weightKg = ""
         if (weightMatch) {
           const num = parseFloat(weightMatch[1].replace(",", "."))
           weightKg = /кг/i.test(weightMatch[0]) ? String(Math.round(num)) : String(Math.round(num * 1000))
+        } else if (slashMatch) {
+          weightKg = String(Math.round(parseFloat(slashMatch[1].replace(",", ".")) * 1000))
         }
+
+        const volVal = volMatch?.[1]?.replace(",", ".") ?? slashMatch?.[2]?.replace(",", ".") ?? ""
+        const cargoVal = slashMatch?.[3]?.trim() ?? ""
 
         setForm((prev) => ({
           ...prev,
-          routeFrom: arrowMatch?.[1] ?? prev.routeFrom,
-          routeTo: arrowMatch?.[2] ?? prev.routeTo,
+          routeFrom: routeMatch?.[1]?.trim() ?? prev.routeFrom,
+          routeTo: routeMatch?.[2]?.trim() ?? prev.routeTo,
           weight: weightKg || prev.weight,
-          volume: volMatch?.[1]?.replace(",", ".") ?? prev.volume,
-          price: priceMatch?.[1]?.replace(/\s+/g, "") ?? prev.price,
-          clientContact: phoneMatch?.[0] ?? prev.clientContact,
-          cargoType: prev.cargoType || (lines[0] ?? "").slice(0, 60),
+          volume: volVal || prev.volume,
+          price: priceVal || prev.price,
+          clientName: firmLine?.trim() || prev.clientName,
+          clientContact: phoneMatch?.[0]?.trim() ?? prev.clientContact,
+          cargoType: cargoVal || prev.cargoType,
         }))
         setScanNote("Текст распознан — проверьте и поправьте поля")
         return
