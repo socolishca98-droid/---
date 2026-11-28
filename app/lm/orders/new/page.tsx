@@ -108,7 +108,10 @@ export default function NewOrderPage() {
         const text = String(ocr?.data?.text ?? "")
         const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
 
-        const routeMatch = text.match(/([А-ЯЁ][а-яёА-ЯЁ\s.()-]{2,45}?)\s+[-–—>→]+\s+([А-ЯЁ][а-яёА-ЯЁ\s.()-]{2,45}?)(?=\s+\d|\s*$|\n)/m)
+        const routeMatch = text.match(/([А-ЯЁ][а-яёА-ЯЁ\s.,()-]{2,45}?)\s+[-–—>→]+\s+([А-ЯЁ][а-яёА-ЯЁ\s.,()-]{2,45}?)(?=\s+\d|\s*$|\n)/m)
+        const routeFromAlt = routeMatch?.[1]?.trim() ?? lines.find((l) => /\([А-ЯЁа-яё.\s]+\)/.test(l) && !/км|руб|НДС|Код/i.test(l))
+        const arrowLine = lines.find((l) => /^→\s*[А-ЯЁ]/.test(l))
+        const routeToAlt = routeMatch?.[2]?.trim() ?? arrowLine?.replace(/^→\s*/, "").trim()
         const tysMatch = text.match(/(\d+(?:[.,]\d+)?)\s*тыс\.?\s*руб/i)
         const rubMatch = text.match(/(\d[\d\s]{3,})\s*(?:₽|руб)/i)
         const weightMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:т\b|тонн|кг)/i)
@@ -123,9 +126,8 @@ export default function NewOrderPage() {
           ),
         )
         const managerMatch = text.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}[,\s]+([А-ЯЁ][а-яё]{2,20})/)
-        const contactStr = allPhones.length
-          ? `${allPhones.join(", ")}${managerMatch?.[1] ? ` (${managerMatch[1]})` : ""}`
-          : ""
+        const contactStr = allPhones[0] ? `${allPhones[0]}${managerMatch?.[1] ? ` (${managerMatch[1]})` : ""}` : ""
+        const contactStr2 = allPhones[1] ?? ""
 
         const contactsIdx = lines.findIndex((l) => /^КОНТАКТЫ$/i.test(l))
         const firmLine =
@@ -160,13 +162,14 @@ export default function NewOrderPage() {
 
         setForm((prev) => ({
           ...prev,
-          routeFrom: routeMatch?.[1]?.trim() ?? prev.routeFrom,
-          routeTo: routeMatch?.[2]?.trim() ?? prev.routeTo,
+          routeFrom: routeFromAlt ?? prev.routeFrom,
+          routeTo: routeToAlt ?? prev.routeTo,
           weight: weightKg || prev.weight,
           volume: volVal || prev.volume,
           price: priceVal || prev.price,
           clientName: firmLine?.trim() || prev.clientName,
           clientContact: contactStr || prev.clientContact,
+          clientContact2: contactStr2 || prev.clientContact2,
           cargoType: baseCargo || prev.cargoType,
           requirements: refMatch?.[1]?.trim() || prev.requirements,
           notes: notesVal || prev.notes,
@@ -504,27 +507,21 @@ export default function NewOrderPage() {
 
             <label className="block">
               <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Контакт клиента</span>
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <input
                   value={form.clientContact}
                   onChange={(event) => update("clientContact", event.target.value)}
                   inputMode="tel"
-                  placeholder="Имя и телефон для связи"
+                  placeholder="Телефон и имя менеджера"
                   className={inputClass}
                 />
-                {(() => {
-                  const m = form.clientContact.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}/)
-                  if (!m) return null
-                  const tel = m[0].replace(/[^\d+]/g, "")
-                  return (
-                    <a
-                      href={`tel:${tel}`}
-                      className="flex shrink-0 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/15 px-3.5 text-[13px] font-semibold text-amber-300 active:scale-[0.98]"
-                    >
-                      Позвонить
-                    </a>
-                  )
-                })()}
+                <input
+                  value={form.clientContact2}
+                  onChange={(event) => update("clientContact2", event.target.value)}
+                  inputMode="tel"
+                  placeholder="Второй телефон (если есть)"
+                  className={inputClass}
+                />
               </div>
             </label>
 
