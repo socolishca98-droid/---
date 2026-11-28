@@ -379,7 +379,10 @@ export default function MobileReportsPage() {
                       >
                         <div className="min-w-0">
                           <p className="truncate text-[13.5px] font-medium text-foreground">{v.label}</p>
-                          <p className="text-[11.5px] text-muted-foreground">{Math.round(v.distanceKm).toLocaleString("ru-RU")} км</p>
+                          <p className="text-[11.5px] text-muted-foreground">
+                            {Math.round(v.distanceKm).toLocaleString("ru-RU")} км
+                            {v.distanceKm > 0 ? ` · ${Math.round(v.revenueRub / v.distanceKm)} ₽/км` : ""}
+                          </p>
                         </div>
                         <span className="text-[13px] text-muted-foreground tabular-nums">{v.orders}</span>
                         <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
@@ -415,7 +418,10 @@ export default function MobileReportsPage() {
                       >
                         <div className="min-w-0">
                           <p className="truncate text-[13.5px] font-medium text-foreground">{d.name}</p>
-                          <p className="text-[11.5px] text-muted-foreground">{Math.round(d.distanceKm).toLocaleString("ru-RU")} км</p>
+                          <p className="text-[11.5px] text-muted-foreground">
+                            {Math.round(d.distanceKm).toLocaleString("ru-RU")} км
+                            {d.distanceKm > 0 ? ` · ${Math.round(d.revenueRub / d.distanceKm)} ₽/км` : ""}
+                          </p>
                         </div>
                         <span className="text-[13px] text-muted-foreground tabular-nums">{d.orders}</span>
                         <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
@@ -437,20 +443,40 @@ export default function MobileReportsPage() {
             {tab === "ops" ? (
               <div className="space-y-3">
                 <Card className="divide-y divide-white/10 p-0">
-                  <div className="flex items-center justify-between px-4 py-3 text-[13px]">
-                    <span className="text-muted-foreground">Доставка в срок</span>
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {report.orders.onTimePercent != null ? `${Math.round(report.orders.onTimePercent)}%` : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3 text-[13px]">
-                    <span className="text-muted-foreground">Загрузка машин</span>
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {report.fleet.utilizationPercent != null ? `${Math.round(report.fleet.utilizationPercent)}%` : "—"}
-                      <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">
-                        ({report.fleet.vehiclesUsed} из {report.fleet.vehiclesTotal})
+                  <div className="space-y-1.5 px-4 py-3">
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="text-muted-foreground">Доставка в срок</span>
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {report.orders.onTimePercent != null ? `${Math.round(report.orders.onTimePercent)}%` : "—"}
                       </span>
-                    </span>
+                    </div>
+                    {report.orders.onTimePercent != null ? (
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                          style={{ width: `${Math.max(0, Math.min(100, Math.round(report.orders.onTimePercent)))}%` }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="space-y-1.5 px-4 py-3">
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="text-muted-foreground">Загрузка машин</span>
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {report.fleet.utilizationPercent != null ? `${Math.round(report.fleet.utilizationPercent)}%` : "—"}
+                        <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">
+                          ({report.fleet.vehiclesUsed} из {report.fleet.vehiclesTotal})
+                        </span>
+                      </span>
+                    </div>
+                    {report.fleet.utilizationPercent != null ? (
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                          style={{ width: `${Math.max(0, Math.min(100, Math.round(report.fleet.utilizationPercent)))}%` }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex items-center justify-between px-4 py-3 text-[13px]">
                     <span className="text-muted-foreground">Средний срок оплаты</span>
