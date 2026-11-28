@@ -430,6 +430,25 @@ export default function NewOrderPage() {
                 />
               </label>
             </div>
+            <label className="block">
+              <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Тип кузова / требования</span>
+              <input
+                value={form.requirements}
+                onChange={(event) => update("requirements", event.target.value)}
+                placeholder="реф. -18°, тент, задн. загр."
+                className={inputClass}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Дополнительно (ставки, НДС, предоплата)</span>
+              <textarea
+                value={form.notes}
+                onChange={(event) => update("notes", event.target.value)}
+                rows={2}
+                placeholder="Варианты ставок, предоплата 80%, погрузка..."
+                className={`${inputClass} py-2.5`}
+              />
+            </label>
           </div>
         </Step>
 
