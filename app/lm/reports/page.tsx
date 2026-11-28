@@ -14,7 +14,8 @@ import {
 } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { useJsonApi, useMobileAuth } from "@/components/logist-mobile/hooks"
+import { useJsonApi } from "@/hooks/use-json-api"
+import { useMobileAuth } from "@/hooks/use-mobile-auth"
 import {
   Card,
   EmptyState,
@@ -140,7 +141,7 @@ export default function MobileReportsPage() {
         </div>
 
         {authLoading || loading ? (
-          <ListSkeleton count={4} />
+          <ListSkeleton rows={4} />
         ) : error ? (
           <ErrorState message={error} onRetry={reload} />
         ) : !report ? (
