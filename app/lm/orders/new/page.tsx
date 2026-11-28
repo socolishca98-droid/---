@@ -29,6 +29,7 @@ interface FormState {
   routeTo: string
   cargoType: string
   requirements: string
+  notes: string
   weight: string
   volume: string
   price: string
@@ -44,6 +45,7 @@ const EMPTY: FormState = {
   routeTo: "",
   cargoType: "",
   requirements: "",
+  notes: "",
   weight: "",
   volume: "",
   price: "",
@@ -131,6 +133,10 @@ export default function NewOrderPage() {
           (contactsIdx >= 0 ? lines[contactsIdx + 1] : undefined)
 
         const refMatch = text.match(/(реф\.?\s*[-+]?\d*°?|тент|фургон|изотерм|борт|трал)/i)
+        const extraLines = lines.filter((l) =>
+          /тыс\.?\s*руб|с НДС|без НДС|предопл|загр\/выгр|отд\.машина|без торга|прям\.дог/i.test(l),
+        )
+        const notesVal = Array.from(new Set(extraLines)).slice(0, 6).join(" · ")
 
         let priceVal = ""
         if (tysMatch) {
@@ -162,6 +168,7 @@ export default function NewOrderPage() {
           clientContact: contactStr || prev.clientContact,
           cargoType: baseCargo || prev.cargoType,
           requirements: refMatch?.[1]?.trim() || prev.requirements,
+          notes: notesVal || prev.notes,
         }))
         setScanNote("Текст распознан — проверьте и поправьте поля")
         return
@@ -278,7 +285,7 @@ export default function NewOrderPage() {
       routeFrom: form.routeFrom.trim(),
       routeTo: form.routeTo.trim(),
       cargoType: form.cargoType.trim() || "Груз",
-      requirements: form.requirements.trim() || undefined,
+      requirements: [form.requirements.trim(), form.notes.trim()].filter(Boolean).join(" · ") || undefined,
       weight: form.weight.trim() || 0,
       volume: form.volume.trim() || undefined,
       price: form.price.trim() || 0,
