@@ -214,6 +214,30 @@ export default function LogistReportsPage() {
                     {formatMoney(report.finance.profitRub)}
                   </span>
                 </Card>
+                {report.finance.revenueRub > 0 ? (
+                  <Card className="space-y-2 py-3">
+                    <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
+                      <span>Доля прибыли в выручке</span>
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {Math.max(0, Math.min(100, Math.round((report.finance.profitRub / report.finance.revenueRub) * 100)))}%
+                      </span>
+                    </div>
+                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="bg-emerald-400 transition-all duration-500"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, Math.round((report.finance.profitRub / report.finance.revenueRub) * 100)))}%`,
+                        }}
+                      />
+                      <div
+                        className="bg-amber-400/80 transition-all duration-500"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, Math.round((report.finance.expensesRub / report.finance.revenueRub) * 100)))}%`,
+                        }}
+                      />
+                    </div>
+                  </Card>
+                ) : null}
                 <div className="grid grid-cols-2 gap-2.5">
                   <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
               <KpiCard
@@ -316,9 +340,13 @@ export default function LogistReportsPage() {
                       <span>Рейсов</span>
                       <span>Выручка</span>
                     </div>
-                    <div className="divide-y divide-white/10">
+                <div className="divide-y divide-white/10">
                       {byVehicle.map((v) => (
-                        <div key={v.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5">
+                        <Link
+                          key={v.id}
+                          href="/lm/fleet"
+                          className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04] active:opacity-75"
+                        >
                           <div className="min-w-0">
                             <p className="truncate text-[13.5px] font-medium text-foreground/95">{v.label}</p>
                             <p className="text-[11.5px] text-muted-foreground">{Math.round(v.distanceKm).toLocaleString("ru-RU")} км</p>
@@ -327,7 +355,7 @@ export default function LogistReportsPage() {
                           <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
                             {formatMoney(v.revenueRub)}
                           </span>
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   </Card>
@@ -353,7 +381,11 @@ export default function LogistReportsPage() {
                     </div>
                     <div className="divide-y divide-white/10">
                       {byDriver.map((d) => (
-                        <div key={d.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5">
+                        <Link
+                          key={d.id}
+                          href="/lm/drivers"
+                          className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04] active:opacity-75"
+                        >
                           <div className="min-w-0">
                             <p className="truncate text-[13.5px] font-medium text-foreground/95">{d.name}</p>
                             <p className="text-[11.5px] text-muted-foreground">{Math.round(d.distanceKm).toLocaleString("ru-RU")} км</p>
@@ -362,7 +394,7 @@ export default function LogistReportsPage() {
                           <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
                             {formatMoney(d.revenueRub)}
                           </span>
-                        </div>
+                        </Link>
                       ))}
                     </div>
                   </Card>
