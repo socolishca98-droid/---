@@ -202,16 +202,16 @@ export default function LogistReportsPage() {
                   <div>
                     <p className="text-[11.5px] uppercase tracking-wider text-muted-foreground">Итог периода</p>
                     <p className="mt-0.5 text-[15px] font-semibold text-foreground">
-                      {report.finance.netProfitRub >= 0 ? "Компания в плюсе" : "Убыточный период"}
+                      {report.finance.profitRub >= 0 ? "Компания в плюсе" : "Убыточный период"}
                     </p>
                   </div>
                   <span
                     className={`text-[17px] font-bold tabular-nums ${
-                      report.finance.netProfitRub >= 0 ? "text-emerald-400" : "text-rose-400"
+                      report.finance.profitRub >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
-                    {report.finance.netProfitRub >= 0 ? "+" : ""}
-                    {formatMoney(report.finance.netProfitRub)}
+                    {report.finance.profitRub >= 0 ? "+" : ""}
+                    {formatMoney(report.finance.profitRub)}
                   </span>
                 </Card>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -334,7 +334,7 @@ export default function LogistReportsPage() {
                 </>
               ) : (
                 <EmptyState
-                  icon={<TrendingUp className="h-6 w-6" />}
+                  icon={<BarChart3 className="h-6 w-6" />}
                   title="Нет данных по машинам"
                   description="За выбранный период ещё нет заказов с назначенными машинами."
                 />
@@ -369,7 +369,7 @@ export default function LogistReportsPage() {
                 </>
               ) : (
                 <EmptyState
-                  icon={<TrendingUp className="h-6 w-6" />}
+                  icon={<BarChart3 className="h-6 w-6" />}
                   title="Нет данных по водителям"
                   description="За выбранный период ещё нет заказов с назначенными водителями."
                 />
