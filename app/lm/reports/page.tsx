@@ -1,33 +1,44 @@
-// app/lm/reports/page.tsx — отчёты одним экраном.
-//
-// Полные отчёты с графиками — для компьютера. Логисту на телефоне нужны
-// выводы: что не так и что с этим делать. Поэтому в основе — подсказки
-// системы (insights) и несколько ключевых цифр.
-
 "use client"
 
 import Link from "next/link"
-
-import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleAlert, Download, FileText, Info, RefreshCw } from "lucide-react"
+import { useState } from "react"
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  ChevronRight,
+  Download,
+  FileText,
+  Info,
+  RefreshCw,
+} from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
-import { Card, EmptyState, ErrorState, KpiCard, ListSkeleton, SectionTitle } from "@/components/logist-mobile/ui"
-import { useJsonApi } from "@/hooks/use-json-api"
-import { useStaffSession } from "@/hooks/use-staff-session"
-import { useState } from "react"
-import { INSIGHT_LEVEL_META, type MobileInsight } from "@/lib/logist-mobile/types"
+import { useJsonApi, useMobileAuth } from "@/components/logist-mobile/hooks"
 import {
-  presetBounds,
-  presetLabel,
-  type ReportPeriodPreset,
-} from "@/lib/reports/period"
+  Card,
+  EmptyState,
+  ErrorState,
+  ListSkeleton,
+  SectionTitle,
+} from "@/components/logist-mobile/ui"
 import { formatMoney, shortCity } from "@/lib/logist-mobile/format"
+
+type Preset = "7d" | "30d" | "90d" | "month" | "year"
+type ReportTab = "finance" | "vehicles" | "drivers" | "ops"
+
+interface ReportInsight {
+  id: string
+  severity: "info" | "warn" | "bad" | "good"
+  title: string
+  detail?: string
+  source?: string
+}
 
 interface ReportsResponse {
   success: boolean
-  companyName: string
+  companyName?: string
   report: {
-    period: { label: string }
     finance: {
       revenueRub: number
       expensesRub: number
@@ -37,143 +48,110 @@ interface ReportsResponse {
       deliveredCount: number
       distanceKm: number
     }
-    orders: { onTimePercent: number | null; lateCount: number; topDirections?: Array<{ from: string; to: string; count: number }> }
-    fleet: { utilizationPercent: number | null; vehiclesUsed: number; vehiclesTotal: number }
-    payments: { overdueRub: number; overdueCount: number; avgDaysToPayment: number | null }
+    orders: {
+      onTimePercent: number | null
+      lateCount: number
+      topDirections?: Array<{ from: string; to: string; count: number }>
+    }
+    fleet: {
+      utilizationPercent: number | null
+      vehiclesUsed: number
+      vehiclesTotal: number
+    }
+    payments: {
+      avgDaysToPayment: number | null
+      overdueCount: number
+    }
   }
-  insights: MobileInsight[]
+  insights: ReportInsight[]
+  byVehicle?: Array<{ id: string; label: string; orders: number; revenueRub: number; distanceKm: number }>
+  byDriver?: Array<{ id: string; name: string; orders: number; revenueRub: number; distanceKm: number }>
 }
 
-const PERIOD_PRESETS: ReportPeriodPreset[] = ["7d", "30d", "90d", "month", "year"]
+const PRESETS: Array<{ id: Preset; label: string }> = [
+  { id: "7d", label: "7 дн" },
+  { id: "30d", label: "30 дн" },
+  { id: "90d", label: "90 дн" },
+  { id: "month", label: "Месяц" },
+  { id: "year", label: "Год" },
+]
 
-export default function LogistReportsPage() {
-  const { user } = useStaffSession()
-  // Период: готовые варианты или свои даты. /api/reports и /api/reports/export
-  // понимают те же параметры (preset / from / to), платежный экспорт — from/to.
-  const [preset, setPreset] = useState<ReportPeriodPreset>("30d")
-  const [custom, setCustom] = useState(false)
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
+function presetBounds(preset: Preset): { from: string; to: string } {
+  const now = new Date()
+  const to = now.toISOString().slice(0, 10)
+  const fromDate = new Date(now)
+  if (preset === "7d") fromDate.setDate(now.getDate() - 7)
+  else if (preset === "30d") fromDate.setDate(now.getDate() - 30)
+  else if (preset === "90d") fromDate.setDate(now.getDate() - 90)
+  else if (preset === "month") fromDate.setDate(1)
+  else fromDate.setMonth(0, 1)
+  return { from: fromDate.toISOString().slice(0, 10), to }
+}
 
-  const query = custom
-    ? from && to
-      ? `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
-      : ""
-    : `preset=${preset}`
+function insightHref(source?: string): string {
+  const s = (source ?? "").toLowerCase()
+  if (s.includes("оплат")) return "/lm/payments"
+  if (s.includes("автопарк") || s.includes("машин") || s.includes("топлив")) return "/lm/fleet"
+  if (s.includes("заказ")) return "/lm/orders"
+  return "/lm/routes"
+}
+
+export default function MobileReportsPage() {
+  const { user, loading: authLoading } = useMobileAuth()
+  const [preset, setPreset] = useState<Preset>("30d")
+  const [tab, setTab] = useState<ReportTab>("finance")
 
   const { data, error, loading, reload } = useJsonApi<ReportsResponse>(
-    user ? (query ? `/api/reports?${query}` : null) : null,
+    user ? `/api/reports?preset=${preset}` : null,
   )
 
-  // Границы периода для кнопок экспорта: платежный CSV понимает только даты.
-  const bounds = custom
-    ? { from, to, label: "свой период" }
-    : presetBounds(preset)
+  const bounds = presetBounds(preset)
   const paymentsQuery = `from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}`
-
   const report = data?.report
   const insights = data?.insights ?? []
-  const [tab, setTab] = useState<"finance" | "vehicles" | "drivers" | "ops">("finance")
-  const byVehicle =
-    (data as { byVehicle?: Array<{ id: string; label: string; orders: number; revenueRub: number; distanceKm: number }> } | undefined)
-      ?.byVehicle ?? []
-  const byDriver =
-    (data as { byDriver?: Array<{ id: string; name: string; orders: number; revenueRub: number; distanceKm: number }> } | undefined)
-      ?.byDriver ?? []
+  const byVehicle = data?.byVehicle ?? []
+  const byDriver = data?.byDriver ?? []
 
   return (
     <>
       <LogistHeader
         title="Отчёты"
-        subtitle={report?.period?.label ?? data?.companyName}
+        subtitle={PRESETS.find((p) => p.id === preset)?.label ?? "30 дн"}
         userName={user?.name}
       />
 
-      <div className="px-4 pt-4">
-        {error ? (
+      <main className="mx-auto max-w-md space-y-4 px-4 pb-28 pt-3">
+        {/* Компактная строка периода */}
+        <div className="flex items-center justify-between gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+          {PRESETS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setPreset(item.id)}
+              className={`flex-1 rounded-lg py-1.5 text-[12px] font-medium transition-all ${
+                preset === item.id
+                  ? "bg-amber-500/20 text-amber-300"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {authLoading || loading ? (
+          <ListSkeleton count={4} />
+        ) : error ? (
           <ErrorState message={error} onRetry={reload} />
-        ) : loading && !data ? (
-          <ListSkeleton rows={5} />
         ) : !report ? (
-          <EmptyState icon={<BarChart3 className="h-6 w-6" />} title="Отчёт не собрался" description="Попробуйте обновить" />
+          <EmptyState
+            icon={<BarChart3 className="h-6 w-6" />}
+            title="Данных пока нет"
+            description="За выбранный период ещё не было заказов."
+          />
         ) : (
           <>
-            {/* Период отчёта: готовые варианты или свои даты */}
-            <div className="mb-3">
-              <div className="flex flex-wrap gap-1.5">
-                {PERIOD_PRESETS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => {
-                      setCustom(false)
-                      setPreset(item)
-                    }}
-                    className={`min-h-[36px] rounded-full border px-3 text-[12.5px] font-medium active:opacity-70 ${
-                      !custom && preset === item
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-secondary text-muted-foreground"
-                    }`}
-                  >
-                    {presetLabel(item)}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setCustom((value) => !value)}
-                  className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium active:opacity-70 ${
-                    custom
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-secondary text-muted-foreground"
-                  }`}
-                >
-                  <CalendarDays className="h-3.5 w-3.5" /> Свои даты
-                </button>
-              </div>
-
-              {custom ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={from}
-                    max={to || undefined}
-                    onChange={(event) => setFrom(event.target.value)}
-                    className="min-h-[42px] flex-1 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-                  />
-                  <span className="text-[12.5px] text-muted-foreground">—</span>
-                  <input
-                    type="date"
-                    value={to}
-                    min={from || undefined}
-                    onChange={(event) => setTo(event.target.value)}
-                    className="min-h-[42px] flex-1 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-primary"
-                  />
-                </div>
-              ) : null}
-
-              {/* Выгрузки с тем же периодом */}
-              <div className="mt-2 flex gap-1.5">
-                <a
-                  href={`/api/reports/export?format=csv&${query}`}
-                  className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12.5px] font-medium text-foreground active:opacity-70"
-                >
-                  <Download className="h-3.5 w-3.5" /> CSV
-                </a>
-                <a
-                  href={`/api/reports/export?format=txt&${query}`}
-                  className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12.5px] font-medium text-foreground active:opacity-70"
-                >
-                  <FileText className="h-3.5 w-3.5" /> Текстом
-                </a>
-                <a
-                  href={`/api/payments/export?${paymentsQuery}`}
-                  className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-[12.5px] font-medium text-foreground active:opacity-70"
-                >
-                  <Download className="h-3.5 w-3.5" /> Платежи
-                </a>
-              </div>
-            </div>
-
+            {/* 4 вкладки */}
             <div className="grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
               {(
                 [
@@ -187,9 +165,9 @@ export default function LogistReportsPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setTab(item.id)}
-                  className={`rounded-lg py-2 text-[12.5px] font-medium transition-all ${
+                  className={`rounded-lg py-2 text-[12px] font-medium transition-all ${
                     tab === item.id
-                      ? "bg-amber-500/20 text-amber-300 shadow-xs"
+                      ? "bg-amber-500/20 text-amber-300"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -199,16 +177,17 @@ export default function LogistReportsPage() {
             </div>
 
             {tab === "finance" ? (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
+                {/* Итог периода */}
                 <Card className="flex items-center justify-between gap-3 border-amber-500/25 bg-amber-500/[0.06]">
                   <div>
-                    <p className="text-[11.5px] uppercase tracking-wider text-muted-foreground">Итог периода</p>
-                    <p className="mt-0.5 text-[15px] font-semibold text-foreground">
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Итог периода</p>
+                    <p className="mt-0.5 text-[14px] font-semibold text-foreground">
                       {report.finance.profitRub >= 0 ? "Компания в плюсе" : "Убыточный период"}
                     </p>
                   </div>
                   <span
-                    className={`text-[17px] font-bold tabular-nums ${
+                    className={`text-[16px] font-bold tabular-nums ${
                       report.finance.profitRub >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
@@ -216,6 +195,8 @@ export default function LogistReportsPage() {
                     {formatMoney(report.finance.profitRub)}
                   </span>
                 </Card>
+
+                {/* Шкала прибыли */}
                 {report.finance.revenueRub > 0 ? (
                   <Card className="space-y-2 py-3">
                     <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
@@ -240,128 +221,148 @@ export default function LogistReportsPage() {
                     </div>
                   </Card>
                 ) : null}
+
+                {/* Компактные цифры */}
                 <div className="grid grid-cols-2 gap-2.5">
-                  <KpiCard label="Выручка" value={formatMoney(report.finance.revenueRub)} tone="good" />
-              <KpiCard
-                label="Расходы"
-                value={formatMoney(report.finance.expensesRub)}
-                tone="warn"
-              />
-              <KpiCard
-                label="Прибыль"
-                value={formatMoney(report.finance.profitRub)}
-                hint={report.finance.marginPercent != null ? `маржа ${Math.round(report.finance.marginPercent)}%` : undefined}
-              />
-              <KpiCard
-                label="Заказов"
-                value={report.finance.ordersCount}
-                hint={`доставлено ${report.finance.deliveredCount}`}
-              />
-            </div>
+                  <Card className="p-3">
+                    <p className="text-[11.5px] text-muted-foreground">Выручка</p>
+                    <p className="mt-1 text-[16px] font-semibold text-emerald-400 tabular-nums">
+                      {formatMoney(report.finance.revenueRub)}
+                    </p>
+                  </Card>
+                  <Card className="p-3">
+                    <p className="text-[11.5px] text-muted-foreground">Расходы</p>
+                    <p className="mt-1 text-[16px] font-semibold text-amber-300 tabular-nums">
+                      {formatMoney(report.finance.expensesRub)}
+                    </p>
+                  </Card>
+                  <Card className="p-3">
+                    <p className="text-[11.5px] text-muted-foreground">Заказов</p>
+                    <p className="mt-1 text-[16px] font-semibold text-foreground tabular-nums">
+                      {report.finance.ordersCount}
+                      <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">
+                        (дост. {report.finance.deliveredCount})
+                      </span>
+                    </p>
+                  </Card>
+                  <Card className="p-3">
+                    <p className="text-[11.5px] text-muted-foreground">Пробег</p>
+                    <p className="mt-1 text-[16px] font-semibold text-foreground tabular-nums">
+                      {Math.round(report.finance.distanceKm).toLocaleString("ru-RU")} км
+                    </p>
+                  </Card>
+                </div>
 
-            <SectionTitle
-              title="Что требует решения"
-              action={
-                <button type="button" onClick={reload} className="inline-flex items-center gap-1 text-primary">
-                  <RefreshCw className="h-3.5 w-3.5" /> Обновить
-                </button>
-              }
-            />
+                {/* Кликабельные выводы */}
+                <SectionTitle
+                  title="Что требует решения"
+                  action={
+                    <button
+                      type="button"
+                      onClick={reload}
+                      className="inline-flex items-center gap-1 text-[12px] text-amber-400"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Обновить
+                    </button>
+                  }
+                />
 
-            <div className="space-y-2.5">
-              {insights.length === 0 ? (
-                <EmptyState icon={<BarChart3 className="h-6 w-6" />} title="Подсказок нет" />
-              ) : (
-                insights.map((insight) => {
-                  const meta = INSIGHT_LEVEL_META[insight.level] ?? INSIGHT_LEVEL_META.info
+                {insights.length === 0 ? (
+                  <Card className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    Всё ровно, критичных отклонений нет.
+                  </Card>
+                ) : (
+                  <div className="space-y-2">
+                    {insights.map((ins) => {
+                      const href = insightHref(ins.source)
+                      return (
+                        <Link
+                          key={ins.id}
+                          href={href}
+                          className="block rounded-2xl border border-white/10 bg-white/[0.03] p-3.5 transition-colors hover:bg-white/[0.06] active:opacity-75"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="flex items-center gap-1.5 text-[13.5px] font-semibold text-foreground">
+                              {ins.severity === "warn" || ins.severity === "bad" ? (
+                                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                              ) : (
+                                <Info className="h-4 w-4 shrink-0 text-sky-400" />
+                              )}
+                              {ins.title}
+                            </p>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          </div>
+                          {ins.detail ? (
+                            <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">{ins.detail}</p>
+                          ) : null}
+                          {ins.source ? (
+                            <p className="mt-1.5 text-[11px] font-medium text-amber-400/90">
+                              Перейти: {ins.source} →
+                            </p>
+                          ) : null}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
 
-                  const LevelIcon =
-
-                    meta.tone === "ok"
-
-                      ? CheckCircle2
-
-                      : meta.tone === "warn"
-
-                        ? AlertTriangle
-
-                        : meta.tone === "critical"
-
-                          ? CircleAlert
-
-                          : Info
-
-                  const iconTone =
-
-                    meta.tone === "ok"
-
-                      ? "text-success"
-
-                      : meta.tone === "warn"
-
-                        ? "text-warning"
-
-                        : meta.tone === "critical"
-
-                          ? "text-destructive"
-
-                          : "text-muted-foreground"
-
-                  return (
-
-                    <div key={insight.id} className={`rounded-xl border p-4 ${meta.style}`}>
-
-                      <p className="flex items-start gap-2 text-[14.5px] font-medium text-foreground">
-
-                        <LevelIcon className={`mt-0.5 h-4 w-4 shrink-0 ${iconTone}`} />
-
-                        <span>{insight.title}</span>
-
-                      </p>
-                      {insight.detail ? (
-                        <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">{insight.detail}</p>
-                      ) : null}
-                      {insight.source ? (
-                        <p className="mt-1.5 text-[11.5px] text-muted-foreground">Источник: {insight.source}</p>
-                      ) : null}
-                    </div>
-                  )
-                })
-              )}
-            </div>
-            </div>
+                {/* Выгрузка в спойлере */}
+                <details className="rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5">
+                  <summary className="cursor-pointer select-none text-[12px] font-medium text-muted-foreground">
+                    Выгрузить отчёт (CSV, текстом, платежи)
+                  </summary>
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    <a
+                      href={`/api/reports/export?preset=${preset}&format=csv`}
+                      className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-[12px] text-foreground"
+                    >
+                      <Download className="h-3.5 w-3.5" /> CSV
+                    </a>
+                    <a
+                      href={`/api/reports/export?preset=${preset}&format=txt`}
+                      className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-[12px] text-foreground"
+                    >
+                      <FileText className="h-3.5 w-3.5" /> Текстом
+                    </a>
+                    <a
+                      href={`/api/payments/export?${paymentsQuery}`}
+                      className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-[12px] text-foreground"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Платежи
+                    </a>
+                  </div>
+                </details>
+              </div>
             ) : null}
 
             {tab === "vehicles" ? (
               byVehicle.length > 0 ? (
-                <>
-                  <SectionTitle title="По машинам" />
-                  <Card className="overflow-hidden p-0">
-                    <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <span>Машина</span>
-                      <span>Рейсов</span>
-                      <span>Выручка</span>
-                    </div>
-                <div className="divide-y divide-white/10">
-                      {byVehicle.map((v) => (
-                        <Link
-                          key={v.id}
-                          href="/lm/fleet"
-                          className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04] active:opacity-75"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-[13.5px] font-medium text-foreground/95">{v.label}</p>
-                            <p className="text-[11.5px] text-muted-foreground">{Math.round(v.distanceKm).toLocaleString("ru-RU")} км</p>
-                          </div>
-                          <span className="text-[13px] text-muted-foreground tabular-nums">{v.orders}</span>
-                          <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
-                            {formatMoney(v.revenueRub)}
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  </Card>
-                </>
+                <Card className="overflow-hidden p-0">
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span>Машина</span>
+                    <span>Рейсов</span>
+                    <span>Выручка</span>
+                  </div>
+                  <div className="divide-y divide-white/10">
+                    {byVehicle.map((v) => (
+                      <Link
+                        key={v.id}
+                        href="/lm/fleet"
+                        className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04]"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[13.5px] font-medium text-foreground">{v.label}</p>
+                          <p className="text-[11.5px] text-muted-foreground">{Math.round(v.distanceKm).toLocaleString("ru-RU")} км</p>
+                        </div>
+                        <span className="text-[13px] text-muted-foreground tabular-nums">{v.orders}</span>
+                        <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
+                          {formatMoney(v.revenueRub)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </Card>
               ) : (
                 <EmptyState
                   icon={<BarChart3 className="h-6 w-6" />}
@@ -373,34 +374,31 @@ export default function LogistReportsPage() {
 
             {tab === "drivers" ? (
               byDriver.length > 0 ? (
-                <>
-                  <SectionTitle title="По водителям" />
-                  <Card className="overflow-hidden p-0">
-                    <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <span>Водитель</span>
-                      <span>Рейсов</span>
-                      <span>Выручка</span>
-                    </div>
-                    <div className="divide-y divide-white/10">
-                      {byDriver.map((d) => (
-                        <Link
-                          key={d.id}
-                          href="/lm/drivers"
-                          className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04] active:opacity-75"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-[13.5px] font-medium text-foreground/95">{d.name}</p>
-                            <p className="text-[11.5px] text-muted-foreground">{Math.round(d.distanceKm).toLocaleString("ru-RU")} км</p>
-                          </div>
-                          <span className="text-[13px] text-muted-foreground tabular-nums">{d.orders}</span>
-                          <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
-                            {formatMoney(d.revenueRub)}
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  </Card>
-                </>
+                <Card className="overflow-hidden p-0">
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span>Водитель</span>
+                    <span>Рейсов</span>
+                    <span>Выручка</span>
+                  </div>
+                  <div className="divide-y divide-white/10">
+                    {byDriver.map((d) => (
+                      <Link
+                        key={d.id}
+                        href="/lm/drivers"
+                        className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.04]"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[13.5px] font-medium text-foreground">{d.name}</p>
+                          <p className="text-[11.5px] text-muted-foreground">{Math.round(d.distanceKm).toLocaleString("ru-RU")} км</p>
+                        </div>
+                        <span className="text-[13px] text-muted-foreground tabular-nums">{d.orders}</span>
+                        <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
+                          {formatMoney(d.revenueRub)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </Card>
               ) : (
                 <EmptyState
                   icon={<BarChart3 className="h-6 w-6" />}
@@ -411,59 +409,59 @@ export default function LogistReportsPage() {
             ) : null}
 
             {tab === "ops" ? (
-            <>
-            <SectionTitle title="Операционные цифры" />
-            <Card className="space-y-2.5">
-              <Row label="В срок" value={report.orders.onTimePercent != null ? `${Math.round(report.orders.onTimePercent)}%` : "—"} hint={report.orders.lateCount ? `опозданий: ${report.orders.lateCount}` : undefined} />
-              <Row
-                label="Использование машин"
-                value={report.fleet.utilizationPercent != null ? `${Math.round(report.fleet.utilizationPercent)}%` : "—"}
-                hint={`${report.fleet.vehiclesUsed} из ${report.fleet.vehiclesTotal}`}
-              />
-              <Row
-                label="Оплата в среднем"
-                value={report.payments.avgDaysToPayment != null ? `${report.payments.avgDaysToPayment} дн.` : "—"}
-                hint={report.payments.overdueCount ? `просрочено ${report.payments.overdueCount}` : "просрочек нет"}
-              />
-              <Row label="Пробег" value={`${Math.round(report.finance.distanceKm).toLocaleString("ru-RU")} км`} />
-            </Card>
-            </>
-            ) : null}
-
-            {tab === "ops" && (report.orders.topDirections ?? []).length > 0 ? (
-              <>
-                <SectionTitle title="Частые направления" />
-                <Card className="space-y-2">
-                  {(report.orders.topDirections ?? []).slice(0, 5).map((direction, index) => (
-                    <div key={`${direction.from}-${direction.to}-${index}`} className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-[13.5px] text-foreground/90">
-                        {shortCity(direction.from)} → {shortCity(direction.to)}
-                      </p>
-                      <p className="shrink-0 text-[13px] text-muted-foreground">{direction.count}</p>
-                    </div>
-                  ))}
+              <div className="space-y-3">
+                <Card className="divide-y divide-white/10 p-0">
+                  <div className="flex items-center justify-between px-4 py-3 text-[13px]">
+                    <span className="text-muted-foreground">Доставка в срок</span>
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {report.orders.onTimePercent != null ? `${Math.round(report.orders.onTimePercent)}%` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 text-[13px]">
+                    <span className="text-muted-foreground">Загрузка машин</span>
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {report.fleet.utilizationPercent != null ? `${Math.round(report.fleet.utilizationPercent)}%` : "—"}
+                      <span className="ml-1.5 text-[11.5px] font-normal text-muted-foreground">
+                        ({report.fleet.vehiclesUsed} из {report.fleet.vehiclesTotal})
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 text-[13px]">
+                    <span className="text-muted-foreground">Средний срок оплаты</span>
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {report.payments.avgDaysToPayment != null ? `${report.payments.avgDaysToPayment} дн.` : "—"}
+                    </span>
+                  </div>
                 </Card>
-              </>
-            ) : null}
 
-            <p className="mt-4 pb-2 text-center text-[12px] text-muted-foreground/80">
-              Полные отчёты с графиками — в полной версии на компьютере
-            </p>
+                {(report.orders.topDirections ?? []).length > 0 ? (
+                  <>
+                    <SectionTitle title="Частые направления" />
+                    <Card className="overflow-hidden p-0">
+                      <div className="grid grid-cols-[1fr_auto] border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <span>Направление</span>
+                        <span>Рейсов</span>
+                      </div>
+                      <div className="divide-y divide-white/10">
+                        {(report.orders.topDirections ?? []).slice(0, 5).map((dir, i) => (
+                          <div key={`${dir.from}-${dir.to}-${i}`} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5">
+                            <p className="min-w-0 truncate text-[13.5px] font-medium text-foreground">
+                              {shortCity(dir.from)} → {shortCity(dir.to)}
+                            </p>
+                            <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[12px] font-semibold text-amber-300 tabular-nums">
+                              {dir.count}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </>
         )}
-      </div>
+      </main>
     </>
-  )
-}
-
-function Row({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-[13.5px] text-foreground/90">{label}</p>
-        {hint ? <p className="text-[11.5px] text-muted-foreground">{hint}</p> : null}
-      </div>
-      <p className="shrink-0 text-[14px] font-medium text-foreground">{value}</p>
-    </div>
   )
 }
