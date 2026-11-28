@@ -11,6 +11,7 @@ import { toast } from "sonner"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
 import { EmptyState, ErrorState, KpiCard, LinkRow, ListSkeleton } from "@/components/logist-mobile/ui"
+import { VehicleDocsPanel } from "@/components/logist-mobile/vehicle-docs-panel"
 import { useJsonApi } from "@/hooks/use-json-api"
 import { RepairForm, type RepairFormVehicle } from "@/components/maintenance/repair-form"
 import { AddVehicleDialog, type VehicleFormData } from "@/components/fleet/add-vehicle-dialog"
