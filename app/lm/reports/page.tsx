@@ -71,7 +71,13 @@ export default function LogistReportsPage() {
 
   const report = data?.report
   const insights = data?.insights ?? []
-  const [tab, setTab] = useState<"finance" | "ops" | "directions">("finance")
+  const [tab, setTab] = useState<"finance" | "vehicles" | "drivers" | "ops">("finance")
+  const byVehicle =
+    (data as { byVehicle?: Array<{ id: string; label: string; orders: number; revenueRub: number; distanceKm: number }> } | undefined)
+      ?.byVehicle ?? []
+  const byDriver =
+    (data as { byDriver?: Array<{ id: string; name: string; orders: number; revenueRub: number; distanceKm: number }> } | undefined)
+      ?.byDriver ?? []
 
   return (
     <>
@@ -166,12 +172,13 @@ export default function LogistReportsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+            <div className="grid grid-cols-4 gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
               {(
                 [
                   { id: "finance", label: "Финансы" },
+                  { id: "vehicles", label: "Машины" },
+                  { id: "drivers", label: "Водители" },
                   { id: "ops", label: "Операции" },
-                  { id: "directions", label: "Направления" },
                 ] as const
               ).map((item) => (
                 <button
@@ -298,6 +305,76 @@ export default function LogistReportsPage() {
             </div>
             ) : null}
 
+            {tab === "vehicles" ? (
+              byVehicle.length > 0 ? (
+                <>
+                  <SectionTitle title="По машинам" />
+                  <Card className="overflow-hidden p-0">
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span>Машина</span>
+                      <span>Рейсов</span>
+                      <span>Выручка</span>
+                    </div>
+                    <div className="divide-y divide-white/10">
+                      {byVehicle.map((v) => (
+                        <div key={v.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13.5px] font-medium text-foreground/95">{v.label}</p>
+                            <p className="text-[11.5px] text-muted-foreground">{Math.round(v.distanceKm).toLocaleString("ru-RU")} км</p>
+                          </div>
+                          <span className="text-[13px] text-muted-foreground tabular-nums">{v.orders}</span>
+                          <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
+                            {formatMoney(v.revenueRub)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </>
+              ) : (
+                <EmptyState
+                  icon={<TrendingUp className="h-6 w-6" />}
+                  title="Нет данных по машинам"
+                  description="За выбранный период ещё нет заказов с назначенными машинами."
+                />
+              )
+            ) : null}
+
+            {tab === "drivers" ? (
+              byDriver.length > 0 ? (
+                <>
+                  <SectionTitle title="По водителям" />
+                  <Card className="overflow-hidden p-0">
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span>Водитель</span>
+                      <span>Рейсов</span>
+                      <span>Выручка</span>
+                    </div>
+                    <div className="divide-y divide-white/10">
+                      {byDriver.map((d) => (
+                        <div key={d.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13.5px] font-medium text-foreground/95">{d.name}</p>
+                            <p className="text-[11.5px] text-muted-foreground">{Math.round(d.distanceKm).toLocaleString("ru-RU")} км</p>
+                          </div>
+                          <span className="text-[13px] text-muted-foreground tabular-nums">{d.orders}</span>
+                          <span className="shrink-0 text-[13px] font-semibold text-amber-300 tabular-nums">
+                            {formatMoney(d.revenueRub)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </>
+              ) : (
+                <EmptyState
+                  icon={<TrendingUp className="h-6 w-6" />}
+                  title="Нет данных по водителям"
+                  description="За выбранный период ещё нет заказов с назначенными водителями."
+                />
+              )
+            ) : null}
+
             {tab === "ops" ? (
             <>
             <SectionTitle title="Операционные цифры" />
@@ -318,7 +395,7 @@ export default function LogistReportsPage() {
             </>
             ) : null}
 
-            {tab === "directions" && (report.orders.topDirections ?? []).length > 0 ? (
+            {tab === "ops" && (report.orders.topDirections ?? []).length > 0 ? (
               <>
                 <SectionTitle title="Частые направления" />
                 <Card className="space-y-2">
