@@ -504,13 +504,28 @@ export default function NewOrderPage() {
 
             <label className="block">
               <span className="mb-1.5 block text-[12.5px] text-muted-foreground">Контакт клиента</span>
-              <input
-                value={form.clientContact}
-                onChange={(event) => update("clientContact", event.target.value)}
-                inputMode="tel"
-                placeholder="Имя и телефон для связи"
-                className={inputClass}
-              />
+              <div className="flex gap-2">
+                <input
+                  value={form.clientContact}
+                  onChange={(event) => update("clientContact", event.target.value)}
+                  inputMode="tel"
+                  placeholder="Имя и телефон для связи"
+                  className={inputClass}
+                />
+                {(() => {
+                  const m = form.clientContact.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}/)
+                  if (!m) return null
+                  const tel = m[0].replace(/[^\d+]/g, "")
+                  return (
+                    <a
+                      href={`tel:${tel}`}
+                      className="flex shrink-0 items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/15 px-3.5 text-[13px] font-semibold text-amber-300 active:scale-[0.98]"
+                    >
+                      Позвонить
+                    </a>
+                  )
+                })()}
+              </div>
             </label>
 
             <label className="block">
