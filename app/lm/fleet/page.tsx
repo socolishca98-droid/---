@@ -236,6 +236,7 @@ export default function LogistFleetPage() {
                             {vehicleFeatureLabels(vehicle.features).join(" · ")}
                           </p>
                         ) : null}
+                        <VehicleDocsPanel vehicleId={vehicle.id} vehicleLabel={vehicle.plate} />
 
                         {driver ? (
                           <div className="mt-3 flex items-center gap-2">
