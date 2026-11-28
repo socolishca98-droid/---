@@ -35,6 +35,7 @@ interface FormState {
   price: string
   clientName: string
   clientContact: string
+  clientContact2: string
   deadline: string
 }
 
@@ -51,6 +52,7 @@ const EMPTY: FormState = {
   price: "",
   clientName: "",
   clientContact: "",
+  clientContact2: "",
   deadline: "",
 }
 
