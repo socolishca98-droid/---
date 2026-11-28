@@ -134,9 +134,10 @@ export default function NewOrderPage() {
 
         const refMatch = text.match(/(реф\.?\s*[-+]?\d*°?|тент|фургон|изотерм|борт|трал)/i)
         const extraLines = lines.filter((l) =>
-          /тыс\.?\s*руб|с НДС|без НДС|предопл|загр\/выгр|отд\.машина|без торга|прям\.дог/i.test(l),
+          /(\d[\d\s.,]*\s*(?:тыс\.?\s*руб|₽|руб)|предопл|загр\/выгр|отд\.машина|без торга|прям\.дог)/i.test(l) &&
+          !/нояб|дек|янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ТракРадар|^\d+\s*т,/i.test(l),
         )
-        const notesVal = Array.from(new Set(extraLines)).slice(0, 6).join(" · ")
+        const notesVal = Array.from(new Set(extraLines)).slice(0, 6).join("\n")
 
         let priceVal = ""
         if (tysMatch) {
@@ -444,7 +445,7 @@ export default function NewOrderPage() {
               <textarea
                 value={form.notes}
                 onChange={(event) => update("notes", event.target.value)}
-                rows={2}
+                rows={4}
                 placeholder="Варианты ставок, предоплата 80%, погрузка..."
                 className={`${inputClass} py-2.5`}
               />
