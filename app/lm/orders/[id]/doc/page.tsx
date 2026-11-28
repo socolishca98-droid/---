@@ -89,6 +89,10 @@ export default function OrderDocumentPage() {
         </button>
       </div>
 
+      <div className="mx-auto mb-2 max-w-3xl text-xs text-zinc-500 print:hidden">
+        Предпросмотр: нажмите на любой текст в бланке (услуга, сумма, заказчик, реквизиты), чтобы поправить перед печатью.
+      </div>
+
       <div className="mx-auto max-w-3xl rounded-xl border border-zinc-300 bg-white p-6 shadow-sm sm:p-10 print:border-0 print:p-0 print:shadow-none">
         <div className="border-b border-zinc-300 pb-4">
           <p className="text-xs uppercase tracking-wider text-zinc-500">
@@ -130,16 +134,20 @@ export default function OrderDocumentPage() {
           </thead>
           <tbody>
             <tr className="border-b border-zinc-200">
-              <td className="py-3 pl-2">
+              <td className="py-3 pl-2 outline-none focus:bg-amber-50" contentEditable suppressContentEditableWarning>
                 Грузоперевозка по маршруту {order.routeFrom} — {order.routeTo} ({order.cargoType || "груз"})
               </td>
-              <td className="py-3 text-right">{order.weight ? `${order.weight} кг` : "—"}</td>
-              <td className="py-3 pr-2 text-right font-semibold">{price.toLocaleString("ru-RU")} ₽</td>
+              <td className="py-3 text-right outline-none focus:bg-amber-50" contentEditable suppressContentEditableWarning>
+                {order.weight ? `${order.weight} кг` : "—"}
+              </td>
+              <td className="py-3 pr-2 text-right font-semibold outline-none focus:bg-amber-50" contentEditable suppressContentEditableWarning>
+                {price.toLocaleString("ru-RU")} ₽
+              </td>
             </tr>
           </tbody>
         </table>
 
-        <div className="mt-4 flex justify-end text-base font-bold">
+        <div className="mt-4 flex justify-end text-base font-bold outline-none focus:bg-amber-50" contentEditable suppressContentEditableWarning>
           Итого к оплате: {price.toLocaleString("ru-RU")} ₽
         </div>
 
