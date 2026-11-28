@@ -70,7 +70,7 @@ export function AccountSwitchBanner({
 
   return (
     <div
-      className={`border-b border-primary/30 bg-primary/15 px-3 py-2 text-[12.5px] text-foreground ${className}`}
+      className={`border-b border-primary/30 bg-primary/15 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-[12.5px] text-foreground ${className}`}
     >
       <div className="flex items-center gap-2">
         <UserCog className="h-4 w-4 shrink-0 text-primary" />
