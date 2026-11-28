@@ -69,6 +69,47 @@ export default function NewOrderPage() {
   const [focus, setFocus] = useState<FieldName | null>(null)
   const [ownDate, setOwnDate] = useState(false)
   const [pickedClient, setPickedClient] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [scanNote, setScanNote] = useState<string | null>(null)
+
+  async function handleScreenshotUpload(file: File) {
+    setScanning(true)
+    setScanNote(null)
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result ?? ""))
+        reader.onerror = () => reject(new Error("Не удалось прочитать файл"))
+        reader.readAsDataURL(file)
+      })
+      const res = await apiSend<{ fields?: Partial<FormState>; error?: string }>(
+        "/api/orders/parse-screenshot",
+        "POST",
+        { imageDataUrl: dataUrl },
+      )
+      if (!res.ok || !res.data?.fields) {
+        setScanNote(res.error ?? "Не удалось распознать заявку с фото")
+        return
+      }
+      const f = res.data.fields
+      setForm((prev) => ({
+        ...prev,
+        routeFrom: f.routeFrom ? String(f.routeFrom) : prev.routeFrom,
+        routeTo: f.routeTo ? String(f.routeTo) : prev.routeTo,
+        cargoType: f.cargoType ? String(f.cargoType) : prev.cargoType,
+        weight: f.weight ? String(f.weight) : prev.weight,
+        volume: f.volume ? String(f.volume) : prev.volume,
+        price: f.price ? String(f.price) : prev.price,
+        clientName: f.clientName ? String(f.clientName) : prev.clientName,
+        clientContact: f.clientContact ? String(f.clientContact) : prev.clientContact,
+      }))
+      setScanNote("Поля заполнены с фото — проверьте и сохраните")
+    } catch {
+      setScanNote("Не удалось обработать изображение")
+    } finally {
+      setScanning(false)
+    }
+  }
 
   const fromRef = useRef<HTMLInputElement | null>(null)
   const toRef = useRef<HTMLInputElement | null>(null)
@@ -191,6 +232,30 @@ export default function NewOrderPage() {
   return (
     <>
       <LogistHeader title="Новый заказ" subtitle="Два поля — и заказ готов" back userName={user?.name} />
+
+      <div className="mx-auto max-w-md px-4 pt-3">
+        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 transition-colors active:opacity-75">
+          <div>
+            <p className="text-[13.5px] font-semibold text-amber-300">
+              {scanning ? "Распознаём заявку…" : "Заполнить по фото / скриншоту"}
+            </p>
+            <p className="text-[11.5px] text-muted-foreground">
+              {scanNote ?? "Выберите скриншот или фото — поля заполнятся сами"}
+            </p>
+          </div>
+          <input
+            type="file"
+            accept="image/*"
+            disabled={scanning}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) void handleScreenshotUpload(file)
+              e.target.value = ""
+            }}
+          />
+        </label>
+      </div>
 
       <div className="space-y-3 px-4 pt-4">
         {/* Шаг 1. Маршрут */}
