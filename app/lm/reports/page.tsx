@@ -6,6 +6,8 @@
 
 "use client"
 
+import Link from "next/link"
+
 import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleAlert, Download, FileText, Info, RefreshCw } from "lucide-react"
 
 import { LogistHeader } from "@/components/logist-mobile/app-header"
