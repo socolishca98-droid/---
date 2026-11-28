@@ -110,10 +110,13 @@ export default function NewOrderPage() {
         const text = String(ocr?.data?.text ?? "")
         const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
 
-        const routeMatch = text.match(/([А-ЯЁ][а-яёА-ЯЁ\s.,()-]{2,45}?)\s+[-–—>→]+\s+([А-ЯЁ][а-яёА-ЯЁ\s.,()-]{2,45}?)(?=\s+\d|\s*$|\n)/m)
-        const routeFromAlt = routeMatch?.[1]?.trim() ?? lines.find((l) => /\([А-ЯЁа-яё.\s]+\)/.test(l) && !/км|руб|НДС|Код/i.test(l))
+        const routeLine = lines.slice(0, 8).find((l) => /\s+[-–—>→]+\s+/.test(l) && !/руб|НДС|км|^\d/.test(l.split(/\s+[-–—>→]+\s+/)[0]))
+        const routeParts = routeLine ? routeLine.split(/\s+[-–—>→]+\s+/) : []
+        const routeFromAlt = routeParts[0]?.trim() || lines.find((l) => /\([А-ЯЁа-яёA-Za-z.\s]+\)/.test(l) && !/км|руб|НДС|Код/i.test(l))
         const arrowLine = lines.find((l) => /^→\s*[А-ЯЁ]/.test(l))
-        const routeToAlt = routeMatch?.[2]?.trim() ?? arrowLine?.replace(/^→\s*/, "").trim()
+        const routeToAlt =
+          routeParts[1]?.replace(/\s+\d[\d\s.,]*(?:тыс\.?\s*руб|руб|₽).*$/i, "").trim() ||
+          arrowLine?.replace(/^→\s*/, "").trim()
         const tysMatch = text.match(/(\d+(?:[.,]\d+)?)\s*тыс\.?\s*руб/i)
         const rubMatch = text.match(/(\d[\d\s]{3,})\s*(?:₽|руб)/i)
         const weightMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:т\b|тонн|кг)/i)
