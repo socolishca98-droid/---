@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Printer } from "lucide-react"
 
@@ -33,14 +33,15 @@ interface OrgDoc {
 
 export default function OrderDocumentPage() {
   const params = useParams<{ id: string }>()
-  const searchParams = useSearchParams()
-  const docType = searchParams.get("type") === "act" ? "act" : "invoice"
+  const [docType, setDocType] = useState<"invoice" | "act">("invoice")
 
   const [order, setOrder] = useState<OrderDoc | null>(null)
   const [org, setOrg] = useState<OrgDoc | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get("type") === "act") setDocType("act")
     Promise.all([
       fetch(`/api/orders/${params.id}`).then((r) => (r.ok ? r.json() : null)),
       fetch("/api/organization").then((r) => (r.ok ? r.json() : null)),
