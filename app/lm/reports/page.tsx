@@ -303,6 +303,7 @@ export default function LogistReportsPage() {
                 })
               )}
             </div>
+            </div>
             ) : null}
 
             {tab === "vehicles" ? (
