@@ -28,6 +28,7 @@ interface FormState {
   routeFrom: string
   routeTo: string
   cargoType: string
+  requirements: string
   weight: string
   volume: string
   price: string
@@ -42,6 +43,7 @@ const EMPTY: FormState = {
   routeFrom: "",
   routeTo: "",
   cargoType: "",
+  requirements: "",
   weight: "",
   volume: "",
   price: "",
@@ -158,7 +160,8 @@ export default function NewOrderPage() {
           price: priceVal || prev.price,
           clientName: firmLine?.trim() || prev.clientName,
           clientContact: contactStr || prev.clientContact,
-          cargoType: cargoVal || prev.cargoType,
+          cargoType: baseCargo || prev.cargoType,
+          requirements: refMatch?.[1]?.trim() || prev.requirements,
         }))
         setScanNote("Текст распознан — проверьте и поправьте поля")
         return
@@ -275,6 +278,7 @@ export default function NewOrderPage() {
       routeFrom: form.routeFrom.trim(),
       routeTo: form.routeTo.trim(),
       cargoType: form.cargoType.trim() || "Груз",
+      requirements: form.requirements.trim() || undefined,
       weight: form.weight.trim() || 0,
       volume: form.volume.trim() || undefined,
       price: form.price.trim() || 0,
