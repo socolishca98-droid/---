@@ -108,7 +108,7 @@ export default function NewOrderPage() {
         const text = String(ocr?.data?.text ?? "")
         const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
 
-        const routeMatch = text.match(/([А-ЯЁ][а-яёА-ЯЁ\s.-]{2,30}?)\s+[-–—>→]+\s+([А-ЯЁ][а-яёА-ЯЁ\s.-]{2,30}?)(?=\s+\d|\s*$|\n)/m)
+        const routeMatch = text.match(/([А-ЯЁ][а-яёА-ЯЁ\s.()-]{2,45}?)\s+[-–—>→]+\s+([А-ЯЁ][а-яёА-ЯЁ\s.()-]{2,45}?)(?=\s+\d|\s*$|\n)/m)
         const tysMatch = text.match(/(\d+(?:[.,]\d+)?)\s*тыс\.?\s*руб/i)
         const rubMatch = text.match(/(\d[\d\s]{3,})\s*(?:₽|руб)/i)
         const weightMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:т\b|тонн|кг)/i)
