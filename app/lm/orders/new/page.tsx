@@ -110,8 +110,25 @@ export default function NewOrderPage() {
         const weightMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:т\b|тонн|кг)/i)
         const slashMatch = text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s+([^\n]+)/)
         const volMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:м3|м³|куб)/i)
-        const phoneMatch = text.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}/)
-        const firmLine = lines.find((l) => /(?:^|\s)(?:ИП|ООО|АО|ПАО)\b/i.test(l) || /,\s*ИП\b/i.test(l))
+
+        const allPhones = Array.from(
+          new Set(
+            (text.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}/g) ?? []).map((p) =>
+              p.trim(),
+            ),
+          ),
+        )
+        const managerMatch = text.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}[,\s]+([А-ЯЁ][а-яё]{2,20})/)
+        const contactStr = allPhones.length
+          ? `${allPhones.join(", ")}${managerMatch?.[1] ? ` (${managerMatch[1]})` : ""}`
+          : ""
+
+        const contactsIdx = lines.findIndex((l) => /^КОНТАКТЫ$/i.test(l))
+        const firmLine =
+          lines.find((l) => /(?:^|\s)(?:ИП|ООО|АО|ПАО)\b/i.test(l) || /,\s*ИП\b/i.test(l)) ??
+          (contactsIdx >= 0 ? lines[contactsIdx + 1] : undefined)
+
+        const refMatch = text.match(/(реф\.?\s*[-+]?\d*°?|тент|фургон|изотерм|борт|трал)/i)
 
         let priceVal = ""
         if (tysMatch) {
@@ -129,7 +146,8 @@ export default function NewOrderPage() {
         }
 
         const volVal = volMatch?.[1]?.replace(",", ".") ?? slashMatch?.[2]?.replace(",", ".") ?? ""
-        const cargoVal = slashMatch?.[3]?.trim() ?? ""
+        const baseCargo = slashMatch?.[3]?.trim() ?? ""
+        const cargoVal = [baseCargo, refMatch?.[1]?.trim()].filter(Boolean).join(" · ")
 
         setForm((prev) => ({
           ...prev,
@@ -139,7 +157,7 @@ export default function NewOrderPage() {
           volume: volVal || prev.volume,
           price: priceVal || prev.price,
           clientName: firmLine?.trim() || prev.clientName,
-          clientContact: phoneMatch?.[0]?.trim() ?? prev.clientContact,
+          clientContact: contactStr || prev.clientContact,
           cargoType: cargoVal || prev.cargoType,
         }))
         setScanNote("Текст распознан — проверьте и поправьте поля")
