@@ -71,9 +71,8 @@ interface ReportsResponse {
 
 const PRESETS: Array<{ id: Preset; label: string }> = [
   { id: "7d", label: "7 дн" },
-  { id: "30d", label: "30 дн" },
-  { id: "90d", label: "90 дн" },
   { id: "month", label: "Месяц" },
+  { id: "90d", label: "90 дн" },
   { id: "year", label: "Год" },
 ]
 
@@ -89,12 +88,15 @@ function presetBounds(preset: Preset): { from: string; to: string } {
   return { from: fromDate.toISOString().slice(0, 10), to }
 }
 
-function insightHref(source?: string): string {
-  const s = (source ?? "").toLowerCase()
-  if (s.includes("оплат")) return "/lm/payments"
-  if (s.includes("автопарк") || s.includes("машин") || s.includes("топлив")) return "/lm/fleet"
-  if (s.includes("заказ")) return "/lm/orders"
-  return "/lm/routes"
+function insightAction(ins: ReportInsight): { href: string; label: string } {
+  const s = (ins.source ?? "").toLowerCase()
+  const t = (ins.title ?? "").toLowerCase()
+  if (t.includes("простаива")) return { href: "/lm/routes/assistant", label: "Собрать маршрут →" }
+  if (s.includes("оплат")) return { href: "/lm/payments", label: "Разобрать оплаты →" }
+  if (s.includes("топлив") || t.includes("расход")) return { href: "/lm/fuel", label: "Внести расходы →" }
+  if (s.includes("автопарк") || s.includes("машин")) return { href: "/lm/fleet", label: "Открыть автопарк →" }
+  if (s.includes("заказ")) return { href: "/lm/orders", label: "Открыть заказы →" }
+  return { href: "/lm/routes", label: "Открыть рейсы →" }
 }
 
 export default function MobileReportsPage() {
@@ -301,11 +303,11 @@ export default function MobileReportsPage() {
                 ) : (
                   <div className="space-y-2">
                     {insights.map((ins) => {
-                      const href = insightHref(ins.source)
+                      const action = insightAction(ins)
                       return (
                         <Link
                           key={ins.id}
-                          href={href}
+                          href={action.href}
                           className="block rounded-2xl border border-white/10 bg-white/[0.03] p-3.5 transition-colors hover:bg-white/[0.06] active:opacity-75"
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -322,11 +324,9 @@ export default function MobileReportsPage() {
                           {ins.detail ? (
                             <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">{ins.detail}</p>
                           ) : null}
-                          {ins.source ? (
-                            <p className="mt-1.5 text-[11px] font-medium text-amber-400/90">
-                              Перейти: {ins.source} →
-                            </p>
-                          ) : null}
+                          <p className="mt-1.5 text-[11.5px] font-semibold text-amber-400">
+                            {action.label}
+                          </p>
                         </Link>
                       )
                     })}
@@ -460,7 +460,7 @@ export default function MobileReportsPage() {
                   </div>
                 </Card>
 
-                {(report.orders.topDirections ?? []).length > 0 ? (
+                {(report.orders.topDirections ?? []).filter((d) => d.from?.trim() && d.to?.trim()).length > 0 ? (
                   <>
                     <SectionTitle title="Частые направления" />
                     <Card className="overflow-hidden p-0">
@@ -469,7 +469,10 @@ export default function MobileReportsPage() {
                         <span>Рейсов</span>
                       </div>
                       <div className="divide-y divide-white/10">
-                        {(report.orders.topDirections ?? []).slice(0, 5).map((dir, i) => (
+                        {(report.orders.topDirections ?? [])
+                          .filter((d) => d.from?.trim() && d.to?.trim())
+                          .slice(0, 5)
+                          .map((dir, i) => (
                           <div key={`${dir.from}-${dir.to}-${i}`} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5">
                             <p className="min-w-0 truncate text-[13.5px] font-medium text-foreground">
                               {shortCity(dir.from)} → {shortCity(dir.to)}
