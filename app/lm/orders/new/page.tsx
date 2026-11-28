@@ -82,13 +82,50 @@ export default function NewOrderPage() {
         reader.onerror = () => reject(new Error("Не удалось прочитать файл"))
         reader.readAsDataURL(file)
       })
-      const res = await apiSend<{ fields?: Partial<FormState>; error?: string }>(
+      const res = await apiSend<{ fields?: Partial<FormState>; code?: string; error?: string }>(
         "/api/orders/parse-screenshot",
         "POST",
         { imageDataUrl: dataUrl },
       )
       if (!res.ok || !res.data?.fields) {
-        setScanNote(res.error ?? "Не удалось распознать заявку с фото")
+        // Запасной бесплатный режим без ключей — распознаём текст прямо в браузере
+        setScanNote("Распознаём текст с фото…")
+        const w = window as unknown as { Tesseract?: { recognize: (img: string, lang: string) => Promise<{ data: { text: string } }> } }
+        if (!w.Tesseract) {
+          await new Promise<void>((resolve, reject) => {
+            const s = document.createElement("script")
+            s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"
+            s.onload = () => resolve()
+            s.onerror = () => reject(new Error("OCR не загрузился"))
+            document.head.appendChild(s)
+          })
+        }
+        const ocr = await w.Tesseract!.recognize(dataUrl, "rus+eng")
+        const text = String(ocr?.data?.text ?? "")
+        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+        const arrowMatch = text.match(/([А-ЯЁA-Z][а-яёa-z-]+(?:\s+[А-ЯЁA-Z][а-яёa-z-]+)?)\s*(?:[-–—>→]+|до)\s*([А-ЯЁA-Z][а-яёa-z-]+(?:\s+[А-ЯЁA-Z][а-яёa-z-]+)?)/)
+        const weightMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:т\b|тонн|кг)/i)
+        const volMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:м3|м³|куб)/i)
+        const priceMatch = text.match(/(\d[\d\s]{2,})\s*(?:₽|руб|р\b)/i)
+        const phoneMatch = text.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}/)
+
+        let weightKg = ""
+        if (weightMatch) {
+          const num = parseFloat(weightMatch[1].replace(",", "."))
+          weightKg = /кг/i.test(weightMatch[0]) ? String(Math.round(num)) : String(Math.round(num * 1000))
+        }
+
+        setForm((prev) => ({
+          ...prev,
+          routeFrom: arrowMatch?.[1] ?? prev.routeFrom,
+          routeTo: arrowMatch?.[2] ?? prev.routeTo,
+          weight: weightKg || prev.weight,
+          volume: volMatch?.[1]?.replace(",", ".") ?? prev.volume,
+          price: priceMatch?.[1]?.replace(/\s+/g, "") ?? prev.price,
+          clientContact: phoneMatch?.[0] ?? prev.clientContact,
+          cargoType: prev.cargoType || (lines[0] ?? "").slice(0, 60),
+        }))
+        setScanNote("Текст распознан — проверьте и поправьте поля")
         return
       }
       const f = res.data.fields
