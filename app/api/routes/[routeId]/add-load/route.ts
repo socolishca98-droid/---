@@ -203,7 +203,7 @@ export async function POST(
           userId: driverId,
           userRole: "driver",
           type: proposeToDriver ? "load_proposal" : "load_added",
-          title: proposeToDriver ? "Предложен догруз" : "Добавлен догруз",
+          title: "Маршрут обновлён",
           message: `${loadFrom} → ${loadTo}, ${((weight || 0) / 1000).toFixed(1)}т`,
           orderId: order.id,
           routeId,
