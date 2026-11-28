@@ -197,29 +197,54 @@ export default function MobileReportsPage() {
                   </span>
                 </Card>
 
-                {/* Шкала прибыли */}
-                {report.finance.revenueRub > 0 ? (
-                  <Card className="space-y-2 py-3">
-                    <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
-                      <span>Доля прибыли в выручке</span>
-                      <span className="font-semibold text-foreground tabular-nums">
-                        {Math.max(0, Math.min(100, Math.round((report.finance.profitRub / report.finance.revenueRub) * 100)))}%
+                {/* Стильная столбчатая диаграмма Выручка / Расходы / Прибыль */}
+                {report.finance.revenueRub > 0 || report.finance.expensesRub > 0 ? (
+                  <Card className="space-y-3 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-medium text-muted-foreground">Баланс периода</span>
+                      <span className="text-[11.5px] font-semibold text-amber-400 tabular-nums">
+                        маржа {Math.max(0, Math.min(100, Math.round((report.finance.profitRub / Math.max(1, report.finance.revenueRub)) * 100)))}%
                       </span>
                     </div>
-                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="bg-emerald-400 transition-all duration-500"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, Math.round((report.finance.profitRub / report.finance.revenueRub) * 100)))}%`,
-                        }}
-                      />
-                      <div
-                        className="bg-amber-400/80 transition-all duration-500"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, Math.round((report.finance.expensesRub / report.finance.revenueRub) * 100)))}%`,
-                        }}
-                      />
-                    </div>
+                    {(() => {
+                      const maxVal = Math.max(
+                        report.finance.revenueRub,
+                        report.finance.expensesRub,
+                        Math.abs(report.finance.profitRub),
+                        1,
+                      )
+                      const bars = [
+                        { label: "Выручка", val: report.finance.revenueRub, grad: "from-emerald-400 to-emerald-600/80", text: "text-emerald-300" },
+                        { label: "Расходы", val: report.finance.expensesRub, grad: "from-amber-400 to-amber-600/80", text: "text-amber-300" },
+                        {
+                          label: "Прибыль",
+                          val: Math.max(0, report.finance.profitRub),
+                          grad: report.finance.profitRub >= 0 ? "from-sky-400 to-indigo-500/80" : "from-rose-400 to-rose-600/80",
+                          text: report.finance.profitRub >= 0 ? "text-sky-300" : "text-rose-300",
+                        },
+                      ]
+                      return (
+                        <div className="grid grid-cols-3 items-end gap-3 pt-2">
+                          {bars.map((b) => {
+                            const h = Math.max(10, Math.round((b.val / maxVal) * 84))
+                            return (
+                              <div key={b.label} className="flex flex-col items-center gap-1.5">
+                                <span className={`text-[11px] font-semibold tabular-nums ${b.text}`}>
+                                  {formatMoney(b.val)}
+                                </span>
+                                <div className="flex h-[88px] w-full items-end justify-center rounded-xl bg-white/[0.03] px-3 pb-1">
+                                  <div
+                                    className={`w-full rounded-t-lg bg-gradient-to-t ${b.grad} shadow-[0_0_16px_rgba(245,158,11,0.12)] transition-all duration-500`}
+                                    style={{ height: `${h}px` }}
+                                  />
+                                </div>
+                                <span className="text-[11px] text-muted-foreground">{b.label}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </Card>
                 ) : null}
 
